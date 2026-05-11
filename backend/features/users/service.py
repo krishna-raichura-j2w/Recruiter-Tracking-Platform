@@ -24,15 +24,40 @@ def list_available_team(db: Session, dl_id: int, role: str | None = None) -> lis
     return q.order_by(User.name).all()
 
 
+DEFAULT_PASSWORD = "joules@123"
+
 def create_user(db: Session, data: dict) -> User:
     user = User(
         name=data["name"],
         email=data["email"],
-        password_hash=hash_password(data["password"]),
+        password_hash=hash_password(DEFAULT_PASSWORD),
         role=data["role"],
         pod_lead_id=data.get("pod_lead_id"),
+        must_change_password=True,
     )
     db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def reset_password(db: Session, user_id: int) -> User | None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    user.password_hash = hash_password(DEFAULT_PASSWORD)
+    user.must_change_password = True
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def change_password(db: Session, user_id: int, new_password: str) -> User | None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    user.password_hash = hash_password(new_password)
+    user.must_change_password = False
     db.commit()
     db.refresh(user)
     return user

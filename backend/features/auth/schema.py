@@ -13,3 +13,4 @@ class TokenResponse(BaseModel):
     name: str
     role: str
     email: str
+    must_change_password: bool = False

@@ -2,14 +2,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Plus, X, Trash2, UserPlus, UserMinus,
-  RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck,
+  RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck, KeyRound,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { User, TeamLoads, TeamMemberLoad } from '../types';
 
-interface UserForm { name: string; email: string; password: string; role: string; }
+interface UserForm { name: string; email: string; role: string; }
 
 interface ActivityEntry {
   id: number | null;
@@ -65,6 +65,7 @@ function WorkloadBar({ total, max }: { total: number; max: number }) {
 export default function Users() {
   const { user: currentUser } = useAuth();
   const isDeliveryLead = currentUser?.role === 'delivery_lead';
+  const isAdmin = currentUser?.role === 'admin';
 
   const [users, setUsers]           = useState<User[]>([]);
   const [recruiters, setRecruiters] = useState<TeamMemberLoad[]>([]);
@@ -203,6 +204,13 @@ export default function Users() {
       setConfirmDelete(null); fetchAll();
     } catch { flash('Failed.'); }
     finally { setDeletingId(null); }
+  };
+
+  const handleResetPassword = async (userId: number, name: string) => {
+    try {
+      await api.post(`/users/${userId}/reset-password`);
+      flash(`Password reset to joules@123 for ${name}.`);
+    } catch { flash('Reset failed.'); }
   };
 
   const maxLoad = Math.max(...recruiters.map((r) => r.load), 1);
@@ -704,7 +712,26 @@ export default function Users() {
                       </span>
                     </td>
                     <td className="py-3.5 px-5 text-right">
-                      {u.is_active && (
+                      {u.is_active && isAdmin && (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleResetPassword(u.id, u.name)}
+                            title="Reset password to joules@123"
+                            className="p-2 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          >
+                            <KeyRound size={15} />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(u)}
+                            disabled={deletingId === u.id}
+                            title="Deactivate user"
+                            className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-60"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      )}
+                      {u.is_active && !isAdmin && (
                         <button
                           onClick={() => setConfirmDelete(u)}
                           disabled={deletingId === u.id}
@@ -828,11 +855,9 @@ export default function Users() {
                   {...register('email', { required: true })} />
                 {errors.email && <p className="text-red-500 text-xs mt-1">Required</p>}
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password *</label>
-                <input type="password" placeholder="••••••••"
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
-                  {...register('password', { required: true, minLength: 6 })} />
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
+                <KeyRound size={13} className="flex-shrink-0" />
+                Default password: <span className="font-bold font-mono">joules@123</span> — user must change on first login.
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Role *</label>

@@ -144,7 +144,8 @@ class User(Base):
     password_hash = Column(String(256), nullable=False)
     role           = Column(SAEnum(UserRole, native_enum=False), nullable=False)
     recruiter_type = Column(SAEnum(RecruiterType, native_enum=False), nullable=True)
-    is_active      = Column(Boolean, default=True)
+    is_active             = Column(Boolean, default=True)
+    must_change_password  = Column(Boolean, default=False)
     pod_lead_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at     = Column(DateTime, default=now_utc)
 

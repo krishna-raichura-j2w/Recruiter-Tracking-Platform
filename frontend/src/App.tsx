@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
@@ -15,12 +15,22 @@ import MailTracker from './pages/MailTracker';
 import Clients from './pages/Clients';
 import Export from './pages/Export';
 import FollowUp from './pages/FollowUp';
+import ChangePassword from './pages/ChangePassword';
+
+function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
+  const { user, updateUser } = useAuth();
+  if (user?.must_change_password) {
+    return <ChangePassword user={user} onDone={updateUser} />;
+  }
+  return <>{children}</>;
+}
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
+        <ForceChangePasswordGate>
+          <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />
 
@@ -142,7 +152,8 @@ export default function App() {
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+          </Routes>
+        </ForceChangePasswordGate>
       </BrowserRouter>
     </AuthProvider>
   );

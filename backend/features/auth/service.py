@@ -19,4 +19,5 @@ def build_token(user: User) -> dict:
         "name": user.name,
         "role": user.role.value,
         "email": user.email,
+        "must_change_password": bool(user.must_change_password),
     }

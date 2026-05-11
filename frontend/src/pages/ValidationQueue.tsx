@@ -173,224 +173,268 @@ export default function ValidationQueue() {
         )}
       </div>
 
-      {/* Side panel / Modal */}
+      {/* Review overlay — centered modal */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/40 backdrop-blur-sm">
-          <div className="bg-white h-full w-full max-w-xl shadow-2xl overflow-y-auto scrollbar-thin flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '960px', maxWidth: '96vw', maxHeight: '92vh' }}>
+
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white z-10">
-              <div>
-                <h3 className="text-base font-bold text-slate-800">{selectedItem.candidate.full_name}</h3>
-                <p className="text-sm text-slate-500">{selectedItem.candidate.job_title} · {selectedItem.candidate.client_name}</p>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black text-white flex-shrink-0" style={{ backgroundColor: '#1a2744' }}>
+                  {(selectedItem.candidate.full_name ?? 'C').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">{selectedItem.candidate.full_name}</h3>
+                  <p className="text-xs text-slate-500">{selectedItem.candidate.job_title} · {selectedItem.candidate.client_name}</p>
+                </div>
+                {Number.isFinite(Number(selectedItem.candidate.overall_score)) && (
+                  <div className={`ml-2 px-3 py-1 rounded-xl text-sm font-black text-white ${Number(selectedItem.candidate.overall_score) >= 3.5 ? 'bg-green-500' : Number(selectedItem.candidate.overall_score) >= 3 ? 'bg-yellow-400' : 'bg-red-500'}`}>
+                    {Number(selectedItem.candidate.overall_score).toFixed(1)} / 5
+                  </div>
+                )}
+                {selectedItem.candidate.auto_recommendation && (
+                  <StatusBadge status={selectedItem.candidate.auto_recommendation} type="recommendation" />
+                )}
               </div>
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-              >
+              <button onClick={() => setSelectedItem(null)} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="flex-1 p-6 space-y-6">
+            {/* Scrollable body — two columns */}
+            <div className="overflow-y-auto flex-1 p-6">
+              {!fullCandidate ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />)}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
 
-              {/* Sourcer-filled details */}
-              {fullCandidate ? (
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sourcer Details</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                    {[
-                      ['Mobile', fullCandidate.mobile],
-                      ['Email', fullCandidate.email],
-                      ['City', fullCandidate.city],
-                      ['Education', fullCandidate.education],
-                      ['Experience', fullCandidate.exp_range],
-                      ['Current Company', fullCandidate.current_company],
-                      ['Naukri Active', fullCandidate.naukri_active],
-                      ['Immediate Joiner', fullCandidate.immediate_joiner],
-                      ['Lead Source', fullCandidate.lead_source],
-                      ['Sourcing Date', fullCandidate.sourcing_date],
-                    ].map(([label, value]) => (
-                      <div key={String(label)}>
-                        <span className="text-slate-400">{label}</span>
-                        <p className="font-medium text-slate-700">{value ?? '—'}</p>
+                  {/* ── LEFT COLUMN ── */}
+                  <div className="space-y-5">
+
+                    {/* Sourcer details */}
+                    <section>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Sourcer Details</p>
+                      <div className="bg-slate-50 rounded-xl p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                        {([
+                          ['Mobile', fullCandidate.mobile],
+                          ['Email', fullCandidate.email],
+                          ['City', fullCandidate.city],
+                          ['Education', fullCandidate.education],
+                          ['Experience', fullCandidate.exp_range],
+                          ['Current Company', fullCandidate.current_company],
+                          ['Naukri Active', fullCandidate.naukri_active],
+                          ['Immediate Joiner', fullCandidate.immediate_joiner],
+                          ['Lead Source', fullCandidate.lead_source],
+                          ['Sourcing Date', fullCandidate.sourcing_date],
+                        ] as [string, string | null][]).map(([label, value]) => (
+                          <div key={label}>
+                            <span className="text-slate-400">{label}</span>
+                            <p className="font-semibold text-slate-700">{value ?? '—'}</p>
+                          </div>
+                        ))}
+                        <div className="col-span-2">
+                          <span className="text-slate-400">Skills</span>
+                          <p className="font-semibold text-slate-700">{fullCandidate.skills ?? '—'}</p>
+                        </div>
+                        {fullCandidate.linkedin_url && (
+                          <div className="col-span-2">
+                            <span className="text-slate-400">LinkedIn</span>
+                            <a href={fullCandidate.linkedin_url} target="_blank" rel="noreferrer"
+                              className="flex items-center gap-1 text-blue-600 hover:underline font-semibold truncate">
+                              <ExternalLink size={11} />{fullCandidate.linkedin_url}
+                            </a>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                    <div className="col-span-2">
-                      <span className="text-slate-400">Skills</span>
-                      <p className="font-medium text-slate-700">{fullCandidate.skills ?? '—'}</p>
-                    </div>
-                    {fullCandidate.linkedin_url && (
-                      <div className="col-span-2">
-                        <span className="text-slate-400">LinkedIn</span>
-                        <a href={fullCandidate.linkedin_url} target="_blank" rel="noreferrer"
-                          className="flex items-center gap-1 text-blue-600 hover:underline font-medium truncate">
-                          <ExternalLink size={11} />{fullCandidate.linkedin_url}
-                        </a>
-                      </div>
+                    </section>
+
+                    {/* Call logs */}
+                    {fullCandidate.call_logs && fullCandidate.call_logs.length > 0 && (
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Call Logs</p>
+                        <div className="space-y-2">
+                          {fullCandidate.call_logs.map((log) => (
+                            <div key={log.id} className="bg-slate-50 rounded-xl p-3 text-xs">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-slate-700">{log.call_date}</span>
+                                {log.outcome && <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{log.outcome}</span>}
+                              </div>
+                              {log.notes && <p className="text-slate-500">{log.notes}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {/* Assessment caller details — every filled field */}
+                    {selectedItem.assessment && (
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Caller Assessment — All Fields</p>
+
+                        {/* Stage A: Verification */}
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Verification</p>
+                        <div className="bg-slate-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mb-3">
+                          {([
+                            ['Full Name Confirmed', selectedItem.assessment.full_name_confirmed],
+                            ['Email Verified', selectedItem.assessment.email_verified],
+                            ['Alt Phone', selectedItem.assessment.alt_phone],
+                            ['LinkedIn Verified', selectedItem.assessment.linkedin_verified],
+                            ['Total Exp', selectedItem.assessment.total_exp != null ? `${selectedItem.assessment.total_exp} yrs` : null],
+                            ['Relevant Exp', selectedItem.assessment.relevant_exp != null ? `${selectedItem.assessment.relevant_exp} yrs` : null],
+                            ['Qualification', selectedItem.assessment.qualification],
+                            ['Last Company', selectedItem.assessment.last_company],
+                            ['Last Tenure', selectedItem.assessment.last_tenure],
+                            ['Tenure From → To', selectedItem.assessment.tenure_from && selectedItem.assessment.tenure_to ? `${selectedItem.assessment.tenure_from} → ${selectedItem.assessment.tenure_to}` : null],
+                            ['Notice Period', selectedItem.assessment.notice_period_weeks != null ? `${selectedItem.assessment.notice_period_weeks} weeks` : null],
+                            ['LWD Confirmed', selectedItem.assessment.lwd_confirmed],
+                            ['Last Working Day', selectedItem.assessment.last_working_day],
+                          ] as [string, string | null][]).map(([label, value]) => (
+                            <div key={label}><span className="text-slate-400">{label}</span><p className="font-semibold text-slate-700">{value ?? '—'}</p></div>
+                          ))}
+                        </div>
+
+                        {/* Stage B: CTC & Role */}
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">CTC &amp; Role</p>
+                        <div className="bg-slate-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mb-3">
+                          {([
+                            ['Deploying Client', selectedItem.assessment.deploying_client],
+                            ['Role / Position', selectedItem.assessment.role_position],
+                            ['Primary Skill Stack', selectedItem.assessment.primary_skill_stack],
+                            ['Current CTC', selectedItem.assessment.current_ctc != null ? `₹${selectedItem.assessment.current_ctc}L` : null],
+                            ['Expected CTC', selectedItem.assessment.expected_ctc != null ? `₹${selectedItem.assessment.expected_ctc}L` : null],
+                            ['Hike %', selectedItem.assessment.hike_pct != null ? `${selectedItem.assessment.hike_pct.toFixed(1)}%` : null],
+                            ['Skill Match Last Role', selectedItem.assessment.skill_match_last_role],
+                            ['Tech Q Used', selectedItem.assessment.tech_q_used],
+                          ] as [string, string | null][]).map(([label, value]) => (
+                            <div key={label}><span className="text-slate-400">{label}</span><p className="font-semibold text-slate-700">{value ?? '—'}</p></div>
+                          ))}
+                        </div>
+
+                        {/* Stage D: Intent & Risk */}
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Intent &amp; Risk</p>
+                        <div className="bg-slate-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mb-3">
+                          {([
+                            ['Project Status', selectedItem.assessment.project_status],
+                            ['Open to Relocation', selectedItem.assessment.open_to_relocation],
+                            ['Work Mode Pref', selectedItem.assessment.work_mode_pref],
+                            ['Work Auth Status', selectedItem.assessment.work_auth_status],
+                            ['Current City', selectedItem.assessment.current_city],
+                            ['Reason for Change', selectedItem.assessment.reason_for_change],
+                            ['Interviewing Elsewhere', selectedItem.assessment.interviewing_elsewhere],
+                            ['Offers in Hand', selectedItem.assessment.offers_in_hand],
+                            ['Counter Offer Risk', selectedItem.assessment.counter_offer_risk],
+                            ['Last Appraisal Context', selectedItem.assessment.last_appraisal_context],
+                            ['Email Acknowledged', selectedItem.assessment.email_acknowledged],
+                            ['Validation Slot Locked', selectedItem.assessment.validation_slot_locked],
+                            ['Pass to Validation', selectedItem.assessment.pass_to_validation],
+                          ] as [string, string | null][]).map(([label, value]) => (
+                            <div key={label}><span className="text-slate-400">{label}</span><p className="font-semibold text-slate-700">{value ?? '—'}</p></div>
+                          ))}
+                        </div>
+
+                        {selectedItem.assessment.caller_notes && (
+                          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+                            <span className="font-bold">Caller Notes: </span>{selectedItem.assessment.caller_notes}
+                          </div>
+                        )}
+                        {selectedItem.assessment.red_flags && (() => {
+                          try {
+                            const flags = JSON.parse(selectedItem.assessment.red_flags) as string[];
+                            return flags.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {flags.map((f) => <span key={f} className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">{f}</span>)}
+                              </div>
+                            ) : null;
+                          } catch { return null; }
+                        })()}
+                      </section>
                     )}
                   </div>
 
-                  {/* Resume viewer */}
-                  {fullCandidate.resume_data && (
-                    <div className="pt-2 border-t border-slate-200">
+                  {/* ── RIGHT COLUMN ── */}
+                  <div className="space-y-5">
+
+                    {/* Score bars */}
+                    {selectedItem.assessment ? (
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Assessment Scores</p>
+                        <div className="space-y-2 bg-slate-50 rounded-xl p-4">
+                          <ScoreBar score={selectedItem.assessment.comm_score} label="Communication" />
+                          <ScoreBar score={selectedItem.assessment.self_art_score} label="Self Articulation" />
+                          <ScoreBar score={selectedItem.assessment.role_art_score} label="Role Articulation" />
+                          <ScoreBar score={selectedItem.assessment.resume_skill_score} label="Resume Skills" />
+                          <ScoreBar score={selectedItem.assessment.tech_qa_score} label="Technical Q&A" />
+                          <ScoreBar score={selectedItem.assessment.paraphrase_score} label="Paraphrasing" />
+                          <ScoreBar score={selectedItem.assessment.confidence_score} label="Confidence" />
+                          <ScoreBar score={selectedItem.assessment.gut_score} label="Gut Score" />
+                          <div className="border-t border-slate-200 pt-2 mt-1">
+                            <ScoreBar score={selectedItem.assessment.tech_score} label="Tech (avg)" />
+                            <ScoreBar score={selectedItem.assessment.soft_skill_score} label="Soft (avg)" />
+                            <ScoreBar score={selectedItem.assessment.overall_score} label="Overall" />
+                          </div>
+                        </div>
+                      </section>
+                    ) : (
+                      <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-400 text-center">No assessment on record.</div>
+                    )}
+
+                    {/* Resume */}
+                    <section>
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Resume</p>
-                        <button
-                          onClick={() => setResumeOpen(!resumeOpen)}
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <FileText size={12} />
-                          {resumeOpen ? 'Hide' : 'View Resume'}
-                        </button>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Resume</p>
+                        {fullCandidate.resume_data && (
+                          <button onClick={() => setResumeOpen(!resumeOpen)}
+                            className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                            <FileText size={12} />{resumeOpen ? 'Collapse' : 'Expand'}
+                          </button>
+                        )}
                       </div>
-                      {resumeOpen && (
-                        fullCandidate.resume_data.startsWith('data:image/') ? (
-                          <img src={fullCandidate.resume_data} alt="Resume" className="w-full rounded-lg border border-slate-200 object-contain max-h-96" />
-                        ) : (
-                          <iframe
-                            src={fullCandidate.resume_data}
-                            title="Resume"
-                            className="w-full rounded-lg border border-slate-200"
-                            style={{ height: '480px' }}
-                          />
-                        )
+                      {fullCandidate.resume_data ? (
+                        <iframe
+                          src={fullCandidate.resume_data}
+                          title="Resume"
+                          className="w-full rounded-xl border border-slate-200"
+                          style={{ height: resumeOpen ? '600px' : '320px' }}
+                        />
+                      ) : (
+                        <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-400 text-center flex items-center justify-center gap-2">
+                          <FileText size={16} className="opacity-40" />No resume uploaded.
+                        </div>
                       )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="h-16 rounded-xl bg-slate-50 animate-pulse" />
-              )}
-
-              {/* Score overview */}
-              <div className="flex items-center gap-4">
-                {Number.isFinite(Number(selectedItem.candidate.overall_score)) && (
-                  <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-black text-white ${Number(selectedItem.candidate.overall_score) >= 3.5 ? 'bg-green-500' : Number(selectedItem.candidate.overall_score) >= 3 ? 'bg-yellow-400' : 'bg-red-500'}`}>
-                    <span className="text-xl">{Number(selectedItem.candidate.overall_score).toFixed(1)}</span>
-                    <span className="text-xs opacity-80">/ 5.0</span>
+                    </section>
                   </div>
-                )}
-                <div>
-                  {selectedItem.candidate.auto_recommendation && (
-                    <StatusBadge status={selectedItem.candidate.auto_recommendation} type="recommendation" />
-                  )}
-                  <p className="text-xs text-slate-400 mt-1">Auto recommendation</p>
-                </div>
-              </div>
-
-              {/* Assessment details */}
-              {selectedItem.assessment ? (
-                <>
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Assessment Breakdown</p>
-                    <div className="space-y-2 bg-slate-50 rounded-xl p-4">
-                      <ScoreBar score={selectedItem.assessment.comm_score} label="Communication" />
-                      <ScoreBar score={selectedItem.assessment.self_art_score} label="Self Articulation" />
-                      <ScoreBar score={selectedItem.assessment.role_art_score} label="Role Articulation" />
-                      <ScoreBar score={selectedItem.assessment.resume_skill_score} label="Resume Skills" />
-                      <ScoreBar score={selectedItem.assessment.tech_qa_score} label="Technical Q&A" />
-                      <ScoreBar score={selectedItem.assessment.paraphrase_score} label="Paraphrasing" />
-                      <ScoreBar score={selectedItem.assessment.confidence_score} label="Confidence" />
-                      <ScoreBar score={selectedItem.assessment.gut_score} label="Gut Score" />
-                      <div className="border-t border-slate-200 pt-2 mt-2">
-                        <ScoreBar score={selectedItem.assessment.tech_score} label="Tech Score (avg)" />
-                        <ScoreBar score={selectedItem.assessment.soft_skill_score} label="Soft Score (avg)" />
-                        <ScoreBar score={selectedItem.assessment.overall_score} label="Overall Score" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Candidate Details</p>
-                    <div className="bg-slate-50 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
-                      {[
-                        ['Total Exp', selectedItem.assessment.total_exp ? `${selectedItem.assessment.total_exp} yrs` : null],
-                        ['Relevant Exp', selectedItem.assessment.relevant_exp ? `${selectedItem.assessment.relevant_exp} yrs` : null],
-                        ['Last Company', selectedItem.assessment.last_company],
-                        ['Notice Period', selectedItem.assessment.notice_period_weeks ? `${selectedItem.assessment.notice_period_weeks} wks` : null],
-                        ['Current CTC', selectedItem.assessment.current_ctc ? `₹${selectedItem.assessment.current_ctc}L` : null],
-                        ['Expected CTC', selectedItem.assessment.expected_ctc ? `₹${selectedItem.assessment.expected_ctc}L` : null],
-                        ['Hike %', selectedItem.assessment.hike_pct ? `${selectedItem.assessment.hike_pct.toFixed(1)}%` : null],
-                        ['LWD', selectedItem.assessment.lwd_confirmed],
-                      ].map(([label, value]) => (
-                        <div key={String(label)}>
-                          <span className="text-xs text-slate-400">{label}</span>
-                          <p className="font-medium text-slate-700">{value ?? '—'}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {selectedItem.assessment.red_flags && (() => {
-                    const flags = JSON.parse(selectedItem.assessment.red_flags) as string[];
-                    return flags.length > 0 ? (
-                      <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Red Flags</p>
-                        <div className="flex flex-wrap gap-2">
-                          {flags.map((f) => <span key={f} className="text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-600 font-medium">{f}</span>)}
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-
-                  {selectedItem.assessment.caller_notes && (
-                    <div>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Caller Notes</p>
-                      <p className="text-sm text-slate-600 bg-slate-50 rounded-xl p-4">{selectedItem.assessment.caller_notes}</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-400 text-center">
-                  No assessment on record for this candidate.
                 </div>
               )}
+            </div>
 
-              {/* Comment box */}
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Validator Comment</p>
-                <textarea
-                  rows={3}
-                  placeholder="Add a comment (optional)…"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 resize-none"
-                />
-              </div>
-
-              {/* Action buttons */}
-              <div className="grid grid-cols-2 gap-3 pb-6">
-                <button
-                  onClick={() => handleAction('validate')}
-                  disabled={actionLoading}
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 disabled:opacity-60 transition-colors"
-                >
-                  <CheckCircle size={16} />
-                  Validate
+            {/* Footer — validator comment + actions */}
+            <div className="border-t border-slate-100 px-6 py-4 flex-shrink-0 space-y-3">
+              <textarea
+                rows={2}
+                placeholder="Validator comment (optional)…"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 resize-none"
+              />
+              <div className="grid grid-cols-4 gap-3">
+                <button onClick={() => handleAction('validate')} disabled={actionLoading}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 disabled:opacity-60 transition-colors">
+                  <CheckCircle size={15} />Validate
                 </button>
-                <button
-                  onClick={() => handleAction('needs_rework')}
-                  disabled={actionLoading}
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-60 transition-colors"
-                >
-                  <AlertCircle size={16} />
-                  Needs Rework
+                <button onClick={() => handleAction('needs_rework')} disabled={actionLoading}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-60 transition-colors">
+                  <AlertCircle size={15} />Needs Rework
                 </button>
-                <button
-                  onClick={() => handleAction('on_hold')}
-                  disabled={actionLoading}
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-400 text-white text-sm font-semibold hover:bg-amber-500 disabled:opacity-60 transition-colors"
-                >
-                  <PauseCircle size={16} />
-                  On Hold
+                <button onClick={() => handleAction('on_hold')} disabled={actionLoading}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-400 text-white text-sm font-semibold hover:bg-amber-500 disabled:opacity-60 transition-colors">
+                  <PauseCircle size={15} />On Hold
                 </button>
-                <button
-                  onClick={() => { setRejectOverlay(true); setRejectReason(''); }}
-                  disabled={actionLoading}
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors"
-                >
-                  <XCircle size={16} />
-                  Reject
+                <button onClick={() => { setRejectOverlay(true); setRejectReason(''); }} disabled={actionLoading}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors">
+                  <XCircle size={15} />Reject
                 </button>
               </div>
             </div>

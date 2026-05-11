@@ -6,6 +6,7 @@ export interface AuthUser {
   role: UserRole;
   email: string;
   access_token: string;
+  must_change_password: boolean;
 }
 
 export interface User {

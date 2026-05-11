@@ -53,6 +53,18 @@ def create_user(
     return _out(service.create_user(db, body.model_dump()))
 
 
+@router.post("/{user_id}/reset-password")
+def reset_password(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    user = service.reset_password(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": f"Password reset to default for {user.name}"}
+
+
 @router.patch("/{user_id}")
 def update_user(
     user_id: int,

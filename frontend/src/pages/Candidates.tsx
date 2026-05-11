@@ -729,11 +729,11 @@ export default function Candidates() {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF or Image)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF)</label>
                   <input
                     type="file"
                     ref={resumeInputRef}
-                    accept="application/pdf,image/*"
+                    accept="application/pdf"
                     className="hidden"
                     onChange={(e) => { if (e.target.files?.[0]) handleResumeUpload(e.target.files[0]); }}
                   />

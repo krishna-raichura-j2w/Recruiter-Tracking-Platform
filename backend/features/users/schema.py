@@ -2,10 +2,12 @@ from pydantic import BaseModel, EmailStr
 from infra.models import UserRole
 
 
+DEFAULT_PASSWORD = "joules@123"
+
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
-    password: str
+    password: str = DEFAULT_PASSWORD
     role: UserRole
     pod_lead_id: int | None = None
 
