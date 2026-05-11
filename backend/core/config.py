@@ -28,13 +28,29 @@ class Settings(BaseSettings):
     gmail_user: str | None = Field(default=None, validation_alias="GMAIL_USER")
     gmail_app_password: str | None = Field(default=None, validation_alias="GMAIL_APP_PASSWORD")
 
+    @staticmethod
+    def _fix_pg_url(url: str) -> str:
+        """Re-encode literal '@' in password so the URL is valid for SQLAlchemy."""
+        scheme_end = url.index("://") + 3
+        rest = url[scheme_end:]
+        if rest.count("@") <= 1:
+            return url
+        # last '@' separates credentials from host
+        last_at = url.rfind("@")
+        credentials = url[scheme_end:last_at]
+        host_part = url[last_at + 1:]
+        colon_pos = credentials.index(":")
+        user = credentials[:colon_pos]
+        password = credentials[colon_pos + 1:].replace("@", "%40")
+        return f"{url[:scheme_end]}{user}:{password}@{host_part}"
+
     @computed_field  # type: ignore[misc]
     @property
     def active_db_url(self) -> str:
         if self.database_to_use.upper() == "SUPABASE":
             if not self.supabase_db_url:
                 raise ValueError("SUPABASE_DB_URL must be set when DATABASE_TO_USE=SUPABASE")
-            url = self.supabase_db_url
+            url = self._fix_pg_url(self.supabase_db_url)
             if "sslmode" not in url:
                 url += "?sslmode=require"
             return url

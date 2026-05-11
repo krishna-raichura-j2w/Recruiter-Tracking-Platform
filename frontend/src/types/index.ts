@@ -13,7 +13,7 @@ export interface User {
   name: string;
   email: string;
   role: string;
-  recruiter_type: 'sourcer' | 'caller' | null;
+  recruiter_type: 'sourcer' | 'caller' | 'both' | null;
   is_active: boolean;
   pod_lead_id: number | null;
 }
@@ -65,6 +65,8 @@ export interface Job {
   assigned_sourcer_name: string | null;
   assigned_caller_id: number | null;
   assigned_caller_name: string | null;
+  sourcer_names: string[];
+  caller_names: string[];
   delivery_lead_id: number | null;
   delivery_lead_name: string | null;
   account_manager_id: number | null;
@@ -80,7 +82,7 @@ export interface TeamMemberLoad {
   name: string;
   email: string;
   role: string;
-  recruiter_type: 'sourcer' | 'caller' | null;
+  recruiter_type: 'sourcer' | 'caller' | 'both' | null;
   sourcing_load: number;
   calling_load: number;
   load: number;

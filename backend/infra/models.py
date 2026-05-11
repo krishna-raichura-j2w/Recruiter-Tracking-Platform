@@ -24,6 +24,7 @@ class UserRole(str, enum.Enum):
 class RecruiterType(str, enum.Enum):
     sourcer = "sourcer"
     caller  = "caller"
+    both    = "both"
 
 
 class JobStatus(str, enum.Enum):

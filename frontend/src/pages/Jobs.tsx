@@ -156,9 +156,9 @@ export default function Jobs() {
       }>('/users/team-loads');
       const team = res.data.sourcers ?? [];
       setDlTeam(team);
-      // Auto-select recommended: lowest load for each type
-      const sourcers = team.filter(m => m.recruiter_type === 'sourcer');
-      const callers  = team.filter(m => m.recruiter_type === 'caller');
+      // Auto-select recommended: lowest load for each type ('both' can do either)
+      const sourcers = team.filter(m => m.recruiter_type === 'sourcer' || m.recruiter_type === 'both');
+      const callers  = team.filter(m => m.recruiter_type === 'caller'  || m.recruiter_type === 'both');
       if (sourcers.length) {
         const rec = sourcers.reduce((a, b) => a.sourcing_load <= b.sourcing_load ? a : b);
         setSelectedSourcers([rec.id]);
@@ -527,7 +527,7 @@ export default function Jobs() {
                 title="Sourcing Recruiters"
                 subtitle="Will find and add candidates for this JD"
                 accentColor="teal"
-                members={dlTeam.filter(m => m.recruiter_type === 'sourcer')}
+                members={dlTeam.filter(m => m.recruiter_type === 'sourcer' || m.recruiter_type === 'both')}
                 allMembers={dlTeam}
                 selectedIds={selectedSourcers}
                 loadKey="sourcing_load"
@@ -538,7 +538,7 @@ export default function Jobs() {
                 title="Calling Recruiters"
                 subtitle="Will screen and call sourced candidates"
                 accentColor="blue"
-                members={dlTeam.filter(m => m.recruiter_type === 'caller')}
+                members={dlTeam.filter(m => m.recruiter_type === 'caller' || m.recruiter_type === 'both')}
                 allMembers={dlTeam}
                 selectedIds={selectedCallers}
                 loadKey="calling_load"
@@ -907,7 +907,7 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
               </>
             )}
           </p>
-          {(job.account_manager_name || job.delivery_lead_name || job.assigned_sourcer_name || job.assigned_caller_name) && (
+          {(job.account_manager_name || job.delivery_lead_name || (job.sourcer_names?.length > 0) || (job.caller_names?.length > 0)) && (
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
               {job.account_manager_name && (
                 <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
@@ -919,14 +919,14 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
                   <UserCheck size={11} /> DL: {job.delivery_lead_name}
                 </p>
               )}
-              {job.assigned_sourcer_name && (
+              {job.sourcer_names?.length > 0 && (
                 <p className="text-xs text-teal-600 font-semibold flex items-center gap-1">
-                  <Users size={11} /> Sourcing: {job.assigned_sourcer_name}
+                  <Users size={11} /> Sourcing: {job.sourcer_names.join(', ')}
                 </p>
               )}
-              {job.assigned_caller_name && (
+              {job.caller_names?.length > 0 && (
                 <p className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                  <Phone size={11} /> Calling: {job.assigned_caller_name}
+                  <Phone size={11} /> Calling: {job.caller_names.join(', ')}
                 </p>
               )}
             </div>

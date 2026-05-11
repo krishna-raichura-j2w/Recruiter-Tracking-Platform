@@ -152,7 +152,7 @@ export default function Users() {
 
   useEffect(() => { fetchAll(); fetchAms(); }, [fetchAll]);
 
-  const handleAddToTeam = async (userId: number, recruiterType: 'sourcer' | 'caller') => {
+  const handleAddToTeam = async (userId: number, recruiterType: 'sourcer' | 'caller' | 'both') => {
     setActioningId(userId);
     try {
       await api.post(`/users/${userId}/assign-pod`, { recruiter_type: recruiterType });
@@ -173,7 +173,7 @@ export default function Users() {
     finally { setActioningId(null); }
   };
 
-  const handleChangeRole = async (userId: number, type: 'sourcer' | 'caller') => {
+  const handleChangeRole = async (userId: number, type: 'sourcer' | 'caller' | 'both') => {
     setActioningId(userId);
     try {
       await api.post(`/users/${userId}/assign-pod`, { recruiter_type: type });
@@ -302,21 +302,28 @@ export default function Users() {
                         <td className="py-3 px-5">
                           {pickingTypeFor === u.id ? (
                             <div className="flex flex-col gap-1.5 items-end">
-                              <p className="text-xs text-slate-400 font-medium">Add as role:</p>
-                              <div className="flex items-center gap-1.5">
+                              <p className="text-xs text-slate-400 font-medium">Add as:</p>
+                              <div className="flex items-center gap-1.5 flex-wrap justify-end">
                                 <button
                                   onClick={() => handleAddToTeam(u.id, 'sourcer')}
                                   disabled={actioningId === u.id}
                                   className="px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 text-xs font-semibold hover:bg-teal-100 disabled:opacity-60 transition-colors whitespace-nowrap"
                                 >
-                                  Sourcer
+                                  <span className="flex items-center gap-1"><Briefcase size={11} /> Sourcer</span>
                                 </button>
                                 <button
                                   onClick={() => handleAddToTeam(u.id, 'caller')}
                                   disabled={actioningId === u.id}
                                   className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold hover:bg-blue-100 disabled:opacity-60 transition-colors whitespace-nowrap"
                                 >
-                                  Caller
+                                  <span className="flex items-center gap-1"><Phone size={11} /> Caller</span>
+                                </button>
+                                <button
+                                  onClick={() => handleAddToTeam(u.id, 'both')}
+                                  disabled={actioningId === u.id}
+                                  className="px-3 py-1.5 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 text-xs font-semibold hover:bg-violet-100 disabled:opacity-60 transition-colors whitespace-nowrap"
+                                >
+                                  <span className="flex items-center gap-1"><Briefcase size={11} /><Phone size={11} /> Both</span>
                                 </button>
                                 <button
                                   onClick={() => setPickingTypeFor(null)}
@@ -402,28 +409,39 @@ export default function Users() {
                       <td className="py-3.5 px-5 text-slate-500">{m.email}</td>
                       <td className="py-3.5 px-5 text-center">
                         {changingRoleFor === m.id ? (
-                          <div className="flex items-center justify-center gap-1">
+                          <div className="flex items-center justify-center gap-1 flex-wrap">
                             <button
                               onClick={() => handleChangeRole(m.id, 'sourcer')}
                               disabled={actioningId === m.id}
-                              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-60 ${
-                                m.recruiter_type === 'sourcer'
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-60 flex items-center gap-1 ${
+                                m.recruiter_type === 'sourcer' || m.recruiter_type === 'both'
                                   ? 'bg-teal-500 text-white border-teal-500'
                                   : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'
                               }`}
                             >
-                              Sourcer
+                              <Briefcase size={10} /> Sourcer
                             </button>
                             <button
                               onClick={() => handleChangeRole(m.id, 'caller')}
                               disabled={actioningId === m.id}
-                              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-60 ${
-                                m.recruiter_type === 'caller'
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-60 flex items-center gap-1 ${
+                                m.recruiter_type === 'caller' || m.recruiter_type === 'both'
                                   ? 'bg-blue-500 text-white border-blue-500'
                                   : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
                               }`}
                             >
-                              Caller
+                              <Phone size={10} /> Caller
+                            </button>
+                            <button
+                              onClick={() => handleChangeRole(m.id, 'both')}
+                              disabled={actioningId === m.id}
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-60 flex items-center gap-1 ${
+                                m.recruiter_type === 'both'
+                                  ? 'bg-violet-500 text-white border-violet-500'
+                                  : 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50'
+                              }`}
+                            >
+                              Both
                             </button>
                             <button
                               onClick={() => setChangingRoleFor(null)}
@@ -441,12 +459,16 @@ export default function Users() {
                               ? { background: '#f0fdf9', color: '#0f766e', borderColor: '#99f6e4' }
                               : m.recruiter_type === 'caller'
                               ? { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }
+                              : m.recruiter_type === 'both'
+                              ? { background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe' }
                               : { background: '#f8fafc', color: '#94a3b8', borderColor: '#e2e8f0' }}
                           >
                             {m.recruiter_type === 'sourcer' && <Briefcase size={10} />}
                             {m.recruiter_type === 'caller' && <Phone size={10} />}
+                            {m.recruiter_type === 'both' && <><Briefcase size={10} /><Phone size={10} /></>}
                             {m.recruiter_type === 'sourcer' ? 'Sourcer'
                               : m.recruiter_type === 'caller' ? 'Caller'
+                              : m.recruiter_type === 'both' ? 'Both'
                               : '—'}
                           </button>
                         )}
@@ -506,7 +528,7 @@ export default function Users() {
                   <div>
                     <h3 className="font-bold text-slate-800 text-base">{activityMember.name}</h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {activityMember.recruiter_type === 'sourcer' ? 'Sourcer' : activityMember.recruiter_type === 'caller' ? 'Caller' : 'Recruiter'}
+                      {activityMember.recruiter_type === 'sourcer' ? 'Sourcer' : activityMember.recruiter_type === 'caller' ? 'Caller' : activityMember.recruiter_type === 'both' ? 'Sourcer & Caller' : 'Recruiter'}
                       {' · '}
                       {activityMember.sourcing_load} JDs sourced · {activityMember.calling_load} candidates calling
                     </p>

@@ -71,7 +71,7 @@ def update_user(
 
 
 class AssignPodBody(BaseModel):
-    recruiter_type: str  # "sourcer" or "caller"
+    recruiter_type: str  # "sourcer", "caller", or "both"
 
 
 @router.post("/{user_id}/assign-pod")
