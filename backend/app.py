@@ -20,6 +20,7 @@ from features.dashboard.routes import router as dashboard_router
 from features.resume_extract.routes import router as resume_extract_router
 from features.jd_extract.routes import router as jd_extract_router
 from features.mails.routes import router as mails_router
+from features.clients.routes import router as clients_router
 
 app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0")
 
@@ -43,6 +44,7 @@ app.include_router(dashboard_router,          prefix="/api")
 app.include_router(resume_extract_router,     prefix="/api")
 app.include_router(jd_extract_router,        prefix="/api")
 app.include_router(mails_router,             prefix="/api")
+app.include_router(clients_router,           prefix="/api")
 
 
 def run_migrations(db):
@@ -93,6 +95,15 @@ def run_migrations(db):
         acknowledgement_at TIMESTAMP WITH TIME ZONE,
         dl_verified BOOLEAN DEFAULT FALSE,
         dl_verified_at TIMESTAMP WITH TIME ZONE
+    )"""))
+    db.execute(text("""CREATE TABLE IF NOT EXISTS clients (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(120) UNIQUE NOT NULL,
+        short_name VARCHAR(80),
+        website_url VARCHAR(300),
+        logo_data TEXT,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )"""))
     db.commit()
 

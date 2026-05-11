@@ -28,7 +28,7 @@ function timeAgo(iso: string | null): string {
   return fmtDate(iso);
 }
 
-const CLIENTS = ['GEHC', 'JLL', 'Analog', 'Sony', 'Coupang', 'Flipkart', "Lowe's", 'Socgen', 'Accenture', 'Other'];
+interface ClientOption { id: number; name: string; short_name: string | null; website_url: string | null; logo_data: string | null; }
 const WORK_MODES = [
   { value: 'Remote',          label: 'Remote' },
   { value: 'Onsite',          label: 'Onsite' },
@@ -113,6 +113,7 @@ export default function Jobs() {
   // Delivery lead allocation (KAM only)
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
   const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
+  const [clientOptions, setClientOptions]           = useState<ClientOption[]>([]);
 
   // DL confirm-JD modal state
   const [confirmJob, setConfirmJob]         = useState<Job | null>(null);

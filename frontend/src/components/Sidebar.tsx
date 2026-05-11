@@ -11,6 +11,7 @@ import {
   LogOut,
   Activity,
   Mail,
+  Building2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -28,6 +29,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Submit to Client',    path: '/submissions',    icon: <Send size={18} /> },
     { label: 'Interview Tracking',  path: '/pipeline',       icon: <Activity size={18} /> },
     { label: 'Mail Tracker',        path: '/mail-tracker',   icon: <Mail size={18} /> },
+    { label: 'Clients',             path: '/clients',        icon: <Building2 size={18} /> },
     { label: 'Users',               path: '/users',          icon: <UserCheck size={18} /> },
   ],
   kam: [

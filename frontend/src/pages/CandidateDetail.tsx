@@ -336,6 +336,7 @@ export default function CandidateDetail() {
   const [validationLoading, setValidationLoading] = useState(false);
   const [showEmailOverlay, setShowEmailOverlay] = useState(false);
   const [mailSending, setMailSending] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [message, setMessage] = useState('');
   const [liveScores, setLiveScores] = useState({ tech: 0, soft: 0, overall: 0 });
@@ -1519,151 +1520,101 @@ export default function CandidateDetail() {
           ? `https://www.${candidate.client_name.toLowerCase().replace(/\s+/g, '')}.com`
           : '—';
 
-        const emailRows: [string, string, string, string][] = [
-          ['Name', candidate.full_name ?? '—', 'Phone', candidate.mobile ?? '—'],
-          ['Email ID', candidate.email ?? '—', 'Alternate no', a?.alt_phone ?? '—'],
-          ['Company URL', 'http://www.joulestowatts.com', 'Client Company URL', clientUrl],
-          ['Resignation acceptance', cp?.resignation_acceptance ?? '—', 'Replacement & KT', cp?.replacement_kt_status ?? '—'],
-          ['Skill Set', a?.primary_skill_stack ?? '—', 'Role/Responsibilities', cp?.role_responsibilities ?? '—'],
-          ['Personal Laptop', cp?.personal_laptop ?? '—', 'Total experience', a?.total_exp != null ? `${a.total_exp} yrs` : '—'],
-          ['Current Residential Location', a?.current_city ?? '—', 'Client Work Location', cp?.client_work_location ?? '—'],
-          ['Current Work Location', cp?.current_work_location ?? '—', 'Current Work Timings', cp?.current_work_timings ?? '—'],
-          ['Notice Period (on paper)', a?.notice_period_weeks != null ? `${a.notice_period_weeks} weeks` : '—', 'Negotiable Upto', cp?.notice_negotiable_upto ?? '—'],
-          ['Current Company', a?.last_company ?? '—', 'Payroll', cp?.payroll ?? '—'],
-          ['Current CTC', a?.current_ctc != null ? `${a.current_ctc} LPA` : '—', 'Expected CTC', a?.expected_ctc != null ? `${a.expected_ctc} LPA` : '—'],
-          ['Relevant experience', a?.relevant_exp != null ? `${a.relevant_exp} yrs` : '—', 'Deploying Client', a?.deploying_client ?? '—'],
-          ['Offers in Hand', a?.offers_in_hand ?? '—', 'Offers Pipeline', cp?.offers_pipeline ?? '—'],
-          ['Interview Pipeline', cp?.interview_pipeline ?? '—', 'Reason for change', a?.reason_for_change ?? '—'],
-          ['DOB', cp?.dob ?? '—', 'Telephonic availability', cp?.telephonic_availability ?? '—'],
-          ['IDE Installed', cp?.ide_installed ?? '—', 'Wifi / Mobile Data', cp?.wifi_connectivity ?? '—'],
-          ['Marital Status', cp?.marital_status ?? '—', 'LinkedIn', candidate.linkedin_url ?? '—'],
-          ['Health Issues (self/family)', cp?.health_issues ?? '—', 'Planned Leaves (3 mo)', cp?.planned_leaves ?? '—'],
-          ['Interview Avail (next 2 days)', cp?.interview_availability_2d ?? '—', 'Travel Plans', cp?.upcoming_travel ?? '—'],
+        const v = (s: string | number | null | undefined) => s ?? '—';
+        const rows: [string, string, string, string][] = [
+          ['Name',                         v(candidate.full_name),                         'Phone',                    v(candidate.mobile)],
+          ['Email ID',                     v(candidate.email),                             'Alternate no',             v(a?.alt_phone)],
+          ['Company URL',                  'http://www.joulestowatts.com',                 'Client Company URL',       clientUrl],
+          ['Resignation acceptance',       v(cp?.resignation_acceptance),                  'Replacement &amp; KT',     v(cp?.replacement_kt_status)],
+          ['Skill Set',                    v(a?.primary_skill_stack),                      'Role/Responsibilities',    v(cp?.role_responsibilities)],
+          ['Personal Laptop',              v(cp?.personal_laptop),                         'Total experience',         a?.total_exp != null ? `${a.total_exp} yrs` : '—'],
+          ['Current Residential Location', v(a?.current_city),                             'Client Work Location',     v(cp?.client_work_location)],
+          ['Current Work Location',        v(cp?.current_work_location),                   'Current Work Timings',     v(cp?.current_work_timings)],
+          ['Notice Period (on paper)',      a?.notice_period_weeks != null ? `${a.notice_period_weeks} weeks` : '—', 'Negotiable Upto', v(cp?.notice_negotiable_upto)],
+          ['Current Company',              v(a?.last_company),                             'Payroll',                  v(cp?.payroll)],
+          ['Current CTC',                  a?.current_ctc != null ? `${a.current_ctc} LPA` : '—', 'Expected CTC',   a?.expected_ctc != null ? `${a.expected_ctc} LPA` : '—'],
+          ['Relevant experience',          a?.relevant_exp != null ? `${a.relevant_exp} yrs` : '—', 'Deploying Client', v(a?.deploying_client)],
+          ['Offers in Hand',               v(a?.offers_in_hand),                           'Offers Pipeline',          v(cp?.offers_pipeline)],
+          ['Interview Pipeline',           v(cp?.interview_pipeline),                      'Reason for change',        v(a?.reason_for_change)],
+          ['DOB',                          v(cp?.dob),                                     'Telephonic availability',  v(cp?.telephonic_availability)],
+          ['IDE Installed',                v(cp?.ide_installed),                           'Wifi / Mobile Data',       v(cp?.wifi_connectivity)],
+          ['Marital Status',               v(cp?.marital_status),                          'LinkedIn',                 v(candidate.linkedin_url)],
+          ['Health Issues (self/family)',  v(cp?.health_issues),                           'Planned Leaves (3 mo)',    v(cp?.planned_leaves)],
+          ['Interview Avail (next 2 days)',v(cp?.interview_availability_2d),               'Travel Plans',             v(cp?.upcoming_travel)],
         ];
+
+        const LABEL = 'border:1px solid #8ea9c1;padding:5px 10px;background:#dce6f1;font-weight:bold;font-size:12px;font-family:Arial,sans-serif;white-space:nowrap;color:#1a202c;';
+        const VALUE = 'border:1px solid #8ea9c1;padding:5px 10px;background:#ffffff;font-size:12px;font-family:Arial,sans-serif;color:#1a202c;';
+
+        const emailHtml = `<div style="font-family:Arial,sans-serif;font-size:13px;color:#1a202c;line-height:1.8;max-width:720px;">
+<p>Hi <b>${candidate.full_name}</b>,</p>
+<p>Greetings from <b>JoulesToWatts Business Solutions</b>! It was great talking to you.</p>
+<p>According to our discussion we have an opening with one of our prestigious clients (<b>${candidate.client_name ?? '—'}</b>)</p>
+<p><b>Company URLs:</b><br>
+&nbsp;&nbsp;JoulesToWatts: <a href="http://www.joulestowatts.com" style="color:#2563eb;">http://www.joulestowatts.com</a><br>
+&nbsp;&nbsp;Client: <a href="${clientUrl}" style="color:#2563eb;">${candidate.client_name ?? '—'}</a></p>
+<p>JoulesToWatts is the only AI-Native GCC solutions company in India. We work with the largest of 300+ Fortune 1000 GCCs. At any time we are executing 150-200 projects across these customers.</p>
+<br>
+<p style="font-size:11px;color:#555;">── &nbsp;CONSULTANT DATA BLOCK &nbsp;·&nbsp; auto-populated from tracker &nbsp;──</p>
+<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px;">
+<tbody>
+${rows.map(([ll, lv, rl, rv]) =>
+  `<tr><td style="${LABEL}">${ll} :</td><td style="${VALUE}">${lv}</td><td style="${LABEL}">${rl} :</td><td style="${VALUE}">${rv}</td></tr>`
+).join('\n')}
+</tbody>
+</table></div>`;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
-            <div className="relative bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '760px', maxWidth: '96vw', maxHeight: '90vh' }}>
-              {/* Overlay header */}
+            <div className="relative bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '780px', maxWidth: '96vw', maxHeight: '92vh' }}>
+
+              {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
                 <h2 className="text-base font-bold text-slate-800">Consultant Email Preview</h2>
-                <button
-                  onClick={() => setShowEmailOverlay(false)}
-                  className="text-slate-400 hover:text-slate-700 transition-colors"
-                >
+                <button onClick={() => setShowEmailOverlay(false)} className="text-slate-400 hover:text-slate-700">
                   <X size={20} />
                 </button>
               </div>
 
-              {/* Scrollable email body */}
-              <div className="overflow-y-auto flex-1 px-6 py-5">
-                {/* Email container */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden font-sans text-sm">
-                  {/* Email top header */}
-                  <div className="px-6 py-4 text-white text-center" style={{ backgroundColor: '#1a2744' }}>
-                    <p className="text-xs font-semibold tracking-widest uppercase text-blue-300 mb-1">JoulesToWatts Business Solutions</p>
-                    <p className="text-lg font-black">Greetings from JoulesToWatts Business Solutions!</p>
-                  </div>
-
-                  {/* Greeting */}
-                  <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
-                    <p className="text-slate-700">Hi <strong>{candidate.full_name}</strong>,</p>
-                    <p className="text-slate-600 mt-2 leading-relaxed text-xs">
-                      We are pleased to be in touch with you through JoulesToWatts Business Solutions, a specialized IT staffing
-                      and consulting firm. We work with leading technology companies to connect talented professionals with exciting career opportunities.
-                    </p>
-                  </div>
-
-                  {/* URLs */}
-                  <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 text-xs text-slate-600">
-                    <span className="font-semibold">J2W:</span>{' '}
-                    <a href="http://www.joulestowatts.com" className="text-blue-600 underline" target="_blank" rel="noreferrer">http://www.joulestowatts.com</a>
-                    {candidate.client_name && (
-                      <>
-                        <span className="mx-3 text-slate-300">|</span>
-                        <span className="font-semibold">Client:</span>{' '}
-                        <a href={clientUrl} className="text-blue-600 underline" target="_blank" rel="noreferrer">{clientUrl}</a>
-                      </>
-                    )}
-                  </div>
-
-                  {/* J2W blurb */}
-                  <div className="px-6 py-3 border-b border-slate-100 text-xs text-slate-600 leading-relaxed">
-                    JoulesToWatts Business Solutions partners with top-tier clients to place skilled IT consultants in high-impact roles.
-                    Our team ensures a seamless experience from profile submission to onboarding.
-                  </div>
-
-                  {/* Section label */}
-                  <div className="px-6 py-2 bg-slate-700">
-                    <p className="text-xs font-bold text-white uppercase tracking-widest">── Consultant Data Block · auto-populated from tracker ──</p>
-                  </div>
-
-                  {/* Data table — full-border grid matching Excel/Outlook paste format */}
-                  <div style={{ padding: '0', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', fontFamily: 'Arial, sans-serif' }}>
-                      <tbody>
-                        {emailRows.map(([leftLabel, leftVal, rightLabel, rightVal]) => (
-                          <tr key={leftLabel}>
-                            <td style={{
-                              border: '1px solid #a0aec0',
-                              padding: '5px 8px',
-                              backgroundColor: '#dce6f1',
-                              fontWeight: 'bold',
-                              color: '#1a202c',
-                              whiteSpace: 'nowrap',
-                              width: '22%',
-                            }}>
-                              {leftLabel} :
-                            </td>
-                            <td style={{
-                              border: '1px solid #a0aec0',
-                              padding: '5px 8px',
-                              backgroundColor: '#ffffff',
-                              color: '#1a202c',
-                              width: '28%',
-                            }}>
-                              {leftVal}
-                            </td>
-                            <td style={{
-                              border: '1px solid #a0aec0',
-                              padding: '5px 8px',
-                              backgroundColor: '#dce6f1',
-                              fontWeight: 'bold',
-                              color: '#1a202c',
-                              whiteSpace: 'nowrap',
-                              width: '22%',
-                            }}>
-                              {rightLabel} :
-                            </td>
-                            <td style={{
-                              border: '1px solid #a0aec0',
-                              padding: '5px 8px',
-                              backgroundColor: '#ffffff',
-                              color: '#1a202c',
-                              width: '28%',
-                            }}>
-                              {rightVal}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+              {/* Email rendered as raw HTML — no Tailwind interference */}
+              <div className="overflow-y-auto flex-1" style={{ padding: '24px 28px' }}>
+                <div dangerouslySetInnerHTML={{ __html: emailHtml }} />
               </div>
 
-              {/* Action buttons */}
+              {/* Actions */}
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 flex-shrink-0 rounded-b-2xl">
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(generateEmailText(candidate));
-                    showMsg('Email text copied to clipboard!');
+                    // Copy as HTML so it pastes as a proper table in Outlook/Gmail
+                    const blob = new Blob([emailHtml], { type: 'text/html' });
+                    const item = new ClipboardItem({ 'text/html': blob });
+                    navigator.clipboard.write([item]).catch(() => {
+                      // Fallback to plain text
+                      navigator.clipboard.writeText(generateEmailText(candidate));
+                    });
+                    setEmailCopied(true);
+                    setTimeout(() => setEmailCopied(false), 2000);
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-slate-300 text-sm font-semibold text-slate-700 hover:bg-white transition-colors"
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
+                    emailCopied
+                      ? 'border-green-400 bg-green-50 text-green-700'
+                      : 'border-slate-300 text-slate-700 hover:bg-white'
+                  }`}
                 >
-                  <Copy size={15} />
-                  Copy Email
+                  {emailCopied ? (
+                    <>
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                        <path d="M2 8L6 12L13 4" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={15} />
+                      Copy Email
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"

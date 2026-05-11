@@ -1,0 +1,80 @@
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from core.database import get_db
+from core.deps import get_current_user, require_roles
+from infra.models import Client
+
+router = APIRouter(prefix="/clients", tags=["clients"])
+
+
+class ClientCreate(BaseModel):
+    name: str
+    short_name: str | None = None
+    website_url: str | None = None
+    logo_data: str | None = None
+    description: str | None = None
+
+
+class ClientUpdate(BaseModel):
+    name: str | None = None
+    short_name: str | None = None
+    website_url: str | None = None
+    logo_data: str | None = None
+    description: str | None = None
+
+
+def _out(c: Client) -> dict:
+    return {col.name: getattr(c, col.name) for col in c.__table__.columns}
+
+
+@router.get("")
+def list_clients(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return [_out(c) for c in db.query(Client).order_by(Client.name).all()]
+
+
+@router.post("")
+def create_client(
+    body: ClientCreate,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    client = Client(**body.model_dump())
+    db.add(client)
+    db.commit()
+    db.refresh(client)
+    return _out(client)
+
+
+@router.patch("/{client_id}")
+def update_client(
+    client_id: int,
+    body: ClientUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    c = db.query(Client).filter(Client.id == client_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    for k, v in body.model_dump(exclude_none=True).items():
+        setattr(c, k, v)
+    db.commit()
+    db.refresh(c)
+    return _out(c)
+
+
+@router.delete("/{client_id}")
+def delete_client(
+    client_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    c = db.query(Client).filter(Client.id == client_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    db.delete(c)
+    db.commit()
+    return {"message": "Deleted"}

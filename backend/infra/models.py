@@ -156,6 +156,17 @@ class User(Base):
     notifications       = relationship("Notification", back_populates="user")
 
 
+class Client(Base):
+    __tablename__ = "clients"
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String(120), unique=True, nullable=False)
+    short_name  = Column(String(80))
+    website_url = Column(String(300))
+    logo_data   = Column(Text)    # base64 data URL
+    description = Column(Text)
+    created_at  = Column(DateTime, default=now_utc)
+
+
 class Job(Base):
     __tablename__ = "jobs"
     id           = Column(Integer, primary_key=True, index=True)
