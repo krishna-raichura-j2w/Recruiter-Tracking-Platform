@@ -7,6 +7,8 @@ from infra.models import Client
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
+MANAGE_ROLES = ("admin", "kam", "delivery_lead")
+
 
 class ClientCreate(BaseModel):
     name: str
@@ -29,10 +31,7 @@ def _out(c: Client) -> dict:
 
 
 @router.get("")
-def list_clients(
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
+def list_clients(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return [_out(c) for c in db.query(Client).order_by(Client.name).all()]
 
 
@@ -40,9 +39,9 @@ def list_clients(
 def create_client(
     body: ClientCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_roles("admin")),
+    current_user=Depends(require_roles(*MANAGE_ROLES)),
 ):
-    client = Client(**body.model_dump())
+    client = Client(**body.model_dump(), last_updated_by=current_user.name)
     db.add(client)
     db.commit()
     db.refresh(client)
@@ -54,13 +53,14 @@ def update_client(
     client_id: int,
     body: ClientUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_roles("admin")),
+    current_user=Depends(require_roles(*MANAGE_ROLES)),
 ):
     c = db.query(Client).filter(Client.id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Client not found")
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(c, k, v)
+    c.last_updated_by = current_user.name
     db.commit()
     db.refresh(c)
     return _out(c)

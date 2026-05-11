@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Plus, X, Trash2, UserPlus, UserMinus,
-  RefreshCw, Search, Briefcase, Phone, Calendar,
+  RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -83,6 +83,28 @@ export default function Users() {
   const [message, setMessage]       = useState('');
   const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
 
+  // ── Account Managers (admin only) ───────────────────────────────────────────
+  const [ams, setAms]           = useState<{id:number;name:string;email:string|null;phone:string|null}[]>([]);
+  const [amForm, setAmForm]     = useState({ name:'', email:'', phone:'' });
+  const [savingAm, setSavingAm] = useState(false);
+  const [showAmForm, setShowAmForm] = useState(false);
+
+  const fetchAms = () => {
+    api.get('/account-managers').then((r: { data: {id:number;name:string;email:string|null;phone:string|null}[] }) => setAms(r.data)).catch(() => {});
+  };
+  const handleAddAm = async () => {
+    if (!amForm.name.trim()) return;
+    setSavingAm(true);
+    try {
+      await api.post('/account-managers', { name: amForm.name, email: amForm.email || null, phone: amForm.phone || null });
+      setAmForm({ name:'', email:'', phone:'' }); setShowAmForm(false); fetchAms();
+    } catch { /* ignore */ } finally { setSavingAm(false); }
+  };
+  const handleDeleteAm = async (id: number) => {
+    await api.delete(`/account-managers/${id}`).catch(() => {});
+    fetchAms();
+  };
+
   // ── Recruiter activity overlay ────────────────────────────────────────────
   const [activityMember, setActivityMember] = useState<TeamMemberLoad | null>(null);
   const [activityData,   setActivityData]   = useState<{ sourced: ActivityEntry[]; called: ActivityEntry[] } | null>(null);
@@ -128,7 +150,7 @@ export default function Users() {
       .then((r) => setAvailable(r.data)).catch(() => {});
   };
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchAll(); fetchAms(); }, [fetchAll]);
 
   const handleAddToTeam = async (userId: number, recruiterType: 'sourcer' | 'caller') => {
     setActioningId(userId);
@@ -669,6 +691,88 @@ export default function Users() {
                           <Trash2 size={15} />
                         </button>
                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Account Managers section ── */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <UserCheck size={16} className="text-emerald-500" /> Account Managers
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Manage account managers visible when creating job openings.</p>
+          </div>
+          <button
+            onClick={() => setShowAmForm(v => !v)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90"
+            style={{ backgroundColor: '#059669' }}
+          >
+            <Plus size={13} /> Add
+          </button>
+        </div>
+
+        {showAmForm && (
+          <div className="mb-4 bg-white rounded-2xl border border-emerald-100 p-4 flex flex-wrap gap-3 items-end shadow-sm">
+            <div className="flex-1 min-w-32">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Name *</label>
+              <input type="text" placeholder="e.g. Priya Nair" value={amForm.name}
+                onChange={e => setAmForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div className="flex-1 min-w-32">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+              <input type="email" placeholder="priya@j2w.com" value={amForm.email}
+                onChange={e => setAmForm(f => ({ ...f, email: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div className="flex-1 min-w-32">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Phone</label>
+              <input type="text" placeholder="9876543210" value={amForm.phone}
+                onChange={e => setAmForm(f => ({ ...f, phone: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-400" />
+            </div>
+            <button onClick={handleAddAm} disabled={savingAm || !amForm.name.trim()}
+              className="px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-60"
+              style={{ backgroundColor: '#059669' }}>
+              {savingAm ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => setShowAmForm(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {ams.length === 0 ? (
+          <p className="text-sm text-slate-400 py-4">No account managers added yet.</p>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
+                  <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</th>
+                  <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Phone</th>
+                  <th className="py-3 px-5 w-12" />
+                </tr>
+              </thead>
+              <tbody>
+                {ams.map(am => (
+                  <tr key={am.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="py-3 px-5 font-semibold text-slate-800">{am.name}</td>
+                    <td className="py-3 px-5 text-slate-500">{am.email ?? '—'}</td>
+                    <td className="py-3 px-5 text-slate-500">{am.phone ?? '—'}</td>
+                    <td className="py-3 px-5 text-right">
+                      <button onClick={() => handleDeleteAm(am.id)}
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
                     </td>
                   </tr>
                 ))}

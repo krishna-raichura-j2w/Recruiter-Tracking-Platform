@@ -67,6 +67,8 @@ export interface Job {
   assigned_caller_name: string | null;
   delivery_lead_id: number | null;
   delivery_lead_name: string | null;
+  account_manager_id: number | null;
+  account_manager_name: string | null;
   created_by_id: number | null;
   created_at: string | null;
   updated_at: string | null;

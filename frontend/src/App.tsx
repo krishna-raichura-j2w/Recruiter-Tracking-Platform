@@ -13,6 +13,7 @@ import Pipeline from './pages/Pipeline';
 import Users from './pages/Users';
 import MailTracker from './pages/MailTracker';
 import Clients from './pages/Clients';
+import Export from './pages/Export';
 
 export default function App() {
   return (
@@ -114,8 +115,17 @@ export default function App() {
           <Route
             path="/clients"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
                 <Clients />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/export"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
+                <Export />
               </ProtectedRoute>
             }
           />

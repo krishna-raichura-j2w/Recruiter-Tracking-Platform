@@ -21,6 +21,8 @@ from features.resume_extract.routes import router as resume_extract_router
 from features.jd_extract.routes import router as jd_extract_router
 from features.mails.routes import router as mails_router
 from features.clients.routes import router as clients_router
+from features.account_managers.routes import router as am_router
+from features.export.routes import router as export_router
 
 app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0")
 
@@ -45,6 +47,8 @@ app.include_router(resume_extract_router,     prefix="/api")
 app.include_router(jd_extract_router,        prefix="/api")
 app.include_router(mails_router,             prefix="/api")
 app.include_router(clients_router,           prefix="/api")
+app.include_router(am_router,               prefix="/api")
+app.include_router(export_router,           prefix="/api")
 
 
 def run_migrations(db):
@@ -96,6 +100,14 @@ def run_migrations(db):
         dl_verified BOOLEAN DEFAULT FALSE,
         dl_verified_at TIMESTAMP WITH TIME ZONE
     )"""))
+    db.execute(text("""CREATE TABLE IF NOT EXISTS account_managers (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        email VARCHAR(200),
+        phone VARCHAR(30),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )"""))
+    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS account_manager_id INTEGER REFERENCES account_managers(id)"))
     db.execute(text("""CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
         name VARCHAR(120) UNIQUE NOT NULL,
@@ -103,8 +115,12 @@ def run_migrations(db):
         website_url VARCHAR(300),
         logo_data TEXT,
         description TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        last_updated_by VARCHAR(120)
     )"""))
+    db.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"))
+    db.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_updated_by VARCHAR(120)"))
     db.commit()
 
 

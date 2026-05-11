@@ -114,6 +114,8 @@ export default function Jobs() {
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
   const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
   const [clientOptions, setClientOptions]           = useState<ClientOption[]>([]);
+  const [accountManagers, setAccountManagers]       = useState<{ id: number; name: string }[]>([]);
+  const [selectedAmId, setSelectedAmId]             = useState<number | ''>('');
 
   // DL confirm-JD modal state
   const [confirmJob, setConfirmJob]         = useState<Job | null>(null);
@@ -248,13 +250,17 @@ export default function Jobs() {
     api.get<ClientOption[]>('/clients')
       .then(r => setClientOptions(r.data))
       .catch(() => setClientOptions([]));
+    api.get<{ id: number; name: string }[]>('/account-managers')
+      .then(r => setAccountManagers(r.data))
+      .catch(() => setAccountManagers([]));
+    setSelectedAmId('');
   };
 
   const closeModal = () => {
     setShowModal(false); setEditJob(null); reset({ headcount: 1 }); setApiError('');
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
-    setSelectedDeliveryLeadId('');
+    setSelectedDeliveryLeadId(''); setSelectedAmId('');
   };
 
   const buildPayload = (data: JobForm) => ({
@@ -270,7 +276,8 @@ export default function Jobs() {
     max_experience:   data.max_experience ? Number(data.max_experience) : null,
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
     jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
-    delivery_lead_id: !editJob && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
+    delivery_lead_id:    !editJob && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
+    account_manager_id:  !editJob && selectedAmId ? Number(selectedAmId) : undefined,
   });
 
   const onSubmit = async (data: JobForm) => {
@@ -722,6 +729,41 @@ export default function Jobs() {
                 </div>
               )}
 
+              {/* ── Account Manager ── */}
+              {!editJob && accountManagers.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+                    <UserCheck size={13} className="text-slate-400" />
+                    Account Manager
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {accountManagers.map(am => {
+                      const selected = selectedAmId === am.id;
+                      return (
+                        <button
+                          key={am.id}
+                          type="button"
+                          onClick={() => setSelectedAmId(selected ? '' : am.id)}
+                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all ${
+                            selected ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${selected ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                            {am.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                          </div>
+                          <span className={`text-sm font-semibold ${selected ? 'text-emerald-700' : 'text-slate-700'}`}>{am.name}</span>
+                          {selected && (
+                            <div className="ml-auto w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                              <svg width="8" height="7" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* ── Job fields ── */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -865,8 +907,13 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
               </>
             )}
           </p>
-          {(job.delivery_lead_name || job.assigned_sourcer_name || job.assigned_caller_name) && (
+          {(job.account_manager_name || job.delivery_lead_name || job.assigned_sourcer_name || job.assigned_caller_name) && (
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+              {job.account_manager_name && (
+                <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                  <UserCheck size={11} /> AM: {job.account_manager_name}
+                </p>
+              )}
               {job.delivery_lead_name && (
                 <p className="text-xs text-indigo-600 font-semibold flex items-center gap-1">
                   <UserCheck size={11} /> DL: {job.delivery_lead_name}

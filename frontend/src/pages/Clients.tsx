@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, X, Pencil, Trash2, Globe, Building2 } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, Globe, Building2, Clock } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 interface ClientRecord {
   id: number;
@@ -10,9 +11,13 @@ interface ClientRecord {
   website_url: string | null;
   logo_data: string | null;
   description: string | null;
+  last_updated_by: string | null;
+  updated_at: string | null;
 }
 
 export default function Clients() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [clients, setClients]     = useState<ClientRecord[]>([]);
   const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -163,6 +168,14 @@ export default function Clients() {
                 )}
               </div>
 
+              {/* Last updated by */}
+              {c.last_updated_by && (
+                <div className="flex items-center gap-1 text-slate-400" style={{ fontSize: '10px' }}>
+                  <Clock size={10} />
+                  <span>Updated by <span className="font-semibold text-slate-500">{c.last_updated_by}</span></span>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex gap-2 pt-2 border-t border-slate-50">
                 <button
@@ -171,13 +184,15 @@ export default function Clients() {
                 >
                   <Pencil size={12} /> Edit
                 </button>
-                <button
-                  onClick={() => handleDelete(c.id)}
-                  disabled={deleting === c.id}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-500 border border-red-100 hover:bg-red-50 disabled:opacity-60"
-                >
-                  <Trash2 size={12} />
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => handleDelete(c.id)}
+                    disabled={deleting === c.id}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-500 border border-red-100 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
               </div>
             </div>
           ))}

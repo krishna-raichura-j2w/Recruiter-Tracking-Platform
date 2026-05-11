@@ -10,6 +10,7 @@ def _job_dict(db: Session, job: Job) -> dict:
     d["assigned_sourcer_name"] = job.assigned_sourcer.name if job.assigned_sourcer else None
     d["assigned_caller_name"]  = job.assigned_caller.name  if job.assigned_caller  else None
     d["delivery_lead_name"]    = job.delivery_lead.name    if job.delivery_lead    else None
+    d["account_manager_name"]  = job.account_manager.name  if job.account_manager  else None
     d["sourcer_ids"] = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
     d["caller_ids"]  = json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
     from infra.models import User as UserModel

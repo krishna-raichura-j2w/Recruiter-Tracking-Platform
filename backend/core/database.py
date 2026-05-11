@@ -2,13 +2,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from core.config import settings
 
-_is_sqlite = settings.database_url.startswith("sqlite")
+_url = settings.active_db_url
 
+# PostgreSQL / Supabase — optimised for pgBouncer transaction-mode pooler
 engine = create_engine(
-    settings.database_url,
-    **({"connect_args": {"check_same_thread": False}} if _is_sqlite else
-       {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 10}),
+    _url,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=30,
+    pool_recycle=300,
+    pool_pre_ping=True,
 )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

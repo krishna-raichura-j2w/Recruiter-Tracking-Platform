@@ -156,15 +156,26 @@ class User(Base):
     notifications       = relationship("Notification", back_populates="user")
 
 
+class AccountManager(Base):
+    __tablename__ = "account_managers"
+    id         = Column(Integer, primary_key=True, index=True)
+    name       = Column(String(120), nullable=False)
+    email      = Column(String(200))
+    phone      = Column(String(30))
+    created_at = Column(DateTime, default=now_utc)
+
+
 class Client(Base):
     __tablename__ = "clients"
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String(120), unique=True, nullable=False)
-    short_name  = Column(String(80))
-    website_url = Column(String(300))
-    logo_data   = Column(Text)    # base64 data URL
-    description = Column(Text)
-    created_at  = Column(DateTime, default=now_utc)
+    id               = Column(Integer, primary_key=True, index=True)
+    name             = Column(String(120), unique=True, nullable=False)
+    short_name       = Column(String(80))
+    website_url      = Column(String(300))
+    logo_data        = Column(Text)    # base64 data URL
+    description      = Column(Text)
+    created_at       = Column(DateTime, default=now_utc)
+    updated_at       = Column(DateTime, default=now_utc, onupdate=now_utc)
+    last_updated_by  = Column(String(120))   # name of user who last changed it
 
 
 class Job(Base):
@@ -189,6 +200,7 @@ class Job(Base):
     sourcer_ids          = Column(Text, default='[]')   # JSON array e.g. "[9,6]"
     caller_ids           = Column(Text, default='[]')   # JSON array e.g. "[4,8]"
     delivery_lead_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
+    account_manager_id   = Column(Integer, ForeignKey("account_managers.id"), nullable=True)
     created_by_id        = Column(Integer, ForeignKey("users.id"))
     created_at           = Column(DateTime, default=now_utc)
     updated_at           = Column(DateTime, default=now_utc, onupdate=now_utc)
@@ -197,6 +209,7 @@ class Job(Base):
     assigned_sourcer = relationship("User", foreign_keys=[assigned_sourcer_id])
     assigned_caller  = relationship("User", foreign_keys=[assigned_caller_id])
     delivery_lead    = relationship("User", foreign_keys=[delivery_lead_id])
+    account_manager  = relationship("AccountManager")
 
 
 class Candidate(Base):
