@@ -11,6 +11,7 @@ import ValidationQueue from './pages/ValidationQueue';
 import Submissions from './pages/Submissions';
 import Pipeline from './pages/Pipeline';
 import Users from './pages/Users';
+import MailTracker from './pages/MailTracker';
 
 export default function App() {
   return (
@@ -95,6 +96,16 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'delivery_lead']}>
                 <Users />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Recruiter + DL + Admin */}
+          <Route
+            path="/mail-tracker"
+            element={
+              <ProtectedRoute allowedRoles={['recruiter', 'delivery_lead', 'admin']}>
+                <MailTracker />
               </ProtectedRoute>
             }
           />

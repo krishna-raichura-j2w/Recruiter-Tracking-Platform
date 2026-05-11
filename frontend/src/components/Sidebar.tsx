@@ -10,6 +10,7 @@ import {
   ClipboardList,
   LogOut,
   Activity,
+  Mail,
 } from 'lucide-react';
 
 interface NavItem {
@@ -20,13 +21,14 @@ interface NavItem {
 
 const navConfig: Record<string, NavItem[]> = {
   admin: [
-    { label: 'Dashboard',           path: '/dashboard',   icon: <LayoutDashboard size={18} /> },
-    { label: 'Jobs',                path: '/jobs',        icon: <Briefcase size={18} /> },
-    { label: 'All Candidates',      path: '/candidates',  icon: <Users size={18} /> },
-    { label: 'Validation Queue',    path: '/validation',  icon: <CheckCircle size={18} /> },
-    { label: 'Submit to Client',    path: '/submissions', icon: <Send size={18} /> },
-    { label: 'Interview Tracking',  path: '/pipeline',    icon: <Activity size={18} /> },
-    { label: 'Users',               path: '/users',       icon: <UserCheck size={18} /> },
+    { label: 'Dashboard',           path: '/dashboard',      icon: <LayoutDashboard size={18} /> },
+    { label: 'Jobs',                path: '/jobs',           icon: <Briefcase size={18} /> },
+    { label: 'All Candidates',      path: '/candidates',     icon: <Users size={18} /> },
+    { label: 'Validation Queue',    path: '/validation',     icon: <CheckCircle size={18} /> },
+    { label: 'Submit to Client',    path: '/submissions',    icon: <Send size={18} /> },
+    { label: 'Interview Tracking',  path: '/pipeline',       icon: <Activity size={18} /> },
+    { label: 'Mail Tracker',        path: '/mail-tracker',   icon: <Mail size={18} /> },
+    { label: 'Users',               path: '/users',          icon: <UserCheck size={18} /> },
   ],
   kam: [
     { label: 'Dashboard',          path: '/dashboard',   icon: <LayoutDashboard size={18} /> },
@@ -35,18 +37,20 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Interview Tracking', path: '/pipeline',    icon: <Activity size={18} /> },
   ],
   delivery_lead: [
-    { label: 'Dashboard',          path: '/dashboard',   icon: <LayoutDashboard size={18} /> },
-    { label: 'JD Review Queue',    path: '/jobs',        icon: <Briefcase size={18} /> },
-    { label: 'My Team',            path: '/users',       icon: <UserCheck size={18} /> },
-    { label: 'Candidates',         path: '/candidates',  icon: <Users size={18} /> },
-    { label: 'Validation Queue',   path: '/validation',  icon: <CheckCircle size={18} /> },
-    { label: 'Submit to Client',   path: '/submissions', icon: <Send size={18} /> },
-    { label: 'Interview Tracking', path: '/pipeline',    icon: <Activity size={18} /> },
+    { label: 'Dashboard',          path: '/dashboard',    icon: <LayoutDashboard size={18} /> },
+    { label: 'JD Review Queue',    path: '/jobs',         icon: <Briefcase size={18} /> },
+    { label: 'My Team',            path: '/users',        icon: <UserCheck size={18} /> },
+    { label: 'Candidates',         path: '/candidates',   icon: <Users size={18} /> },
+    { label: 'Validation Queue',   path: '/validation',   icon: <CheckCircle size={18} /> },
+    { label: 'Submit to Client',   path: '/submissions',  icon: <Send size={18} /> },
+    { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={18} /> },
+    { label: 'Mail Tracker',       path: '/mail-tracker', icon: <Mail size={18} /> },
   ],
   recruiter: [
-    { label: 'Dashboard',     path: '/dashboard',  icon: <LayoutDashboard size={18} /> },
-    { label: 'My JDs',        path: '/jobs',       icon: <Briefcase size={18} /> },
-    { label: 'My Candidates', path: '/candidates', icon: <ClipboardList size={18} /> },
+    { label: 'Dashboard',     path: '/dashboard',    icon: <LayoutDashboard size={18} /> },
+    { label: 'My JDs',        path: '/jobs',         icon: <Briefcase size={18} /> },
+    { label: 'My Candidates', path: '/candidates',   icon: <ClipboardList size={18} /> },
+    { label: 'Mail Tracker',  path: '/mail-tracker', icon: <Mail size={18} /> },
   ],
 };
 
