@@ -241,10 +241,13 @@ export default function Jobs() {
     setShowModal(true);
     setSelectedDeliveryLeadId('');
     if (isKam || isAdmin) {
-      api.get<{ id: number; name: string }[]>('/users/delivery-leads')
+      api.get<{ id: number; name: string; clients: string[] }[]>('/users/delivery-leads')
         .then(r => setDeliveryLeads(r.data))
         .catch(() => setDeliveryLeads([]));
     }
+    api.get<ClientOption[]>('/clients')
+      .then(r => setClientOptions(r.data))
+      .catch(() => setClientOptions([]));
   };
 
   const closeModal = () => {
@@ -723,10 +726,21 @@ export default function Jobs() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client *</label>
-                  <input type="text" list="client-list" placeholder="e.g. GEHC"
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('client_name', { required: true })} />
-                  <datalist id="client-list">{CLIENTS.map((c) => <option key={c} value={c} />)}</datalist>
+                  {clientOptions.length > 0 ? (
+                    <select
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                      {...register('client_name', { required: true })}
+                    >
+                      <option value="">Select client…</option>
+                      {clientOptions.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}{c.short_name ? ` — ${c.short_name}` : ''}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" placeholder="e.g. Sony"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                      {...register('client_name', { required: true })} />
+                  )}
                   {errors.client_name && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>

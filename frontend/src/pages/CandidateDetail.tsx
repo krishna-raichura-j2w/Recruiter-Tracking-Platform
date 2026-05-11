@@ -337,6 +337,11 @@ export default function CandidateDetail() {
   const [showEmailOverlay, setShowEmailOverlay] = useState(false);
   const [mailSending, setMailSending] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
+  const [emailClient, setEmailClient] = useState<{
+    name: string; short_name: string | null; website_url: string | null;
+    logo_data: string | null; description: string | null;
+  } | null>(null);
+  const [emailJobSkills, setEmailJobSkills] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [message, setMessage] = useState('');
   const [liveScores, setLiveScores] = useState({ tech: 0, soft: 0, overall: 0 });
@@ -1242,7 +1247,20 @@ export default function CandidateDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowEmailOverlay(true)}
+                      onClick={async () => {
+                        setShowEmailOverlay(true);
+                        // Fetch client profile + job skills for the template
+                        try {
+                          const [cr, jr] = await Promise.all([
+                            api.get('/clients').catch(() => ({ data: [] })),
+                            candidate?.job_id ? api.get(`/jobs/${candidate.job_id}`).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+                          ]);
+                          const matched = (cr.data as { name: string; short_name: string | null; website_url: string | null; logo_data: string | null; description: string | null }[])
+                            .find(c => c.name.toLowerCase() === candidate?.client_name?.toLowerCase());
+                          setEmailClient(matched ?? null);
+                          setEmailJobSkills((jr.data as { skill_stack?: string | null } | null)?.skill_stack ?? null);
+                        } catch { /* ignore */ }
+                      }}
                       className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90 flex items-center justify-center gap-2"
                       style={{ backgroundColor: '#2563eb' }}
                     >
@@ -1543,26 +1561,51 @@ export default function CandidateDetail() {
           ['Interview Avail (next 2 days)',v(cp?.interview_availability_2d),               'Travel Plans',             v(cp?.upcoming_travel)],
         ];
 
+        const ec = emailClient;
         const LABEL = 'border:1px solid #8ea9c1;padding:5px 10px;background:#dce6f1;font-weight:bold;font-size:12px;font-family:Arial,sans-serif;white-space:nowrap;color:#1a202c;';
-        const VALUE = 'border:1px solid #8ea9c1;padding:5px 10px;background:#ffffff;font-size:12px;font-family:Arial,sans-serif;color:#1a202c;';
+        const VALUE = 'border:1px solid #8ea9c1;padding:5px 10px;background:#ffffff;font-size:12px;font-family:Arial,sans-serif;color:#1a202c;word-break:break-word;';
 
         const emailHtml = `<div style="font-family:Arial,sans-serif;font-size:13px;color:#1a202c;line-height:1.8;max-width:720px;">
-<p>Hi <b>${candidate.full_name}</b>,</p>
-<p>Greetings from <b>JoulesToWatts Business Solutions</b>! It was great talking to you.</p>
-<p>According to our discussion we have an opening with one of our prestigious clients (<b>${candidate.client_name ?? '—'}</b>)</p>
-<p><b>Company URLs:</b><br>
-&nbsp;&nbsp;JoulesToWatts: <a href="http://www.joulestowatts.com" style="color:#2563eb;">http://www.joulestowatts.com</a><br>
-&nbsp;&nbsp;Client: <a href="${clientUrl}" style="color:#2563eb;">${candidate.client_name ?? '—'}</a></p>
-<p>JoulesToWatts is the only AI-Native GCC solutions company in India. We work with the largest of 300+ Fortune 1000 GCCs. At any time we are executing 150-200 projects across these customers.</p>
-<br>
-<p style="font-size:11px;color:#555;">── &nbsp;CONSULTANT DATA BLOCK &nbsp;·&nbsp; auto-populated from tracker &nbsp;──</p>
+
+<p style="margin:0 0 10px;">Hi <b>${candidate.full_name}</b>,</p>
+
+<p style="margin:0 0 10px;">Greetings from <b>JoulesToWatts Business Solutions</b>! It was great talking to you..!!</p>
+
+<p style="margin:0 0 10px;">According to our discussion we have an opening with one of our prestigious clients (<b><span style="background:#ffff00;">${candidate.client_name ?? '—'}</span></b>). I think your candidature best suits our client requirement.</p>
+
+${ec?.short_name ? `<p style="margin:0 0 4px;"><a href="${ec.website_url ?? '#'}" style="color:#2563eb;text-decoration:underline;">${ec.short_name}</a></p>` : ''}
+${ec?.website_url ? `<p style="margin:0 0 4px;"><a href="${ec.website_url}" style="color:#2563eb;text-decoration:underline;">${ec.website_url}</a></p>` : `<p style="margin:0 0 4px;"><a href="${clientUrl}" style="color:#2563eb;">${clientUrl}</a></p>`}
+
+<p style="margin:0 0 16px;">Find the Process document for your reference which I will share with my client for the further process. Please acknowledge that the details mentioned below are true and confirm "no further salary negotiation" and "no relocation cost provided." After the selection please acknowledge to work under Joulestowatts Business Solutions pvt. Ltd. Payroll.</p>
+
+${ec?.logo_data ? `<div style="text-align:center;margin:20px 0;padding:20px 0;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+<img src="${ec.logo_data}" alt="${ec.name}" style="max-height:120px;max-width:400px;object-fit:contain;display:inline-block;" />
+</div>` : ''}
+
+${ec?.description ? `<p style="margin:16px 0;font-size:13px;line-height:1.7;color:#1a202c;">${ec.description}</p>` : ''}
+
+<p style="margin:16px 0 4px;"><b><a href="http://www.joulestowatts.com" style="color:#2563eb;text-decoration:underline;">JoulesToWatts</a></b><br>
+<a href="http://www.joulestowatts.com" style="color:#2563eb;text-decoration:none;">www.joulestowatts.com</a></p>
+<p style="margin:0 0 16px;font-size:12px;color:#374151;line-height:1.7;">IT SERVICES. JoulesToWatts offers the full spectrum of information technology services. Regardless of your company's position in the IT spectrum, we have the capabilities to extract the best value from your legacy systems and add new technologies to make your business processes highly efficient.</p>
+<p style="margin:0 0 20px;font-size:12px;color:#374151;line-height:1.7;">JoulestoWatts has gone through a rigorous workplace cultural assessment process and successfully accomplished the milestone of being recognized as "Great Place To Work 2022". JoulestoWatts is recognized as one of the Top 50 exciting ventures during the "Smart CEO - StartUp 50 2017" award program.</p>
+
+<p style="margin:0 0 6px;font-size:11px;color:#6b7280;font-style:italic;">──&nbsp; CONSULTANT DATA BLOCK &nbsp;·&nbsp; auto-populated from tracker &nbsp;──</p>
 <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px;">
 <tbody>
 ${rows.map(([ll, lv, rl, rv]) =>
   `<tr><td style="${LABEL}">${ll} :</td><td style="${VALUE}">${lv}</td><td style="${LABEL}">${rl} :</td><td style="${VALUE}">${rv}</td></tr>`
 ).join('\n')}
 </tbody>
-</table></div>`;
+</table>
+
+${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 4px;">Mandatory Skills</p>
+<p style="font-size:12px;margin:0 0 16px;color:#374151;">${emailJobSkills}</p>` : ''}
+
+<br>
+<p style="margin:0;font-size:13px;">--</p>
+<p style="margin:4px 0 0;font-size:13px;font-weight:bold;">THANKS &amp; REGARDS,<br>
+<span style="color:#1e40af;">JoulesToWatts Business Solutions</span></p>
+</div>`;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
