@@ -1,0 +1,29 @@
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.db
+backend/*.sqlite
+backend/j2w_tracker.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Documentation
+docs/

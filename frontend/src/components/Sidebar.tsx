@@ -86,19 +86,13 @@ export default function Sidebar() {
       style={{ width: 240, minWidth: 240, backgroundColor: '#1a2744' }}
     >
       {/* Logo */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center rounded-xl font-black text-white text-xl"
-            style={{ width: 40, height: 40, backgroundColor: '#3b82f6' }}
-          >
-            J2W
-          </div>
-          <div>
-            <p className="text-white font-bold text-base leading-tight">J2W</p>
-            <p className="text-blue-300 text-xs leading-tight">Recruiter Tracking</p>
-          </div>
-        </div>
+      <div className="px-4 py-4 border-b border-white/10 flex items-center justify-center">
+        <img
+          src="/logo.jpg"
+          alt="Joules to Watts"
+          className="object-contain"
+          style={{ maxHeight: 56, maxWidth: 192 }}
+        />
       </div>
 
       {/* Navigation */}

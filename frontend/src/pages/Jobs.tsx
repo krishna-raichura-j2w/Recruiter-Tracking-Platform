@@ -105,12 +105,13 @@ export default function Jobs() {
   const [extractError,setExtractError]= useState('');
   const [extracted,   setExtracted]   = useState(false);
   const [parsedResult,setParsedResult]= useState<ParsedJD | null>(null);
+  const [rawJdText,   setRawJdText]   = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [togglingJobId, setTogglingJobId] = useState<number | null>(null);
 
   // Delivery lead allocation (KAM only)
-  const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string }[]>([]);
+  const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
   const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
 
   // DL confirm-JD modal state
@@ -230,6 +231,7 @@ export default function Jobs() {
     if (job.jd_parsed) {
       try { setParsedResult(JSON.parse(job.jd_parsed)); } catch { /* ignore */ }
     }
+    setRawJdText(job.jd_raw_text ?? null);
     setShowModal(true);
   };
 
@@ -247,7 +249,7 @@ export default function Jobs() {
   const closeModal = () => {
     setShowModal(false); setEditJob(null); reset({ headcount: 1 }); setApiError('');
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
-    setExtractError(''); setExtracted(false); setParsedResult(null);
+    setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
     setSelectedDeliveryLeadId('');
   };
 
@@ -263,6 +265,7 @@ export default function Jobs() {
     min_experience:   data.min_experience ? Number(data.min_experience) : null,
     max_experience:   data.max_experience ? Number(data.max_experience) : null,
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
+    jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
     delivery_lead_id: !editJob && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
   });
 
@@ -293,6 +296,7 @@ export default function Jobs() {
       const res = await api.post('/jd-extract', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       const p: ParsedJD = res.data.parsed;
       setParsedResult(p);
+      setRawJdText((res.data.raw_text as string | null) ?? null);
       if (p.job_title)      setValue('role_title',    p.job_title);
       if (p.company)        setValue('client_name',   p.company);
       if (p.location)       setValue('location',      p.location);
@@ -649,6 +653,72 @@ export default function Jobs() {
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+
+              {/* ── Delivery Lead — top, only on create ── */}
+              {!editJob && (isKam || isAdmin) && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+                    <UserCheck size={13} className="text-slate-400" />
+                    Assign Delivery Lead
+                  </label>
+                  {deliveryLeads.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No delivery leads available.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {deliveryLeads.map(dl => {
+                        const selected = selectedDeliveryLeadId === dl.id;
+                        return (
+                          <button
+                            key={dl.id}
+                            type="button"
+                            onClick={() => setSelectedDeliveryLeadId(selected ? '' : dl.id)}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                              selected
+                                ? 'border-indigo-400 bg-indigo-50'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {/* Avatar */}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
+                              selected ? 'bg-indigo-500' : 'bg-slate-400'
+                            }`}>
+                              {dl.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </div>
+
+                            {/* Name + clients */}
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                {dl.name}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-0.5 truncate">
+                                {dl.clients.length > 0
+                                  ? dl.clients.join(' · ')
+                                  : 'No active clients'}
+                              </p>
+                            </div>
+
+                            {/* Checkmark */}
+                            {selected && (
+                              <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!selectedDeliveryLeadId && (
+                    <p className="text-xs text-slate-400 mt-1.5">
+                      If not selected, the JD will appear in all delivery leads' queues for review.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ── Job fields ── */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client *</label>
@@ -716,55 +786,6 @@ export default function Jobs() {
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-none"
                     {...register('jd_summary')} />
                 </div>
-
-                {/* Delivery Lead allocation — only when creating a new JD */}
-                {!editJob && (isKam || isAdmin) && (
-                  <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
-                      <UserCheck size={13} className="text-slate-400" />
-                      Assign Delivery Lead
-                    </label>
-                    {deliveryLeads.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic px-1">No delivery leads available.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        {deliveryLeads.map(dl => (
-                          <button
-                            key={dl.id}
-                            type="button"
-                            onClick={() => setSelectedDeliveryLeadId(selectedDeliveryLeadId === dl.id ? '' : dl.id)}
-                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
-                              selectedDeliveryLeadId === dl.id
-                                ? 'border-indigo-400 bg-indigo-50'
-                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                            }`}
-                          >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
-                              selectedDeliveryLeadId === dl.id ? 'bg-indigo-500' : 'bg-slate-400'
-                            }`}>
-                              {dl.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
-                            </div>
-                            <span className={`text-sm font-semibold ${selectedDeliveryLeadId === dl.id ? 'text-indigo-700' : 'text-slate-700'}`}>
-                              {dl.name}
-                            </span>
-                            {selectedDeliveryLeadId === dl.id && (
-                              <div className="ml-auto w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
-                                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {!selectedDeliveryLeadId && (
-                      <p className="text-xs text-slate-400 mt-1.5">
-                        If not selected, the JD will appear in all delivery leads' queues for review.
-                      </p>
-                    )}
-                  </div>
-                )}
               </div>
               {apiError && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{apiError}</p>}
               <div className="flex gap-3 pt-2">
@@ -1098,6 +1119,8 @@ function RecruiterPickerSection({
 interface JDDrawerProps { job: Job; onClose: () => void; }
 
 function JDDrawer({ job, onClose }: JDDrawerProps) {
+  const [viewMode, setViewMode] = useState<'formatted' | 'original'>('formatted');
+
   const parsed = parsedOrNull(job.jd_parsed);
 
   const location  = parsed?.location  ?? job.location;
@@ -1130,16 +1153,42 @@ function JDDrawer({ job, onClose }: JDDrawerProps) {
         <div className="relative px-6 pt-6 pb-5 flex-shrink-0"
           style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0e4d6e 100%)' }}
         >
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-all"
-          >
-            <X size={18} />
-          </button>
+          {/* Close + toggle row */}
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            {/* Formatted / Original toggle */}
+            <div className="flex items-center gap-1.5 bg-white/10 rounded-lg p-1 border border-white/15">
+              <button
+                onClick={() => setViewMode('formatted')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  viewMode === 'formatted'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                Formatted
+              </button>
+              <button
+                onClick={() => setViewMode('original')}
+                disabled={!job.jd_raw_text}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                  viewMode === 'original'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                Original
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <X size={18} />
+            </button>
+          </div>
 
           {/* Title */}
-          <h2 className="text-xl font-bold text-white leading-tight pr-10">{job.role_title}</h2>
+          <h2 className="text-xl font-bold text-white leading-tight pr-44">{job.role_title}</h2>
           <p className="text-sm text-blue-200 mt-1 font-medium">{company}</p>
           {job.created_at && (
             <p className="text-xs text-white/50 mt-0.5 flex items-center gap-1">
@@ -1184,6 +1233,27 @@ function JDDrawer({ job, onClose }: JDDrawerProps) {
 
         {/* ── Scrollable body ── */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* ── Original JD view ── */}
+          {viewMode === 'original' && (
+            job.jd_raw_text ? (
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Original JD</p>
+                <pre className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-sans bg-slate-50 rounded-xl p-4 border border-slate-100">
+                  {job.jd_raw_text}
+                </pre>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                <BookOpen size={32} className="opacity-30 mb-2" />
+                <p className="text-sm font-medium">No original JD text stored.</p>
+                <p className="text-xs mt-1">Original text is captured when using the AI JD Parser.</p>
+              </div>
+            )
+          )}
+
+          {/* ── Formatted JD view ── */}
+          {viewMode === 'formatted' && <>
 
           {/* Summary */}
           {summary && (
@@ -1296,6 +1366,8 @@ function JDDrawer({ job, onClose }: JDDrawerProps) {
               <p className="text-xs mt-1">Use the AI JD Parser when creating a job to populate this view.</p>
             </div>
           )}
+
+          </>}
         </div>
       </div>
 

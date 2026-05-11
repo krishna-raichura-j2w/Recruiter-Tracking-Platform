@@ -57,6 +57,7 @@ export interface Job {
   location: string | null;
   jd_summary: string | null;
   jd_parsed: string | null;
+  jd_raw_text: string | null;
   min_experience: number | null;
   max_experience: number | null;
   salary_range: string | null;

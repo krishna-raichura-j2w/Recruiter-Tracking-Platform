@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import {
   Phone, Mail, Link2, MapPin, BookOpen, Building2, Clock, ArrowLeft,
-  CheckCircle2, AlertCircle, Clock3, XCircle,
+  CheckCircle2, AlertCircle, Clock3, XCircle, Copy, X,
 } from 'lucide-react';
 const LinkedinIcon = Link2;
 import Layout from '../components/Layout';
@@ -334,6 +334,8 @@ export default function CandidateDetail() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [submittingAssessment, setSubmittingAssessment] = useState(false);
   const [validationLoading, setValidationLoading] = useState(false);
+  const [showEmailOverlay, setShowEmailOverlay] = useState(false);
+  const [mailSending, setMailSending] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [message, setMessage] = useState('');
   const [liveScores, setLiveScores] = useState({ tech: 0, soft: 0, overall: 0 });
@@ -548,6 +550,68 @@ export default function CandidateDetail() {
       showMsg('Error saving profile.');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  // ─── Email generation ──────────────────────────────────────────────────
+
+  const generateEmailText = (c: Candidate): string => {
+    const a = c.assessment;
+    const cp = c.consultant_profile;
+    const clientUrl = c.client_name
+      ? `https://www.${c.client_name.toLowerCase().replace(/\s+/g, '')}.com`
+      : '—';
+
+    const row = (label: string, value: string | null | undefined) =>
+      `${label}: ${value ?? '—'}`;
+
+    return [
+      'Greetings from JoulesToWatts Business Solutions!',
+      '',
+      `Hi ${c.full_name},`,
+      '',
+      'We are pleased to be in touch with you through JoulesToWatts Business Solutions, a specialized IT staffing and consulting firm. We work with leading technology companies to connect talented professionals with exciting career opportunities.',
+      '',
+      'Company URLs:',
+      '  J2W: http://www.joulestowatts.com',
+      `  Client: ${clientUrl}`,
+      '',
+      'JoulesToWatts Business Solutions partners with top-tier clients to place skilled IT consultants in high-impact roles. Our team ensures a seamless experience from profile submission to onboarding.',
+      '',
+      '── Consultant Data ──',
+      row('Name', c.full_name) + '  |  ' + row('Phone', c.mobile),
+      row('Email ID', c.email) + '  |  ' + row('Alternate no', a?.alt_phone),
+      row('Company URL', 'http://www.joulestowatts.com') + '  |  ' + row('Client Company URL', clientUrl),
+      row('Resignation acceptance', cp?.resignation_acceptance) + '  |  ' + row('Replacement & KT', cp?.replacement_kt_status),
+      row('Skill Set', a?.primary_skill_stack) + '  |  ' + row('Role/Responsibilities', cp?.role_responsibilities),
+      row('Personal Laptop', cp?.personal_laptop) + '  |  ' + row('Total experience', a?.total_exp != null ? `${a.total_exp} yrs` : '—'),
+      row('Current Residential Location', a?.current_city) + '  |  ' + row('Client Work Location', cp?.client_work_location),
+      row('Current Work Location', cp?.current_work_location) + '  |  ' + row('Current Work Timings', cp?.current_work_timings),
+      row('Notice Period (on paper)', a?.notice_period_weeks != null ? `${a.notice_period_weeks} weeks` : '—') + '  |  ' + row('Negotiable Upto', cp?.notice_negotiable_upto),
+      row('Current Company', a?.last_company) + '  |  ' + row('Payroll', cp?.payroll),
+      row('Current CTC', a?.current_ctc != null ? `${a.current_ctc} LPA` : '—') + '  |  ' + row('Expected CTC', a?.expected_ctc != null ? `${a.expected_ctc} LPA` : '—'),
+      row('Relevant experience', a?.relevant_exp != null ? `${a.relevant_exp} yrs` : '—') + '  |  ' + row('Deploying Client', a?.deploying_client),
+      row('Offers in Hand', a?.offers_in_hand) + '  |  ' + row('Offers Pipeline', cp?.offers_pipeline),
+      row('Interview Pipeline', cp?.interview_pipeline) + '  |  ' + row('Reason for change', a?.reason_for_change),
+      row('DOB', cp?.dob) + '  |  ' + row('Telephonic availability', cp?.telephonic_availability),
+      row('IDE Installed', cp?.ide_installed) + '  |  ' + row('Wifi / Mobile Data', cp?.wifi_connectivity),
+      row('Marital Status', cp?.marital_status) + '  |  ' + row('LinkedIn', c.linkedin_url),
+      row('Health Issues (self/family)', cp?.health_issues) + '  |  ' + row('Planned Leaves (3 mo)', cp?.planned_leaves),
+      row('Interview Avail (next 2 days)', cp?.interview_availability_2d) + '  |  ' + row('Travel Plans', cp?.upcoming_travel),
+    ].join('\n');
+  };
+
+  const handleMarkMailSent = async () => {
+    if (!candidate) return;
+    setMailSending(true);
+    try {
+      await api.post('/mails', { candidate_id: candidate.id });
+      showMsg('Mail marked as sent!');
+      setShowEmailOverlay(false);
+    } catch {
+      showMsg('Error recording mail. Please try again.');
+    } finally {
+      setMailSending(false);
     }
   };
 
@@ -1177,12 +1241,11 @@ export default function CandidateDetail() {
                     </button>
                     <button
                       type="button"
-                      disabled={submittingAssessment}
-                      onClick={() => handleSave(true)}
-                      className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90"
+                      onClick={() => setShowEmailOverlay(true)}
+                      className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90 flex items-center justify-center gap-2"
                       style={{ backgroundColor: '#2563eb' }}
                     >
-                      {submittingAssessment ? 'Submitting…' : 'Submit for Validation →'}
+                      ✉️ Generate Email
                     </button>
                   </div>
 
