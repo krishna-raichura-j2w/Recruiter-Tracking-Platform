@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { RealtimeProvider } from './context/RealtimeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
@@ -28,6 +29,7 @@ function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
+      <RealtimeProvider>
       <BrowserRouter>
         <ForceChangePasswordGate>
           <Routes>
@@ -155,6 +157,7 @@ export default function App() {
           </Routes>
         </ForceChangePasswordGate>
       </BrowserRouter>
+      </RealtimeProvider>
     </AuthProvider>
   );
 }

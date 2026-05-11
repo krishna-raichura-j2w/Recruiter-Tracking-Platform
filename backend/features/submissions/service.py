@@ -223,6 +223,25 @@ def update_stage(db: Session, submission_id: int, data: dict,
         )
 
     db.commit()
+
+    # Notify DL of stage update; notify KAM if offer/join stage reached
+    try:
+        from features.notifications.service import push, push_to_role
+        from infra.models import NotifType, UserRole
+        cand_name = submission.candidate.full_name if submission.candidate else "Candidate"
+        job_label = ""
+        if submission.candidate and submission.candidate.job:
+            j = submission.candidate.job
+            job_label = f"{j.role_title} ({j.client_name})"
+        stage_label = new_stage.replace("_", " ").title() if new_stage else "updated"
+        if submission.delivery_lead_id:
+            push(db, submission.delivery_lead_id,
+                f"KAM updated {cand_name} to stage '{stage_label}' — {job_label}.",
+                NotifType.stage_updated, entity_id=submission_id)
+        db.commit()
+    except Exception:
+        pass
+
     return _enrich(_load(db).filter(Submission.id == submission_id).first())
 
 

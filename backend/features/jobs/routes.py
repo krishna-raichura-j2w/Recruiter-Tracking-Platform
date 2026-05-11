@@ -6,7 +6,8 @@ from core.deps import get_current_user, require_roles
 from features.jobs.schema import JobCreate, JobUpdate
 from features.jobs import service
 from features.allocation.service import get_min_load
-from infra.models import UserRole, JobStatus
+from features.notifications.service import push, push_to_role
+from infra.models import UserRole, JobStatus, NotifType, User
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -70,6 +71,11 @@ def create_job(
         except ValueError:
             data["deadline"] = None
     job = service.create_job(db, data, current_user.id)
+    # Notify all Delivery Leads that a new JD is pending review
+    push_to_role(db, UserRole.delivery_lead,
+        f"New JD uploaded: {job.role_title} for {job.client_name} — pending your review.",
+        NotifType.jd_created, entity_id=job.id)
+    db.commit()
     return service._job_dict(db, job)
 
 
@@ -97,6 +103,22 @@ def confirm_jd(
     job.assigned_caller_id  = body.caller_ids[0]  if body.caller_ids  else None
     job.delivery_lead_id    = current_user.id
     job.status              = JobStatus.open
+
+    # Notify assigned sourcers
+    for uid in body.sourcer_ids:
+        u = db.query(User).filter(User.id == uid).first()
+        if u:
+            push(db, uid,
+                f"You've been assigned as sourcer for {job.role_title} ({job.client_name}). Start sourcing!",
+                NotifType.jd_assigned, entity_id=job.id)
+    # Notify assigned callers
+    for uid in body.caller_ids:
+        u = db.query(User).filter(User.id == uid).first()
+        if u:
+            push(db, uid,
+                f"You've been assigned as caller for {job.role_title} ({job.client_name}). Candidates will be routed to you.",
+                NotifType.jd_assigned, entity_id=job.id)
+
     db.commit()
     db.refresh(job)
     return service._job_dict(db, job)

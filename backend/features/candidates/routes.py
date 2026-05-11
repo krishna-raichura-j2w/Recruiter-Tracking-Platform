@@ -5,7 +5,8 @@ from core.database import get_db
 from core.deps import get_current_user, require_roles
 from features.candidates.schema import CandidateCreate, CandidateUpdate
 from features.candidates import service
-from infra.models import Job, Candidate, CandidateStatus
+from features.notifications.service import push
+from infra.models import Job, Candidate, CandidateStatus, NotifType
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
@@ -117,6 +118,11 @@ def create_candidate(
             from features.allocation.service import _caller_load
             best_id = min(caller_ids, key=lambda uid: _caller_load(db, uid))
             candidate = service.assign_candidate(db, candidate.id, best_id)
+            # Notify the caller
+            push(db, best_id,
+                f"New candidate sourced: {candidate.full_name} for {job.role_title} ({job.client_name}). Ready for your call.",
+                NotifType.candidate_sourced, entity_id=candidate.id)
+            db.commit()
 
     return _serialize(candidate)
 

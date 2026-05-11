@@ -24,6 +24,7 @@ from features.clients.routes import router as clients_router
 from features.account_managers.routes import router as business_heads_router
 from features.export.routes import router as export_router
 from features.followup.routes import router as followup_router
+from features.notifications.routes import router as notifications_router
 
 app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0")
 
@@ -51,6 +52,7 @@ app.include_router(clients_router,           prefix="/api")
 app.include_router(business_heads_router,   prefix="/api")
 app.include_router(export_router,           prefix="/api")
 app.include_router(followup_router,         prefix="/api")
+app.include_router(notifications_router,    prefix="/api")
 
 
 def run_migrations(db):

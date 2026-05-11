@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSignal } from '../context/RealtimeContext';
 import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
@@ -32,9 +33,8 @@ export default function ValidationQueue() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    fetchQueue();
-  }, []);
+  const validationSignal = useSignal('validation');
+  useEffect(() => { fetchQueue(); }, [validationSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // map frontend action labels → backend ValidationStatus values
   const ACTION_STATUS: Record<string, string> = {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSignal } from '../context/RealtimeContext';
 import { useForm } from 'react-hook-form';
 import { Plus, X, Search, Eye, UserPlus, Sparkles, AlignLeft, Image, FileText, Loader2, ChevronRight, Users } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -91,13 +92,9 @@ export default function Candidates() {
 
   useEffect(() => { fetchCandidates(); }, [fetchCandidates]);
 
-  // Live refresh every 30 s — catches updates from other team members
-  useEffect(() => {
-    const t = setInterval(() => {
-      fetchCandidates();
-    }, 30_000);
-    return () => clearInterval(t);
-  }, [fetchCandidates]);
+  // Live refresh on realtime signal
+  const candidatesSignal = useSignal('candidates');
+  useEffect(() => { if (candidatesSignal > 0) fetchCandidates(); }, [candidatesSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api.get<Job[]>('/jobs').then((res) => setJobs(res.data)).catch(() => { });

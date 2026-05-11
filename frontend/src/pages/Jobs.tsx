@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSignal } from '../context/RealtimeContext';
 import { useForm } from 'react-hook-form';
 import {
   Plus, X, Sparkles, AlignLeft, Image, FileText,
@@ -146,7 +147,8 @@ export default function Jobs() {
       .catch(() => {})
       .finally(() => setLoading(false));
   };
-  useEffect(() => { fetchJobs(); }, []);
+  const jobsSignal = useSignal('jobs');
+  useEffect(() => { fetchJobs(); }, [jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openConfirmModal = async (job: Job) => {
     setConfirmJob(job);

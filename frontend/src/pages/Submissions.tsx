@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSignal } from '../context/RealtimeContext';
 import {
   Send, Phone, Mail, MapPin, Briefcase,
   TrendingUp, Clock, User, ArrowRight, XCircle, X,
@@ -92,7 +93,8 @@ export default function Submissions() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const submissionsSignal = useSignal('submissions');
+  useEffect(() => { fetchData(); }, [submissionsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openReject = (c: ReadyCandidate) => {
     setRejectOverlay({ id: c.id, name: c.full_name });

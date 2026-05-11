@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session, joinedload
 from infra.models import (
-    Validation, Candidate, CandidateStatus, ValidationStatus, Notification, NotifType
+    Validation, Candidate, CandidateStatus, ValidationStatus, Notification, NotifType, UserRole
 )
+from features.notifications.service import push, push_to_role
 
 
 def list_pending(db: Session) -> list[Candidate]:
@@ -65,15 +66,17 @@ def validate_candidate(db: Session, data: dict, validator_id: int, validator_nam
     if candidate:
         if vstatus == ValidationStatus.validated:
             candidate.status = CandidateStatus.validated
+            job = candidate.job
+            job_label = f"{job.role_title} ({job.client_name})" if job else ""
             # Notify assigned caller
             if candidate.assigned_to_id:
-                notif = Notification(
-                    user_id=candidate.assigned_to_id,
-                    message=f"Candidate {candidate.full_name} has been validated and is ready for client submission.",
-                    notif_type=NotifType.validation_done,
-                    entity_id=candidate_id,
-                )
-                db.add(notif)
+                push(db, candidate.assigned_to_id,
+                    f"{candidate.full_name} has been validated and is ready for client submission — {job_label}.",
+                    NotifType.validation_done, entity_id=candidate_id)
+            # Notify all KAMs to submit to client
+            push_to_role(db, UserRole.kam,
+                f"Candidate validated: {candidate.full_name} for {job_label}. Ready to submit to client.",
+                NotifType.candidate_validated, entity_id=candidate_id)
         elif vstatus == ValidationStatus.needs_review:
             candidate.status = CandidateStatus.needs_rework
         elif vstatus == ValidationStatus.on_hold:

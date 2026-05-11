@@ -77,14 +77,27 @@ def upsert_assessment(db: Session, data: dict, caller_id: int) -> Assessment:
         if candidate:
             candidate.status = CandidateStatus.ready_for_validation
             # Auto-allocate to min-load validator in pod
-            from infra.models import User, UserRole
+            from infra.models import User, UserRole, NotifType
+            from features.notifications.service import push
             caller = db.query(User).filter(User.id == caller_id).first()
             pod_lead_id = caller.pod_lead_id if caller else None
+            validator = None
             if pod_lead_id:
                 from features.allocation.service import get_min_load
                 validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
+                if not validator:
+                    validator = db.query(User).filter(
+                        User.id == pod_lead_id, User.role == UserRole.delivery_lead
+                    ).first()
                 if validator:
                     candidate.assigned_validator_id = validator.id
+            # Notify the assigned validator (DL)
+            target_dl_id = validator.id if validator else pod_lead_id
+            if target_dl_id:
+                job = candidate.job
+                push(db, target_dl_id,
+                    f"{candidate.full_name} is ready for validation — {job.role_title if job else ''} ({job.client_name if job else ''}). Score: {assessment.overall_score or '—'}",
+                    NotifType.ready_for_validation, entity_id=candidate.id)
 
     db.commit()
     db.refresh(assessment)

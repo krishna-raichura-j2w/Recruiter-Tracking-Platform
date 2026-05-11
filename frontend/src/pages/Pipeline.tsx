@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSignal } from '../context/RealtimeContext';
 import { X, Clock, Search, SlidersHorizontal } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -254,7 +255,8 @@ export default function Pipeline() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const pipelineSignal = useSignal('pipeline');
+  useEffect(() => { fetchData(); }, [pipelineSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openOverlay = (sub: Sub) => {
     setOverlay(sub);

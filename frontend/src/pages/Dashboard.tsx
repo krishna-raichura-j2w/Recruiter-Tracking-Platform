@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSignal } from '../context/RealtimeContext';
 import {
   BarChart,
   Bar,
@@ -83,13 +84,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const dashSignal = useSignal('dashboard');
+
   useEffect(() => {
     api
       .get<DashboardData>('/dashboard')
       .then((res) => setData(res.data))
       .catch(() => setError('Failed to load dashboard data.'))
       .finally(() => setLoading(false));
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashSignal]);
 
   const pipelineData =
     data?.pipeline

@@ -125,13 +125,20 @@ class InterviewStage(str, enum.Enum):
 
 
 class NotifType(str, enum.Enum):
-    callback_due = "callback_due"
-    validation_done = "validation_done"
-    ready_to_submit = "ready_to_submit"
-    interview_scheduled = "interview_scheduled"
-    feedback_overdue = "feedback_overdue"
-    stale_candidate = "stale_candidate"
-    general = "general"
+    callback_due         = "callback_due"
+    validation_done      = "validation_done"
+    ready_to_submit      = "ready_to_submit"
+    interview_scheduled  = "interview_scheduled"
+    feedback_overdue     = "feedback_overdue"
+    stale_candidate      = "stale_candidate"
+    general              = "general"
+    # New triggers
+    jd_created           = "jd_created"
+    jd_assigned          = "jd_assigned"
+    candidate_sourced    = "candidate_sourced"
+    ready_for_validation = "ready_for_validation"
+    candidate_validated  = "candidate_validated"
+    stage_updated        = "stage_updated"
 
 
 # ── Tables ─────────────────────────────────────────────────────────────────────

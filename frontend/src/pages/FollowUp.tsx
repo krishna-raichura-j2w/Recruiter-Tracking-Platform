@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSignal } from '../context/RealtimeContext';
 import {
   GitBranch, ChevronDown, ChevronRight, Search, RefreshCw,
   Users, Clock, AlertTriangle, User, CheckCircle, XCircle,
@@ -467,7 +468,8 @@ export default function FollowUp() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const followupSignal = useSignal('candidates');
+  useEffect(() => { fetchData(); }, [followupSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const companies = useMemo(() =>
     [...new Set(stories.map(s => s.client_name).filter(Boolean))].sort(), [stories]);
