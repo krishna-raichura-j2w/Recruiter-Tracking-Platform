@@ -1276,10 +1276,11 @@ export default function CandidateDetail() {
                           setEmailJobSkills((jr.data as { skill_stack?: string | null } | null)?.skill_stack ?? null);
                         } catch { /* ignore */ }
                       }}
+                      disabled={candidate.mail_sent}
                       className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90 flex items-center justify-center gap-2"
-                      style={{ backgroundColor: '#2563eb' }}
+                      style={{ backgroundColor: candidate.mail_sent ? '#6b7280' : '#2563eb' }}
                     >
-                      ✉️ Generate Email
+                      {candidate.mail_sent ? '✓ Mail Already Sent' : '✉️ Generate Email'}
                     </button>
                   </div>
 
@@ -1641,48 +1642,61 @@ ${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 
 
               {/* Actions */}
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 flex-shrink-0 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Copy as HTML so it pastes as a proper table in Outlook/Gmail
-                    const blob = new Blob([emailHtml], { type: 'text/html' });
-                    const item = new ClipboardItem({ 'text/html': blob });
-                    navigator.clipboard.write([item]).catch(() => {
-                      // Fallback to plain text
-                      navigator.clipboard.writeText(generateEmailText(candidate));
-                    });
-                    setEmailCopied(true);
-                    setTimeout(() => setEmailCopied(false), 2000);
-                  }}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
-                    emailCopied
-                      ? 'border-green-400 bg-green-50 text-green-700'
-                      : 'border-slate-300 text-slate-700 hover:bg-white'
-                  }`}
-                >
-                  {emailCopied ? (
-                    <>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                        <path d="M2 8L6 12L13 4" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={15} />
-                      Copy Email
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  disabled={mailSending}
-                  onClick={handleMarkMailSent}
-                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#059669' }}
-                >
-                  {mailSending ? 'Recording…' : '✉️ Mail Sent ✓'}
-                </button>
+                {candidate.mail_sent ? (
+                  /* Mail already sent — show locked state */
+                  <div className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-100 border-2 border-green-300 text-green-700 text-sm font-bold">
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                      <path d="M2 8L6 12L13 4" stroke="#15803d" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    Mail Already Sent — Cannot Resend
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={emailCopied}
+                      onClick={async () => {
+                        // Copy HTML to clipboard
+                        const blob = new Blob([emailHtml], { type: 'text/html' });
+                        const item = new ClipboardItem({ 'text/html': blob });
+                        await navigator.clipboard.write([item]).catch(() =>
+                          navigator.clipboard.writeText(generateEmailText(candidate))
+                        );
+                        setEmailCopied(true);
+                        // Auto-mark mail as sent on copy
+                        handleMarkMailSent();
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
+                        emailCopied
+                          ? 'border-green-400 bg-green-100 text-green-700 opacity-70 cursor-not-allowed'
+                          : 'border-slate-300 text-slate-700 hover:bg-white'
+                      }`}
+                    >
+                      {emailCopied ? (
+                        <>
+                          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                            <path d="M2 8L6 12L13 4" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={15} />
+                          Copy Email
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={mailSending || emailCopied}
+                      onClick={handleMarkMailSent}
+                      className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90 transition-opacity"
+                      style={{ backgroundColor: '#059669' }}
+                    >
+                      {mailSending ? 'Recording…' : '✉️ Confirm Mail Sent'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

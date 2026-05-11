@@ -133,6 +133,8 @@ def run_migrations(db):
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deadline TIMESTAMP WITH TIME ZONE")
     _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
     _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(200)")
+    _run("ALTER TABLE consultant_mails ADD COLUMN IF NOT EXISTS exit_proof TEXT")
+    _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_data TEXT")
 
 
 def seed_data(db):

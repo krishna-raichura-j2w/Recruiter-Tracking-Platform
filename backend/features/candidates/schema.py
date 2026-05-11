@@ -17,6 +17,7 @@ class CandidateCreate(BaseModel):
     immediate_joiner: str | None = None
     lead_source: str | None = None
     sourcing_date: str | None = None
+    resume_data: str | None = None
 
 
 class CandidateUpdate(BaseModel):
@@ -36,6 +37,7 @@ class CandidateUpdate(BaseModel):
     immediate_joiner: str | None = None
     lead_source: str | None = None
     sourcing_date: str | None = None
+    resume_data: str | None = None
     pool_added_at: str | None = None
     call_time: str | None = None
     validation_done_at: str | None = None

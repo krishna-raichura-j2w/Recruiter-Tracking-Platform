@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Mail, CheckCircle2, ShieldCheck, X, Calendar } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Mail, CheckCircle2, ShieldCheck, X, Calendar, Upload, FileText, Image } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
@@ -16,6 +16,7 @@ interface MailRecord {
   sent_at: string | null;
   sent_by_name: string | null;
   exit_date: string | null;
+  exit_proof: string | null;
   acknowledgement_received: boolean;
   acknowledgement_at: string | null;
   dl_verified: boolean;
@@ -61,8 +62,12 @@ export default function MailTracker() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MailRecord | null>(null);
   const [exitDate, setExitDate] = useState('');
+  const [exitProof, setExitProof] = useState<string | null>(null);
+  const [proofName, setProofName] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [toast, setToast] = useState('');
+  const proofInputRef = useRef<HTMLInputElement>(null);
 
   const isDeliveryLead = user?.role === 'delivery_lead' || user?.role === 'admin';
 
@@ -87,6 +92,19 @@ export default function MailTracker() {
   const openDetail = (m: MailRecord) => {
     setSelected(m);
     setExitDate(m.exit_date ?? '');
+    setExitProof(m.exit_proof ?? null);
+    setProofName('');
+  };
+
+  const handleProofUpload = (file: File) => {
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setExitProof(reader.result as string);
+      setProofName(file.name);
+      setUploading(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleUpdate = async (patch: Record<string, unknown>) => {
@@ -105,9 +123,12 @@ export default function MailTracker() {
     }
   };
 
-  const handleSaveExitDate = () => {
-    if (!exitDate) return;
-    handleUpdate({ exit_date: exitDate });
+  const handleSaveExitDetails = () => {
+    const patch: Record<string, unknown> = {};
+    if (exitDate) patch.exit_date = exitDate;
+    if (exitProof) patch.exit_proof = exitProof;
+    if (Object.keys(patch).length === 0) return;
+    handleUpdate(patch);
   };
 
   const handleAcknowledge = () => {
@@ -292,11 +313,14 @@ export default function MailTracker() {
                     </div>
                   </div>
 
-                  {/* Exit date */}
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Exit Date</p>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
+                  {/* Exit date + Proof */}
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Exit Details</p>
+
+                    {/* Date picker */}
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">Exit Date</p>
+                      <div className="relative">
                         <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         <input
                           type="date"
@@ -305,14 +329,81 @@ export default function MailTracker() {
                           className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                         />
                       </div>
-                      <button
-                        onClick={handleSaveExitDate}
-                        disabled={updating || !exitDate}
-                        className="px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold disabled:opacity-50 hover:bg-slate-700 transition-colors"
-                      >
-                        Save
-                      </button>
                     </div>
+
+                    {/* Proof of exit upload */}
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">Proof of Exit</p>
+                      <input
+                        type="file"
+                        ref={proofInputRef}
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => { if (e.target.files?.[0]) handleProofUpload(e.target.files[0]); }}
+                      />
+                      {exitProof ? (
+                        <div className="border border-slate-200 rounded-xl p-3 space-y-2">
+                          {exitProof.startsWith('data:image/') ? (
+                            <img src={exitProof} alt="Exit proof" className="max-h-40 w-full rounded-lg object-contain bg-slate-50" />
+                          ) : (
+                            <a
+                              href={exitProof}
+                              download={proofName || 'exit_proof.pdf'}
+                              className="flex items-center gap-2 text-blue-600 text-sm hover:underline"
+                            >
+                              <FileText size={14} />
+                              {proofName || 'exit_proof.pdf'}
+                            </a>
+                          )}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-400 truncate max-w-[140px]">{proofName}</span>
+                            <button
+                              onClick={() => { setExitProof(null); setProofName(''); }}
+                              className="text-xs text-red-500 hover:text-red-700 font-medium"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => proofInputRef.current?.click()}
+                          disabled={uploading}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-sm hover:border-blue-400 hover:text-blue-600 w-full justify-center transition-colors disabled:opacity-50"
+                        >
+                          {uploading ? (
+                            <span className="animate-pulse">Loading…</span>
+                          ) : (
+                            <>
+                              <Upload size={14} />
+                              Upload Image or PDF
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {/* Show existing proof from server if no local change */}
+                      {!exitProof && selected.exit_proof && (
+                        <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                          <Image size={13} />
+                          <span>Proof already uploaded</span>
+                          <button
+                            onClick={() => { setExitProof(selected.exit_proof!); setProofName('uploaded_proof'); }}
+                            className="text-blue-500 hover:underline"
+                          >
+                            View
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Save button */}
+                    <button
+                      onClick={handleSaveExitDetails}
+                      disabled={updating || (!exitDate && !exitProof)}
+                      className="w-full px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold disabled:opacity-50 hover:bg-slate-700 transition-colors"
+                    >
+                      {updating ? 'Saving…' : 'Save Exit Details'}
+                    </button>
                   </div>
 
                   {/* Acknowledgement */}

@@ -11,17 +11,20 @@ VALIDATORS = ("delivery_lead", "admin")
 
 
 def _serialize_candidate(c) -> dict:
-    item = {col.name: getattr(c, col.name) for col in c.__table__.columns}
-    item["job_title"]               = c.job.role_title if c.job else None
-    item["client_name"]             = c.job.client_name if c.job else None
-    item["assigned_to_name"]        = c.assigned_to.name if c.assigned_to else None
-    item["assigned_validator_name"] = c.assigned_validator.name if c.assigned_validator else None
+    candidate = {col.name: getattr(c, col.name) for col in c.__table__.columns}
+    candidate["job_title"]               = c.job.role_title if c.job else None
+    candidate["client_name"]             = c.job.client_name if c.job else None
+    candidate["assigned_to_name"]        = c.assigned_to.name if c.assigned_to else None
+    candidate["assigned_validator_name"] = c.assigned_validator.name if c.assigned_validator else None
     if c.assessment:
-        item["overall_score"]       = c.assessment.overall_score
-        item["auto_recommendation"] = c.assessment.auto_recommendation
-        item["tech_score"]          = c.assessment.tech_score
-        item["soft_skill_score"]    = c.assessment.soft_skill_score
-    return item
+        candidate["overall_score"]       = c.assessment.overall_score
+        candidate["auto_recommendation"] = c.assessment.auto_recommendation
+
+    assessment = None
+    if c.assessment:
+        assessment = {col.name: getattr(c.assessment, col.name) for col in c.assessment.__table__.columns}
+
+    return {"candidate": candidate, "assessment": assessment}
 
 
 @router.get("/queue")

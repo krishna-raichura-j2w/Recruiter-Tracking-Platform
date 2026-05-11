@@ -91,6 +91,8 @@ def get_candidate(
         {col.name: getattr(c.consultant_profile, col.name) for col in c.consultant_profile.__table__.columns}
         if c.consultant_profile else None
     )
+    # Include mail-sent flag so frontend can disable Generate Email once sent
+    result["mail_sent"] = c.consultant_mail is not None
     return result
 
 

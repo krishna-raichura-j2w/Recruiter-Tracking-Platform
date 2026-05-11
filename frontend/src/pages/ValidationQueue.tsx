@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, CheckCircle, AlertCircle, PauseCircle, XCircle } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
@@ -8,18 +8,20 @@ import type { Candidate, Assessment } from '../types';
 
 interface QueueItem {
   candidate: Candidate;
-  assessment: Assessment;
+  assessment: Assessment | null;
 }
 
 export default function ValidationQueue() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
+  const [fullCandidate, setFullCandidate] = useState<Candidate | null>(null);
   const [comment, setComment] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [rejectOverlay, setRejectOverlay] = useState(false);
   const [rejectReason, setRejectReason]   = useState('');
+  const [resumeOpen, setResumeOpen] = useState(false);
 
   const fetchQueue = () => {
     setLoading(true);
@@ -130,9 +132,9 @@ export default function ValidationQueue() {
                       <p className="text-xs text-slate-400">{item.candidate.client_name ?? '—'}</p>
                     </td>
                     <td className="py-3.5 px-5 text-center">
-                      {item.candidate.overall_score !== null ? (
-                        <span className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold ${item.candidate.overall_score >= 3.5 ? 'bg-green-100 text-green-700' : item.candidate.overall_score >= 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
-                          {item.candidate.overall_score.toFixed(1)}
+                      {Number.isFinite(Number(item.candidate.overall_score)) ? (
+                        <span className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold ${Number(item.candidate.overall_score) >= 3.5 ? 'bg-green-100 text-green-700' : Number(item.candidate.overall_score) >= 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
+                          {Number(item.candidate.overall_score).toFixed(1)}
                         </span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
@@ -148,7 +150,15 @@ export default function ValidationQueue() {
                     <td className="py-3.5 px-5 text-slate-500 text-xs">{item.candidate.assigned_to_name ?? '—'}</td>
                     <td className="py-3.5 px-5 text-right">
                       <button
-                        onClick={() => { setSelectedItem(item); setComment(''); }}
+                        onClick={() => {
+                          setSelectedItem(item);
+                          setFullCandidate(null);
+                          setComment('');
+                          setResumeOpen(false);
+                          api.get<Candidate>(`/candidates/${item.candidate.id}`)
+                            .then((r) => setFullCandidate(r.data))
+                            .catch(() => {});
+                        }}
                         className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-all"
                         style={{ backgroundColor: '#3b82f6' }}
                       >
@@ -182,11 +192,81 @@ export default function ValidationQueue() {
             </div>
 
             <div className="flex-1 p-6 space-y-6">
+
+              {/* Sourcer-filled details */}
+              {fullCandidate ? (
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-3">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sourcer Details</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    {[
+                      ['Mobile', fullCandidate.mobile],
+                      ['Email', fullCandidate.email],
+                      ['City', fullCandidate.city],
+                      ['Education', fullCandidate.education],
+                      ['Experience', fullCandidate.exp_range],
+                      ['Current Company', fullCandidate.current_company],
+                      ['Naukri Active', fullCandidate.naukri_active],
+                      ['Immediate Joiner', fullCandidate.immediate_joiner],
+                      ['Lead Source', fullCandidate.lead_source],
+                      ['Sourcing Date', fullCandidate.sourcing_date],
+                    ].map(([label, value]) => (
+                      <div key={String(label)}>
+                        <span className="text-slate-400">{label}</span>
+                        <p className="font-medium text-slate-700">{value ?? '—'}</p>
+                      </div>
+                    ))}
+                    <div className="col-span-2">
+                      <span className="text-slate-400">Skills</span>
+                      <p className="font-medium text-slate-700">{fullCandidate.skills ?? '—'}</p>
+                    </div>
+                    {fullCandidate.linkedin_url && (
+                      <div className="col-span-2">
+                        <span className="text-slate-400">LinkedIn</span>
+                        <a href={fullCandidate.linkedin_url} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 text-blue-600 hover:underline font-medium truncate">
+                          <ExternalLink size={11} />{fullCandidate.linkedin_url}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Resume viewer */}
+                  {fullCandidate.resume_data && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Resume</p>
+                        <button
+                          onClick={() => setResumeOpen(!resumeOpen)}
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <FileText size={12} />
+                          {resumeOpen ? 'Hide' : 'View Resume'}
+                        </button>
+                      </div>
+                      {resumeOpen && (
+                        fullCandidate.resume_data.startsWith('data:image/') ? (
+                          <img src={fullCandidate.resume_data} alt="Resume" className="w-full rounded-lg border border-slate-200 object-contain max-h-96" />
+                        ) : (
+                          <iframe
+                            src={fullCandidate.resume_data}
+                            title="Resume"
+                            className="w-full rounded-lg border border-slate-200"
+                            style={{ height: '480px' }}
+                          />
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="h-16 rounded-xl bg-slate-50 animate-pulse" />
+              )}
+
               {/* Score overview */}
               <div className="flex items-center gap-4">
-                {selectedItem.candidate.overall_score !== null && (
-                  <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-black text-white ${selectedItem.candidate.overall_score >= 3.5 ? 'bg-green-500' : selectedItem.candidate.overall_score >= 3 ? 'bg-yellow-400' : 'bg-red-500'}`}>
-                    <span className="text-xl">{selectedItem.candidate.overall_score.toFixed(1)}</span>
+                {Number.isFinite(Number(selectedItem.candidate.overall_score)) && (
+                  <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-black text-white ${Number(selectedItem.candidate.overall_score) >= 3.5 ? 'bg-green-500' : Number(selectedItem.candidate.overall_score) >= 3 ? 'bg-yellow-400' : 'bg-red-500'}`}>
+                    <span className="text-xl">{Number(selectedItem.candidate.overall_score).toFixed(1)}</span>
                     <span className="text-xs opacity-80">/ 5.0</span>
                   </div>
                 )}
@@ -199,65 +279,70 @@ export default function ValidationQueue() {
               </div>
 
               {/* Assessment details */}
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Assessment Breakdown</p>
-                <div className="space-y-2 bg-slate-50 rounded-xl p-4">
-                  <ScoreBar score={selectedItem.assessment.comm_score} label="Communication" />
-                  <ScoreBar score={selectedItem.assessment.self_art_score} label="Self Articulation" />
-                  <ScoreBar score={selectedItem.assessment.role_art_score} label="Role Articulation" />
-                  <ScoreBar score={selectedItem.assessment.resume_skill_score} label="Resume Skills" />
-                  <ScoreBar score={selectedItem.assessment.tech_qa_score} label="Technical Q&A" />
-                  <ScoreBar score={selectedItem.assessment.paraphrase_score} label="Paraphrasing" />
-                  <ScoreBar score={selectedItem.assessment.confidence_score} label="Confidence" />
-                  <ScoreBar score={selectedItem.assessment.gut_score} label="Gut Score" />
-                  <div className="border-t border-slate-200 pt-2 mt-2">
-                    <ScoreBar score={selectedItem.assessment.tech_score} label="Tech Score (avg)" />
-                    <ScoreBar score={selectedItem.assessment.soft_skill_score} label="Soft Score (avg)" />
-                    <ScoreBar score={selectedItem.assessment.overall_score} label="Overall Score" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Candidate details */}
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Candidate Details</p>
-                <div className="bg-slate-50 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
-                  {[
-                    ['Total Exp', selectedItem.assessment.total_exp ? `${selectedItem.assessment.total_exp} yrs` : null],
-                    ['Relevant Exp', selectedItem.assessment.relevant_exp ? `${selectedItem.assessment.relevant_exp} yrs` : null],
-                    ['Last Company', selectedItem.assessment.last_company],
-                    ['Notice Period', selectedItem.assessment.notice_period_weeks ? `${selectedItem.assessment.notice_period_weeks} wks` : null],
-                    ['Current CTC', selectedItem.assessment.current_ctc ? `₹${selectedItem.assessment.current_ctc}L` : null],
-                    ['Expected CTC', selectedItem.assessment.expected_ctc ? `₹${selectedItem.assessment.expected_ctc}L` : null],
-                    ['Hike %', selectedItem.assessment.hike_pct ? `${selectedItem.assessment.hike_pct.toFixed(1)}%` : null],
-                    ['LWD', selectedItem.assessment.lwd_confirmed],
-                  ].map(([label, value]) => (
-                    <div key={String(label)}>
-                      <span className="text-xs text-slate-400">{label}</span>
-                      <p className="font-medium text-slate-700">{value ?? '—'}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Red flags */}
-              {selectedItem.assessment.red_flags && (() => {
-                const flags = JSON.parse(selectedItem.assessment.red_flags) as string[];
-                return flags.length > 0 ? (
+              {selectedItem.assessment ? (
+                <>
                   <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Red Flags</p>
-                    <div className="flex flex-wrap gap-2">
-                      {flags.map((f) => <span key={f} className="text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-600 font-medium">{f}</span>)}
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Assessment Breakdown</p>
+                    <div className="space-y-2 bg-slate-50 rounded-xl p-4">
+                      <ScoreBar score={selectedItem.assessment.comm_score} label="Communication" />
+                      <ScoreBar score={selectedItem.assessment.self_art_score} label="Self Articulation" />
+                      <ScoreBar score={selectedItem.assessment.role_art_score} label="Role Articulation" />
+                      <ScoreBar score={selectedItem.assessment.resume_skill_score} label="Resume Skills" />
+                      <ScoreBar score={selectedItem.assessment.tech_qa_score} label="Technical Q&A" />
+                      <ScoreBar score={selectedItem.assessment.paraphrase_score} label="Paraphrasing" />
+                      <ScoreBar score={selectedItem.assessment.confidence_score} label="Confidence" />
+                      <ScoreBar score={selectedItem.assessment.gut_score} label="Gut Score" />
+                      <div className="border-t border-slate-200 pt-2 mt-2">
+                        <ScoreBar score={selectedItem.assessment.tech_score} label="Tech Score (avg)" />
+                        <ScoreBar score={selectedItem.assessment.soft_skill_score} label="Soft Score (avg)" />
+                        <ScoreBar score={selectedItem.assessment.overall_score} label="Overall Score" />
+                      </div>
                     </div>
                   </div>
-                ) : null;
-              })()}
 
-              {/* Caller notes */}
-              {selectedItem.assessment.caller_notes && (
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Caller Notes</p>
-                  <p className="text-sm text-slate-600 bg-slate-50 rounded-xl p-4">{selectedItem.assessment.caller_notes}</p>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Candidate Details</p>
+                    <div className="bg-slate-50 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
+                      {[
+                        ['Total Exp', selectedItem.assessment.total_exp ? `${selectedItem.assessment.total_exp} yrs` : null],
+                        ['Relevant Exp', selectedItem.assessment.relevant_exp ? `${selectedItem.assessment.relevant_exp} yrs` : null],
+                        ['Last Company', selectedItem.assessment.last_company],
+                        ['Notice Period', selectedItem.assessment.notice_period_weeks ? `${selectedItem.assessment.notice_period_weeks} wks` : null],
+                        ['Current CTC', selectedItem.assessment.current_ctc ? `₹${selectedItem.assessment.current_ctc}L` : null],
+                        ['Expected CTC', selectedItem.assessment.expected_ctc ? `₹${selectedItem.assessment.expected_ctc}L` : null],
+                        ['Hike %', selectedItem.assessment.hike_pct ? `${selectedItem.assessment.hike_pct.toFixed(1)}%` : null],
+                        ['LWD', selectedItem.assessment.lwd_confirmed],
+                      ].map(([label, value]) => (
+                        <div key={String(label)}>
+                          <span className="text-xs text-slate-400">{label}</span>
+                          <p className="font-medium text-slate-700">{value ?? '—'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedItem.assessment.red_flags && (() => {
+                    const flags = JSON.parse(selectedItem.assessment.red_flags) as string[];
+                    return flags.length > 0 ? (
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Red Flags</p>
+                        <div className="flex flex-wrap gap-2">
+                          {flags.map((f) => <span key={f} className="text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-600 font-medium">{f}</span>)}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {selectedItem.assessment.caller_notes && (
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Caller Notes</p>
+                      <p className="text-sm text-slate-600 bg-slate-50 rounded-xl p-4">{selectedItem.assessment.caller_notes}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-400 text-center">
+                  No assessment on record for this candidate.
                 </div>
               )}
 

@@ -1,6 +1,17 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session, joinedload
-from infra.models import ConsultantMail, Candidate
+from infra.models import ConsultantMail, Candidate, CandidateStatus
+
+# Statuses that are "past" ready_for_validation — don't rewind them
+_POST_VALIDATION_STATUSES = {
+    CandidateStatus.validated,
+    CandidateStatus.submitted_to_client,
+    CandidateStatus.interview_stage,
+    CandidateStatus.offer_rolled_out,
+    CandidateStatus.joined,
+    CandidateStatus.backed_out,
+    CandidateStatus.rejected,
+}
 
 
 def _enrich(m: ConsultantMail) -> dict:
@@ -66,8 +77,30 @@ def update_mail(db: Session, mail_id: int, data: dict, updated_by_role: str) -> 
     if data.get("acknowledgement_received") is True:
         mail.acknowledgement_received = True
         mail.acknowledgement_at = now
+        # Move candidate into validation queue so DL can review
+        candidate = db.query(Candidate).filter(Candidate.id == mail.candidate_id).first()
+        if candidate and candidate.status not in _POST_VALIDATION_STATUSES:
+            candidate.status = CandidateStatus.ready_for_validation
+            # Auto-assign validator via sender's pod (mirrors assessment submit_for_review logic)
+            if not candidate.assigned_validator_id and mail.sent_by_id:
+                from infra.models import User, UserRole
+                sender = db.query(User).filter(User.id == mail.sent_by_id).first()
+                pod_lead_id = sender.pod_lead_id if sender else None
+                if pod_lead_id:
+                    from features.allocation.service import get_min_load
+                    validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
+                    if not validator:
+                        # pod_lead_id IS the DL — assign directly to them
+                        validator = db.query(User).filter(
+                            User.id == pod_lead_id,
+                            User.role == UserRole.delivery_lead,
+                        ).first()
+                    if validator:
+                        candidate.assigned_validator_id = validator.id
     if data.get("dl_verified") is True and updated_by_role in ("delivery_lead", "admin"):
         mail.dl_verified = True
         mail.dl_verified_at = now
+    if "exit_proof" in data and data["exit_proof"] is not None:
+        mail.exit_proof = data["exit_proof"]
     db.commit()
     return _enrich(_load(db).filter(ConsultantMail.id == mail_id).first())

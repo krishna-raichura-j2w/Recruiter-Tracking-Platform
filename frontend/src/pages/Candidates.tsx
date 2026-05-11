@@ -64,6 +64,11 @@ export default function Candidates() {
   const [extracted, setExtracted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Resume upload state
+  const [resumeData, setResumeData] = useState<string | null>(null);
+  const [resumeName, setResumeName] = useState('');
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+
   const role = user?.role ?? '';
   const isRecruiter    = role === 'recruiter';
   const isDeliveryLead = role === 'delivery_lead';
@@ -112,13 +117,15 @@ export default function Candidates() {
     setExtractFile(null);
     setExtractError('');
     setExtracted(false);
+    setResumeData(null);
+    setResumeName('');
   };
 
   const onSubmit = async (data: CandidateForm) => {
     setApiError('');
     setSubmitting(true);
     try {
-      await api.post('/candidates', { ...data, job_id: Number(data.job_id) });
+      await api.post('/candidates', { ...data, job_id: Number(data.job_id), resume_data: resumeData });
       closeAddModal();
       fetchCandidates();
     } catch {
@@ -126,6 +133,15 @@ export default function Candidates() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleResumeUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      setResumeData(reader.result as string);
+      setResumeName(file.name);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleExtract = async () => {
@@ -710,6 +726,33 @@ export default function Candidates() {
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('sourcing_date')}
                   />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF or Image)</label>
+                  <input
+                    type="file"
+                    ref={resumeInputRef}
+                    accept="application/pdf,image/*"
+                    className="hidden"
+                    onChange={(e) => { if (e.target.files?.[0]) handleResumeUpload(e.target.files[0]); }}
+                  />
+                  {resumeData ? (
+                    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-green-200 bg-green-50">
+                      <FileText size={15} className="text-green-600 flex-shrink-0" />
+                      <span className="text-xs text-green-700 font-medium truncate flex-1">{resumeName}</span>
+                      <button type="button" onClick={() => { setResumeData(null); setResumeName(''); }} className="text-xs text-red-500 hover:text-red-700 font-medium flex-shrink-0">Remove</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => resumeInputRef.current?.click()}
+                      className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 text-sm hover:border-blue-400 hover:text-blue-600 transition-colors justify-center"
+                    >
+                      <FileText size={14} />
+                      Upload Resume
+                    </button>
+                  )}
                 </div>
               </div>
 

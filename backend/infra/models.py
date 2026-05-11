@@ -230,6 +230,7 @@ class Candidate(Base):
     naukri_active    = Column(String(10))
     immediate_joiner = Column(String(10))
     lead_source      = Column(String(100))
+    resume_data      = Column(Text, nullable=True)
     pool_verified    = Column(Boolean, default=False)
     status           = Column(SAEnum(CandidateStatus, native_enum=False), default=CandidateStatus.sourced)
     # Sourcing timestamps
@@ -472,6 +473,7 @@ class ConsultantMail(Base):
     acknowledgement_at       = Column(DateTime, nullable=True)
     dl_verified              = Column(Boolean, default=False)
     dl_verified_at           = Column(DateTime, nullable=True)
+    exit_proof               = Column(Text, nullable=True)   # base64 data URL
 
     candidate = relationship("Candidate", back_populates="consultant_mail")
     sent_by   = relationship("User")

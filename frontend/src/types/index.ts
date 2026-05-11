@@ -110,6 +110,7 @@ export interface Candidate {
   naukri_active: string | null;
   immediate_joiner: string | null;
   lead_source: string | null;
+  resume_data: string | null;
   pool_verified: boolean;
   status: string;
   sourcing_date: string | null;
@@ -133,6 +134,7 @@ export interface Candidate {
   assessment: Assessment | null;
   validation: ValidationRecord | null;
   consultant_profile: ConsultantProfile | null;
+  mail_sent: boolean;
   call_logs?: CallLogRecord[];
 }
 
