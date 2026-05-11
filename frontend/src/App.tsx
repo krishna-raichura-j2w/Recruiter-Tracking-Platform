@@ -14,6 +14,7 @@ import Users from './pages/Users';
 import MailTracker from './pages/MailTracker';
 import Clients from './pages/Clients';
 import Export from './pages/Export';
+import FollowUp from './pages/FollowUp';
 
 export default function App() {
   return (
@@ -126,6 +127,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
                 <Export />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/followup"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'recruiter']}>
+                <FollowUp />
               </ProtectedRoute>
             }
           />

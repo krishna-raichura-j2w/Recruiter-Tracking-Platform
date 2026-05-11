@@ -34,7 +34,7 @@ def list_all_for_validator(db: Session) -> list:
     ).order_by(Validation.updated_at.desc()).all()
 
 
-def validate_candidate(db: Session, data: dict, validator_id: int) -> Validation:
+def validate_candidate(db: Session, data: dict, validator_id: int, validator_name: str = "") -> Validation:
     candidate_id = data["candidate_id"]
     vstatus = data["status"]
     comments = data.get("comments")
@@ -80,6 +80,9 @@ def validate_candidate(db: Session, data: dict, validator_id: int) -> Validation
             candidate.status = CandidateStatus.on_hold
         elif vstatus == ValidationStatus.rejected:
             candidate.status = CandidateStatus.rejected
+            if comments:
+                candidate.rejection_reason = comments
+            candidate.rejected_by = f"Delivery Lead: {validator_name}" if validator_name else "Delivery Lead"
 
     db.commit()
     db.refresh(validation)

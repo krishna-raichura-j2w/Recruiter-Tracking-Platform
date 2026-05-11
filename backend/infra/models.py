@@ -245,6 +245,8 @@ class Candidate(Base):
     assigned_validator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sourced_at            = Column(DateTime, default=now_utc)
     updated_at            = Column(DateTime, default=now_utc, onupdate=now_utc)
+    rejection_reason      = Column(Text, nullable=True)
+    rejected_by           = Column(String(200), nullable=True)   # e.g. "KAM: Priya Sharma"
 
     job                = relationship("Job", back_populates="candidates")
     sourced_by         = relationship("User", foreign_keys=[sourced_by_id], back_populates="sourced_candidates")

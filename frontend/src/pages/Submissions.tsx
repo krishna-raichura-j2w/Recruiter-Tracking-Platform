@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Send, Phone, Mail, MapPin, Briefcase,
-  TrendingUp, Clock, User, ArrowRight,
+  TrendingUp, Clock, User, ArrowRight, XCircle, X,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
@@ -73,6 +73,9 @@ export default function Submissions() {
   const [submitting, setSubmitting] = useState<number | null>(null);
   const [submitNotes, setSubmitNotes] = useState<Record<number, string>>({});
   const [toast, setToast]         = useState('');
+  const [rejectOverlay, setRejectOverlay] = useState<{ id: number; name: string } | null>(null);
+  const [rejectReason, setRejectReason]   = useState('');
+  const [rejecting, setRejecting]         = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -90,6 +93,26 @@ export default function Submissions() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const openReject = (c: ReadyCandidate) => {
+    setRejectOverlay({ id: c.id, name: c.full_name });
+    setRejectReason('');
+  };
+
+  const handleReject = async () => {
+    if (!rejectOverlay || !rejectReason.trim()) return;
+    setRejecting(true);
+    try {
+      await api.post(`/candidates/${rejectOverlay.id}/reject`, { reason: rejectReason.trim() });
+      showToast('Candidate rejected.');
+      setRejectOverlay(null);
+      fetchData();
+    } catch {
+      showToast('❌ Reject failed. Try again.');
+    } finally {
+      setRejecting(false);
+    }
+  };
 
   const handleSubmit2Client = async (candidateId: number) => {
     setSubmitting(candidateId);
@@ -229,6 +252,12 @@ export default function Submissions() {
                     className="text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white placeholder-slate-400 focus:outline-none focus:border-blue-400 w-56"
                   />
                   <button
+                    onClick={() => openReject(c)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-red-600 text-sm font-semibold border border-red-200 bg-red-50 hover:bg-red-100 transition-all"
+                  >
+                    <XCircle size={14} /> Reject
+                  </button>
+                  <button
                     onClick={() => handleSubmit2Client(c.id)}
                     disabled={submitting === c.id}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-60 transition-all hover:opacity-90"
@@ -243,6 +272,54 @@ export default function Submissions() {
           ))
         )}
       </div>
+
+      {/* ── Reject Overlay ── */}
+      {rejectOverlay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <XCircle size={18} className="text-red-500" /> Reject Candidate
+                </h3>
+                <p className="text-sm text-slate-500 mt-0.5">{rejectOverlay.name}</p>
+              </div>
+              <button onClick={() => setRejectOverlay(null)} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Reason for rejection <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. CTC expectations too high, skills don't match client requirement…"
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 resize-none"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setRejectOverlay(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReject}
+                  disabled={rejecting || !rejectReason.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                >
+                  {rejecting ? 'Rejecting…' : 'Confirm Reject'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

@@ -695,6 +695,21 @@ export default function CandidateDetail() {
         </div>
       </div>
 
+      {/* Rejection banner */}
+      {candidate.status === 'rejected' && candidate.rejected_by && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3.5 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <span className="text-red-600 text-sm font-bold">✕</span>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-red-700">Rejected by {candidate.rejected_by}</p>
+            {candidate.rejection_reason && (
+              <p className="text-sm text-red-600 mt-0.5">{candidate.rejection_reason}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 

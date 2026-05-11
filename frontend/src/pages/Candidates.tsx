@@ -370,6 +370,16 @@ export default function Candidates() {
                           <span>📅</span> {fmtDate(c.sourcing_date)}
                         </p>
                       )}
+                      {c.status === 'rejected' && c.rejected_by && (
+                        <p className="text-xs text-red-600 font-semibold mt-0.5 flex items-center gap-1">
+                          ✕ Rejected by {c.rejected_by}
+                        </p>
+                      )}
+                      {c.status === 'rejected' && c.rejection_reason && (
+                        <p className="text-xs text-red-400 mt-0.5 line-clamp-1" title={c.rejection_reason}>
+                          {c.rejection_reason}
+                        </p>
+                      )}
                     </td>
                     <td className="py-3.5 px-5">
                       <p className="text-slate-700 truncate max-w-36">{c.job_title ?? '—'}</p>

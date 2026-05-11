@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
 from features.candidates.schema import CandidateCreate, CandidateUpdate
 from features.candidates import service
-from infra.models import Job
+from infra.models import Job, Candidate, CandidateStatus
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
@@ -141,4 +142,34 @@ def assign_candidate(
     c = service.assign_candidate(db, candidate_id, user_id)
     if not c:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    return _serialize(c)
+
+
+class RejectBody(BaseModel):
+    reason: str
+
+
+REJECT_ROLES = ("kam", "delivery_lead", "admin")
+
+
+@router.post("/{candidate_id}/reject")
+def reject_candidate(
+    candidate_id: int,
+    body: RejectBody,
+    db: Session  = Depends(get_db),
+    current_user = Depends(require_roles(*REJECT_ROLES)),
+):
+    c = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    role_label = {
+        "kam":           "KAM",
+        "delivery_lead": "Delivery Lead",
+        "admin":         "Admin",
+    }.get(current_user.role.value, current_user.role.value)
+    c.status           = CandidateStatus.rejected
+    c.rejection_reason = body.reason
+    c.rejected_by      = f"{role_label}: {current_user.name}"
+    db.commit()
+    db.refresh(c)
     return _serialize(c)

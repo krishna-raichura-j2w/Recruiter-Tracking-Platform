@@ -9,6 +9,7 @@ class SubmitToClient(BaseModel):
 
 class StageUpdate(BaseModel):
     current_stage: InterviewStage
+    notes: str                          # compulsory feedback/notes for every update
     # Timeline metadata
     interview_date: str | None = None   # datetime string for scheduled stages
     feedback: str | None = None         # Pass / Fail / Hold

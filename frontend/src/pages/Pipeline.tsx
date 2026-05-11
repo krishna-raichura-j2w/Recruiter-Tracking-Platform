@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { X, Clock } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { X, Clock, Search, SlidersHorizontal } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
 
@@ -159,7 +159,7 @@ function Divider({ label }: { label: string }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
@@ -226,6 +226,15 @@ export default function Pipeline() {
   const [saving, setSaving]       = useState(false);
   const [toast, setToast]         = useState('');
 
+  // ── Filter state ──────────────────────────────────────────────────────────
+  const [search,         setSearch]         = useState('');
+  const [filterCompany,  setFilterCompany]  = useState('');
+  const [filterJob,      setFilterJob]      = useState('');
+  const [filterGroup,    setFilterGroup]    = useState('');
+  const [filterStage,    setFilterStage]    = useState('');
+  const [filterAction,   setFilterAction]   = useState('');
+  const [showFilters,    setShowFilters]    = useState(false);
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 3000);
@@ -280,13 +289,18 @@ export default function Pipeline() {
 
   const onSave = async () => {
     if (!overlay) return;
+    const notes = (form.last_notes as string)?.trim();
+    if (!notes) {
+      showToast('⚠ Feedback / notes are required before saving.');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = { ...form };
+      payload.notes = notes;   // map to required backend field
       if (payload.offered_ctc) payload.offered_ctc = Number(payload.offered_ctc);
-      // Strip empty strings so backend ignores unset optional fields
       Object.keys(payload).forEach(k => {
-        if (payload[k] === '') delete payload[k];
+        if (payload[k] === '' || payload[k] === null) delete payload[k];
       });
       await api.patch(`/submissions/${overlay.id}`, payload);
       showToast('✅ Updated successfully!');
@@ -301,7 +315,59 @@ export default function Pipeline() {
 
   const currentStage = (form.current_stage as string) ?? '';
   const group        = stageGroup(currentStage);
-  const list         = showClosed ? closed : active;
+  const baseList     = showClosed ? closed : active;
+
+  // ── Derived dropdown options ───────────────────────────────────────────────
+  const companies = useMemo(() =>
+    [...new Set(baseList.map(s => s.client_name).filter(Boolean))].sort() as string[],
+    [baseList]);
+
+  const jobTitles = useMemo(() =>
+    [...new Set(
+      baseList
+        .filter(s => !filterCompany || s.client_name === filterCompany)
+        .map(s => s.job_title)
+        .filter(Boolean)
+    )].sort() as string[],
+    [baseList, filterCompany]);
+
+  const availableStages = useMemo(() => {
+    const grouped = filterGroup
+      ? STAGE_GROUPS.find(g => g.label === filterGroup)?.stages ?? []
+      : Object.keys(STAGE_LABELS);
+    return grouped.filter(s => baseList.some(sub => sub.current_stage === s));
+  }, [baseList, filterGroup]);
+
+  // ── Filtered list ──────────────────────────────────────────────────────────
+  const list = useMemo(() => {
+    const today     = new Date(); today.setHours(0, 0, 0, 0);
+    const weekEnd   = new Date(today); weekEnd.setDate(today.getDate() + 7);
+    return baseList.filter(s => {
+      if (search       && !s.candidate_name?.toLowerCase().includes(search.toLowerCase())) return false;
+      if (filterCompany && s.client_name !== filterCompany) return false;
+      if (filterJob    && s.job_title !== filterJob) return false;
+      if (filterGroup) {
+        const stagesInGroup = STAGE_GROUPS.find(g => g.label === filterGroup)?.stages ?? [];
+        if (!stagesInGroup.includes(s.current_stage)) return false;
+      }
+      if (filterStage  && s.current_stage !== filterStage) return false;
+      if (filterAction) {
+        const d = s.next_action_date ? new Date(s.next_action_date) : null;
+        if (filterAction === 'overdue')    { if (!d || d >= today)    return false; }
+        if (filterAction === 'today')      { if (!d || d < today || d >= new Date(today.getTime() + 86400000)) return false; }
+        if (filterAction === 'this_week')  { if (!d || d < today || d > weekEnd) return false; }
+        if (filterAction === 'no_action')  { if (s.next_action_date) return false; }
+      }
+      return true;
+    });
+  }, [baseList, search, filterCompany, filterJob, filterGroup, filterStage, filterAction]);
+
+  const activeFilters = [search, filterCompany, filterJob, filterGroup, filterStage, filterAction].filter(Boolean).length;
+
+  const clearAllFilters = () => {
+    setSearch(''); setFilterCompany(''); setFilterJob('');
+    setFilterGroup(''); setFilterStage(''); setFilterAction('');
+  };
 
   return (
     <Layout title="Interview Tracking">
@@ -313,26 +379,144 @@ export default function Pipeline() {
         </div>
       )}
 
-      {/* Filter toggle */}
-      <div className="flex items-center gap-2 mb-5">
-        <button
-          onClick={() => setShowClosed(false)}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-            !showClosed ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
-          }`}
-          style={!showClosed ? { backgroundColor: '#1a2744' } : {}}
-        >
-          Active <span className="ml-1 text-xs opacity-70">({active.length})</span>
-        </button>
-        <button
-          onClick={() => setShowClosed(true)}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-            showClosed ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
-          }`}
-          style={showClosed ? { backgroundColor: '#1a2744' } : {}}
-        >
-          Closed <span className="ml-1 text-xs opacity-70">({closed.length})</span>
-        </button>
+      {/* ── Top bar: Active/Closed + Search + Filter toggle ── */}
+      <div className="space-y-3 mb-5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Active / Closed tabs */}
+          <button
+            onClick={() => setShowClosed(false)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              !showClosed ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
+            }`}
+            style={!showClosed ? { backgroundColor: '#1a2744' } : {}}
+          >
+            Active <span className="ml-1 text-xs opacity-70">({active.length})</span>
+          </button>
+          <button
+            onClick={() => setShowClosed(true)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              showClosed ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
+            }`}
+            style={showClosed ? { backgroundColor: '#1a2744' } : {}}
+          >
+            Closed <span className="ml-1 text-xs opacity-70">({closed.length})</span>
+          </button>
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-48">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search candidate…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-blue-400 bg-white"
+            />
+          </div>
+
+          {/* Filter toggle */}
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+              showFilters || activeFilters > 0
+                ? 'bg-blue-50 border-blue-300 text-blue-700'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <SlidersHorizontal size={13} />
+            Filters
+            {activeFilters > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[10px] font-bold">
+                {activeFilters}
+              </span>
+            )}
+          </button>
+
+          {/* Results count + clear */}
+          {activeFilters > 0 && (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span>{list.length} of {baseList.length} shown</span>
+              <button onClick={clearAllFilters} className="text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-0.5">
+                <X size={11} /> Clear
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Expanded filter row ── */}
+        {showFilters && (
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 shadow-sm">
+
+            {/* Company */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Company</label>
+              <select
+                value={filterCompany}
+                onChange={e => { setFilterCompany(e.target.value); setFilterJob(''); }}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              >
+                <option value="">All companies</option>
+                {companies.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            {/* Job Title */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Job Title</label>
+              <select
+                value={filterJob}
+                onChange={e => setFilterJob(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              >
+                <option value="">All roles</option>
+                {jobTitles.map(j => <option key={j} value={j}>{j}</option>)}
+              </select>
+            </div>
+
+            {/* Stage Group */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Round</label>
+              <select
+                value={filterGroup}
+                onChange={e => { setFilterGroup(e.target.value); setFilterStage(''); }}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              >
+                <option value="">All rounds</option>
+                {STAGE_GROUPS.map(g => <option key={g.label} value={g.label}>{g.label}</option>)}
+              </select>
+            </div>
+
+            {/* Individual Stage */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Stage</label>
+              <select
+                value={filterStage}
+                onChange={e => setFilterStage(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              >
+                <option value="">All stages</option>
+                {availableStages.map(s => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
+              </select>
+            </div>
+
+            {/* Next Action */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Next Action</label>
+              <select
+                value={filterAction}
+                onChange={e => setFilterAction(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              >
+                <option value="">Any</option>
+                <option value="overdue">Overdue</option>
+                <option value="today">Due Today</option>
+                <option value="this_week">Due This Week</option>
+                <option value="no_action">No Action Set</option>
+              </select>
+            </div>
+
+          </div>
+        )}
       </div>
 
       {/* Card list */}
@@ -346,16 +530,28 @@ export default function Pipeline() {
         <div className="flex flex-col items-center justify-center py-24 text-slate-400">
           <Clock size={40} className="opacity-20 mb-3" />
           <p className="font-medium text-slate-500">
-            {showClosed ? 'No closed submissions.' : 'No active submissions.'}
+            {activeFilters > 0 ? 'No results match your filters.' : showClosed ? 'No closed submissions.' : 'No active submissions.'}
           </p>
+          {activeFilters > 0 && (
+            <button onClick={clearAllFilters} className="mt-2 text-sm text-blue-500 hover:text-blue-700 font-semibold">
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-2.5">
-          {list.map(sub => (
+          {list.map(sub => {
+            const nextActionDate = sub.next_action_date ? new Date(sub.next_action_date) : null;
+            const isOverdue = nextActionDate != null && nextActionDate < new Date();
+            return (
             <button
               key={sub.id}
               onClick={() => openOverlay(sub)}
-              className="w-full text-left bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all px-5 py-4 flex items-center gap-4"
+              className={`w-full text-left rounded-2xl border shadow-sm hover:shadow-md transition-all px-5 py-4 flex items-center gap-4 ${
+                isOverdue
+                  ? 'bg-amber-50 border-amber-200 hover:border-amber-300'
+                  : 'bg-white border-slate-100 hover:border-blue-200'
+              }`}
             >
               {/* Avatar */}
               <div
@@ -375,15 +571,21 @@ export default function Pipeline() {
                 </p>
               </div>
 
-              {/* Stage + date */}
+              {/* Stage + date + next action */}
               <div className="flex-shrink-0 flex flex-col items-end gap-1">
                 <StageBadge stage={sub.current_stage} />
                 <span className="text-slate-400" style={{ fontSize: '10px' }}>
                   Updated {fmtDate(sub.updated_at)}
                 </span>
+                {sub.next_action && sub.next_action_date && (
+                  <span className={`text-[10px] font-semibold ${isOverdue ? 'text-amber-600' : 'text-slate-400'}`}>
+                    {isOverdue ? '⚠ ' : ''}Action: {fmtDate(sub.next_action_date)}
+                  </span>
+                )}
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -662,14 +864,21 @@ export default function Pipeline() {
                     </select>
                   </Field>
                 </div>
-                <Field label="Notes">
+                <Field label={<span>Feedback / Notes <span className="text-red-500">*</span></span>}>
                   <textarea
-                    rows={2}
-                    placeholder="Update notes…"
+                    rows={3}
+                    placeholder="Required — add your feedback or update notes for this stage change…"
                     value={form.last_notes as string}
                     onChange={e => setField('last_notes', e.target.value)}
-                    className="form-input resize-none"
+                    className={`form-input resize-none border-2 ${
+                      !(form.last_notes as string)?.trim()
+                        ? 'border-amber-300 bg-amber-50/30 focus:border-amber-400'
+                        : 'border-green-300 bg-green-50/20'
+                    }`}
                   />
+                  {!(form.last_notes as string)?.trim() && (
+                    <p className="text-xs text-amber-600 mt-1">⚠ Required before saving</p>
+                  )}
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Next Action">

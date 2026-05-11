@@ -45,5 +45,5 @@ def validate(
     db: Session  = Depends(get_db),
     current_user = Depends(require_roles(*VALIDATORS)),
 ):
-    v = service.validate_candidate(db, body.model_dump(), current_user.id)
+    v = service.validate_candidate(db, body.model_dump(), current_user.id, current_user.name)
     return {col.name: getattr(v, col.name) for col in v.__table__.columns}

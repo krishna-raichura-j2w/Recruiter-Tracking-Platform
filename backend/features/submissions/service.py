@@ -213,13 +213,13 @@ def update_stage(db: Session, submission_id: int, data: dict,
         else:
             c.status = CandidateStatus.interview_stage
 
-    # Record timeline entry for every stage change
+    # Record timeline entry for every stage change — notes is compulsory
     if new_stage:
         _add_timeline(
             db, submission_id, new_stage, updated_by_id,
             interview_date = data.get("interview_date"),
             feedback       = data.get("feedback"),
-            note           = data.get("last_notes"),
+            note           = data.get("notes") or data.get("last_notes"),
         )
 
     db.commit()

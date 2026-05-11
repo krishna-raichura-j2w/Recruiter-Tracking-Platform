@@ -18,6 +18,8 @@ export default function ValidationQueue() {
   const [comment, setComment] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [rejectOverlay, setRejectOverlay] = useState(false);
+  const [rejectReason, setRejectReason]   = useState('');
 
   const fetchQueue = () => {
     setLoading(true);
@@ -32,22 +34,52 @@ export default function ValidationQueue() {
     fetchQueue();
   }, []);
 
+  // map frontend action labels → backend ValidationStatus values
+  const ACTION_STATUS: Record<string, string> = {
+    validate:    'validated',
+    needs_rework:'needs_review',
+    on_hold:     'on_hold',
+    reject:      'rejected',
+  };
+
   const handleAction = async (action: string) => {
     if (!selectedItem) return;
     setActionLoading(true);
     try {
       await api.post('/validation/action', {
         candidate_id: selectedItem.candidate.id,
-        action,
-        comment,
+        status:   ACTION_STATUS[action] ?? action,
+        comments: comment || null,
       });
-      setMessage(`Action "${action}" completed.`);
+      setMessage(action === 'validate' ? '✅ Candidate validated!' : `Action completed.`);
       setSelectedItem(null);
       setComment('');
+      setRejectOverlay(false);
+      setRejectReason('');
       fetchQueue();
       setTimeout(() => setMessage(''), 3000);
     } catch {
       setMessage('Action failed. Please try again.');
+      setTimeout(() => setMessage(''), 3000);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectWithReason = async () => {
+    if (!selectedItem || !rejectReason.trim()) return;
+    setActionLoading(true);
+    try {
+      await api.post(`/candidates/${selectedItem.candidate.id}/reject`, { reason: rejectReason.trim() });
+      setMessage('Candidate rejected.');
+      setSelectedItem(null);
+      setRejectOverlay(false);
+      setRejectReason('');
+      setComment('');
+      fetchQueue();
+      setTimeout(() => setMessage(''), 3000);
+    } catch {
+      setMessage('Reject failed. Please try again.');
       setTimeout(() => setMessage(''), 3000);
     } finally {
       setActionLoading(false);
@@ -268,12 +300,60 @@ export default function ValidationQueue() {
                   On Hold
                 </button>
                 <button
-                  onClick={() => handleAction('reject')}
+                  onClick={() => { setRejectOverlay(true); setRejectReason(''); }}
                   disabled={actionLoading}
                   className="flex items-center justify-center gap-2 py-3 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors"
                 >
                   <XCircle size={16} />
                   Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DL Reject Reason Overlay ── */}
+      {rejectOverlay && selectedItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <XCircle size={18} className="text-red-500" /> Reject Candidate
+                </h3>
+                <p className="text-sm text-slate-500 mt-0.5">{selectedItem.candidate.full_name}</p>
+              </div>
+              <button onClick={() => setRejectOverlay(false)} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Reason for rejection <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Profile doesn't meet technical requirements, communication below threshold…"
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 resize-none"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setRejectOverlay(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRejectWithReason}
+                  disabled={actionLoading || !rejectReason.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                >
+                  {actionLoading ? 'Rejecting…' : 'Confirm Reject'}
                 </button>
               </div>
             </div>

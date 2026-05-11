@@ -120,6 +120,8 @@ export interface Candidate {
   feedback_received_at: string | null;
   sourced_by_id: number | null;
   sourced_by_name: string | null;
+  rejection_reason: string | null;
+  rejected_by: string | null;
   assigned_to_id: number | null;
   assigned_to_name: string | null;
   assigned_validator_id: number | null;

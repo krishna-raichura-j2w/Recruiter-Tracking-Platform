@@ -23,6 +23,7 @@ from features.mails.routes import router as mails_router
 from features.clients.routes import router as clients_router
 from features.account_managers.routes import router as business_heads_router
 from features.export.routes import router as export_router
+from features.followup.routes import router as followup_router
 
 app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0")
 
@@ -49,34 +50,42 @@ app.include_router(mails_router,             prefix="/api")
 app.include_router(clients_router,           prefix="/api")
 app.include_router(business_heads_router,   prefix="/api")
 app.include_router(export_router,           prefix="/api")
+app.include_router(followup_router,         prefix="/api")
 
 
 def run_migrations(db):
+    """Run all DDL migrations. Each statement is committed individually so that
+    concurrent startup workers don't deadlock each other on ALTER TABLE locks."""
     from sqlalchemy import text
-    # Migrate old roles → recruiter
-    new_hash = hash_password("rec123")
-    result = db.execute(
-        text("UPDATE users SET role = 'recruiter', password_hash = :h WHERE role IN ('caller', 'sourcing_partner')"),
-        {"h": new_hash},
-    )
-    if result.rowcount:
+
+    def _run(sql: str, params: dict | None = None):
+        try:
+            db.execute(text(sql), params or {})
+            db.commit()
+        except Exception:
+            db.rollback()   # column/table already exists — safe to ignore
+
+    # ── Data migrations (DML) ────────────────────────────────────────────────
+    try:
+        new_hash = hash_password("rec123")
+        result = db.execute(
+            text("UPDATE users SET role='recruiter', password_hash=:h WHERE role IN ('caller','sourcing_partner')"),
+            {"h": new_hash},
+        )
+        if result.rowcount:
+            print(f"Migrated {result.rowcount} users → recruiter")
+        db.execute(text("UPDATE users SET role='kam' WHERE role='pod_lead'"))
         db.commit()
-        print(f"Migrated {result.rowcount} users → recruiter (password: rec123)")
-    # Add assigned_caller_id column to jobs if not present
-    db.execute(text(
-        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_caller_id INTEGER REFERENCES users(id)"
-    ))
-    # Add recruiter_type column to users if not present
-    db.execute(text(
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS recruiter_type VARCHAR(20)"
-    ))
-    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcer_ids TEXT DEFAULT '[]'"))
-    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS caller_ids TEXT DEFAULT '[]'"))
-    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS jd_raw_text TEXT"))
-    # Rename pod_lead → kam
-    db.execute(text("UPDATE users SET role = 'kam' WHERE role = 'pod_lead'"))
-    # Add submission_timeline table
-    db.execute(text("""
+    except Exception:
+        db.rollback()
+
+    # ── DDL: one commit per statement ────────────────────────────────────────
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_caller_id INTEGER REFERENCES users(id)")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS recruiter_type VARCHAR(20)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcer_ids TEXT DEFAULT '[]'")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS caller_ids TEXT DEFAULT '[]'")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS jd_raw_text TEXT")
+    _run("""
         CREATE TABLE IF NOT EXISTS submission_timeline (
             id             SERIAL PRIMARY KEY,
             submission_id  INTEGER NOT NULL REFERENCES submissions(id),
@@ -88,8 +97,8 @@ def run_migrations(db):
             updated_by_id  INTEGER REFERENCES users(id),
             created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         )
-    """))
-    db.execute(text("""CREATE TABLE IF NOT EXISTS consultant_mails (
+    """)
+    _run("""CREATE TABLE IF NOT EXISTS consultant_mails (
         id SERIAL PRIMARY KEY,
         candidate_id INTEGER UNIQUE NOT NULL REFERENCES candidates(id),
         sent_by_id INTEGER REFERENCES users(id),
@@ -99,16 +108,16 @@ def run_migrations(db):
         acknowledgement_at TIMESTAMP WITH TIME ZONE,
         dl_verified BOOLEAN DEFAULT FALSE,
         dl_verified_at TIMESTAMP WITH TIME ZONE
-    )"""))
-    db.execute(text("""CREATE TABLE IF NOT EXISTS account_managers (
+    )""")
+    _run("""CREATE TABLE IF NOT EXISTS account_managers (
         id SERIAL PRIMARY KEY,
         name VARCHAR(120) NOT NULL,
         email VARCHAR(200),
         phone VARCHAR(30),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-    )"""))
-    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS account_manager_id INTEGER REFERENCES account_managers(id)"))
-    db.execute(text("""CREATE TABLE IF NOT EXISTS clients (
+    )""")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS account_manager_id INTEGER REFERENCES account_managers(id)")
+    _run("""CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
         name VARCHAR(120) UNIQUE NOT NULL,
         short_name VARCHAR(80),
@@ -118,11 +127,12 @@ def run_migrations(db):
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         last_updated_by VARCHAR(120)
-    )"""))
-    db.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"))
-    db.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_updated_by VARCHAR(120)"))
-    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deadline TIMESTAMP WITH TIME ZONE"))
-    db.commit()
+    )""")
+    _run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
+    _run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_updated_by VARCHAR(120)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deadline TIMESTAMP WITH TIME ZONE")
+    _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
+    _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(200)")
 
 
 def seed_data(db):
