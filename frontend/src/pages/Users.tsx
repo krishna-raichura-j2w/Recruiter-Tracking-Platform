@@ -90,18 +90,18 @@ export default function Users() {
   const [showAmForm, setShowAmForm] = useState(false);
 
   const fetchAms = () => {
-    api.get('/account-managers').then((r: { data: {id:number;name:string;email:string|null;phone:string|null}[] }) => setAms(r.data)).catch(() => {});
+    api.get('/business-heads').then((r: { data: {id:number;name:string;email:string|null;phone:string|null}[] }) => setAms(r.data)).catch(() => {});
   };
   const handleAddAm = async () => {
     if (!amForm.name.trim()) return;
     setSavingAm(true);
     try {
-      await api.post('/account-managers', { name: amForm.name, email: amForm.email || null, phone: amForm.phone || null });
+      await api.post('/business-heads', { name: amForm.name, email: amForm.email || null, phone: amForm.phone || null });
       setAmForm({ name:'', email:'', phone:'' }); setShowAmForm(false); fetchAms();
     } catch { /* ignore */ } finally { setSavingAm(false); }
   };
   const handleDeleteAm = async (id: number) => {
-    await api.delete(`/account-managers/${id}`).catch(() => {});
+    await api.delete(`/business-heads/${id}`).catch(() => {});
     fetchAms();
   };
 
@@ -727,9 +727,9 @@ export default function Users() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <UserCheck size={16} className="text-emerald-500" /> Account Managers
+              <UserCheck size={16} className="text-emerald-500" /> Business Heads
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">Manage account managers visible when creating job openings.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Manage business heads visible when creating job openings.</p>
           </div>
           <button
             onClick={() => setShowAmForm(v => !v)}
@@ -772,7 +772,7 @@ export default function Users() {
         )}
 
         {ams.length === 0 ? (
-          <p className="text-sm text-slate-400 py-4">No account managers added yet.</p>
+          <p className="text-sm text-slate-400 py-4">No business heads added yet.</p>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             <table className="w-full text-sm">

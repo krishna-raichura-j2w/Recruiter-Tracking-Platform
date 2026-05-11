@@ -69,8 +69,9 @@ export interface Job {
   caller_names: string[];
   delivery_lead_id: number | null;
   delivery_lead_name: string | null;
-  account_manager_id: number | null;
-  account_manager_name: string | null;
+  business_head_id: number | null;
+  business_head_name: string | null;
+  deadline: string | null;
   created_by_id: number | null;
   created_at: string | null;
   updated_at: string | null;

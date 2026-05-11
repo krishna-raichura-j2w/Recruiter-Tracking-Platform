@@ -17,7 +17,8 @@ class JobCreate(BaseModel):
     max_experience: int | None = None
     salary_range: str | None = None
     delivery_lead_id: int | None = None
-    account_manager_id: int | None = None
+    business_head_id: int | None = None
+    deadline: str | None = None
 
 
 class JobUpdate(BaseModel):
@@ -34,7 +35,8 @@ class JobUpdate(BaseModel):
     min_experience: int | None = None
     max_experience: int | None = None
     salary_range: str | None = None
-    account_manager_id: int | None = None
+    business_head_id: int | None = None
+    deadline: str | None = None
 
 
 class JobOut(BaseModel):

@@ -157,8 +157,8 @@ class User(Base):
     notifications       = relationship("Notification", back_populates="user")
 
 
-class AccountManager(Base):
-    __tablename__ = "account_managers"
+class BusinessHead(Base):
+    __tablename__ = "account_managers"   # DB table kept for backward compat
     id         = Column(Integer, primary_key=True, index=True)
     name       = Column(String(120), nullable=False)
     email      = Column(String(200))
@@ -202,6 +202,7 @@ class Job(Base):
     caller_ids           = Column(Text, default='[]')   # JSON array e.g. "[4,8]"
     delivery_lead_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
     account_manager_id   = Column(Integer, ForeignKey("account_managers.id"), nullable=True)
+    deadline             = Column(DateTime, nullable=True)
     created_by_id        = Column(Integer, ForeignKey("users.id"))
     created_at           = Column(DateTime, default=now_utc)
     updated_at           = Column(DateTime, default=now_utc, onupdate=now_utc)
@@ -210,7 +211,7 @@ class Job(Base):
     assigned_sourcer = relationship("User", foreign_keys=[assigned_sourcer_id])
     assigned_caller  = relationship("User", foreign_keys=[assigned_caller_id])
     delivery_lead    = relationship("User", foreign_keys=[delivery_lead_id])
-    account_manager  = relationship("AccountManager")
+    business_head    = relationship("BusinessHead")
 
 
 class Candidate(Base):

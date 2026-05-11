@@ -52,6 +52,7 @@ interface JobForm {
   min_experience:string;
   max_experience:string;
   salary_range:  string;
+  deadline:      string;
 }
 
 const MODE_COLORS: Record<string, string> = {
@@ -114,8 +115,8 @@ export default function Jobs() {
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
   const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
   const [clientOptions, setClientOptions]           = useState<ClientOption[]>([]);
-  const [accountManagers, setAccountManagers]       = useState<{ id: number; name: string }[]>([]);
-  const [selectedAmId, setSelectedAmId]             = useState<number | ''>('');
+  const [businessHeads, setBusinessHeads]           = useState<{ id: number; name: string }[]>([]);
+  const [selectedBhId, setSelectedBhId]             = useState<number | ''>('');
 
   // DL confirm-JD modal state
   const [confirmJob, setConfirmJob]         = useState<Job | null>(null);
@@ -250,9 +251,9 @@ export default function Jobs() {
     api.get<ClientOption[]>('/clients')
       .then(r => setClientOptions(r.data))
       .catch(() => setClientOptions([]));
-    api.get<{ id: number; name: string }[]>('/account-managers')
-      .then(r => setAccountManagers(r.data))
-      .catch(() => setAccountManagers([]));
+    api.get<{ id: number; name: string }[]>('/business-heads')
+      .then(r => setBusinessHeads(r.data))
+      .catch(() => setBusinessHeads([]));
     setSelectedAmId('');
   };
 
@@ -277,7 +278,8 @@ export default function Jobs() {
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
     jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
     delivery_lead_id:    !editJob && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
-    account_manager_id:  !editJob && selectedAmId ? Number(selectedAmId) : undefined,
+    business_head_id:    !editJob && selectedBhId ? Number(selectedBhId) : undefined,
+    deadline:            data.deadline ? new Date(data.deadline).toISOString() : null,
   });
 
   const onSubmit = async (data: JobForm) => {
@@ -729,29 +731,29 @@ export default function Jobs() {
                 </div>
               )}
 
-              {/* ── Account Manager ── */}
-              {!editJob && accountManagers.length > 0 && (
+              {/* ── Business Head ── */}
+              {!editJob && businessHeads.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
                     <UserCheck size={13} className="text-slate-400" />
-                    Account Manager
+                    Business Head
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {accountManagers.map(am => {
-                      const selected = selectedAmId === am.id;
+                    {businessHeads.map(bh => {
+                      const selected = selectedBhId === bh.id;
                       return (
                         <button
-                          key={am.id}
+                          key={bh.id}
                           type="button"
-                          onClick={() => setSelectedAmId(selected ? '' : am.id)}
+                          onClick={() => setSelectedBhId(selected ? '' : bh.id)}
                           className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all ${
                             selected ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                           }`}
                         >
                           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${selected ? 'bg-emerald-500' : 'bg-slate-400'}`}>
-                            {am.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                            {bh.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                           </div>
-                          <span className={`text-sm font-semibold ${selected ? 'text-emerald-700' : 'text-slate-700'}`}>{am.name}</span>
+                          <span className={`text-sm font-semibold ${selected ? 'text-emerald-700' : 'text-slate-700'}`}>{bh.name}</span>
                           {selected && (
                             <div className="ml-auto w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
                               <svg width="8" height="7" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -836,6 +838,14 @@ export default function Jobs() {
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('salary_range')} />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1">
+                    <Clock size={12} className="text-red-400" /> Deadline
+                  </label>
+                  <input type="datetime-local"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50"
+                    {...register('deadline')} />
+                </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">JD Summary / Notes</label>
                   <textarea rows={5}
@@ -892,8 +902,16 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
     ? [job.min_experience, job.max_experience].filter((v) => v != null).join('–') + ' yrs'
     : null;
 
+  const deadline = job.deadline ? new Date(job.deadline) : null;
+  const isOvertime = deadline != null && job.status !== 'closed' && deadline < new Date();
+  const deadlineLabel = deadline
+    ? deadline.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null;
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-5">
+    <div className={`rounded-2xl border shadow-sm hover:shadow-md transition-shadow p-5 ${
+      isOvertime ? 'bg-red-50/60 border-red-200' : 'bg-white border-slate-100'
+    }`}>
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-bold text-slate-800 leading-snug">{job.role_title}</h3>
@@ -907,11 +925,11 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
               </>
             )}
           </p>
-          {(job.account_manager_name || job.delivery_lead_name || (job.sourcer_names?.length > 0) || (job.caller_names?.length > 0)) && (
+          {(job.business_head_name || job.delivery_lead_name || (job.sourcer_names?.length > 0) || (job.caller_names?.length > 0)) && (
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-              {job.account_manager_name && (
+              {job.business_head_name && (
                 <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                  <UserCheck size={11} /> AM: {job.account_manager_name}
+                  <UserCheck size={11} /> BH: {job.business_head_name}
                 </p>
               )}
               {job.delivery_lead_name && (
@@ -928,6 +946,19 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
                 <p className="text-xs text-blue-600 font-semibold flex items-center gap-1">
                   <Phone size={11} /> Calling: {job.caller_names.join(', ')}
                 </p>
+              )}
+            </div>
+          )}
+          {deadlineLabel && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <Clock size={11} className={isOvertime ? 'text-red-500' : 'text-slate-400'} />
+              <span className={`text-xs font-semibold ${isOvertime ? 'text-red-600' : 'text-slate-500'}`}>
+                Deadline: {deadlineLabel}
+              </span>
+              {isOvertime && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold tracking-wide animate-pulse">
+                  OVERTIME
+                </span>
               )}
             </div>
           )}

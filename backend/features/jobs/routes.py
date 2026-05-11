@@ -60,8 +60,15 @@ def create_job(
     current_user = Depends(require_roles("admin", "kam")),
 ):
     """Pod lead uploads JD → status = pending_review, no sourcer yet."""
+    from datetime import datetime
     data = body.model_dump()
-    data["status"] = JobStatus.pending_review   # always start as pending review
+    data["status"] = JobStatus.pending_review
+    data["account_manager_id"] = data.pop("business_head_id", None)
+    if data.get("deadline"):
+        try:
+            data["deadline"] = datetime.fromisoformat(data["deadline"].replace("Z", "+00:00"))
+        except ValueError:
+            data["deadline"] = None
     job = service.create_job(db, data, current_user.id)
     return service._job_dict(db, job)
 
@@ -102,7 +109,16 @@ def update_job(
     db: Session = Depends(get_db),
     _=Depends(require_roles("admin", "kam", "delivery_lead")),
 ):
-    job = service.update_job(db, job_id, body.model_dump(exclude_none=True))
+    from datetime import datetime
+    data = body.model_dump(exclude_none=True)
+    if "business_head_id" in data:
+        data["account_manager_id"] = data.pop("business_head_id")
+    if "deadline" in data and isinstance(data["deadline"], str):
+        try:
+            data["deadline"] = datetime.fromisoformat(data["deadline"].replace("Z", "+00:00"))
+        except ValueError:
+            data.pop("deadline")
+    job = service.update_job(db, job_id, data)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return service._job_dict(db, job)

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 from core.database import get_db
 from core.deps import require_roles
-from infra.models import Candidate, Job
+from infra.models import Candidate, Job, BusinessHead
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -21,7 +21,7 @@ def _af(a, field, suffix=""):
 
 @router.get("/candidates")
 def export_candidates(
-    account_manager_id: int | None = Query(None),
+    business_head_id: int | None = Query(None),
     status: str | None = Query(None),
     db: Session = Depends(get_db),
     _=Depends(require_roles(*ALLOWED)),
@@ -30,17 +30,17 @@ def export_candidates(
     q = (
         db.query(Candidate)
         .options(
-            joinedload(Candidate.job).joinedload(Job.account_manager),
+            joinedload(Candidate.job).joinedload(Job.business_head),
             joinedload(Candidate.assessment),
             joinedload(Candidate.sourced_by),
             joinedload(Candidate.assigned_to),
         )
         .join(Candidate.job)
-        .order_by(Job.account_manager_id, Job.client_name, Candidate.full_name)
+        .order_by(Job.account_manager_id, Job.client_name, Candidate.full_name)  # account_manager_id = business_head FK
     )
 
-    if account_manager_id:
-        q = q.filter(Job.account_manager_id == account_manager_id)
+    if business_head_id:
+        q = q.filter(Job.account_manager_id == business_head_id)
     if status:
         q = q.filter(Candidate.status == status)
 
@@ -51,7 +51,7 @@ def export_candidates(
 
         rows.append({
             # JD Info
-            "account_manager":      j.account_manager.name if j and j.account_manager else "—",
+            "business_head":        j.business_head.name if j and j.business_head else "—",
             "client_name":          j.client_name if j else "—",
             "job_title":            j.role_title  if j else "—",
             # Candidate basics

@@ -6,10 +6,10 @@ import api from '../api/client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface AM { id: number; name: string; email: string | null; phone: string | null; }
+interface BH { id: number; name: string; email: string | null; phone: string | null; }
 
 interface ExportRow {
-  account_manager: string;
+  business_head: string;
   client_name: string;
   job_title: string;
   job_status: string;
@@ -47,7 +47,7 @@ interface ExportRow {
 // ── Column config ──────────────────────────────────────────────────────────────
 
 const COLUMNS: { key: keyof ExportRow; label: string; width: number; group?: string }[] = [
-  { key: 'account_manager',    label: 'Account Manager',      width: 140, group: 'JD Info' },
+  { key: 'business_head',      label: 'Business Head',        width: 140, group: 'JD Info' },
   { key: 'client_name',        label: 'Client',               width: 100, group: 'JD Info' },
   { key: 'job_title',          label: 'Role',                 width: 160, group: 'JD Info' },
   { key: 'candidate_name',     label: 'Candidate Name',       width: 150, group: 'Candidate' },
@@ -105,14 +105,14 @@ const SCORE_COLOR = (s: string) => {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function Export() {
-  const [ams, setAms]               = useState<AM[]>([]);
+  const [bhs, setBhs]               = useState<BH[]>([]);
   const [rows, setRows]             = useState<ExportRow[]>([]);
   const [loading, setLoading]       = useState(false);
   const [selectedAm, setSelectedAm] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
 
   useEffect(() => {
-    api.get<AM[]>('/account-managers').then(r => setAms(r.data)).catch(() => {});
+    api.get<BH[]>('/business-heads').then(r => setBhs(r.data)).catch(() => {});
     fetchData();
   }, []);
 
@@ -120,7 +120,7 @@ export default function Export() {
     setLoading(true);
     try {
       const params: Record<string, string> = {};
-      if (amId) params.account_manager_id = amId;
+      if (amId) params.business_head_id = amId;
       if (status) params.status = status;
       const { data } = await api.get<ExportRow[]>('/export/candidates', { params });
       setRows(data);
@@ -164,14 +164,14 @@ export default function Export() {
         <Filter size={15} className="text-slate-400 flex-shrink-0" />
 
         <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">Account Manager</label>
+          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">Business Head</label>
           <select
             value={selectedAm}
             onChange={e => setSelectedAm(e.target.value)}
             className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 min-w-[160px]"
           >
             <option value="">All</option>
-            {ams.map(am => <option key={am.id} value={String(am.id)}>{am.name}</option>)}
+            {bhs.map(bh => <option key={bh.id} value={String(bh.id)}>{bh.name}</option>)}
           </select>
         </div>
 
@@ -283,8 +283,8 @@ export default function Export() {
 
             <tbody>
               {rows.map((row, ri) => {
-                const isNewAm = ri === 0 || rows[ri - 1].account_manager !== row.account_manager;
-                const isNewClient = ri === 0 || rows[ri - 1].client_name !== row.client_name || rows[ri - 1].account_manager !== row.account_manager;
+                const isNewAm = ri === 0 || rows[ri - 1].business_head !== row.business_head;
+                const isNewClient = ri === 0 || rows[ri - 1].client_name !== row.client_name || rows[ri - 1].business_head !== row.business_head;
                 return (
                   <tr
                     key={ri}
@@ -294,7 +294,7 @@ export default function Export() {
                       const val = row[col.key];
                       let bg = ri % 2 === 0 ? '#ffffff' : '#f8fafc';
                       // Highlight AM changes
-                      if (col.key === 'account_manager' && isNewAm) bg = '#dbeafe';
+                      if (col.key === 'business_head' && isNewAm) bg = '#dbeafe';
                       if (col.key === 'client_name' && isNewClient) bg = '#eff6ff';
                       // Status colour
                       if (col.key === 'candidate_status') {
@@ -316,7 +316,7 @@ export default function Export() {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             fontWeight: col.key === 'candidate_name' ? 'bold' : 'normal',
-                            color: col.key === 'account_manager' ? '#1e40af' : '#1a202c',
+                            color: col.key === 'business_head' ? '#1e40af' : '#1a202c',
                             borderLeft: ci === 0 ? '1px solid #e2e8f0' :
                               (col.key === 'candidate_name' || col.key === 'total_exp' ||
                                col.key === 'current_ctc' || col.key === 'overall_score' ||
