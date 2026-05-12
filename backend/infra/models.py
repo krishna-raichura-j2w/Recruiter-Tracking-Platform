@@ -192,6 +192,7 @@ class Job(Base):
     id           = Column(Integer, primary_key=True, index=True)
     client_name   = Column(String(120), nullable=False)
     role_title    = Column(String(200), nullable=False)
+    client_job_id = Column(String(100), nullable=True)
     skill_stack   = Column(Text)
     work_mode     = Column(SAEnum(WorkMode, native_enum=False))
     work_auth     = Column(String(50))

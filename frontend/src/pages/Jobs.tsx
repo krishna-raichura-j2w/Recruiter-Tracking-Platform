@@ -43,6 +43,7 @@ type ExtractTab = 'text' | 'image' | 'pdf';
 
 interface JobForm {
   client_name:   string;
+  client_job_id: string;
   role_title:    string;
   skill_stack:   string;
   work_mode:     string;
@@ -229,6 +230,7 @@ export default function Jobs() {
     setEditJob(job);
     reset({
       client_name:   job.client_name,
+      client_job_id: job.client_job_id ?? '',
       role_title:    job.role_title,
       skill_stack:   job.skill_stack   ?? '',
       work_mode:     job.work_mode     ?? '',
@@ -274,6 +276,7 @@ export default function Jobs() {
 
   const buildPayload = (data: JobForm) => ({
     ...data,
+    client_job_id:    data.client_job_id  || null,
     work_mode:        data.work_mode      || null,
     work_auth:        data.work_auth      || null,
     skill_stack:      data.skill_stack    || null,
@@ -835,7 +838,14 @@ export default function Jobs() {
                     {...register('role_title', { required: true })} />
                   {errors.role_title && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
-                <div className="col-span-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job ID *</label>
+                  <input type="text" placeholder="e.g. JD-2026-001"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
+                    {...register('client_job_id', { required: true })} />
+                  {errors.client_job_id && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location</label>
                   <input type="text" placeholder="e.g. Chennai, Bangalore"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
@@ -948,7 +958,14 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
     }`}>
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-bold text-slate-800 leading-snug">{job.role_title}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base font-bold text-slate-800 leading-snug">{job.role_title}</h3>
+            {job.client_job_id && (
+              <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-700 text-xs font-mono font-semibold tracking-wide flex-shrink-0">
+                {job.client_job_id}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
             <span className="font-medium text-slate-500">{job.client_name}</span>
             {job.location && (
