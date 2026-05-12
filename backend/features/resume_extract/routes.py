@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from core.deps import require_roles
 from features.resume_extract import service
@@ -15,17 +16,19 @@ async def extract_profile(
     file: UploadFile | None      = File(None),
     _=Depends(require_roles(*ALLOWED_ROLES)),
 ):
+    # PDF parsing (CPU) and the OpenAI SDK call (sync I/O) both block. Offload
+    # them so this worker can serve other requests while extraction runs.
     if file:
         data  = await file.read()
         mime  = file.content_type or ""
         if mime == "application/pdf":
-            profile, cost = service.extract_from_pdf(data)
+            profile, cost = await asyncio.to_thread(service.extract_from_pdf, data)
         elif mime in IMAGE_MIMES:
-            profile, cost = service.extract_from_image(data, mime)
+            profile, cost = await asyncio.to_thread(service.extract_from_image, data, mime)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {mime}")
     elif text and text.strip():
-        profile, cost = service.extract_from_text(text.strip())
+        profile, cost = await asyncio.to_thread(service.extract_from_text, text.strip())
     else:
         raise HTTPException(status_code=400, detail="Provide either text or a file (PDF/image)")
 

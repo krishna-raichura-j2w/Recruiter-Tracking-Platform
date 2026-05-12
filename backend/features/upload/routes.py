@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Query, HTTPException, Depends
 from core.deps import get_current_user
 from infra.s3 import upload_file, get_presigned_url
@@ -20,8 +21,10 @@ async def upload(
     if len(data) > MAX_BYTES:
         raise HTTPException(413, detail="File too large (max 15 MB)")
     ct = file.content_type or "application/octet-stream"
-    key = upload_file(data, folder, file.filename or "file", ct)
-    url = get_presigned_url(key)
+    # boto3 is sync — offload to threadpool so other requests on this worker
+    # keep flowing while S3 is being hit.
+    key = await asyncio.to_thread(upload_file, data, folder, file.filename or "file", ct)
+    url = await asyncio.to_thread(get_presigned_url, key)
     return {"key": key, "url": url}
 
 

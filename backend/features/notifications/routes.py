@@ -20,24 +20,40 @@ async def stream(token: str = Query(...)):
         raise HTTPException(status_code=401, detail="Invalid token")
     user_id = int(payload["sub"])
 
-    async def generator():
-        # Initialise last_id to current max so we only send *new* ones
-        init_db = SessionLocal()
-        try:
-            row = init_db.query(Notification.id).filter(
-                Notification.user_id == user_id
-            ).order_by(Notification.id.desc()).first()
-            last_id = row[0] if row else 0
-        finally:
-            init_db.close()
+    # The DB driver (psycopg2) is sync. Running queries directly in this async
+    # generator would block the event loop for the duration of every query — so
+    # with N connected SSE clients, all their polls would serialize on one
+    # worker. Wrapping in asyncio.to_thread runs each query on the threadpool
+    # and lets the loop service other requests in parallel.
 
+    def _initial_last_id() -> int:
+        db = SessionLocal()
+        try:
+            row = (
+                db.query(Notification.id)
+                .filter(Notification.user_id == user_id)
+                .order_by(Notification.id.desc())
+                .first()
+            )
+            return row[0] if row else 0
+        finally:
+            db.close()
+
+    def _poll(last_id: int):
+        db = SessionLocal()
+        try:
+            return service.get_new_since(db, user_id, last_id)
+        finally:
+            db.close()
+
+    async def generator():
+        last_id = await asyncio.to_thread(_initial_last_id)
         yield f"data: {json.dumps({'type': 'connected'})}\n\n"
 
         while True:
             await asyncio.sleep(5)
-            poll_db = SessionLocal()
             try:
-                new = service.get_new_since(poll_db, user_id, last_id)
+                new = await asyncio.to_thread(_poll, last_id)
                 if new:
                     last_id = new[-1]["id"]
                     for n in new:
@@ -46,8 +62,6 @@ async def stream(token: str = Query(...)):
                     yield ": ping\n\n"
             except Exception:
                 yield ": error\n\n"
-            finally:
-                poll_db.close()
 
     return StreamingResponse(
         generator(),
