@@ -31,6 +31,7 @@ from features.export.routes import router as export_router
 from features.followup.routes import router as followup_router
 from features.notifications.routes import router as notifications_router
 from features.demand_status.routes import router as demand_status_router
+from features.upload.routes import router as upload_router
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -69,6 +70,7 @@ app.include_router(export_router,           prefix="/api")
 app.include_router(followup_router,         prefix="/api")
 app.include_router(notifications_router,    prefix="/api")
 app.include_router(demand_status_router,    prefix="/api")
+app.include_router(upload_router,           prefix="/api")
 
 
 def run_migrations(db):

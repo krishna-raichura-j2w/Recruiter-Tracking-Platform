@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
 from infra.models import Client
+from infra.s3 import to_viewable_url
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -27,7 +28,9 @@ class ClientUpdate(BaseModel):
 
 
 def _out(c: Client) -> dict:
-    return {col.name: getattr(c, col.name) for col in c.__table__.columns}
+    d = {col.name: getattr(c, col.name) for col in c.__table__.columns}
+    d["logo_data"] = to_viewable_url(d.get("logo_data"))
+    return d
 
 
 @router.get("")

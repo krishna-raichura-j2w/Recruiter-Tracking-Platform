@@ -7,6 +7,7 @@ import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
+import { uploadToS3 } from '../api/upload';
 import type { Candidate, Job, User } from '../types';
 
 const EDUCATION_OPTIONS = [
@@ -66,8 +67,10 @@ export default function Candidates() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Resume upload state
-  const [resumeData, setResumeData] = useState<string | null>(null);
+  const [resumeKey, setResumeKey]   = useState<string | null>(null);  // S3 key to save
+  const [resumeUrl, setResumeUrl]   = useState<string | null>(null);  // presigned URL for preview
   const [resumeName, setResumeName] = useState('');
+  const [resumeUploading, setResumeUploading] = useState(false);
   const resumeInputRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role ?? '';
@@ -114,7 +117,8 @@ export default function Candidates() {
     setExtractFile(null);
     setExtractError('');
     setExtracted(false);
-    setResumeData(null);
+    setResumeKey(null);
+    setResumeUrl(null);
     setResumeName('');
   };
 
@@ -122,7 +126,7 @@ export default function Candidates() {
     setApiError('');
     setSubmitting(true);
     try {
-      await api.post('/candidates', { ...data, job_id: Number(data.job_id), resume_data: resumeData });
+      await api.post('/candidates', { ...data, job_id: Number(data.job_id), resume_data: resumeKey });
       closeAddModal();
       fetchCandidates();
     } catch {
@@ -132,13 +136,18 @@ export default function Candidates() {
     }
   };
 
-  const handleResumeUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      setResumeData(reader.result as string);
+  const handleResumeUpload = async (file: File) => {
+    setResumeUploading(true);
+    try {
+      const { key, url } = await uploadToS3(file, 'resumes');
+      setResumeKey(key);
+      setResumeUrl(url);
       setResumeName(file.name);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setApiError('Resume upload failed. Please try again.');
+    } finally {
+      setResumeUploading(false);
+    }
   };
 
   const handleExtract = async () => {
@@ -734,20 +743,21 @@ export default function Candidates() {
                     className="hidden"
                     onChange={(e) => { if (e.target.files?.[0]) handleResumeUpload(e.target.files[0]); }}
                   />
-                  {resumeData ? (
+                  {resumeKey ? (
                     <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-green-200 bg-green-50">
                       <FileText size={15} className="text-green-600 flex-shrink-0" />
-                      <span className="text-xs text-green-700 font-medium truncate flex-1">{resumeName}</span>
-                      <button type="button" onClick={() => { setResumeData(null); setResumeName(''); }} className="text-xs text-red-500 hover:text-red-700 font-medium flex-shrink-0">Remove</button>
+                      <a href={resumeUrl ?? '#'} target="_blank" rel="noreferrer" className="text-xs text-green-700 font-medium truncate flex-1 hover:underline">{resumeName}</a>
+                      <button type="button" onClick={() => { setResumeKey(null); setResumeUrl(null); setResumeName(''); }} className="text-xs text-red-500 hover:text-red-700 font-medium flex-shrink-0">Remove</button>
                     </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => resumeInputRef.current?.click()}
-                      className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 text-sm hover:border-blue-400 hover:text-blue-600 transition-colors justify-center"
+                      disabled={resumeUploading}
+                      className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 text-sm hover:border-blue-400 hover:text-blue-600 transition-colors justify-center disabled:opacity-60"
                     >
-                      <FileText size={14} />
-                      Upload Resume
+                      {resumeUploading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                      {resumeUploading ? 'Uploading…' : 'Upload Resume (PDF)'}
                     </button>
                   )}
                 </div>

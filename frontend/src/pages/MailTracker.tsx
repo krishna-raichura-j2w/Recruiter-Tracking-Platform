@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
-import { Mail, CheckCircle2, ShieldCheck, X, Calendar, Upload, FileText, Image } from 'lucide-react';
+import { Mail, CheckCircle2, ShieldCheck, X, Calendar, Upload, FileText, Image, ExternalLink } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
+import { uploadToS3 } from '../api/upload';
 
 interface MailRecord {
   id: number;
@@ -62,9 +63,10 @@ export default function MailTracker() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MailRecord | null>(null);
   const [exitDate, setExitDate] = useState('');
-  const [exitProof, setExitProof] = useState<string | null>(null);
-  const [proofName, setProofName] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const [exitProof, setExitProof]   = useState<string | null>(null);  // presigned URL for display
+  const [exitProofKey, setExitProofKey] = useState<string | null>(null);  // S3 key to save
+  const [proofName, setProofName]   = useState('');
+  const [uploading, setUploading]   = useState(false);
   const [updating, setUpdating] = useState(false);
   const [toast, setToast] = useState('');
   const proofInputRef = useRef<HTMLInputElement>(null);
@@ -93,18 +95,22 @@ export default function MailTracker() {
     setSelected(m);
     setExitDate(m.exit_date ?? '');
     setExitProof(m.exit_proof ?? null);
+    setExitProofKey(null);
     setProofName('');
   };
 
-  const handleProofUpload = (file: File) => {
+  const handleProofUpload = async (file: File) => {
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setExitProof(reader.result as string);
+    try {
+      const { key, url } = await uploadToS3(file, 'exit-proofs');
+      setExitProofKey(key);
+      setExitProof(url);
       setProofName(file.name);
+    } catch {
+      showToast('Upload failed. Please try again.');
+    } finally {
       setUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleUpdate = async (patch: Record<string, unknown>) => {
@@ -126,7 +132,8 @@ export default function MailTracker() {
   const handleSaveExitDetails = () => {
     const patch: Record<string, unknown> = {};
     if (exitDate) patch.exit_date = exitDate;
-    if (exitProof) patch.exit_proof = exitProof;
+    // Only send exit_proof when a new file was uploaded this session (key available)
+    if (exitProofKey) patch.exit_proof = exitProofKey;
     if (Object.keys(patch).length === 0) return;
     handleUpdate(patch);
   };
@@ -343,22 +350,24 @@ export default function MailTracker() {
                       />
                       {exitProof ? (
                         <div className="border border-slate-200 rounded-xl p-3 space-y-2">
-                          {exitProof.startsWith('data:image/') ? (
+                          {/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(exitProof.split('?')[0]) ? (
                             <img src={exitProof} alt="Exit proof" className="max-h-40 w-full rounded-lg object-contain bg-slate-50" />
                           ) : (
                             <a
                               href={exitProof}
-                              download={proofName || 'exit_proof.pdf'}
+                              target="_blank"
+                              rel="noreferrer"
                               className="flex items-center gap-2 text-blue-600 text-sm hover:underline"
                             >
                               <FileText size={14} />
-                              {proofName || 'exit_proof.pdf'}
+                              <span>{proofName || 'exit_proof.pdf'}</span>
+                              <ExternalLink size={12} className="opacity-60" />
                             </a>
                           )}
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-slate-400 truncate max-w-[140px]">{proofName}</span>
                             <button
-                              onClick={() => { setExitProof(null); setProofName(''); }}
+                              onClick={() => { setExitProof(null); setExitProofKey(null); setProofName(''); }}
                               className="text-xs text-red-500 hover:text-red-700 font-medium"
                             >
                               Remove
@@ -386,12 +395,14 @@ export default function MailTracker() {
                         <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                           <Image size={13} />
                           <span>Proof already uploaded</span>
-                          <button
-                            onClick={() => { setExitProof(selected.exit_proof!); setProofName('uploaded_proof'); }}
-                            className="text-blue-500 hover:underline"
+                          <a
+                            href={selected.exit_proof}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-500 hover:underline flex items-center gap-1"
                           >
-                            View
-                          </button>
+                            View <ExternalLink size={11} />
+                          </a>
                         </div>
                       )}
                     </div>
@@ -399,7 +410,7 @@ export default function MailTracker() {
                     {/* Save button */}
                     <button
                       onClick={handleSaveExitDetails}
-                      disabled={updating || (!exitDate && !exitProof)}
+                      disabled={updating || (!exitDate && !exitProofKey)}
                       className="w-full px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold disabled:opacity-50 hover:bg-slate-700 transition-colors"
                     >
                       {updating ? 'Saving…' : 'Save Exit Details'}

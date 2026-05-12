@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, X, Pencil, Trash2, Globe, Building2, Clock } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, Globe, Building2, Clock, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { uploadToS3 } from '../api/upload';
 
 interface ClientRecord {
   id: number;
@@ -22,9 +23,11 @@ export default function Clients() {
   const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing]     = useState<ClientRecord | null>(null);
-  const [saving, setSaving]       = useState(false);
-  const [deleting, setDeleting]   = useState<number | null>(null);
-  const [toast, setToast]         = useState('');
+  const [saving, setSaving]           = useState(false);
+  const [deleting, setDeleting]       = useState<number | null>(null);
+  const [toast, setToast]             = useState('');
+  const [logoKey, setLogoKey]         = useState<string | null>(null);  // S3 key for new upload
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const [form, setForm] = useState({
     name: '', short_name: '', website_url: '', logo_data: '', description: '',
@@ -46,41 +49,51 @@ export default function Clients() {
 
   const openAdd = () => {
     setEditing(null);
+    setLogoKey(null);
     setForm({ name: '', short_name: '', website_url: '', logo_data: '', description: '' });
     setShowModal(true);
   };
 
   const openEdit = (c: ClientRecord) => {
     setEditing(c);
+    setLogoKey(null);
     setForm({
       name:        c.name,
       short_name:  c.short_name  ?? '',
       website_url: c.website_url ?? '',
-      logo_data:   c.logo_data   ?? '',
+      logo_data:   c.logo_data   ?? '',   // presigned URL from backend
       description: c.description ?? '',
     });
     setShowModal(true);
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm(f => ({ ...f, logo_data: reader.result as string }));
-    reader.readAsDataURL(file);
+    setLogoUploading(true);
+    try {
+      const { key, url } = await uploadToS3(file, 'logos');
+      setLogoKey(key);
+      setForm(f => ({ ...f, logo_data: url }));  // url for display in the modal
+    } catch {
+      showToast('Logo upload failed.');
+    } finally {
+      setLogoUploading(false);
+    }
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) { showToast('Client name is required.'); return; }
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, string | null> = {
         name:        form.name.trim(),
         short_name:  form.short_name  || null,
         website_url: form.website_url || null,
-        logo_data:   form.logo_data   || null,
         description: form.description || null,
       };
+      // Only send logo_data when a new file was uploaded this session
+      if (logoKey) payload.logo_data = logoKey;
       if (editing) {
         await api.patch(`/clients/${editing.id}`, payload);
         showToast('Client updated.');
@@ -215,10 +228,15 @@ export default function Clients() {
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-2">Company Logo</label>
                 <div
-                  className="flex flex-col items-center justify-center gap-2 py-5 rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 cursor-pointer transition-colors"
-                  onClick={() => fileRef.current?.click()}
+                  className={`flex flex-col items-center justify-center gap-2 py-5 rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors ${logoUploading ? 'cursor-wait opacity-60' : 'cursor-pointer'}`}
+                  onClick={() => !logoUploading && fileRef.current?.click()}
                 >
-                  {form.logo_data ? (
+                  {logoUploading ? (
+                    <>
+                      <Loader2 size={24} className="text-blue-400 animate-spin" />
+                      <p className="text-sm text-slate-500">Uploading…</p>
+                    </>
+                  ) : form.logo_data ? (
                     <>
                       <img src={form.logo_data} alt="logo" className="max-h-16 max-w-48 object-contain" />
                       <p className="text-xs text-slate-400">Click to change</p>
@@ -227,7 +245,7 @@ export default function Clients() {
                     <>
                       <Building2 size={24} className="text-slate-300" />
                       <p className="text-sm text-slate-500 font-medium">Click to upload logo</p>
-                      <p className="text-xs text-slate-400">PNG, JPG, SVG — will be embedded in emails</p>
+                      <p className="text-xs text-slate-400">PNG, JPG, SVG</p>
                     </>
                   )}
                 </div>

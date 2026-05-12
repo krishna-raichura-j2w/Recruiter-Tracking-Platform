@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session, joinedload
 from infra.models import ConsultantMail, Candidate, CandidateStatus
+from infra.s3 import to_viewable_url
 
 # Statuses that are "past" ready_for_validation — don't rewind them
 _POST_VALIDATION_STATUSES = {
@@ -36,6 +37,7 @@ def _enrich(m: ConsultantMail) -> dict:
             cp = c.consultant_profile
             d["consultant_profile"] = {col.name: getattr(cp, col.name) for col in cp.__table__.columns}
     d["sent_by_name"] = m.sent_by.name if m.sent_by else None
+    d["exit_proof"] = to_viewable_url(d.get("exit_proof"))
     return d
 
 

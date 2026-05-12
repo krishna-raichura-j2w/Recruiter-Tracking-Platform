@@ -7,6 +7,7 @@ from features.candidates.schema import CandidateCreate, CandidateUpdate
 from features.candidates import service
 from features.notifications.service import push
 from infra.models import Job, Candidate, CandidateStatus, NotifType
+from infra.s3 import to_viewable_url
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
@@ -24,6 +25,7 @@ def _serialize(c):
     else:
         base["overall_score"]       = None
         base["auto_recommendation"] = None
+    base["resume_data"] = to_viewable_url(base.get("resume_data"))
     return base
 
 
