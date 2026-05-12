@@ -1,8 +1,13 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import os
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from core.database import create_tables, SessionLocal
 from core.security import hash_password
 from infra.models import User, UserRole, Job, JobStatus, WorkMode
@@ -40,7 +45,7 @@ app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0", lifespan=lifespan
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -226,6 +231,39 @@ def on_startup():
     print("J2W Tracker API is running")
 
 
-@app.get("/")
+@app.get("/api/health")
 def health():
     return {"status": "ok", "service": "J2W Recruiter Tracking API"}
+
+
+# Serve frontend build (SPA) if present. FRONTEND_DIST can override the path.
+FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", "/app/frontend_dist"))
+if FRONTEND_DIST.is_dir():
+    @app.get("/")
+    def _spa_root():
+        return FileResponse(FRONTEND_DIST / "index.html")
+
+    if (FRONTEND_DIST / "assets").is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=FRONTEND_DIST / "assets"),
+            name="assets",
+        )
+
+    @app.get("/{full_path:path}")
+    def _spa_catch_all(full_path: str):
+        # Any non-/api path: serve the file if it exists in dist, else index.html (SPA route).
+        if full_path.startswith("api/") or full_path == "api":
+            raise StarletteHTTPException(status_code=404)
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        try:
+            candidate.relative_to(FRONTEND_DIST.resolve())
+        except ValueError:
+            raise StarletteHTTPException(status_code=404)
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_DIST / "index.html")
+else:
+    @app.get("/")
+    def _root():
+        return {"status": "ok", "service": "J2W Recruiter Tracking API"}

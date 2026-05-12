@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: 'http://localhost:8000/api' });
+const api = axios.create({
+  baseURL: (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api',
+});
 
 api.interceptors.request.use((config) => {
   const stored = localStorage.getItem('j2w_auth');
