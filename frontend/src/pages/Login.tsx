@@ -214,7 +214,7 @@ export default function Login() {
           </form>
 
           {/* Seed credentials helper */}
-          <div className="mt-8 p-4 bg-slate-50 rounded-xl border border-slate-200">
+          {/* <div className="mt-8 p-4 bg-slate-50 rounded-xl border border-slate-200">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
               Demo Credentials
             </p>
@@ -236,7 +236,7 @@ export default function Login() {
                 </button>
               ))}
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
