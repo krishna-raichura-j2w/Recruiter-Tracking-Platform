@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: recruiter-tracking:latest
+    container_name: recruiter-tracking
+    restart: unless-stopped
+    env_file:
+      - ../backend/.env
+    expose:
+      - "8000"
+    networks:
+      - appnet
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: recruiter-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"        # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data     # Let's Encrypt account + certs — keep across restarts
+      - caddy_config:/config
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

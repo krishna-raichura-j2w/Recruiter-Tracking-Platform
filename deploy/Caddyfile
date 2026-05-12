@@ -1,0 +1,11 @@
+# Caddy auto-obtains and renews the Let's Encrypt certificate for this domain.
+# HTTP -> HTTPS redirect is automatic once the cert is in place.
+
+mrr-process-tracker.joulestowatts.com {
+    encode zstd gzip
+
+    reverse_proxy app:8000 {
+        # SSE / EventSource (used by features/notifications) needs streaming + no buffering.
+        flush_interval -1
+    }
+}
