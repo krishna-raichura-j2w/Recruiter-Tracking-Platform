@@ -1,6 +1,11 @@
 from datetime import datetime, timedelta
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
-from infra.models import User, UserRole, Candidate, CallLog
+from infra.models import (
+    User, UserRole,
+    Candidate, CallLog, Job, JobStatus,
+    Submission, ConsultantMail, Notification,
+)
 from core.security import hash_password
 
 
@@ -147,5 +152,177 @@ def get_user_activity(db: Session, user_id: int, date: str | None = None) -> dic
                 "outcome":     log.outcome.value if log.outcome else None,
             }
             for log in calls
+        ],
+    }
+
+
+def get_user_details(db: Session, user_id: int) -> dict | None:
+    """
+    Comprehensive admin-facing rollup for a single user. Returns identity,
+    role-relevant activity counts, and a few recent items per category so an
+    admin can see at a glance what this user has been doing.
+
+    Designed to be role-agnostic — every count is returned for every user;
+    the frontend just hides the zeroes that aren't relevant for that role.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+
+    # Manager + team size (only meaningful for recruiters & DLs respectively)
+    pod_lead_name = None
+    if user.pod_lead_id:
+        pl = db.query(User).filter(User.id == user.pod_lead_id).first()
+        pod_lead_name = pl.name if pl else None
+
+    team_size = (
+        db.query(User)
+        .filter(User.pod_lead_id == user_id, User.is_active == True)  # noqa: E712
+        .count()
+    )
+
+    # ── Job-related counts ────────────────────────────────────────────────────
+    q_jobs_created  = db.query(Job).filter(Job.created_by_id == user_id)
+    jobs_created    = q_jobs_created.count()
+    jobs_created_open = q_jobs_created.filter(Job.status == JobStatus.open).count()
+
+    jobs_as_dl      = db.query(Job).filter(Job.delivery_lead_id == user_id).count()
+    jobs_sourcing   = db.query(Job).filter(Job.assigned_sourcer_id == user_id).count()
+    jobs_calling    = db.query(Job).filter(Job.assigned_caller_id == user_id).count()
+
+    # ── Candidate / pipeline counts ───────────────────────────────────────────
+    candidates_sourced  = db.query(Candidate).filter(Candidate.sourced_by_id == user_id).count()
+    candidates_to_call  = db.query(Candidate).filter(Candidate.assigned_to_id == user_id).count()
+    candidates_validated = db.query(Candidate).filter(Candidate.assigned_validator_id == user_id).count()
+
+    calls_logged        = db.query(CallLog).filter(CallLog.caller_id == user_id).count()
+    submissions_as_dl   = db.query(Submission).filter(Submission.delivery_lead_id == user_id).count()
+    mails_sent          = db.query(ConsultantMail).filter(ConsultantMail.sent_by_id == user_id).count()
+    notifications_received = db.query(Notification).filter(Notification.user_id == user_id).count()
+    unread_notifications   = (
+        db.query(Notification)
+        .filter(Notification.user_id == user_id, Notification.is_read == False)  # noqa: E712
+        .count()
+    )
+
+    # ── Recent items (≤ 10 each) ──────────────────────────────────────────────
+    recent_jobs = (
+        db.query(Job)
+        .filter(
+            or_(
+                Job.created_by_id == user_id,
+                Job.delivery_lead_id == user_id,
+                Job.assigned_sourcer_id == user_id,
+                Job.assigned_caller_id == user_id,
+            )
+        )
+        .order_by(Job.id.desc())
+        .limit(10)
+        .all()
+    )
+
+    def _job_relation(j: Job) -> str:
+        rels = []
+        if j.created_by_id == user_id:        rels.append("created")
+        if j.delivery_lead_id == user_id:     rels.append("DL")
+        if j.assigned_sourcer_id == user_id:  rels.append("sourcer")
+        if j.assigned_caller_id == user_id:   rels.append("caller")
+        return ", ".join(rels) or "—"
+
+    recent_candidates = (
+        db.query(Candidate)
+        .options(joinedload(Candidate.job))
+        .filter(
+            or_(
+                Candidate.sourced_by_id == user_id,
+                Candidate.assigned_to_id == user_id,
+                Candidate.assigned_validator_id == user_id,
+            )
+        )
+        .order_by(Candidate.id.desc())
+        .limit(10)
+        .all()
+    )
+
+    def _candidate_relation(c: Candidate) -> str:
+        rels = []
+        if c.sourced_by_id == user_id:         rels.append("sourced")
+        if c.assigned_to_id == user_id:        rels.append("calling")
+        if c.assigned_validator_id == user_id: rels.append("validating")
+        return ", ".join(rels) or "—"
+
+    recent_calls = (
+        db.query(CallLog)
+        .options(joinedload(CallLog.candidate).joinedload(Candidate.job))
+        .filter(CallLog.caller_id == user_id)
+        .order_by(CallLog.call_date.desc())
+        .limit(10)
+        .all()
+    )
+
+    return {
+        "user": {
+            "id":                   user.id,
+            "name":                 user.name,
+            "email":                user.email,
+            "role":                 user.role.value,
+            "recruiter_type":       user.recruiter_type.value if user.recruiter_type else None,
+            "is_active":            user.is_active,
+            "pod_lead_id":          user.pod_lead_id,
+            "pod_lead_name":        pod_lead_name,
+            "must_change_password": bool(getattr(user, "must_change_password", False)),
+        },
+        "stats": {
+            # Jobs
+            "jobs_created":           jobs_created,
+            "jobs_created_open":      jobs_created_open,
+            "jobs_as_delivery_lead":  jobs_as_dl,
+            "jobs_as_primary_sourcer": jobs_sourcing,
+            "jobs_as_primary_caller": jobs_calling,
+            # People
+            "team_size":              team_size,
+            # Candidates / calls
+            "candidates_sourced":     candidates_sourced,
+            "candidates_to_call":     candidates_to_call,
+            "candidates_validated":   candidates_validated,
+            "calls_logged":           calls_logged,
+            "submissions_as_dl":      submissions_as_dl,
+            "consultant_mails_sent":  mails_sent,
+            # Inbox
+            "notifications_received": notifications_received,
+            "unread_notifications":   unread_notifications,
+        },
+        "recent_jobs": [
+            {
+                "id":          j.id,
+                "client_name": j.client_name,
+                "role_title":  j.role_title,
+                "status":      j.status.value if j.status else None,
+                "relation":    _job_relation(j),
+            }
+            for j in recent_jobs
+        ],
+        "recent_candidates": [
+            {
+                "id":          c.id,
+                "full_name":   c.full_name,
+                "status":      c.status.value if c.status else None,
+                "job_title":   c.job.role_title if c.job else None,
+                "client_name": c.job.client_name if c.job else None,
+                "relation":    _candidate_relation(c),
+            }
+            for c in recent_candidates
+        ],
+        "recent_calls": [
+            {
+                "id":              log.id,
+                "candidate_id":    log.candidate.id if log.candidate else None,
+                "candidate_name":  log.candidate.full_name if log.candidate else None,
+                "job_title":       log.candidate.job.role_title if log.candidate and log.candidate.job else None,
+                "client_name":     log.candidate.job.client_name if log.candidate and log.candidate.job else None,
+                "outcome":         log.outcome.value if log.outcome else None,
+                "call_date":       log.call_date.isoformat() if log.call_date else None,
+            }
+            for log in recent_calls
         ],
     }

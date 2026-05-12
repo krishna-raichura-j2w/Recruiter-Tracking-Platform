@@ -151,6 +151,20 @@ def get_activity(
     return service.get_user_activity(db, user_id, date)
 
 
+@router.get("/{user_id}/details")
+def get_details(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Full rollup of a user's identity + activity counts + recent items.
+    Powers the admin Users-page overlay; works for any role."""
+    data = service.get_user_details(db, user_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return data
+
+
 @router.delete("/{user_id}/pod")
 def remove_from_pod(
     user_id: int,

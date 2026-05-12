@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type ComponentType } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Plus, X, Trash2, UserPlus, UserMinus,
   RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck, KeyRound,
+  Activity, Mail, FileText, Bell, Users as UsersIcon,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +39,38 @@ const roleColors: Record<string, string> = {
 
 function getInitials(name: string): string {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
+type StatTone = 'blue' | 'green' | 'orange' | 'violet' | 'teal' | 'amber' | 'slate';
+const STAT_TONE: Record<StatTone, string> = {
+  blue:   'bg-blue-50 text-blue-700 border-blue-100',
+  green:  'bg-emerald-50 text-emerald-700 border-emerald-100',
+  orange: 'bg-orange-50 text-orange-700 border-orange-100',
+  violet: 'bg-violet-50 text-violet-700 border-violet-100',
+  teal:   'bg-teal-50 text-teal-700 border-teal-100',
+  amber:  'bg-amber-50 text-amber-700 border-amber-100',
+  slate:  'bg-slate-50 text-slate-700 border-slate-100',
+};
+
+function StatCard({
+  icon: Icon, label, value, sub, tone = 'slate',
+}: {
+  icon: ComponentType<{ size?: number }>;
+  label: string;
+  value: number | string;
+  sub?: string;
+  tone?: StatTone;
+}) {
+  return (
+    <div className={`px-3 py-2.5 rounded-xl border ${STAT_TONE[tone]}`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon size={12} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider opacity-70">{label}</span>
+      </div>
+      <p className="text-lg font-bold tabular-nums leading-none">{value}</p>
+      {sub && <p className="text-[10px] opacity-70 mt-1">{sub}</p>}
+    </div>
+  );
 }
 
 function WorkloadBar({ total, max }: { total: number; max: number }) {
@@ -104,6 +137,45 @@ export default function Users() {
   const handleDeleteAm = async (id: number) => {
     await api.delete(`/business-heads/${id}`).catch(() => {});
     fetchAms();
+  };
+
+  // ── Admin user-details overlay (works for any role) ───────────────────────
+  interface UserDetails {
+    user: {
+      id: number; name: string; email: string; role: string;
+      recruiter_type: string | null; is_active: boolean;
+      pod_lead_id: number | null; pod_lead_name: string | null;
+      must_change_password: boolean;
+    };
+    stats: {
+      jobs_created: number; jobs_created_open: number;
+      jobs_as_delivery_lead: number;
+      jobs_as_primary_sourcer: number; jobs_as_primary_caller: number;
+      team_size: number;
+      candidates_sourced: number; candidates_to_call: number; candidates_validated: number;
+      calls_logged: number; submissions_as_dl: number;
+      consultant_mails_sent: number;
+      notifications_received: number; unread_notifications: number;
+    };
+    recent_jobs: { id: number; client_name: string; role_title: string; status: string | null; relation: string }[];
+    recent_candidates: { id: number; full_name: string; status: string | null; job_title: string | null; client_name: string | null; relation: string }[];
+    recent_calls: { id: number; candidate_id: number | null; candidate_name: string | null; job_title: string | null; client_name: string | null; outcome: string | null; call_date: string | null }[];
+  }
+  const [detailsFor,    setDetailsFor]    = useState<User | null>(null);
+  const [detailsData,   setDetailsData]   = useState<UserDetails | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsTab,    setDetailsTab]    = useState<'overview' | 'jobs' | 'candidates' | 'calls'>('overview');
+
+  const openUserDetails = async (u: User) => {
+    setDetailsFor(u);
+    setDetailsData(null);
+    setDetailsTab('overview');
+    setDetailsLoading(true);
+    try {
+      const { data } = await api.get<UserDetails>(`/users/${u.id}/details`);
+      setDetailsData(data);
+    } catch { /* surfaced via empty state */ }
+    finally { setDetailsLoading(false); }
   };
 
   // ── Recruiter activity overlay ────────────────────────────────────────────
@@ -691,13 +763,17 @@ export default function Users() {
                 {users.map((u, i) => (
                   <tr key={u.id} className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i % 2 === 1 ? 'bg-slate-50/40' : ''}`}>
                     <td className="py-3.5 px-5">
-                      <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => openUserDetails(u)}
+                        className="flex items-center gap-3 group text-left"
+                        title="View full activity"
+                      >
                         <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                           style={{ backgroundColor: u.is_active ? '#3b82f6' : '#94a3b8' }}>
                           {getInitials(u.name)}
                         </div>
-                        <span className="font-semibold text-slate-800">{u.name}</span>
-                      </div>
+                        <span className="font-semibold text-slate-800 group-hover:text-blue-600 group-hover:underline">{u.name}</span>
+                      </button>
                     </td>
                     <td className="py-3.5 px-5 text-slate-500">{u.email}</td>
                     <td className="py-3.5 px-5">
@@ -879,6 +955,223 @@ export default function Users() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── User Details Overlay (admin) ────────────────────────────────── */}
+      {detailsFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDetailsFor(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden">
+
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                  style={{ backgroundColor: detailsFor.is_active ? '#3b82f6' : '#94a3b8' }}>
+                  {getInitials(detailsFor.name)}
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">{detailsFor.name}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                    <span>{detailsFor.email}</span>
+                    <span className="text-slate-300">·</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${roleColors[detailsFor.role] ?? 'bg-slate-100 text-slate-600'}`}>
+                      {ROLES.find(r => r.value === detailsFor.role)?.label ?? detailsFor.role}
+                    </span>
+                    {detailsData?.user.pod_lead_name && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span>Reports to <b className="text-slate-600">{detailsData.user.pod_lead_name}</b></span>
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setDetailsFor(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 px-6 flex-shrink-0">
+              {([
+                { key: 'overview',   label: 'Overview',   icon: Activity },
+                { key: 'jobs',       label: 'Recent Jobs',       icon: Briefcase, count: detailsData?.recent_jobs.length },
+                { key: 'candidates', label: 'Recent Candidates', icon: UsersIcon, count: detailsData?.recent_candidates.length },
+                { key: 'calls',      label: 'Recent Calls',      icon: Phone,     count: detailsData?.recent_calls.length },
+              ] as const).map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setDetailsTab(t.key)}
+                  className={`py-3 mr-5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+                    detailsTab === t.key ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <t.icon size={13} /> {t.label}
+                  {typeof t.count === 'number' && (
+                    <span className="ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{t.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {detailsLoading ? (
+                <div className="space-y-2 animate-pulse">
+                  {[...Array(6)].map((_, i) => <div key={i} className="h-14 bg-slate-100 rounded-xl" />)}
+                </div>
+              ) : !detailsData ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <p className="text-sm font-medium">Could not load details.</p>
+                </div>
+              ) : detailsTab === 'overview' ? (
+                <div className="space-y-5">
+                  {/* Identity card */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <StatCard icon={UserCheck} label="Status" value={detailsData.user.is_active ? 'Active' : 'Inactive'} tone={detailsData.user.is_active ? 'green' : 'slate'} />
+                    {detailsData.user.recruiter_type && (
+                      <StatCard icon={Briefcase} label="Recruiter Type" value={detailsData.user.recruiter_type === 'both' ? 'Sourcer & Caller' : detailsData.user.recruiter_type.charAt(0).toUpperCase() + detailsData.user.recruiter_type.slice(1)} tone="violet" />
+                    )}
+                    {detailsData.stats.team_size > 0 && (
+                      <StatCard icon={UsersIcon} label="Team Size" value={detailsData.stats.team_size} tone="orange" />
+                    )}
+                    {detailsData.user.must_change_password && (
+                      <StatCard icon={KeyRound} label="Password" value="Must reset" tone="amber" />
+                    )}
+                  </div>
+
+                  {/* Activity numbers — non-zero only */}
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Activity</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {detailsData.stats.jobs_created > 0 && (
+                        <StatCard icon={Briefcase} label="Jobs Created" value={detailsData.stats.jobs_created} sub={`${detailsData.stats.jobs_created_open} open`} tone="blue" />
+                      )}
+                      {detailsData.stats.jobs_as_delivery_lead > 0 && (
+                        <StatCard icon={Briefcase} label="Jobs as DL" value={detailsData.stats.jobs_as_delivery_lead} tone="orange" />
+                      )}
+                      {detailsData.stats.jobs_as_primary_sourcer > 0 && (
+                        <StatCard icon={Briefcase} label="Primary Sourcer On" value={detailsData.stats.jobs_as_primary_sourcer} tone="teal" />
+                      )}
+                      {detailsData.stats.jobs_as_primary_caller > 0 && (
+                        <StatCard icon={Briefcase} label="Primary Caller On" value={detailsData.stats.jobs_as_primary_caller} tone="blue" />
+                      )}
+                      {detailsData.stats.candidates_sourced > 0 && (
+                        <StatCard icon={UsersIcon} label="Candidates Sourced" value={detailsData.stats.candidates_sourced} tone="teal" />
+                      )}
+                      {detailsData.stats.candidates_to_call > 0 && (
+                        <StatCard icon={Phone} label="Candidates to Call" value={detailsData.stats.candidates_to_call} tone="blue" />
+                      )}
+                      {detailsData.stats.candidates_validated > 0 && (
+                        <StatCard icon={UserCheck} label="Candidates Validated" value={detailsData.stats.candidates_validated} tone="green" />
+                      )}
+                      {detailsData.stats.calls_logged > 0 && (
+                        <StatCard icon={Phone} label="Calls Logged" value={detailsData.stats.calls_logged} tone="blue" />
+                      )}
+                      {detailsData.stats.submissions_as_dl > 0 && (
+                        <StatCard icon={FileText} label="Submissions (as DL)" value={detailsData.stats.submissions_as_dl} tone="violet" />
+                      )}
+                      {detailsData.stats.consultant_mails_sent > 0 && (
+                        <StatCard icon={Mail} label="Consultant Mails Sent" value={detailsData.stats.consultant_mails_sent} tone="amber" />
+                      )}
+                      <StatCard
+                        icon={Bell}
+                        label="Notifications"
+                        value={detailsData.stats.notifications_received}
+                        sub={detailsData.stats.unread_notifications > 0 ? `${detailsData.stats.unread_notifications} unread` : undefined}
+                        tone="slate"
+                      />
+                    </div>
+                    {Object.values(detailsData.stats).every(v => v === 0) && (
+                      <p className="text-sm text-slate-400 text-center py-8">No activity recorded yet.</p>
+                    )}
+                  </div>
+                </div>
+              ) : detailsTab === 'jobs' ? (
+                detailsData.recent_jobs.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-8">No jobs.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {detailsData.recent_jobs.map(j => (
+                      <div key={j.id} className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm">{j.role_title}</p>
+                          <p className="text-xs text-slate-500 truncate">{j.client_name}</p>
+                        </div>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium capitalize">
+                          {(j.status ?? '').replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">
+                          {j.relation}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : detailsTab === 'candidates' ? (
+                detailsData.recent_candidates.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-8">No candidates.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {detailsData.recent_candidates.map(c => (
+                      <div key={c.id} className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                          style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
+                          {(c.full_name ?? '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm">{c.full_name}</p>
+                          <p className="text-xs text-slate-500 truncate">
+                            {c.job_title ?? '—'}
+                            {c.client_name && <><span className="mx-1 text-slate-300">@</span>{c.client_name}</>}
+                          </p>
+                        </div>
+                        {c.status && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium capitalize">
+                            {c.status.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">
+                          {c.relation}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : ( /* calls */
+                detailsData.recent_calls.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-8">No calls logged.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {detailsData.recent_calls.map(call => (
+                      <div key={call.id} className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100">
+                        <Phone size={14} className="text-slate-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm">{call.candidate_name ?? '—'}</p>
+                          <p className="text-xs text-slate-500 truncate">
+                            {call.job_title ?? '—'}
+                            {call.client_name && <><span className="mx-1 text-slate-300">@</span>{call.client_name}</>}
+                          </p>
+                        </div>
+                        {call.outcome && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium capitalize">
+                            {call.outcome.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                        {call.call_date && (
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(call.call_date).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
           </div>
         </div>
       )}
