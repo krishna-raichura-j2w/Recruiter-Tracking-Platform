@@ -61,12 +61,19 @@ if $DOCKER ps -a --format '{{.Names}}' | grep -qx "recruiter-tracking"; then
 fi
 
 # ── 2. Build app image ──────────────────────────────────────────────────────
-log "building app image"
-$COMPOSE build app
+# BUILD_NONCE busts the cache for the source-copy + build steps in the Dockerfile,
+# so frontend & backend code is always picked up. npm/pip install layers stay
+# cached because the ARG is declared *after* them.
+BUILD_NONCE="$(date +%s)"
+log "building app image (BUILD_NONCE=$BUILD_NONCE)"
+$COMPOSE build --build-arg BUILD_NONCE="$BUILD_NONCE" app
 
 # ── 3. Bring stack up ───────────────────────────────────────────────────────
+# --force-recreate ensures caddy picks up Caddyfile edits. (Bind-mounting a single
+# file pins the container to the host inode; editors that write+rename create a
+# new inode, leaving the container with the stale view. Recreating fixes that.)
 log "starting stack (app + caddy)"
-$COMPOSE up -d --remove-orphans
+$COMPOSE up -d --remove-orphans --force-recreate
 
 # ── 4. Health probe ─────────────────────────────────────────────────────────
 log "waiting for /api/health on the public domain (up to 120s — first run includes TLS issuance)"
@@ -83,6 +90,16 @@ done
 
 if [ "$ok" = "https" ]; then
   log "deploy OK — https://${DOMAIN}/"
+
+  log "removing old recruiter-tracking image tags (keeping :latest)"
+  $DOCKER images recruiter-tracking --format '{{.Repository}}:{{.Tag}}' \
+    | grep -v ':latest$' \
+    | while read -r old_tag; do
+        $DOCKER image rm "$old_tag" >/dev/null 2>&1 || true
+      done
+
+  log "pruning dangling images from previous builds"
+  $DOCKER image prune -f 2>&1 | tail -1 || true
   exit 0
 fi
 

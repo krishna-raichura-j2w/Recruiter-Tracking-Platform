@@ -4,15 +4,20 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /fe
 
-# Install deps with the lockfile for reproducible builds
+# Install deps with the lockfile for reproducible builds (this layer caches)
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
+
+# BUILD_NONCE is passed by deploy.sh on every deploy. Declaring it here means
+# every layer below this line is re-evaluated, so frontend source changes are
+# always picked up even if Docker would otherwise hit a stale COPY cache.
+# (npm ci above stays cached because the ARG is declared *after* it.)
+ARG BUILD_NONCE=0
 
 # Copy sources and build. .env.production sets VITE_API_BASE_URL=/api so the
 # bundle calls the backend on the same origin.
 # We run vite directly instead of `npm run build` to skip the `tsc -b` step,
 # since the repo currently has pre-existing TS errors unrelated to bundling.
-# Type-check locally with `npm run build` when you want it.
 COPY frontend/ ./
 RUN npx vite build
 
@@ -54,6 +59,10 @@ RUN pip install --upgrade pip \
         "requests>=2.33.1" \
         "sqlalchemy>=2.0.49" \
         "uvicorn[standard]>=0.46.0"
+
+# Same cache-busting nonce in stage 2 so backend source updates always land.
+# (pip install above stays cached because the ARG is declared *after* it.)
+ARG BUILD_NONCE=0
 
 # Copy backend source
 COPY backend/ ./
