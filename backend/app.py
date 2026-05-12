@@ -25,8 +25,18 @@ from features.account_managers.routes import router as business_heads_router
 from features.export.routes import router as export_router
 from features.followup.routes import router as followup_router
 from features.notifications.routes import router as notifications_router
+from features.demand_status.routes import router as demand_status_router
 
-app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0")
+from contextlib import asynccontextmanager
+from features.tasks import scheduler as task_scheduler
+
+@asynccontextmanager
+async def lifespan(app_):
+    task_scheduler.start()
+    yield
+    task_scheduler.stop()
+
+app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,6 +63,7 @@ app.include_router(business_heads_router,   prefix="/api")
 app.include_router(export_router,           prefix="/api")
 app.include_router(followup_router,         prefix="/api")
 app.include_router(notifications_router,    prefix="/api")
+app.include_router(demand_status_router,    prefix="/api")
 
 
 def run_migrations(db):
@@ -138,6 +149,12 @@ def run_migrations(db):
     _run("ALTER TABLE consultant_mails ADD COLUMN IF NOT EXISTS exit_proof TEXT")
     _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_data TEXT")
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_deadline TIMESTAMP WITH TIME ZONE")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_deadline TIMESTAMP WITH TIME ZONE")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_warned BOOLEAN DEFAULT FALSE")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_alerted BOOLEAN DEFAULT FALSE")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_warned BOOLEAN DEFAULT FALSE")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_alerted BOOLEAN DEFAULT FALSE")
 
 
 def seed_data(db):

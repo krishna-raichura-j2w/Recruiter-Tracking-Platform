@@ -82,6 +82,8 @@ def create_job(
 class AssignJDBody(BaseModel):
     sourcer_ids: list[int]
     caller_ids: list[int]
+    sourcing_deadline: str | None = None
+    calling_deadline: str | None = None
 
 
 @router.post("/{job_id}/confirm")
@@ -93,6 +95,7 @@ def confirm_jd(
 ):
     """Delivery Lead reviews JD, assigns sourcer + caller, sets status = open."""
     import json
+    from datetime import datetime
     job = service.get_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -103,6 +106,23 @@ def confirm_jd(
     job.assigned_caller_id  = body.caller_ids[0]  if body.caller_ids  else None
     job.delivery_lead_id    = current_user.id
     job.status              = JobStatus.open
+
+    def _parse_dt(s: str | None):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    if body.sourcing_deadline is not None:
+        job.sourcing_deadline = _parse_dt(body.sourcing_deadline)
+        job.sourcing_warned   = False
+        job.sourcing_alerted  = False
+    if body.calling_deadline is not None:
+        job.calling_deadline  = _parse_dt(body.calling_deadline)
+        job.calling_warned    = False
+        job.calling_alerted   = False
 
     # Notify assigned sourcers
     for uid in body.sourcer_ids:

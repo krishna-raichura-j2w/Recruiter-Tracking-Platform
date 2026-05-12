@@ -130,6 +130,8 @@ export default function Jobs() {
   const [selectedCallers,  setSelectedCallers]  = useState<number[]>([]);
   const [confirming, setConfirming]         = useState(false);
   const [confirmError, setConfirmError]     = useState('');
+  const [sourcingDeadline, setSourcingDeadline] = useState('');
+  const [callingDeadline,  setCallingDeadline]  = useState('');
 
   const isAdmin        = user?.role === 'admin';
   const isKam      = user?.role === 'kam';
@@ -186,10 +188,14 @@ export default function Jobs() {
     setConfirming(true); setConfirmError('');
     try {
       await api.post(`/jobs/${confirmJob.id}/confirm`, {
-        sourcer_ids: selectedSourcers,
-        caller_ids:  selectedCallers,
+        sourcer_ids:       selectedSourcers,
+        caller_ids:        selectedCallers,
+        sourcing_deadline: sourcingDeadline || null,
+        calling_deadline:  callingDeadline  || null,
       });
       setConfirmJob(null);
+      setSourcingDeadline('');
+      setCallingDeadline('');
       fetchJobs();
     } catch {
       setConfirmError('Failed to confirm JD. Please try again.');
@@ -549,6 +555,32 @@ export default function Jobs() {
                 loadLabel="candidates"
                 onToggle={(id) => toggleSelect(id, selectedCallers, setSelectedCallers)}
               />
+
+              {/* Task deadlines */}
+              <div className="border border-amber-100 bg-amber-50 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Task Deadlines (optional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Sourcing Deadline</label>
+                    <input
+                      type="datetime-local"
+                      value={sourcingDeadline}
+                      onChange={(e) => setSourcingDeadline(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Calling Deadline</label>
+                    <input
+                      type="datetime-local"
+                      value={callingDeadline}
+                      onChange={(e) => setCallingDeadline(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-amber-600 opacity-80">Recruiters get a 15-min warning + overdue alert if not completed in time.</p>
+              </div>
 
               {confirmError && (
                 <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-xl px-3 py-2">{confirmError}</p>
@@ -1075,7 +1107,54 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
           )}
         </span>
       </div>
+
+      {/* Task deadlines */}
+      {(job.sourcing_deadline || job.calling_deadline) && (
+        <div className="mt-2 pt-2 border-t border-slate-50 flex flex-wrap gap-3">
+          {job.sourcing_deadline && (
+            <DeadlinePill label="Sourcing" deadline={job.sourcing_deadline} color="teal" />
+          )}
+          {job.calling_deadline && (
+            <DeadlinePill label="Calling" deadline={job.calling_deadline} color="blue" />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function DeadlinePill({ label, deadline, color }: { label: string; deadline: string; color: 'teal' | 'blue' }) {
+  const dt = new Date(deadline);
+  const now = new Date();
+  const diffMs = dt.getTime() - now.getTime();
+  const isOverdue = diffMs < 0;
+  const minutesLeft = Math.floor(diffMs / 60000);
+  const hoursLeft = Math.floor(minutesLeft / 60);
+  const daysLeft = Math.floor(hoursLeft / 24);
+
+  let timeLabel = '';
+  if (isOverdue) {
+    timeLabel = 'Overdue';
+  } else if (minutesLeft < 60) {
+    timeLabel = `${minutesLeft}m left`;
+  } else if (hoursLeft < 24) {
+    timeLabel = `${hoursLeft}h left`;
+  } else {
+    timeLabel = `${daysLeft}d left`;
+  }
+
+  const baseColors = {
+    teal: isOverdue ? 'bg-red-100 text-red-700 border-red-200' : minutesLeft < 60 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-teal-100 text-teal-700 border-teal-200',
+    blue: isOverdue ? 'bg-red-100 text-red-700 border-red-200' : minutesLeft < 60 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-blue-100 text-blue-700 border-blue-200',
+  };
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${baseColors[color]}`}>
+      <Clock size={11} />
+      {label}: {isOverdue ? '⚠ ' : ''}{timeLabel}
+      <span className="opacity-60">·</span>
+      {dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+    </span>
   );
 }
 

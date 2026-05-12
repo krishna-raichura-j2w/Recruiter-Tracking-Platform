@@ -211,6 +211,13 @@ class Job(Base):
     delivery_lead_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
     account_manager_id   = Column(Integer, ForeignKey("account_managers.id"), nullable=True)
     deadline             = Column(DateTime, nullable=True)
+    sourcing_deadline    = Column(DateTime, nullable=True)
+    calling_deadline     = Column(DateTime, nullable=True)
+    # Flags to prevent duplicate scheduler alerts
+    sourcing_warned      = Column(Boolean, default=False)   # 15-min warning sent
+    sourcing_alerted     = Column(Boolean, default=False)   # overdue alert sent
+    calling_warned       = Column(Boolean, default=False)
+    calling_alerted      = Column(Boolean, default=False)
     created_by_id        = Column(Integer, ForeignKey("users.id"))
     created_at           = Column(DateTime, default=now_utc)
     updated_at           = Column(DateTime, default=now_utc, onupdate=now_utc)

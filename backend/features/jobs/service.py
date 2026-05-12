@@ -26,6 +26,12 @@ def _job_dict(db: Session, job: Job) -> dict:
         u = db.query(UserModel).filter(UserModel.id == cid).first()
         if u: caller_names.append(u.name)
     d["caller_names"] = caller_names
+
+    # Serialize DateTime fields to ISO strings
+    for dt_field in ("deadline", "sourcing_deadline", "calling_deadline", "created_at", "updated_at"):
+        v = d.get(dt_field)
+        if hasattr(v, "isoformat"):
+            d[dt_field] = v.isoformat()
     return d
 
 

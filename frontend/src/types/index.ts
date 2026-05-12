@@ -73,6 +73,8 @@ export interface Job {
   business_head_id: number | null;
   business_head_name: string | null;
   deadline: string | null;
+  sourcing_deadline: string | null;
+  calling_deadline: string | null;
   created_by_id: number | null;
   created_at: string | null;
   updated_at: string | null;
@@ -301,6 +303,25 @@ export interface Notification {
   notif_type: string;
   is_read: boolean;
   created_at: string;
+}
+
+export interface DemandStatusRow {
+  company_name: string | null;
+  demand_id: number;
+  last_demand_id: number | null;
+  job_title_name: string | null;
+  no_of_positions: number | null;
+  created_by_account_manager_id: number | null;
+  account_manager_name: string | null;
+  delivery_lead: string | null;
+  recruiter: string | null;
+}
+
+export interface DemandStatusResponse {
+  month: number;
+  year: number;
+  total: number;
+  data: DemandStatusRow[];
 }
 
 export interface DashboardData {

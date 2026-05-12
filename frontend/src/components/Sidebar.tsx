@@ -14,6 +14,7 @@ import {
   Building2,
   BarChart2,
   GitBranch,
+  TrendingUp,
 } from 'lucide-react';
 
 interface NavItem {
@@ -33,6 +34,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Mail Tracker',        path: '/mail-tracker',   icon: <Mail size={18} /> },
     { label: 'Recruiter Story',     path: '/followup',       icon: <GitBranch size={18} /> },
     { label: 'Clients',             path: '/clients',        icon: <Building2 size={18} /> },
+    { label: 'Demand Status',        path: '/demand-status',  icon: <TrendingUp size={18} /> },
     { label: 'Export / Reports',    path: '/export',         icon: <BarChart2 size={18} /> },
     { label: 'Users',               path: '/users',          icon: <UserCheck size={18} /> },
   ],
@@ -42,6 +44,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Submit to Client',   path: '/submissions', icon: <Send size={18} /> },
     { label: 'Interview Tracking', path: '/pipeline',    icon: <Activity size={18} /> },
     { label: 'Clients',            path: '/clients',     icon: <Building2 size={18} /> },
+    { label: 'Demand Status',      path: '/demand-status',icon: <TrendingUp size={18} /> },
     { label: 'Export / Reports',   path: '/export',      icon: <BarChart2 size={18} /> },
   ],
   delivery_lead: [
@@ -55,6 +58,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Mail Tracker',       path: '/mail-tracker', icon: <Mail size={18} /> },
     { label: 'Recruiter Story',    path: '/followup',     icon: <GitBranch size={18} /> },
     { label: 'Clients',            path: '/clients',      icon: <Building2 size={18} /> },
+    { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={18} /> },
     { label: 'Export / Reports',   path: '/export',       icon: <BarChart2 size={18} /> },
   ],
   recruiter: [

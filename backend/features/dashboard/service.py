@@ -87,14 +87,18 @@ def get_dashboard(db: Session, user_id: int, role: str) -> dict:
     }
 
 
-def get_notifications(db: Session, user_id: int) -> list:
+def get_notifications(db: Session, user_id: int) -> dict:
     notifs = db.query(Notification).filter(
         Notification.user_id == user_id
     ).order_by(Notification.created_at.desc()).limit(50).all()
-    return [
-        {col.name: getattr(n, col.name) for col in n.__table__.columns}
-        for n in notifs
-    ]
+    rows = []
+    for n in notifs:
+        d = {col.name: getattr(n, col.name) for col in n.__table__.columns}
+        if d.get("created_at") and hasattr(d["created_at"], "isoformat"):
+            d["created_at"] = d["created_at"].isoformat()
+        rows.append(d)
+    unread = sum(1 for r in rows if not r["is_read"])
+    return {"notifications": rows, "unread_count": unread}
 
 
 def mark_read(db: Session, notif_id: int, user_id: int):
