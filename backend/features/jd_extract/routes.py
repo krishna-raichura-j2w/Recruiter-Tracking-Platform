@@ -8,6 +8,10 @@ router = APIRouter(prefix="/jd-extract", tags=["jd-extract"])
 
 ALLOWED_ROLES = ("admin", "kam")
 IMAGE_MIMES   = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+DOCX_MIMES    = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+}
 
 
 @router.post("", response_model=JDExtractResponse)
@@ -16,13 +20,16 @@ async def extract_jd(
     file: UploadFile | None = File(None),
     _=Depends(require_roles(*ALLOWED_ROLES)),
 ):
-    # PDF parsing (CPU) and the OpenAI SDK call (sync I/O) both block. Offload
+    # PDF/DOCX parsing (CPU) and the OpenAI SDK call (sync I/O) both block. Offload
     # them so this worker can serve other requests while extraction runs.
     if file:
         data = await file.read()
         mime = file.content_type or ""
-        if mime == "application/pdf":
+        fname = (file.filename or "").lower()
+        if mime == "application/pdf" or fname.endswith(".pdf"):
             parsed, cost, raw_text = await asyncio.to_thread(service.extract_from_pdf, data)
+        elif mime in DOCX_MIMES or fname.endswith((".docx", ".doc")):
+            parsed, cost, raw_text = await asyncio.to_thread(service.extract_from_docx, data)
         elif mime in IMAGE_MIMES:
             parsed, cost, raw_text = await asyncio.to_thread(service.extract_from_image, data, mime)
         else:

@@ -3,6 +3,7 @@ import io
 import json
 import os
 
+from docx import Document
 from openai import AzureOpenAI
 from pypdf import PdfReader
 
@@ -98,6 +99,11 @@ def _pdf_to_text(pdf_bytes: bytes) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages).strip()
 
 
+def _docx_to_text(docx_bytes: bytes) -> str:
+    doc = Document(io.BytesIO(docx_bytes))
+    return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+
+
 def extract_from_text(text: str) -> tuple[ParsedJD, dict, str]:
     parsed, cost = _call_azure([{"type": "text", "text": text}])
     return parsed, cost, text
@@ -107,6 +113,14 @@ def extract_from_pdf(pdf_bytes: bytes) -> tuple[ParsedJD, dict, str]:
     text = _pdf_to_text(pdf_bytes)
     if not text:
         raise ValueError("Could not extract text from PDF")
+    parsed, cost = _call_azure([{"type": "text", "text": text}])
+    return parsed, cost, text
+
+
+def extract_from_docx(docx_bytes: bytes) -> tuple[ParsedJD, dict, str]:
+    text = _docx_to_text(docx_bytes)
+    if not text:
+        raise ValueError("Could not extract text from Word document")
     parsed, cost = _call_azure([{"type": "text", "text": text}])
     return parsed, cost, text
 

@@ -366,7 +366,7 @@ export default function Jobs() {
   const EXTRACT_TABS: { id: ExtractTab; label: string; icon: React.ReactNode }[] = [
     { id: 'text',  label: 'Paste Text',   icon: <AlignLeft size={13} /> },
     { id: 'image', label: 'Upload Image', icon: <Image size={13} /> },
-    { id: 'pdf',   label: 'Upload PDF',   icon: <FileText size={13} /> },
+    { id: 'pdf',   label: 'Upload PDF / Word',   icon: <FileText size={13} /> },
   ];
 
   return (
@@ -702,13 +702,13 @@ export default function Jobs() {
                         {extractTab === 'pdf' ? <FileText size={18} className="text-slate-400" /> : <Image size={18} className="text-slate-400" />}
                       </div>
                       <p className="text-sm text-slate-500 font-medium">
-                        Click to select {extractTab === 'pdf' ? 'a PDF file' : 'an image'}
+                        Click to select {extractTab === 'pdf' ? 'a PDF or Word file' : 'an image'}
                       </p>
-                      <p className="text-xs text-slate-400">{extractTab === 'pdf' ? '.pdf' : 'JPG, PNG, WebP, GIF'}</p>
+                      <p className="text-xs text-slate-400">{extractTab === 'pdf' ? '.pdf, .docx, .doc' : 'JPG, PNG, WebP, GIF'}</p>
                     </>
                   )}
                   <input ref={fileInputRef} type="file" className="hidden"
-                    accept={extractTab === 'pdf' ? '.pdf,application/pdf' : 'image/jpeg,image/png,image/webp,image/gif'}
+                    accept={extractTab === 'pdf' ? '.pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword' : 'image/jpeg,image/png,image/webp,image/gif'}
                     onChange={(e) => { setExtractFile(e.target.files?.[0] ?? null); setExtractError(''); }}
                   />
                 </div>

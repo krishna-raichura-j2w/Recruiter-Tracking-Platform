@@ -249,7 +249,7 @@ export default function Candidates() {
   const TAB_CONFIG: { id: ExtractTab; label: string; icon: React.ReactNode }[] = [
     { id: 'text', label: 'Paste Text', icon: <AlignLeft size={14} /> },
     { id: 'image', label: 'Upload Image', icon: <Image size={14} /> },
-    { id: 'pdf', label: 'Upload PDF', icon: <FileText size={14} /> },
+    { id: 'pdf', label: 'Upload PDF / Word', icon: <FileText size={14} /> },
   ];
 
   const pageTitle = isRecruiter
@@ -573,10 +573,10 @@ export default function Candidates() {
                           {extractTab === 'pdf' ? <FileText size={18} className="text-slate-400" /> : <Image size={18} className="text-slate-400" />}
                         </div>
                         <p className="text-sm text-slate-500 font-medium">
-                          Click to select {extractTab === 'pdf' ? 'a PDF file' : 'an image'}
+                          Click to select {extractTab === 'pdf' ? 'a PDF or Word file' : 'an image'}
                         </p>
                         <p className="text-xs text-slate-400">
-                          {extractTab === 'pdf' ? '.pdf' : 'JPG, PNG, WebP, GIF'}
+                          {extractTab === 'pdf' ? '.pdf, .docx, .doc' : 'JPG, PNG, WebP, GIF'}
                         </p>
                       </>
                     )}
@@ -584,7 +584,7 @@ export default function Candidates() {
                       ref={fileInputRef}
                       type="file"
                       className="hidden"
-                      accept={extractTab === 'pdf' ? '.pdf,application/pdf' : 'image/jpeg,image/png,image/webp,image/gif'}
+                      accept={extractTab === 'pdf' ? '.pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword' : 'image/jpeg,image/png,image/webp,image/gif'}
                       onChange={(e) => {
                         setExtractFile(e.target.files?.[0] ?? null);
                         setExtractError('');
@@ -735,11 +735,11 @@ export default function Candidates() {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF / Word)</label>
                   <input
                     type="file"
                     ref={resumeInputRef}
-                    accept="application/pdf"
+                    accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
                     className="hidden"
                     onChange={(e) => { if (e.target.files?.[0]) handleResumeUpload(e.target.files[0]); }}
                   />
