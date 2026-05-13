@@ -327,7 +327,7 @@ class Assessment(Base):
     full_name_confirmed = Column(String(200))
     email_verified      = Column(String(200))
     alt_phone           = Column(String(20))
-    linkedin_verified   = Column(String(10))
+    linkedin_verified   = Column(String(500))
     total_exp           = Column(Float)
     relevant_exp        = Column(Float)
     qualification       = Column(String(100))

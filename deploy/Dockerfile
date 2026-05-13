@@ -37,28 +37,13 @@ RUN apt-get update \
         build-essential libpq-dev curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first (better layer caching)
+# Install Python dependencies from pyproject.toml (single source of truth).
+# Adding a dep in backend/pyproject.toml is enough — no Dockerfile edits needed.
+# This layer is cached on the pyproject.toml hash, so it only rebuilds when deps change.
 COPY backend/pyproject.toml ./pyproject.toml
 RUN pip install --upgrade pip \
- && pip install \
-        "apscheduler>=3.11.2" \
-        "asyncpg>=0.31.0" \
-        "bcrypt>=5.0.0" \
-        "boto3>=1.43.6" \
-        "fastapi>=0.136.1" \
-        "openai>=2.35.1" \
-        "passlib>=1.7.4" \
-        "psycopg2-binary>=2.9.12" \
-        "pydantic-settings>=2.14.0" \
-        "pydantic[email]>=2.13.4" \
-        "pymysql>=1.1.3" \
-        "pypdf>=6.10.2" \
-        "python-dotenv>=1.2.2" \
-        "python-jose[cryptography]>=3.5.0" \
-        "python-multipart>=0.0.27" \
-        "requests>=2.33.1" \
-        "sqlalchemy>=2.0.49" \
-        "uvicorn[standard]>=0.46.0"
+ && python -c 'import tomllib; print("\n".join(tomllib.load(open("pyproject.toml","rb"))["project"]["dependencies"]))' > /tmp/requirements.txt \
+ && pip install -r /tmp/requirements.txt
 
 # Same cache-busting nonce in stage 2 so backend source updates always land.
 # (pip install above stays cached because the ARG is declared *after* it.)
