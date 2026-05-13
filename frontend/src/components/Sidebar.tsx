@@ -15,6 +15,7 @@ import {
   BarChart2,
   GitBranch,
   TrendingUp,
+  Settings,
 } from 'lucide-react';
 
 interface NavItem {
@@ -37,6 +38,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Demand Status',        path: '/demand-status',  icon: <TrendingUp size={18} /> },
     { label: 'Export / Reports',    path: '/export',         icon: <BarChart2 size={18} /> },
     { label: 'Users',               path: '/users',          icon: <UserCheck size={18} /> },
+    { label: 'Form Builder',        path: '/form-builder',   icon: <Settings size={18} /> },
   ],
   kam: [
     { label: 'Dashboard',          path: '/dashboard',   icon: <LayoutDashboard size={18} /> },

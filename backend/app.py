@@ -32,6 +32,7 @@ from features.followup.routes import router as followup_router
 from features.notifications.routes import router as notifications_router
 from features.demand_status.routes import router as demand_status_router
 from features.upload.routes import router as upload_router
+from features.form_config.routes import router as form_config_router, init_form_templates
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -71,6 +72,7 @@ app.include_router(followup_router,         prefix="/api")
 app.include_router(notifications_router,    prefix="/api")
 app.include_router(demand_status_router,    prefix="/api")
 app.include_router(upload_router,           prefix="/api")
+app.include_router(form_config_router,      prefix="/api")
 
 
 def run_migrations(db):
@@ -231,6 +233,7 @@ def on_startup():
         seed_data(db)
     finally:
         db.close()
+    init_form_templates()
     print("J2W Tracker API is running")
 
 
