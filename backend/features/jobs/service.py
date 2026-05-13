@@ -1,6 +1,6 @@
 import json
 from sqlalchemy.orm import Session
-from infra.models import Job, Candidate, User
+from infra.models import Job, JobStatus, Candidate, User
 
 
 def _job_dict(db: Session, job: Job) -> dict:
@@ -49,14 +49,38 @@ def list_jobs(
         q = q.filter(Job.created_by_id == created_by_id)
     if delivery_lead_id is not None:
         q = q.filter(Job.delivery_lead_id == delivery_lead_id)
-    if assigned_sourcer_id is not None:
-        q = q.filter(Job.assigned_sourcer_id == assigned_sourcer_id)
     jobs = q.order_by(Job.created_at.desc()).all()
+
+    if assigned_sourcer_id is not None:
+        # A recruiter sees the JD if they appear in sourcer_ids OR caller_ids
+        # (both are JSON arrays) OR as the primary assigned_sourcer/caller.
+        uid = assigned_sourcer_id
+        filtered = []
+        for job in jobs:
+            sourcer_ids = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
+            caller_ids  = json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
+            if (
+                uid in sourcer_ids
+                or uid in caller_ids
+                or job.assigned_sourcer_id == uid
+                or job.assigned_caller_id  == uid
+            ):
+                filtered.append(job)
+        jobs = filtered
+
     return [_job_dict(db, j) for j in jobs]
 
 
 def get_job(db: Session, job_id: int) -> Job | None:
     return db.query(Job).filter(Job.id == job_id).first()
+
+
+def is_job_id_taken(db: Session, client_job_id: str, exclude_job_id: int | None = None) -> bool:
+    """Return True if client_job_id is already used by another job."""
+    q = db.query(Job).filter(Job.client_job_id == client_job_id)
+    if exclude_job_id:
+        q = q.filter(Job.id != exclude_job_id)
+    return q.first() is not None
 
 
 def create_job(db: Session, data: dict, created_by_id: int) -> Job:
@@ -65,6 +89,20 @@ def create_job(db: Session, data: dict, created_by_id: int) -> Job:
     db.commit()
     db.refresh(job)
     return job
+
+
+def delete_job(db: Session, job_id: int, created_by_id: int) -> bool:
+    """Delete a pending_review job created by this KAM. Returns False if not found/not allowed."""
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.created_by_id == created_by_id,
+        Job.status == JobStatus.pending_review,
+    ).first()
+    if not job:
+        return False
+    db.delete(job)
+    db.commit()
+    return True
 
 
 def update_job(db: Session, job_id: int, data: dict) -> Job | None:

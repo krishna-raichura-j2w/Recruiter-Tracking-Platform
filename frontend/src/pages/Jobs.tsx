@@ -7,7 +7,7 @@ import {
   Loader2, MapPin, Users, Briefcase, ChevronRight,
   BookOpen, Clock, DollarSign, GraduationCap,
   Phone, Lock, Unlock, Pencil, Search, Calendar,
-  UserCheck,
+  UserCheck, Trash2,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -303,7 +303,13 @@ export default function Jobs() {
   });
 
   const onSubmit = async (data: JobForm) => {
-    setApiError(''); setSubmitting(true);
+    setApiError('');
+    // DL is mandatory for new JDs created by KAM
+    if (!editJob && isKam && !selectedDeliveryLeadId) {
+      setApiError('Please select a Delivery Lead before creating a JD.');
+      return;
+    }
+    setSubmitting(true);
     try {
       if (editJob) {
         await api.patch(`/jobs/${editJob.id}`, buildPayload(data));
@@ -311,8 +317,9 @@ export default function Jobs() {
         await api.post('/jobs', buildPayload(data));
       }
       closeModal(); fetchJobs();
-    } catch {
-      setApiError(editJob ? 'Failed to update job.' : 'Failed to create job.');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setApiError(msg || (editJob ? 'Failed to update job.' : 'Failed to create job.'));
     } finally {
       setSubmitting(false);
     }
@@ -518,6 +525,16 @@ export default function Jobs() {
               onToggleStatus={handleToggleStatus}
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
+              onDelete={async () => {
+                if (!confirm(`Delete JD "${job.role_title}" (${job.client_job_id ?? ''})? This cannot be undone.`)) return;
+                try {
+                  await api.delete(`/jobs/${job.id}`);
+                  fetchJobs();
+                } catch (e: unknown) {
+                  const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                  alert(msg || 'Delete failed.');
+                }
+              }}
               toggling={togglingJobId === job.id}
             />
           ))}
@@ -770,8 +787,8 @@ export default function Jobs() {
                     </div>
                   )}
                   {!selectedDeliveryLeadId && (
-                    <p className="text-xs text-slate-400 mt-1.5">
-                      If not selected, the JD will appear in all delivery leads' queues for review.
+                    <p className="text-xs text-red-500 mt-1.5 font-medium">
+                      ⚠ Delivery Lead is required — please select one above.
                     </p>
                   )}
                 </div>
@@ -835,7 +852,7 @@ export default function Jobs() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Work Mode</label>
-                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('work_mode')}>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('work_mode', { required: true })}>
                     <option value="">Select</option>
                     {WORK_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
@@ -891,28 +908,32 @@ export default function Jobs() {
                   {errors.demand_exclusivity && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location *</label>
                   <input type="text" placeholder="e.g. Chennai, Bangalore"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('location')} />
+                    {...register('location', { required: true })} />
+                  {errors.location && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Skill Stack</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Skill Stack *</label>
                   <input type="text" placeholder="e.g. React, TypeScript, Node.js"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('skill_stack')} />
+                    {...register('skill_stack', { required: true })} />
+                  {errors.skill_stack && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Min Exp (yrs)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Min Exp (yrs) *</label>
                   <input type="number" min={0} placeholder="e.g. 2"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('min_experience')} />
+                    {...register('min_experience', { required: true })} />
+                  {errors.min_experience && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Max Exp (yrs)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Max Exp (yrs) *</label>
                   <input type="number" min={0} placeholder="e.g. 5"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('max_experience')} />
+                    {...register('max_experience', { required: true })} />
+                  {errors.max_experience && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Headcount *</label>
@@ -975,10 +996,11 @@ interface JobCardProps {
   onToggleStatus: (job: Job) => void;
   onEdit: () => void;
   onConfirm: () => void;
+  onDelete: () => void;
   toggling: boolean;
 }
 
-function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const skills = job.skill_stack
@@ -1067,6 +1089,16 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-all"
             >
               <UserCheck size={13} /> Review & Assign
+            </button>
+          )}
+          {/* KAM: delete pending JD */}
+          {isKam && job.status === 'pending_review' && (
+            <button
+              onClick={onDelete}
+              title="Delete this JD"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 text-xs font-semibold text-red-600 hover:bg-red-100 transition-all"
+            >
+              <Trash2 size={13} /> Delete
             </button>
           )}
           {/* Pod lead or DL: edit */}
