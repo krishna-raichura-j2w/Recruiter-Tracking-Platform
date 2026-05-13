@@ -517,6 +517,7 @@ export default function Jobs() {
               key={job.id}
               job={job}
               isRecruiter={isRecruiter}
+              isAdmin={isAdmin}
               isKam={isKam}
               isDeliveryLead={isDeliveryLead}
               canToggle={canToggle}
@@ -988,6 +989,7 @@ export default function Jobs() {
 interface JobCardProps {
   job: Job;
   isRecruiter: boolean;
+  isAdmin: boolean;
   isKam: boolean;
   isDeliveryLead: boolean;
   canToggle: boolean;
@@ -1000,7 +1002,7 @@ interface JobCardProps {
   toggling: boolean;
 }
 
-function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const skills = job.skill_stack
@@ -1091,8 +1093,8 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
               <UserCheck size={13} /> Review & Assign
             </button>
           )}
-          {/* KAM: delete pending JD */}
-          {isKam && job.status === 'pending_review' && (
+          {/* Admin: delete any JD. KAM: delete own pending JDs only */}
+          {(isAdmin || (isKam && job.status === 'pending_review')) && (
             <button
               onClick={onDelete}
               title="Delete this JD"
@@ -1101,8 +1103,8 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
               <Trash2 size={13} /> Delete
             </button>
           )}
-          {/* Pod lead or DL: edit */}
-          {(isKam || isDeliveryLead) && (
+          {/* Admin, KAM, DL: edit */}
+          {(isAdmin || isKam || isDeliveryLead) && (
             <button
               onClick={onEdit}
               title="Edit this job"
