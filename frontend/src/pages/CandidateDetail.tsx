@@ -121,7 +121,6 @@ const CALL_DURATION_OPTS = [
   { v: 'l1_other_client', l: 'L1 Other Client' },
 ];
 
-const EXP_RANGES = ['< 1 yr', '1–2 yrs', '2–3 yrs', '3–5 yrs', '5–8 yrs', '8–12 yrs', '12–15 yrs', '15+ yrs'];
 const QUALIFICATION_OPTS = ['B.Tech / BE', 'M.Tech / ME', 'BCA', 'MCA', 'B.Sc', 'M.Sc', 'B.Com', 'MBA', 'Diploma', 'PhD', 'Other'];
 const TENURE_OPTS = ['< 6 months', '6–12 months', '1–2 yrs', '2–3 yrs', '3–5 yrs', '5+ yrs'];
 const NOTICE_OPTS = [
@@ -332,7 +331,6 @@ export default function CandidateDetail() {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
-  const [submittingAssessment, setSubmittingAssessment] = useState(false);
   const [validationLoading, setValidationLoading] = useState(false);
   const [showEmailOverlay, setShowEmailOverlay] = useState(false);
   const [mailSending, setMailSending] = useState(false);
@@ -504,8 +502,7 @@ export default function CandidateDetail() {
 
   const handleSave = async (submit: boolean) => {
     if (!id) return;
-    const isSaving = submit ? setSubmittingAssessment : setSavingDraft;
-    isSaving(true);
+    setSavingDraft(true);
     try {
       // Log the call if outcome is selected
       if (callOutcome) {
@@ -520,7 +517,7 @@ export default function CandidateDetail() {
     } catch {
       showMsg('Error saving.');
     } finally {
-      isSaving(false);
+      setSavingDraft(false);
     }
   };
 
@@ -877,8 +874,8 @@ export default function CandidateDetail() {
                       <InputField label="Verify Email" register={assessmentForm.register('email_verified')} placeholder={candidate.email ?? ''} />
                       <InputField label="Alternate Number" register={assessmentForm.register('alt_phone')} placeholder={candidate.mobile ?? ''} />
                       <InputField label="Verify / Update LinkedIn" register={assessmentForm.register('linkedin_verified')} placeholder={candidate.linkedin_url ?? 'N/A'} />
-                      <SelectField label="Total Experience" options={EXP_RANGES} register={assessmentForm.register('total_exp')} />
-                      <SelectField label="Relevant Experience" options={EXP_RANGES} register={assessmentForm.register('relevant_exp')} />
+                      <InputField label="Total Experience (yrs)" type="number" register={assessmentForm.register('total_exp')} placeholder="e.g. 5 or 8.5" />
+                      <InputField label="Relevant Experience (yrs)" type="number" register={assessmentForm.register('relevant_exp')} placeholder="e.g. 3 or 4.5" />
                       <SelectField label="Highest Qualification" options={QUALIFICATION_OPTS} register={assessmentForm.register('qualification')} />
                       <InputField label="Last Company" register={assessmentForm.register('last_company')} />
                       <SelectField label="Last Tenure" options={TENURE_OPTS} register={assessmentForm.register('last_tenure')} />
@@ -1491,7 +1488,7 @@ export default function CandidateDetail() {
           )}
 
           {/* SECTION 4: CONSULTANT EMAIL DETAILS */}
-          {isValidator && (
+          {(isValidator || isRecruiter) && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
               <SectionHeader color="bg-green-700" title="Consultant Email Details" />
               <form onSubmit={(e) => e.preventDefault()} className="p-5">
@@ -1543,8 +1540,8 @@ export default function CandidateDetail() {
             </div>
           )}
 
-          {/* Read-only consultant profile for non-validators */}
-          {!isValidator && candidate.consultant_profile && (
+          {/* Read-only consultant profile for roles that can't edit it */}
+          {(!isValidator && !isRecruiter) && candidate.consultant_profile && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
               <SectionHeader color="bg-green-700" title="Consultant Email Details" />
               <FieldGrid>
@@ -1582,7 +1579,7 @@ export default function CandidateDetail() {
           ? `https://www.${candidate.client_name.toLowerCase().replace(/\s+/g, '')}.com`
           : '—';
 
-        const v = (s: string | number | null | undefined) => s ?? '—';
+        const v = (s: string | number | null | undefined): string => s != null ? String(s) : '—';
         const rows: [string, string, string, string][] = [
           ['Name',                         v(candidate.full_name),                         'Phone',                    v(candidate.mobile)],
           ['Email ID',                     v(candidate.email),                             'Alternate no',             v(a?.alt_phone)],

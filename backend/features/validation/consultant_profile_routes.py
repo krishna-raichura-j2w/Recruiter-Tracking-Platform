@@ -7,7 +7,7 @@ from infra.models import ConsultantProfile, Candidate, isofy_datetimes
 
 router = APIRouter(prefix="/consultant-profile", tags=["consultant-profile"])
 
-ALLOWED = ("delivery_lead", "admin")
+ALLOWED = ("delivery_lead", "admin", "recruiter")
 
 
 class ConsultantProfileUpsert(BaseModel):
