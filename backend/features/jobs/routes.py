@@ -23,33 +23,36 @@ def list_jobs(
     assigned_sourcer_id: int | None = None
     delivery_lead_id: int | None = None
 
-    if role == "kam":  # KAM sees only jobs they created
-        # Pod lead sees only jobs they created
+    if role == "kam":
+        # KAM sees only the JDs they uploaded
         created_by_id = current_user.id
 
     elif role == "delivery_lead":
-        # DL sees pending + their confirmed jobs
-        if current_user.pod_lead_id:
-            # DL is under a pod — see jobs from that pod
-            created_by_id = current_user.pod_lead_id
-        # else admin-level DL: see all
+        # DL sees only jobs explicitly assigned to them — no cross-DL visibility
+        delivery_lead_id = current_user.id
 
     elif role == "recruiter":
         assigned_sourcer_id = current_user.id
 
     return service.list_jobs(db, status,
                              created_by_id=created_by_id,
+                             delivery_lead_id=delivery_lead_id,
                              assigned_sourcer_id=assigned_sourcer_id)
 
 
 @router.get("/{job_id}")
 def get_job(
     job_id: int,
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    db: Session  = Depends(get_db),
+    current_user = Depends(get_current_user),
 ):
     job = service.get_job(db, job_id)
     if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    role = current_user.role.value
+    if role == "delivery_lead" and job.delivery_lead_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if role == "kam" and job.created_by_id != current_user.id:
         raise HTTPException(status_code=404, detail="Job not found")
     return service._job_dict(db, job)
 

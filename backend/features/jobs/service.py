@@ -39,6 +39,7 @@ def list_jobs(
     db: Session,
     status: str | None = None,
     created_by_id: int | None = None,
+    delivery_lead_id: int | None = None,
     assigned_sourcer_id: int | None = None,
 ) -> list:
     q = db.query(Job)
@@ -46,6 +47,8 @@ def list_jobs(
         q = q.filter(Job.status == status)
     if created_by_id is not None:
         q = q.filter(Job.created_by_id == created_by_id)
+    if delivery_lead_id is not None:
+        q = q.filter(Job.delivery_lead_id == delivery_lead_id)
     if assigned_sourcer_id is not None:
         q = q.filter(Job.assigned_sourcer_id == assigned_sourcer_id)
     jobs = q.order_by(Job.created_at.desc()).all()

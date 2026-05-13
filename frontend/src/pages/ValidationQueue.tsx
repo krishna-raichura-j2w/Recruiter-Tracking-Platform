@@ -357,6 +357,47 @@ export default function ValidationQueue() {
                   {/* ── RIGHT COLUMN ── */}
                   <div className="space-y-5">
 
+                    {/* Consultant Profile */}
+                    {fullCandidate.consultant_profile && (
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Consultant Profile</p>
+                        <div className="bg-slate-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                          {([
+                            ['Resignation Accepted', fullCandidate.consultant_profile.resignation_acceptance],
+                            ['KT Status', fullCandidate.consultant_profile.replacement_kt_status],
+                            ['Personal Laptop', fullCandidate.consultant_profile.personal_laptop],
+                            ['Payroll', fullCandidate.consultant_profile.payroll],
+                            ['Current Work Location', fullCandidate.consultant_profile.current_work_location],
+                            ['Client Work Location', fullCandidate.consultant_profile.client_work_location],
+                            ['Work Timings', fullCandidate.consultant_profile.current_work_timings],
+                            ['Notice Negotiable Upto', fullCandidate.consultant_profile.notice_negotiable_upto],
+                            ['Offers Pipeline', fullCandidate.consultant_profile.offers_pipeline],
+                            ['Interview Pipeline', fullCandidate.consultant_profile.interview_pipeline],
+                            ['Date of Birth', fullCandidate.consultant_profile.dob],
+                            ['Telephonic Availability', fullCandidate.consultant_profile.telephonic_availability],
+                            ['IDE Installed', fullCandidate.consultant_profile.ide_installed],
+                            ['WiFi / Data', fullCandidate.consultant_profile.wifi_connectivity],
+                            ['Marital Status', fullCandidate.consultant_profile.marital_status],
+                            ['Health Issues', fullCandidate.consultant_profile.health_issues],
+                            ['Planned Leaves', fullCandidate.consultant_profile.planned_leaves],
+                            ['Interview Avail (2 days)', fullCandidate.consultant_profile.interview_availability_2d],
+                            ['Upcoming Travel', fullCandidate.consultant_profile.upcoming_travel],
+                          ] as [string, string | null | undefined][]).filter(([, v]) => v != null && v !== '').map(([label, value]) => (
+                            <div key={label}>
+                              <span className="text-slate-400">{label}</span>
+                              <p className="font-semibold text-slate-700">{String(value)}</p>
+                            </div>
+                          ))}
+                          {fullCandidate.consultant_profile.role_responsibilities && (
+                            <div className="col-span-2">
+                              <span className="text-slate-400">Role Responsibilities</span>
+                              <p className="font-semibold text-slate-700 whitespace-pre-line">{String(fullCandidate.consultant_profile.role_responsibilities)}</p>
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    )}
+
                     {/* Score bars */}
                     {selectedItem.assessment ? (
                       <section>

@@ -33,8 +33,8 @@ def pending_queue(
     current_user = Depends(require_roles(*VALIDATORS)),
 ):
     role = current_user.role.value
-    if role == "delivery_lead" and current_user.pod_lead_id:
-        # DL in a pod: only see candidates assigned to them
+    if role == "delivery_lead":
+        # Each DL only sees candidates explicitly assigned to them as validator
         candidates = service.list_pending_for_validator(db, current_user.id)
     else:
         candidates = service.list_pending(db)

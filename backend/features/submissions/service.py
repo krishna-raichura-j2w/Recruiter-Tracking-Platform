@@ -110,8 +110,12 @@ def _load(db: Session):
     )
 
 
-def list_validated_candidates(db: Session, kam_id: int | None = None) -> list:
-    """Candidates validated by DL, not yet submitted. KAM sees only their JDs."""
+def list_validated_candidates(
+    db: Session,
+    kam_id: int | None = None,
+    dl_id: int | None = None,
+) -> list:
+    """Candidates validated, not yet submitted. KAM/DL each see only their own JDs."""
     q = db.query(Candidate).options(
         joinedload(Candidate.job),
         joinedload(Candidate.assessment),
@@ -124,8 +128,9 @@ def list_validated_candidates(db: Session, kam_id: int | None = None) -> list:
     for c in candidates:
         if c.submission:
             continue
-        # KAM filter: only show candidates for JDs created by this KAM
         if kam_id and c.job and c.job.created_by_id != kam_id:
+            continue
+        if dl_id and c.job and c.job.delivery_lead_id != dl_id:
             continue
         item = {col.name: getattr(c, col.name) for col in c.__table__.columns}
         item["job_title"]        = c.job.role_title if c.job else None
@@ -145,11 +150,19 @@ def list_validated_candidates(db: Session, kam_id: int | None = None) -> list:
     return result
 
 
-def list_submissions(db: Session, kam_id: int | None = None, closed: bool = False) -> list:
+def list_submissions(
+    db: Session,
+    kam_id: int | None = None,
+    dl_id: int | None = None,
+    closed: bool = False,
+) -> list:
     subs = _load(db).order_by(Submission.updated_at.desc()).all()
     if kam_id:
         subs = [s for s in subs if s.candidate and s.candidate.job and
                 s.candidate.job.created_by_id == kam_id]
+    if dl_id:
+        subs = [s for s in subs if s.candidate and s.candidate.job and
+                s.candidate.job.delivery_lead_id == dl_id]
     if closed:
         subs = [s for s in subs if s.current_stage in TERMINAL_STAGES]
     else:

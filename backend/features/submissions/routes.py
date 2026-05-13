@@ -16,9 +16,10 @@ def ready_to_submit(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*ALLOWED)),
 ):
-    """KAM sees validated candidates for JDs they manage; DL/admin sees all."""
-    kam_id = current_user.id if current_user.role.value == "kam" else None
-    return service.list_validated_candidates(db, kam_id=kam_id)
+    role = current_user.role.value
+    kam_id = current_user.id if role == "kam" else None
+    dl_id  = current_user.id if role == "delivery_lead" else None
+    return service.list_validated_candidates(db, kam_id=kam_id, dl_id=dl_id)
 
 
 @router.get("")
@@ -27,9 +28,10 @@ def list_submissions(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*ALLOWED, "recruiter")),
 ):
-    role = current_user.role.value
+    role   = current_user.role.value
     kam_id = current_user.id if role == "kam" else None
-    return service.list_submissions(db, kam_id=kam_id, closed=closed)
+    dl_id  = current_user.id if role == "delivery_lead" else None
+    return service.list_submissions(db, kam_id=kam_id, dl_id=dl_id, closed=closed)
 
 
 @router.post("")

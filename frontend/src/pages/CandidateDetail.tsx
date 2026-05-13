@@ -608,10 +608,11 @@ export default function CandidateDetail() {
   };
 
   const handleMarkMailSent = async () => {
-    if (!candidate) return;
+    if (!candidate || candidate.mail_sent) return;
     setMailSending(true);
     try {
       await api.post('/mails', { candidate_id: candidate.id });
+      setCandidate(prev => prev ? { ...prev, mail_sent: true } : prev);
       showMsg('Mail marked as sent!');
       setShowEmailOverlay(false);
     } catch {
@@ -1663,8 +1664,6 @@ ${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 
                           navigator.clipboard.writeText(generateEmailText(candidate))
                         );
                         setEmailCopied(true);
-                        // Auto-mark mail as sent on copy
-                        handleMarkMailSent();
                       }}
                       className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
                         emailCopied
@@ -1688,12 +1687,12 @@ ${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 
                     </button>
                     <button
                       type="button"
-                      disabled={mailSending || emailCopied}
+                      disabled={mailSending || candidate.mail_sent}
                       onClick={handleMarkMailSent}
                       className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-60 hover:opacity-90 transition-opacity"
-                      style={{ backgroundColor: '#059669' }}
+                      style={{ backgroundColor: candidate.mail_sent ? '#6b7280' : '#059669' }}
                     >
-                      {mailSending ? 'Recording…' : '✉️ Confirm Mail Sent'}
+                      {mailSending ? 'Recording…' : candidate.mail_sent ? '✓ Mail Already Sent' : '✉️ Confirm Mail Sent'}
                     </button>
                   </>
                 )}
