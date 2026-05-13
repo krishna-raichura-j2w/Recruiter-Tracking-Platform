@@ -685,7 +685,7 @@ export default function CandidateDetail() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={candidate.status} />
-          {candidate.overall_score !== null && (
+          {candidate.overall_score != null && (
             <span className={`px-3 py-1 rounded-full text-sm font-bold ${candidate.overall_score >= 4 ? 'bg-green-100 text-green-700' : candidate.overall_score >= 3.25 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
               {candidate.overall_score.toFixed(2)} / 5.0
             </span>

@@ -451,7 +451,7 @@ export default function Candidates() {
                     <td className="py-3.5 px-5"><StatusBadge status={c.status} /></td>
 
                     <td className="py-3.5 px-5 text-center">
-                      {c.overall_score !== null ? (
+                      {c.overall_score != null ? (
                         <span className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold ${
                           c.overall_score >= 4 ? 'bg-green-100 text-green-700'
                           : c.overall_score >= 3.25 ? 'bg-amber-100 text-amber-700'
@@ -876,7 +876,7 @@ export default function Candidates() {
                           <p className="text-xs text-slate-400 truncate">{c.job_title} · {c.client_name}</p>
                           <div className="flex items-center gap-2 mt-1.5">
                             <StatusBadge status={c.status} />
-                            {c.overall_score !== null && (
+                            {c.overall_score != null && (
                               <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
                                 c.overall_score >= 4 ? 'bg-green-100 text-green-700'
                                 : c.overall_score >= 3.25 ? 'bg-amber-100 text-amber-700'

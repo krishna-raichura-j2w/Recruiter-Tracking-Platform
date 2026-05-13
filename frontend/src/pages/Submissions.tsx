@@ -45,7 +45,7 @@ function fmtDate(d: string | null) {
 }
 
 function ScorePill({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-slate-300 text-xs">—</span>;
+  if (score == null) return <span className="text-slate-300 text-xs">—</span>;
   const color =
     score >= 4 ? 'bg-green-100 text-green-700'
     : score >= 3.25 ? 'bg-amber-100 text-amber-700'
