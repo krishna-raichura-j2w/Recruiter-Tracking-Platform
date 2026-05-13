@@ -51,6 +51,9 @@ export interface Job {
   client_name: string;
   role_title: string;
   client_job_id: string | null;
+  demand_source: string | null;
+  demand_type: string | null;
+  demand_exclusivity: string | null;
   skill_stack: string | null;
   work_mode: string | null;
   work_auth: string | null;

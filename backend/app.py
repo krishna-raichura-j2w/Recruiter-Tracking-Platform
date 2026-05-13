@@ -165,6 +165,9 @@ def run_migrations(db):
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_warned BOOLEAN DEFAULT FALSE")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_alerted BOOLEAN DEFAULT FALSE")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_job_id VARCHAR(100)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_source VARCHAR(80)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_type VARCHAR(50)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_exclusivity VARCHAR(50)")
 
 
 def seed_data(db):

@@ -93,6 +93,42 @@ _DEFAULTS: dict[str, dict] = {
             },
         ],
     },
+    "jd_upload": {
+        "form_name": "jd_upload",
+        "label":     "JD Upload (KAM)",
+        "sections": [
+            {
+                "id": "demand_info",
+                "label": "Demand Information",
+                "order": 0,
+                "fields": [
+                    {"id":"client_name",        "label":"Client *",           "type":"text",  "required":True, "visible":True,"db_column":"client_name",        "options":[],"placeholder":"e.g. Infosys"},
+                    {"id":"client_job_id",      "label":"Job ID *",           "type":"text",  "required":True, "visible":True,"db_column":"client_job_id",      "options":[],"placeholder":"e.g. JD-2026-001"},
+                    {"id":"demand_source",      "label":"Demand Source *",    "type":"select","required":True, "visible":True,"db_column":"demand_source",      "options":["Customer Tool","Email","WhatsApp","Phone Call","Portal","Referral","Other"],"placeholder":""},
+                    {"id":"demand_type",        "label":"Demand Type *",      "type":"select","required":True, "visible":True,"db_column":"demand_type",        "options":["New","Backfill","Replacement"],"placeholder":""},
+                    {"id":"demand_exclusivity", "label":"Exclusivity *",      "type":"select","required":True, "visible":True,"db_column":"demand_exclusivity", "options":["Exclusive","Open"],"placeholder":""},
+                ],
+            },
+            {
+                "id": "job_details",
+                "label": "Job Details",
+                "order": 1,
+                "fields": [
+                    {"id":"role_title",    "label":"Role Title *",      "type":"text",  "required":True, "visible":True,"db_column":"role_title",    "options":[],"placeholder":"e.g. Senior Software Engineer"},
+                    {"id":"work_mode",     "label":"Work Mode",         "type":"select","required":False,"visible":True,"db_column":"work_mode",     "options":["Remote","Onsite","Hybrid (2 days)","Hybrid (3 days)","Flexible"],"placeholder":""},
+                    {"id":"location",      "label":"Location",          "type":"text",  "required":False,"visible":True,"db_column":"location",      "options":[],"placeholder":"e.g. Bangalore, Chennai"},
+                    {"id":"skill_stack",   "label":"Skill Stack",       "type":"text",  "required":False,"visible":True,"db_column":"skill_stack",   "options":[],"placeholder":"e.g. React, TypeScript"},
+                    {"id":"min_experience","label":"Min Experience (yrs)","type":"number","required":False,"visible":True,"db_column":"min_experience","options":[],"placeholder":"e.g. 3"},
+                    {"id":"max_experience","label":"Max Experience (yrs)","type":"number","required":False,"visible":True,"db_column":"max_experience","options":[],"placeholder":"e.g. 8"},
+                    {"id":"headcount",     "label":"Headcount *",       "type":"number","required":True, "visible":True,"db_column":"headcount",     "options":[],"placeholder":"e.g. 2"},
+                    {"id":"salary_range",  "label":"Salary Range",      "type":"text",  "required":False,"visible":True,"db_column":"salary_range",  "options":[],"placeholder":"e.g. 15–25 LPA"},
+                    {"id":"work_auth",     "label":"Work Authorization", "type":"text",  "required":False,"visible":True,"db_column":"work_auth",     "options":[],"placeholder":""},
+                    {"id":"deadline",      "label":"Deadline",          "type":"date",  "required":False,"visible":True,"db_column":"deadline",      "options":[],"placeholder":""},
+                    {"id":"jd_summary",    "label":"JD Summary",        "type":"textarea","required":False,"visible":True,"db_column":"jd_summary",  "options":[],"placeholder":"Brief summary of the role"},
+                ],
+            },
+        ],
+    },
     "interview_tracking": {
         "form_name": "interview_tracking",
         "label":     "Interview Tracking",

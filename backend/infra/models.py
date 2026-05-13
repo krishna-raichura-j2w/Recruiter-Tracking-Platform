@@ -192,8 +192,11 @@ class Job(Base):
     id           = Column(Integer, primary_key=True, index=True)
     client_name   = Column(String(120), nullable=False)
     role_title    = Column(String(200), nullable=False)
-    client_job_id = Column(String(100), nullable=True)
-    skill_stack   = Column(Text)
+    client_job_id      = Column(String(100), nullable=True)
+    demand_source      = Column(String(80),  nullable=True)   # Customer Tool / Other
+    demand_type        = Column(String(50),  nullable=True)   # New / Backfill / Replacement
+    demand_exclusivity = Column(String(50),  nullable=True)   # Exclusive / Open
+    skill_stack        = Column(Text)
     work_mode     = Column(SAEnum(WorkMode, native_enum=False))
     work_auth     = Column(String(50))
     headcount     = Column(Integer, default=1)

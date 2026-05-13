@@ -42,9 +42,12 @@ type JobStatus  = 'all' | 'pending_review' | 'open' | 'on_hold' | 'closed';
 type ExtractTab = 'text' | 'image' | 'pdf';
 
 interface JobForm {
-  client_name:   string;
-  client_job_id: string;
-  role_title:    string;
+  client_name:        string;
+  client_job_id:      string;
+  demand_source:      string;
+  demand_type:        string;
+  demand_exclusivity: string;
+  role_title:         string;
   skill_stack:   string;
   work_mode:     string;
   work_auth:     string;
@@ -229,9 +232,12 @@ export default function Jobs() {
   const openEditModal = (job: Job) => {
     setEditJob(job);
     reset({
-      client_name:   job.client_name,
-      client_job_id: job.client_job_id ?? '',
-      role_title:    job.role_title,
+      client_name:        job.client_name,
+      client_job_id:      job.client_job_id      ?? '',
+      demand_source:      job.demand_source      ?? '',
+      demand_type:        job.demand_type        ?? '',
+      demand_exclusivity: job.demand_exclusivity ?? '',
+      role_title:         job.role_title,
       skill_stack:   job.skill_stack   ?? '',
       work_mode:     job.work_mode     ?? '',
       work_auth:     job.work_auth     ?? '',
@@ -276,8 +282,11 @@ export default function Jobs() {
 
   const buildPayload = (data: JobForm) => ({
     ...data,
-    client_job_id:    data.client_job_id  || null,
-    work_mode:        data.work_mode      || null,
+    client_job_id:      data.client_job_id      || null,
+    demand_source:      data.demand_source      || null,
+    demand_type:        data.demand_type        || null,
+    demand_exclusivity: data.demand_exclusivity || null,
+    work_mode:          data.work_mode          || null,
     work_auth:        data.work_auth      || null,
     skill_stack:      data.skill_stack    || null,
     location:         data.location       || null,
@@ -846,6 +855,42 @@ export default function Jobs() {
                   {errors.client_job_id && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Demand Source *</label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('demand_source', { required: true })}>
+                    <option value="">Select source…</option>
+                    {['Customer Tool', 'Email', 'WhatsApp', 'Phone Call', 'Portal', 'Referral', 'Other'].map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                  {errors.demand_source && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Demand Type *</label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('demand_type', { required: true })}>
+                    <option value="">Select type…</option>
+                    {['New', 'Backfill', 'Replacement'].map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                  {errors.demand_type && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Exclusivity *</label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('demand_exclusivity', { required: true })}>
+                    <option value="">Select…</option>
+                    {['Exclusive', 'Open'].map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                  {errors.demand_exclusivity && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location</label>
                   <input type="text" placeholder="e.g. Chennai, Bangalore"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
@@ -1075,6 +1120,19 @@ function JobCard({ job, isRecruiter, isKam, isDeliveryLead, canToggle, onViewCan
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[job.status] ?? 'bg-slate-100 text-slate-500'}`}>
           {job.status === 'pending_review' ? 'Pending Review' : job.status === 'on_hold' ? 'On Hold' : job.status.charAt(0).toUpperCase() + job.status.slice(1)}
         </span>
+        {job.demand_type && (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{job.demand_type}</span>
+        )}
+        {job.demand_exclusivity && (
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${job.demand_exclusivity === 'Exclusive' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+            {job.demand_exclusivity}
+          </span>
+        )}
+        {job.demand_source && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+            via {job.demand_source}
+          </span>
+        )}
         {job.salary_range && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{job.salary_range}</span>
         )}

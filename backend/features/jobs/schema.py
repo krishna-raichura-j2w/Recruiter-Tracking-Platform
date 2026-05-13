@@ -6,6 +6,9 @@ class JobCreate(BaseModel):
     client_name: str
     role_title: str
     client_job_id: str | None = None
+    demand_source: str | None = None
+    demand_type: str | None = None
+    demand_exclusivity: str | None = None
     skill_stack: str | None = None
     work_mode: WorkMode | None = None
     work_auth: str | None = None
@@ -27,6 +30,9 @@ class JobCreate(BaseModel):
 class JobUpdate(BaseModel):
     role_title: str | None = None
     client_job_id: str | None = None
+    demand_source: str | None = None
+    demand_type: str | None = None
+    demand_exclusivity: str | None = None
     skill_stack: str | None = None
     work_mode: WorkMode | None = None
     work_auth: str | None = None
