@@ -1264,6 +1264,33 @@ export default function CandidateDetail() {
                     <button
                       type="button"
                       onClick={async () => {
+                        // Save assessment draft first so the email table has up-to-date data
+                        try {
+                          const data = assessmentForm.getValues();
+                          const body = {
+                            ...data,
+                            candidate_id: Number(id),
+                            submit_for_review: false,
+                            total_exp: Number(data.total_exp) || null,
+                            relevant_exp: Number(data.relevant_exp) || null,
+                            notice_period_weeks: Number(data.notice_period_weeks) || null,
+                            current_ctc: Number(data.current_ctc) || null,
+                            expected_ctc: Number(data.expected_ctc) || null,
+                            comm_score: scoreValues['comm_score'] || null,
+                            self_art_score: scoreValues['self_art_score'] || null,
+                            role_art_score: scoreValues['role_art_score'] || null,
+                            resume_skill_score: scoreValues['resume_skill_score'] || null,
+                            tech_qa_score: scoreValues['tech_qa_score'] || null,
+                            paraphrase_score: scoreValues['paraphrase_score'] || null,
+                            confidence_score: scoreValues['confidence_score'] || null,
+                            gut_score: scoreValues['gut_score'] || null,
+                            red_flags: JSON.stringify(data.red_flags ?? []),
+                          };
+                          const res = await api.post('/calls/assessment', body);
+                          // Patch candidate.assessment so the email table shows live data
+                          setCandidate(prev => prev ? { ...prev, assessment: res.data } : prev);
+                        } catch { /* proceed anyway — email opens with whatever is in state */ }
+
                         setShowEmailOverlay(true);
                         // Fetch client profile + job skills for the template
                         try {
