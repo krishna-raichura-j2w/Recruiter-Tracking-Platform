@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, joinedload
 from infra.models import (
-    Submission, SubmissionTimeline, Candidate, CandidateStatus, InterviewStage
+    Submission, SubmissionTimeline, Candidate, CandidateStatus, InterviewStage,
+    to_iso_utc, isofy_datetimes,
 )
 
 TERMINAL_STAGES = {
@@ -43,6 +44,7 @@ STAGE_LABELS = {
 
 def _enrich(s: Submission) -> dict:
     base = {col.name: getattr(s, col.name) for col in s.__table__.columns}
+    isofy_datetimes(base)
     c = s.candidate
     if c:
         base["candidate_name"]   = c.full_name
@@ -81,7 +83,7 @@ def _timeline_row(t: SubmissionTimeline) -> dict:
         "feedback":       t.feedback,
         "note":           t.note,
         "updated_by":     t.updated_by.name if t.updated_by else None,
-        "created_at":     t.created_at.isoformat() if t.created_at else None,
+        "created_at":     to_iso_utc(t.created_at),
     }
 
 
@@ -133,6 +135,7 @@ def list_validated_candidates(
         if dl_id and c.job and c.job.delivery_lead_id != dl_id:
             continue
         item = {col.name: getattr(c, col.name) for col in c.__table__.columns}
+        isofy_datetimes(item)
         item["job_title"]        = c.job.role_title if c.job else None
         item["client_name"]      = c.job.client_name if c.job else None
         item["assigned_to_name"] = c.assigned_to.name if c.assigned_to else None

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from infra.models import Candidate, Job, Submission, CandidateStatus, User, Notification
+from infra.models import Candidate, Job, Submission, CandidateStatus, User, Notification, isofy_datetimes
 
 
 PIPELINE_STAGES = [
@@ -94,8 +94,7 @@ def get_notifications(db: Session, user_id: int) -> dict:
     rows = []
     for n in notifs:
         d = {col.name: getattr(n, col.name) for col in n.__table__.columns}
-        if d.get("created_at") and hasattr(d["created_at"], "isoformat"):
-            d["created_at"] = d["created_at"].isoformat()
+        isofy_datetimes(d)
         rows.append(d)
     unread = sum(1 for r in rows if not r["is_read"])
     return {"notifications": rows, "unread_count": unread}

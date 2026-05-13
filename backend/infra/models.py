@@ -12,6 +12,29 @@ def now_utc():
     return datetime.now(timezone.utc)
 
 
+def to_iso_utc(dt):
+    """Serialize a datetime as an ISO 8601 string with explicit UTC offset.
+
+    Why: model columns use `DateTime` (not `DateTime(timezone=True)`), so Postgres
+    drops tzinfo on read and `.isoformat()` then emits a naive string that JS
+    `new Date()` interprets as *local* time — shifting all timestamps by the
+    viewer's UTC offset. Defaults are written as UTC, so treat naives as UTC.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def isofy_datetimes(d: dict) -> dict:
+    """In-place: convert every datetime value in `d` to a UTC-aware ISO string."""
+    for k, v in d.items():
+        if isinstance(v, datetime):
+            d[k] = to_iso_utc(v)
+    return d
+
+
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
 class UserRole(str, enum.Enum):

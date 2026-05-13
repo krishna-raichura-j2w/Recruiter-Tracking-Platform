@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session, joinedload
-from infra.models import ConsultantMail, Candidate, CandidateStatus
+from infra.models import ConsultantMail, Candidate, CandidateStatus, to_iso_utc, isofy_datetimes
 from infra.s3 import to_viewable_url
 
 # Statuses that are "past" ready_for_validation — don't rewind them
@@ -18,9 +18,10 @@ _POST_VALIDATION_STATUSES = {
 def _enrich(m: ConsultantMail) -> dict:
     c = m.candidate
     d = {col.name: getattr(m, col.name) for col in m.__table__.columns}
-    d["sent_at"] = m.sent_at.isoformat() if m.sent_at else None
-    d["acknowledgement_at"] = m.acknowledgement_at.isoformat() if m.acknowledgement_at else None
-    d["dl_verified_at"] = m.dl_verified_at.isoformat() if m.dl_verified_at else None
+    isofy_datetimes(d)
+    d["sent_at"] = to_iso_utc(m.sent_at)
+    d["acknowledgement_at"] = to_iso_utc(m.acknowledgement_at)
+    d["dl_verified_at"] = to_iso_utc(m.dl_verified_at)
     if c:
         d["candidate_name"] = c.full_name
         d["candidate_mobile"] = c.mobile
@@ -32,10 +33,10 @@ def _enrich(m: ConsultantMail) -> dict:
         d["consultant_profile"] = None
         if c.assessment:
             a = c.assessment
-            d["assessment"] = {col.name: getattr(a, col.name) for col in a.__table__.columns}
+            d["assessment"] = isofy_datetimes({col.name: getattr(a, col.name) for col in a.__table__.columns})
         if c.consultant_profile:
             cp = c.consultant_profile
-            d["consultant_profile"] = {col.name: getattr(cp, col.name) for col in cp.__table__.columns}
+            d["consultant_profile"] = isofy_datetimes({col.name: getattr(cp, col.name) for col in cp.__table__.columns})
     d["sent_by_name"] = m.sent_by.name if m.sent_by else None
     d["exit_proof"] = to_viewable_url(d.get("exit_proof"))
     return d

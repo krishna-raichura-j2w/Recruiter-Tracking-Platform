@@ -6,7 +6,7 @@ from core.deps import get_current_user, require_roles
 from features.candidates.schema import CandidateCreate, CandidateUpdate
 from features.candidates import service
 from features.notifications.service import push
-from infra.models import Job, Candidate, CandidateStatus, NotifType
+from infra.models import Job, Candidate, CandidateStatus, NotifType, to_iso_utc, isofy_datetimes
 from infra.s3 import to_viewable_url
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
@@ -14,6 +14,7 @@ router = APIRouter(prefix="/candidates", tags=["candidates"])
 
 def _serialize(c):
     base = {col.name: getattr(c, col.name) for col in c.__table__.columns}
+    isofy_datetimes(base)
     base["assigned_to_name"]        = c.assigned_to.name if c.assigned_to else None
     base["assigned_validator_name"] = c.assigned_validator.name if c.assigned_validator else None
     base["sourced_by_name"]         = c.sourced_by.name if c.sourced_by else None
@@ -79,19 +80,19 @@ def get_candidate(
         raise HTTPException(status_code=404, detail="Candidate not found")
     result = _serialize(c)
     result["call_logs"] = [
-        {"id": l.id, "call_date": str(l.call_date), "outcome": l.outcome, "notes": l.notes}
+        {"id": l.id, "call_date": to_iso_utc(l.call_date), "outcome": l.outcome, "notes": l.notes}
         for l in c.call_logs
     ]
     result["assessment"] = (
-        {col.name: getattr(c.assessment, col.name) for col in c.assessment.__table__.columns}
+        isofy_datetimes({col.name: getattr(c.assessment, col.name) for col in c.assessment.__table__.columns})
         if c.assessment else None
     )
     result["validation"] = (
-        {col.name: getattr(c.validation, col.name) for col in c.validation.__table__.columns}
+        isofy_datetimes({col.name: getattr(c.validation, col.name) for col in c.validation.__table__.columns})
         if c.validation else None
     )
     result["consultant_profile"] = (
-        {col.name: getattr(c.consultant_profile, col.name) for col in c.consultant_profile.__table__.columns}
+        isofy_datetimes({col.name: getattr(c.consultant_profile, col.name) for col in c.consultant_profile.__table__.columns})
         if c.consultant_profile else None
     )
     # Include mail-sent flag so frontend can disable Generate Email once sent

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from infra.models import Notification, NotifType, User, UserRole
+from infra.models import Notification, NotifType, User, UserRole, to_iso_utc
 
 
 def push(db: Session, user_id: int, message: str,
@@ -37,7 +37,7 @@ def get_new_since(db: Session, user_id: int, since_id: int) -> list[dict]:
             "notif_type":  r.notif_type.value if r.notif_type else "general",
             "is_read":     r.is_read,
             "entity_id":   r.entity_id,
-            "created_at":  r.created_at.isoformat() if r.created_at else None,
+            "created_at":  to_iso_utc(r.created_at),
         }
         for r in rows
     ]

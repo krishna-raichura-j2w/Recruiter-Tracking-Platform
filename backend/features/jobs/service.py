@@ -1,6 +1,6 @@
 import json
 from sqlalchemy.orm import Session
-from infra.models import Job, Candidate, User
+from infra.models import Job, Candidate, User, to_iso_utc
 
 
 def _job_dict(db: Session, job: Job) -> dict:
@@ -27,11 +27,11 @@ def _job_dict(db: Session, job: Job) -> dict:
         if u: caller_names.append(u.name)
     d["caller_names"] = caller_names
 
-    # Serialize DateTime fields to ISO strings
+    # Serialize DateTime fields to ISO strings (UTC-aware)
     for dt_field in ("deadline", "sourcing_deadline", "calling_deadline", "created_at", "updated_at"):
         v = d.get(dt_field)
         if hasattr(v, "isoformat"):
-            d[dt_field] = v.isoformat()
+            d[dt_field] = to_iso_utc(v)
     return d
 
 

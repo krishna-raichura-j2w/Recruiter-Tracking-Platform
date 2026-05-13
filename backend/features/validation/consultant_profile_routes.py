@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from core.database import get_db
 from core.deps import get_current_user, require_roles
-from infra.models import ConsultantProfile, Candidate
+from infra.models import ConsultantProfile, Candidate, isofy_datetimes
 
 router = APIRouter(prefix="/consultant-profile", tags=["consultant-profile"])
 
@@ -44,7 +44,7 @@ def get_consultant_profile(
     ).first()
     if not profile:
         return {}
-    return {col.name: getattr(profile, col.name) for col in profile.__table__.columns}
+    return isofy_datetimes({col.name: getattr(profile, col.name) for col in profile.__table__.columns})
 
 
 @router.post("/{candidate_id}")
@@ -74,7 +74,7 @@ def upsert_consultant_profile(
 
     db.commit()
     db.refresh(profile)
-    return {col.name: getattr(profile, col.name) for col in profile.__table__.columns}
+    return isofy_datetimes({col.name: getattr(profile, col.name) for col in profile.__table__.columns})
 
 
 @router.patch("/{candidate_id}")

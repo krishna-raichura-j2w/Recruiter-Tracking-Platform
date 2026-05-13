@@ -5,6 +5,7 @@ from infra.models import (
     User, UserRole,
     Candidate, CallLog, Job, JobStatus,
     Submission, ConsultantMail, Notification,
+    to_iso_utc,
 )
 from core.security import hash_password
 
@@ -137,7 +138,7 @@ def get_user_activity(db: Session, user_id: int, date: str | None = None) -> dic
                 "status":      c.status.value if c.status else None,
                 "job_title":   c.job.role_title  if c.job else None,
                 "client_name": c.job.client_name if c.job else None,
-                "sourced_at":  c.sourced_at.isoformat() if c.sourced_at else None,
+                "sourced_at":  to_iso_utc(c.sourced_at),
             }
             for c in sourced
         ],
@@ -148,7 +149,7 @@ def get_user_activity(db: Session, user_id: int, date: str | None = None) -> dic
                 "status":      log.candidate.status.value if log.candidate and log.candidate.status else None,
                 "job_title":   log.candidate.job.role_title  if log.candidate and log.candidate.job else None,
                 "client_name": log.candidate.job.client_name if log.candidate and log.candidate.job else None,
-                "call_date":   log.call_date.isoformat() if log.call_date else None,
+                "call_date":   to_iso_utc(log.call_date),
                 "outcome":     log.outcome.value if log.outcome else None,
             }
             for log in calls
@@ -321,7 +322,7 @@ def get_user_details(db: Session, user_id: int) -> dict | None:
                 "job_title":       log.candidate.job.role_title if log.candidate and log.candidate.job else None,
                 "client_name":     log.candidate.job.client_name if log.candidate and log.candidate.job else None,
                 "outcome":         log.outcome.value if log.outcome else None,
-                "call_date":       log.call_date.isoformat() if log.call_date else None,
+                "call_date":       to_iso_utc(log.call_date),
             }
             for log in recent_calls
         ],

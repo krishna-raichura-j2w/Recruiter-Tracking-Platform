@@ -5,13 +5,14 @@ from core.deps import get_current_user
 from infra.models import (
     Job, Candidate, CallLog, Assessment, Validation,
     ConsultantMail, Submission, SubmissionTimeline, JobStatus,
+    to_iso_utc,
 )
 
 router = APIRouter(prefix="/followup", tags=["followup"])
 
 
 def _iso(dt):
-    return dt.isoformat() if dt else None
+    return to_iso_utc(dt)
 
 
 def _candidate_story(c: Candidate) -> dict:

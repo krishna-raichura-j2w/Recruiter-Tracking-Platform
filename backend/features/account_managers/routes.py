@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
-from infra.models import BusinessHead
+from infra.models import BusinessHead, isofy_datetimes
 
 router = APIRouter(prefix="/business-heads", tags=["business-heads"])
 
@@ -21,7 +21,7 @@ class BHUpdate(BaseModel):
 
 
 def _out(bh: BusinessHead) -> dict:
-    return {col.name: getattr(bh, col.name) for col in bh.__table__.columns}
+    return isofy_datetimes({col.name: getattr(bh, col.name) for col in bh.__table__.columns})
 
 
 @router.get("")

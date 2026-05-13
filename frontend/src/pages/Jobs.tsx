@@ -194,8 +194,8 @@ export default function Jobs() {
       await api.post(`/jobs/${confirmJob.id}/confirm`, {
         sourcer_ids:       selectedSourcers,
         caller_ids:        selectedCallers,
-        sourcing_deadline: sourcingDeadline || null,
-        calling_deadline:  callingDeadline  || null,
+        sourcing_deadline: sourcingDeadline ? new Date(sourcingDeadline).toISOString() : null,
+        calling_deadline:  callingDeadline  ? new Date(callingDeadline).toISOString()  : null,
       });
       setConfirmJob(null);
       setSourcingDeadline('');
