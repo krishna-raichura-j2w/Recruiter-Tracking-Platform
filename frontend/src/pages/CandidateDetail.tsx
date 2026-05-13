@@ -1682,7 +1682,6 @@ ${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 
                   <>
                     <button
                       type="button"
-                      disabled={emailCopied}
                       onClick={async () => {
                         // Copy HTML to clipboard
                         const blob = new Blob([emailHtml], { type: 'text/html' });
@@ -1691,10 +1690,11 @@ ${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 
                           navigator.clipboard.writeText(generateEmailText(candidate))
                         );
                         setEmailCopied(true);
+                        setTimeout(() => setEmailCopied(false), 2000);
                       }}
                       className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
                         emailCopied
-                          ? 'border-green-400 bg-green-100 text-green-700 opacity-70 cursor-not-allowed'
+                          ? 'border-green-400 bg-green-100 text-green-700'
                           : 'border-slate-300 text-slate-700 hover:bg-white'
                       }`}
                     >
