@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from core.config import settings
 from core.database import create_tables, SessionLocal
 from core.security import hash_password
 from infra.models import User, UserRole, Job, JobStatus, WorkMode
@@ -41,17 +42,19 @@ from features.tasks import scheduler as task_scheduler
 async def lifespan(app_):
     # Schema + data bootstrap. Must run inside lifespan because FastAPI ignores
     # @app.on_event handlers when a `lifespan` is provided.
-    create_tables()
-    db = SessionLocal()
-    try:
-        run_migrations(db)
-        seed_data(db)
-    finally:
-        db.close()
-    init_form_templates()
+    if settings.run_startup_bootstrap:
+        create_tables()
+        db = SessionLocal()
+        try:
+            run_migrations(db)
+            seed_data(db)
+        finally:
+            db.close()
+        init_form_templates()
     print("J2W Tracker API is running")
 
-    task_scheduler.start()
+    if settings.start_scheduler_on_startup:
+        task_scheduler.start()
     yield
     task_scheduler.stop()
 

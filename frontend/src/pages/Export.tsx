@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Download, RefreshCw, Filter, Users } from 'lucide-react';
+import { Download, RefreshCw, Filter, Users, FileSpreadsheet } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
+import { generatePodReport, type PodReport } from '../utils/podReport';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ export default function Export() {
   const [loading, setLoading]       = useState(false);
   const [selectedAm, setSelectedAm] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [podLoading, setPodLoading] = useState(false);
 
   useEffect(() => {
     api.get<BH[]>('/business-heads').then(r => setBhs(r.data)).catch(() => {});
@@ -129,6 +131,17 @@ export default function Export() {
   };
 
   const onFilter = () => fetchData(selectedAm, selectedStatus);
+
+  const exportPodReport = async () => {
+    setPodLoading(true);
+    try {
+      const { data } = await api.get<PodReport>('/export/pod-report');
+      await generatePodReport(data);
+    } catch (e) {
+      console.error('Pod report error', e);
+      alert('Failed to generate pod report. Check console for details.');
+    } finally { setPodLoading(false); }
+  };
 
   const exportExcel = () => {
     const headers = COLUMNS.map(c => c.label);
@@ -208,7 +221,16 @@ export default function Export() {
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: '#16a34a' }}
           >
-            <Download size={14} /> Export Excel
+            <Download size={14} /> Export Flat Excel
+          </button>
+          <button
+            onClick={exportPodReport}
+            disabled={podLoading}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40"
+            style={{ backgroundColor: '#7c3aed' }}
+            title="Generates multi-sheet pod report: Leaderboard, Demand Status, KAM Accountability, DL Allocation, per-recruiter workspaces"
+          >
+            <FileSpreadsheet size={14} /> {podLoading ? 'Building…' : 'Export Pod Report'}
           </button>
         </div>
       </div>

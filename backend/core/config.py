@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     gmail_user: str | None = Field(default=None, validation_alias="GMAIL_USER")
     gmail_app_password: str | None = Field(default=None, validation_alias="GMAIL_APP_PASSWORD")
 
+    # Startup behavior
+    run_startup_bootstrap: bool = Field(default=False, validation_alias="RUN_STARTUP_BOOTSTRAP")
+    start_scheduler_on_startup: bool = Field(default=True, validation_alias="START_SCHEDULER_ON_STARTUP")
+
     @staticmethod
     def _fix_pg_url(url: str) -> str:
         """Re-encode literal '@' in password so the URL is valid for SQLAlchemy."""
