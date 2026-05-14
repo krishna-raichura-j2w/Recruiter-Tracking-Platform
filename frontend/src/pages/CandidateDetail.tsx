@@ -355,8 +355,9 @@ export default function CandidateDetail() {
   const profileForm = useForm<ConsultantProfileForm>();
 
   const role = user?.role ?? '';
-  const isRecruiter = role === 'recruiter';
-  const isValidator = role === 'delivery_lead' || role === 'admin';
+  const sr   = user?.secondary_role ?? '';
+  const isRecruiter = role === 'recruiter'     || sr === 'recruiter';
+  const isValidator = role === 'delivery_lead' || role === 'admin' || sr === 'delivery_lead';
 
   const showMsg = (msg: string) => {
     setMessage(msg);

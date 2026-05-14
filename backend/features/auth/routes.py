@@ -28,6 +28,7 @@ def me(current_user=Depends(get_current_user)):
         "user_id": current_user.id,
         "name": current_user.name,
         "role": current_user.role.value,
+        "secondary_role": current_user.secondary_role,
         "email": current_user.email,
         "is_active": current_user.is_active,
         "must_change_password": bool(current_user.must_change_password),

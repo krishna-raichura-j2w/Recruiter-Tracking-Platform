@@ -9,13 +9,6 @@ interface LoginForm {
   password: string;
 }
 
-const seedCredentials = [
-  { email: 'admin@j2w.com',   password: 'admin123', role: 'Admin' },
-  { email: 'priya@j2w.com',   password: 'kam123',   role: 'KAM' },
-  { email: 'dl@j2w.com',      password: 'dl123',    role: 'Delivery Lead' },
-  { email: 'ravi@j2w.com',    password: 'rec123',   role: 'Recruiter' },
-  { email: 'shwetha@j2w.com', password: 'rec123',   role: 'Recruiter' },
-];
 
 const benefits = [
   {
@@ -45,7 +38,6 @@ export default function Login() {
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<LoginForm>();
 
@@ -62,10 +54,6 @@ export default function Login() {
     }
   };
 
-  const fillCredential = (email: string, password: string) => {
-    setValue('email', email);
-    setValue('password', password);
-  };
 
   return (
     <div className="flex min-h-screen">

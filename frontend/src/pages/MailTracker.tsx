@@ -71,7 +71,7 @@ export default function MailTracker() {
   const [toast, setToast] = useState('');
   const proofInputRef = useRef<HTMLInputElement>(null);
 
-  const isDeliveryLead = user?.role === 'delivery_lead' || user?.role === 'admin';
+  const isDeliveryLead = user?.role === 'delivery_lead' || user?.role === 'admin' || user?.secondary_role === 'delivery_lead';
 
   const showToast = (msg: string) => {
     setToast(msg);

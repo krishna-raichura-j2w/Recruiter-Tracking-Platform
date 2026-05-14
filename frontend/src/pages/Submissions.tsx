@@ -3,7 +3,7 @@ import { useSignal } from '../context/RealtimeContext';
 import {
   Send, Phone, Mail, MapPin, Briefcase,
   TrendingUp, Clock, User, ArrowRight, XCircle, X,
-  Eye, FileText, ExternalLink, ChevronDown, ChevronUp,
+  Eye, FileText, ExternalLink,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';

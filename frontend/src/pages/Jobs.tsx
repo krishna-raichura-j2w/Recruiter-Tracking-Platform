@@ -141,11 +141,10 @@ export default function Jobs() {
   const [sourcingTarget,   setSourcingTarget]   = useState('');
 
   const isAdmin        = user?.role === 'admin';
-  const isKam      = user?.role === 'kam';
-  const isDeliveryLead = user?.role === 'delivery_lead';
-  const isRecruiter    = user?.role === 'recruiter';
+  const isKam          = user?.role === 'kam'          || user?.secondary_role === 'kam';
+  const isDeliveryLead = user?.role === 'delivery_lead' || user?.secondary_role === 'delivery_lead';
+  const isRecruiter    = user?.role === 'recruiter'     || user?.secondary_role === 'recruiter';
   const canCreate      = isAdmin || isKam || isDeliveryLead;
-  const canManage      = isAdmin || isKam;
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } =
     useForm<JobForm>({ defaultValues: { headcount: 1 } });
@@ -318,16 +317,17 @@ export default function Jobs() {
 
   const onSubmit = async (data: JobForm) => {
     setApiError('');
-    // DL is mandatory for new JDs created by KAM
-    if (!editJob && isKam && !selectedDeliveryLeadId) {
+    // DL is mandatory for KAM-only users
+    if (!editJob && isKam && !isDeliveryLead && !selectedDeliveryLeadId) {
       setApiError('Please select a Delivery Lead before creating a JD.');
       return;
     }
-    // KAM is mandatory for new JDs created by DL
-    if (!editJob && isDeliveryLead && !selectedKamId) {
+    // KAM is mandatory for DL-only users
+    if (!editJob && isDeliveryLead && !isKam && !selectedKamId) {
       setApiError('Please select a KAM before creating a JD.');
       return;
     }
+    // dual-role (KAM+DL) needs neither selector — backend auto-assigns both
     // Business Head is mandatory for all new JDs
     if (!editJob && !selectedBhId && businessHeads.length > 0) {
       setApiError('Please select a Business Head before creating a JD.');
@@ -772,8 +772,8 @@ export default function Jobs() {
 
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
 
-              {/* ── Delivery Lead — top, only on create ── */}
-              {!editJob && (isKam || isAdmin) && (
+              {/* ── Delivery Lead — KAM-only users on create ── */}
+              {!editJob && (isKam || isAdmin) && !(isKam && isDeliveryLead) && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
                     <UserCheck size={13} className="text-slate-400" />
@@ -836,8 +836,8 @@ export default function Jobs() {
                 </div>
               )}
 
-              {/* ── KAM selector — DL creating a job ── */}
-              {!editJob && isDeliveryLead && (
+              {/* ── KAM selector — DL-only users creating a job ── */}
+              {!editJob && isDeliveryLead && !isKam && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
                     <UserCheck size={13} className="text-slate-400" />

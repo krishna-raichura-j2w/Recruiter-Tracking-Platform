@@ -173,6 +173,7 @@ class User(Base):
     email         = Column(String(200), unique=True, index=True, nullable=False)
     password_hash = Column(String(256), nullable=False)
     role           = Column(SAEnum(UserRole, native_enum=False), nullable=False)
+    secondary_role = Column(String(30), nullable=True)   # e.g. "delivery_lead" for a KAM who is also DL
     recruiter_type = Column(SAEnum(RecruiterType, native_enum=False), nullable=True)
     is_active             = Column(Boolean, default=True)
     must_change_password  = Column(Boolean, default=False)

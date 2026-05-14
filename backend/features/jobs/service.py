@@ -1,4 +1,5 @@
 import json
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from infra.models import Job, JobStatus, Candidate, User, to_iso_utc
 
@@ -41,14 +42,18 @@ def list_jobs(
     created_by_id: int | None = None,
     delivery_lead_id: int | None = None,
     assigned_sourcer_id: int | None = None,
+    dual_user_id: int | None = None,   # user is both KAM and DL — show either
 ) -> list:
     q = db.query(Job)
     if status:
         q = q.filter(Job.status == status)
-    if created_by_id is not None:
-        q = q.filter(Job.created_by_id == created_by_id)
-    if delivery_lead_id is not None:
-        q = q.filter(Job.delivery_lead_id == delivery_lead_id)
+    if dual_user_id is not None:
+        q = q.filter(or_(Job.created_by_id == dual_user_id, Job.delivery_lead_id == dual_user_id))
+    else:
+        if created_by_id is not None:
+            q = q.filter(Job.created_by_id == created_by_id)
+        if delivery_lead_id is not None:
+            q = q.filter(Job.delivery_lead_id == delivery_lead_id)
     jobs = q.order_by(Job.created_at.desc()).all()
 
     if assigned_sourcer_id is not None:

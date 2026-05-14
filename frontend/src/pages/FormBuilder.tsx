@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Plus, Trash2, ChevronUp, ChevronDown, Edit2, Check, X,
-  Eye, EyeOff, Save, RotateCcw, GripVertical, Settings,
+  Eye, EyeOff, Save, RotateCcw, GripVertical,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';

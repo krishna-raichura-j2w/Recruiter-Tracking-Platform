@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { User, TeamLoads, TeamMemberLoad } from '../types';
 
-interface UserForm { name: string; email: string; role: string; }
+interface UserForm { name: string; email: string; role: string; secondary_role?: string; }
 
 interface TeamAssignment {
   id: number; name: string; recruiter_type: string | null;
@@ -102,7 +102,7 @@ function WorkloadBar({ total, max }: { total: number; max: number }) {
 
 export default function Users() {
   const { user: currentUser } = useAuth();
-  const isDeliveryLead = currentUser?.role === 'delivery_lead';
+  const isDeliveryLead = currentUser?.role === 'delivery_lead' || currentUser?.secondary_role === 'delivery_lead';
   const isAdmin = currentUser?.role === 'admin';
 
   const [users, setUsers]           = useState<User[]>([]);
@@ -271,7 +271,7 @@ export default function Users() {
   const onSubmit = async (data: UserForm) => {
     setApiError(''); setSubmitting(true);
     try {
-      await api.post('/users', data);
+      await api.post('/users', { ...data, secondary_role: data.secondary_role || null });
       reset(); setShowModal(false);
       flash('User created.');
       fetchAll();
@@ -1015,6 +1015,15 @@ export default function Users() {
                 </select>
                 {errors.role && <p className="text-red-500 text-xs mt-1">Required</p>}
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Secondary Role <span className="font-normal text-slate-400">(optional)</span></label>
+                <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+                  {...register('secondary_role')}>
+                  <option value="">None</option>
+                  {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">e.g. a KAM who also acts as Delivery Lead</p>
+              </div>
               {apiError && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{apiError}</p>}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowModal(false); reset(); setApiError(''); }}
@@ -1068,11 +1077,11 @@ export default function Users() {
             {/* Tabs */}
             <div className="flex border-b border-slate-100 px-6 flex-shrink-0">
               {([
-                { key: 'overview',   label: 'Overview',   icon: Activity },
-                { key: 'jobs',       label: 'Recent Jobs',       icon: Briefcase, count: detailsData?.recent_jobs.length },
-                { key: 'candidates', label: 'Recent Candidates', icon: UsersIcon, count: detailsData?.recent_candidates.length },
-                { key: 'calls',      label: 'Recent Calls',      icon: Phone,     count: detailsData?.recent_calls.length },
-              ] as const).map(t => (
+                { key: 'overview'   as const, label: 'Overview',           icon: Activity,  count: undefined },
+                { key: 'jobs'       as const, label: 'Recent Jobs',        icon: Briefcase, count: detailsData?.recent_jobs.length },
+                { key: 'candidates' as const, label: 'Recent Candidates',  icon: UsersIcon, count: detailsData?.recent_candidates.length },
+                { key: 'calls'      as const, label: 'Recent Calls',       icon: Phone,     count: detailsData?.recent_calls.length },
+              ]).map(t => (
                 <button
                   key={t.key}
                   onClick={() => setDetailsTab(t.key)}

@@ -2,8 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useSignal } from '../context/RealtimeContext';
 import {
   GitBranch, ChevronDown, ChevronRight, Search, RefreshCw,
-  Users, Clock, AlertTriangle, User, CheckCircle, XCircle,
-  Calendar, UserCheck, Phone, Mail, Send, Briefcase, Download,
+  Users, AlertTriangle, User, CheckCircle, XCircle,
+  UserCheck, Phone, Mail, Send, Briefcase, Download,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
@@ -117,7 +117,7 @@ const INTERVIEW_LABELS: Record<string, string> = {
 // ── Step row in expanded timeline ──────────────────────────────────────────────
 
 function StepRow({
-  num, label, icon, ts, by, note, dotClass, prevTs, isLast, isCurrent, currentLabel,
+  num, label, icon: _icon, ts, by, note, dotClass, prevTs, isLast, isCurrent, currentLabel,
 }: {
   num: number; label: string; icon: React.ReactNode;
   ts: string | null; by?: string | null; note?: string | null;

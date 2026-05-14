@@ -17,6 +17,7 @@ def _out(user) -> dict:
         "name":           user.name,
         "email":          user.email,
         "role":           user.role.value,
+        "secondary_role": user.secondary_role,
         "recruiter_type": user.recruiter_type.value if user.recruiter_type else None,
         "is_active":      user.is_active,
         "pod_lead_id":    user.pod_lead_id,

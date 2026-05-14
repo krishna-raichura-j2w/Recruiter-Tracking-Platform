@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from core.database import get_db
-from core.deps import get_current_user, require_roles
+from core.deps import get_current_user, require_roles, user_has_role
 from features.jobs.schema import JobCreate, JobUpdate
 from features.jobs import service
 from features.allocation.service import get_min_load
@@ -18,26 +18,20 @@ def list_jobs(
     db: Session        = Depends(get_db),
     current_user       = Depends(get_current_user),
 ):
-    role = current_user.role.value
-    created_by_id: int | None = None
-    assigned_sourcer_id: int | None = None
-    delivery_lead_id: int | None = None
+    is_kam = user_has_role(current_user, "kam")
+    is_dl  = user_has_role(current_user, "delivery_lead")
 
-    if role == "kam":
-        # KAM sees only the JDs they uploaded
-        created_by_id = current_user.id
-
-    elif role == "delivery_lead":
-        # DL sees only jobs explicitly assigned to them — no cross-DL visibility
-        delivery_lead_id = current_user.id
-
-    elif role == "recruiter":
-        assigned_sourcer_id = current_user.id
-
-    return service.list_jobs(db, status,
-                             created_by_id=created_by_id,
-                             delivery_lead_id=delivery_lead_id,
-                             assigned_sourcer_id=assigned_sourcer_id)
+    if is_kam and is_dl:
+        # Dual-role: show jobs where they're KAM OR DL
+        return service.list_jobs(db, status, dual_user_id=current_user.id)
+    elif is_kam:
+        return service.list_jobs(db, status, created_by_id=current_user.id)
+    elif is_dl:
+        return service.list_jobs(db, status, delivery_lead_id=current_user.id)
+    elif current_user.role.value == "recruiter":
+        return service.list_jobs(db, status, assigned_sourcer_id=current_user.id)
+    else:
+        return service.list_jobs(db, status)
 
 
 @router.get("/{job_id}")
@@ -49,11 +43,17 @@ def get_job(
     job = service.get_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    role = current_user.role.value
-    if role == "delivery_lead" and job.delivery_lead_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if role == "kam" and job.created_by_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Job not found")
+    is_kam = user_has_role(current_user, "kam")
+    is_dl  = user_has_role(current_user, "delivery_lead")
+    if is_kam and is_dl:
+        if job.created_by_id != current_user.id and job.delivery_lead_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Job not found")
+    elif is_dl:
+        if job.delivery_lead_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Job not found")
+    elif is_kam:
+        if job.created_by_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Job not found")
     return service._job_dict(db, job)
 
 
@@ -65,20 +65,24 @@ def create_job(
 ):
     """KAM/DL/Admin creates a JD → status = pending_review."""
     from datetime import datetime
-    role = current_user.role.value
     data = body.model_dump()
     kam_id = data.pop("kam_id", None)
+    is_kam = user_has_role(current_user, "kam")
+    is_dl  = user_has_role(current_user, "delivery_lead")
 
-    if role == "delivery_lead":
-        # DL must select a KAM as the job owner
+    if is_kam and is_dl:
+        # Dual-role: they're both KAM and DL — own the job as both
+        data["delivery_lead_id"] = current_user.id
+        created_by = current_user.id
+    elif is_dl:
+        # DL only: must select a KAM as job owner
         if not kam_id:
             raise HTTPException(status_code=400, detail="A KAM must be selected when a Delivery Lead creates a JD.")
-        # DL is auto-assigned as the delivery lead
         data["delivery_lead_id"] = current_user.id
         created_by = kam_id
     else:
-        # KAM creates — DL mandatory
-        if not data.get("delivery_lead_id") and role == "kam":
+        # KAM only: DL is mandatory
+        if not data.get("delivery_lead_id"):
             raise HTTPException(status_code=400, detail="A Delivery Lead must be selected before creating a JD.")
         created_by = current_user.id
 

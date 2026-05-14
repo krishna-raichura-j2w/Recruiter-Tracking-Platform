@@ -74,10 +74,11 @@ export default function Candidates() {
   const resumeInputRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role ?? '';
-  const isRecruiter    = role === 'recruiter';
-  const isDeliveryLead = role === 'delivery_lead';
-  const canAdd    = role === 'admin' || role === 'delivery_lead' || role === 'recruiter';
-  const canAssign = role === 'admin' || role === 'delivery_lead';
+  const sr   = user?.secondary_role ?? '';
+  const isRecruiter    = role === 'recruiter'     || sr === 'recruiter';
+  const isDeliveryLead = role === 'delivery_lead' || sr === 'delivery_lead';
+  const canAdd    = role === 'admin' || isDeliveryLead || isRecruiter;
+  const canAssign = role === 'admin' || isDeliveryLead;
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CandidateForm>();
 

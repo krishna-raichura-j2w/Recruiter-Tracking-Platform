@@ -4,6 +4,7 @@ export interface AuthUser {
   user_id: number;
   name: string;
   role: UserRole;
+  secondary_role: string | null;
   email: string;
   access_token: string;
   must_change_password: boolean;
@@ -14,10 +15,15 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  secondary_role: string | null;
   recruiter_type: 'sourcer' | 'caller' | 'both' | null;
   is_active: boolean;
   pod_lead_id: number | null;
 }
+
+/** Check if an AuthUser has a given role (primary or secondary). */
+export const hasRole = (user: AuthUser | null | undefined, role: string): boolean =>
+  user?.role === role || user?.secondary_role === role;
 
 export interface SkillEntry {
   name: string;
