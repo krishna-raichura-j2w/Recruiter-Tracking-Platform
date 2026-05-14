@@ -15,6 +15,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     name: str | None = None
+    email: str | None = None
     role: UserRole | None = None
     secondary_role: str | None = None
     is_active: bool | None = None

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, type ComponentType } from 'react';
 import { useForm } from 'react-hook-form';
 import {
-  Plus, X, Trash2, UserPlus, UserMinus,
+  Plus, X, Trash2, UserPlus, UserMinus, Pencil,
   RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck, KeyRound,
   Activity, Mail, FileText, Bell, Users as UsersIcon,
 } from 'lucide-react';
@@ -209,6 +209,46 @@ export default function Users() {
       fetchAll();
     } catch { flash('Failed to update roles.'); }
     finally { setSavingRoles(false); }
+  };
+
+  // ── Edit user modal (admin) ───────────────────────────────────────────────
+  const [editUserFor,    setEditUserFor]   = useState<User | null>(null);
+  const [euName,         setEuName]        = useState('');
+  const [euEmail,        setEuEmail]       = useState('');
+  const [euRole,         setEuRole]        = useState('');
+  const [euSecRole,      setEuSecRole]     = useState('');
+  const [euActive,       setEuActive]      = useState(true);
+  const [euSaving,       setEuSaving]      = useState(false);
+  const [euError,        setEuError]       = useState('');
+
+  const openEditUser = (u: User) => {
+    setEditUserFor(u);
+    setEuName(u.name);
+    setEuEmail(u.email);
+    setEuRole(u.role);
+    setEuSecRole(u.secondary_role ?? '');
+    setEuActive(u.is_active);
+    setEuError('');
+  };
+
+  const handleSaveEditUser = async () => {
+    if (!editUserFor) return;
+    setEuSaving(true); setEuError('');
+    try {
+      await api.patch(`/users/${editUserFor.id}`, {
+        name:           euName.trim() || undefined,
+        email:          euEmail.trim() || undefined,
+        role:           euRole || undefined,
+        secondary_role: euSecRole || null,
+        is_active:      euActive,
+      });
+      flash(`${euName} updated.`);
+      setEditUserFor(null);
+      fetchAll();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setEuError(msg || 'Failed to save changes.');
+    } finally { setEuSaving(false); }
   };
 
   // ── Team JD Assignments (DL view) ────────────────────────────────────────
@@ -901,8 +941,15 @@ export default function Users() {
                       </span>
                     </td>
                     <td className="py-3.5 px-5 text-right">
-                      {u.is_active && isAdmin && (
+                      {isAdmin && (
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditUser(u)}
+                            title="Edit user"
+                            className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <Pencil size={15} />
+                          </button>
                           <button
                             onClick={() => handleResetPassword(u.id, u.name)}
                             title="Reset password to joules@123"
@@ -913,7 +960,7 @@ export default function Users() {
                           <button
                             onClick={() => setConfirmDelete(u)}
                             disabled={deletingId === u.id}
-                            title="Deactivate user"
+                            title={u.is_active ? 'Deactivate user' : 'Activate user'}
                             className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-60"
                           >
                             <Trash2 size={15} />
@@ -1389,6 +1436,116 @@ export default function Users() {
               <button onClick={() => handleDeactivate(confirmDelete)} disabled={deletingId === confirmDelete.id}
                 className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60">
                 {deletingId === confirmDelete.id ? 'Deactivating…' : 'Deactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit User Modal ─────────────────────────────────────────────── */}
+      {editUserFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ backgroundColor: '#3b82f6' }}>
+                  {editUserFor.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Edit User</h3>
+                  <p className="text-xs text-slate-400">{editUserFor.email}</p>
+                </div>
+              </div>
+              <button onClick={() => setEditUserFor(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <div className="px-6 py-5 space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Full Name *</label>
+                <input
+                  type="text"
+                  value={euName}
+                  onChange={e => setEuName(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email *</label>
+                <input
+                  type="email"
+                  value={euEmail}
+                  onChange={e => setEuEmail(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                />
+              </div>
+
+              {/* Roles */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Primary Role *</label>
+                  <select
+                    value={euRole}
+                    onChange={e => setEuRole(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+                  >
+                    {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Secondary Role</label>
+                  <select
+                    value={euSecRole}
+                    onChange={e => setEuSecRole(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+                  >
+                    <option value="">None</option>
+                    {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Active toggle */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Account Active</p>
+                  <p className="text-xs text-slate-400">Inactive users cannot log in</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEuActive(a => !a)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${euActive ? 'bg-blue-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${euActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {euError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{euError}</p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-3 px-6 py-4 border-t border-slate-100">
+              <button
+                onClick={() => setEditUserFor(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditUser}
+                disabled={euSaving || !euName.trim() || !euEmail.trim()}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
+                style={{ backgroundColor: '#3b82f6' }}
+              >
+                {euSaving ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
           </div>
