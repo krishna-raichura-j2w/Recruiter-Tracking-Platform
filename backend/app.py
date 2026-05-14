@@ -39,6 +39,18 @@ from features.tasks import scheduler as task_scheduler
 
 @asynccontextmanager
 async def lifespan(app_):
+    # Schema + data bootstrap. Must run inside lifespan because FastAPI ignores
+    # @app.on_event handlers when a `lifespan` is provided.
+    create_tables()
+    db = SessionLocal()
+    try:
+        run_migrations(db)
+        seed_data(db)
+    finally:
+        db.close()
+    init_form_templates()
+    print("J2W Tracker API is running")
+
     task_scheduler.start()
     yield
     task_scheduler.stop()
@@ -228,19 +240,6 @@ def seed_data(db):
 
     db.commit()
     print("Seed data created")
-
-
-@app.on_event("startup")
-def on_startup():
-    create_tables()
-    db = SessionLocal()
-    try:
-        run_migrations(db)
-        seed_data(db)
-    finally:
-        db.close()
-    init_form_templates()
-    print("J2W Tracker API is running")
 
 
 @app.get("/api/health")
