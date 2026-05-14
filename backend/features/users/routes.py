@@ -134,6 +134,77 @@ def list_kams(
     return [_out(u) for u in users if u.is_active]
 
 
+@router.get("/team-assignments")
+def get_team_assignments(
+    db: Session  = Depends(get_db),
+    current_user = Depends(require_roles("admin", "delivery_lead")),
+):
+    """Per-JD assignment progress for each DL's team member (target vs actual)."""
+    import json as _json
+    from infra.models import Job, JobStatus, Candidate, CandidateStatus
+    dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
+    if dl_id is None:
+        return []
+
+    closed = {CandidateStatus.joined, CandidateStatus.backed_out, CandidateStatus.rejected}
+    jobs = db.query(Job).filter(
+        Job.delivery_lead_id == dl_id,
+        Job.status.notin_([JobStatus.closed]),
+    ).all()
+
+    members: dict[int, dict] = {}
+
+    def _ensure(uid: int, role_type: str):
+        if uid not in members:
+            u = db.query(User).filter(User.id == uid).first()
+            if not u:
+                return False
+            members[uid] = {
+                "id": u.id, "name": u.name,
+                "recruiter_type": u.recruiter_type.value if u.recruiter_type else role_type,
+                "jobs": [],
+            }
+        return True
+
+    for job in jobs:
+        sourcer_ids = _json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
+        caller_ids  = _json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
+
+        for uid in sourcer_ids:
+            if not _ensure(uid, "sourcer"):
+                continue
+            sourced = db.query(Candidate).filter(
+                Candidate.job_id == job.id,
+                Candidate.sourced_by_id == uid,
+            ).count()
+            members[uid]["jobs"].append({
+                "job_id": job.id,
+                "role_title": job.role_title,
+                "client_name": job.client_name,
+                "assignment_type": "sourcer",
+                "target": job.sourcing_target,
+                "actual": sourced,
+            })
+
+        for uid in caller_ids:
+            if not _ensure(uid, "caller"):
+                continue
+            called = db.query(Candidate).filter(
+                Candidate.job_id == job.id,
+                Candidate.assigned_to_id == uid,
+            ).count()
+            members[uid]["jobs"].append({
+                "job_id": job.id,
+                "role_title": job.role_title,
+                "client_name": job.client_name,
+                "assignment_type": "caller",
+                "target": job.sourcing_target,
+                "actual": called,
+            })
+
+    return list(members.values())
+
+
 @router.get("/team-loads")
 def get_team_loads(
     db: Session  = Depends(get_db),

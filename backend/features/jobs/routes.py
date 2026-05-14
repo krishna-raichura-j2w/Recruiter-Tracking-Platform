@@ -111,6 +111,7 @@ def create_job(
 class AssignJDBody(BaseModel):
     sourcer_ids: list[int]
     caller_ids: list[int]
+    sourcing_target: int | None = None
     sourcing_deadline: str | None = None
     calling_deadline: str | None = None
 
@@ -135,6 +136,8 @@ def confirm_jd(
     job.assigned_caller_id  = body.caller_ids[0]  if body.caller_ids  else None
     job.delivery_lead_id    = current_user.id
     job.status              = JobStatus.open
+    if body.sourcing_target is not None:
+        job.sourcing_target = body.sourcing_target
 
     def _parse_dt(s: str | None):
         if not s:

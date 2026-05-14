@@ -138,6 +138,7 @@ export default function Jobs() {
   const [confirmError, setConfirmError]     = useState('');
   const [sourcingDeadline, setSourcingDeadline] = useState('');
   const [callingDeadline,  setCallingDeadline]  = useState('');
+  const [sourcingTarget,   setSourcingTarget]   = useState('');
 
   const isAdmin        = user?.role === 'admin';
   const isKam      = user?.role === 'kam';
@@ -197,12 +198,14 @@ export default function Jobs() {
       await api.post(`/jobs/${confirmJob.id}/confirm`, {
         sourcer_ids:       selectedSourcers,
         caller_ids:        selectedCallers,
+        sourcing_target:   sourcingTarget ? Number(sourcingTarget) : null,
         sourcing_deadline: sourcingDeadline ? new Date(sourcingDeadline).toISOString() : null,
         calling_deadline:  callingDeadline  ? new Date(callingDeadline).toISOString()  : null,
       });
       setConfirmJob(null);
       setSourcingDeadline('');
       setCallingDeadline('');
+      setSourcingTarget('');
       fetchJobs();
     } catch {
       setConfirmError('Failed to confirm JD. Please try again.');
@@ -606,6 +609,23 @@ export default function Jobs() {
                 loadLabel="candidates"
                 onToggle={(id) => toggleSelect(id, selectedCallers, setSelectedCallers)}
               />
+
+              {/* Sourcing target */}
+              <div className="border border-blue-100 bg-blue-50 rounded-xl p-4">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-3">Sourcing Target *</p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Total Candidates to Source</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 20"
+                    value={sourcingTarget}
+                    onChange={(e) => setSourcingTarget(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                  />
+                  <p className="text-xs text-blue-600 mt-1.5 opacity-80">Shared target across all assigned sourcers and callers.</p>
+                </div>
+              </div>
 
               {/* Task deadlines */}
               <div className="border border-amber-100 bg-amber-50 rounded-xl p-4 space-y-3">

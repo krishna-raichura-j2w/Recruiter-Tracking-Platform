@@ -235,6 +235,8 @@ class Job(Base):
     assigned_caller_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
     sourcer_ids          = Column(Text, default='[]')   # JSON array e.g. "[9,6]"
     caller_ids           = Column(Text, default='[]')   # JSON array e.g. "[4,8]"
+    sourcing_target      = Column(Integer, nullable=True)   # how many candidates to source
+    kam_id               = Column(Integer, ForeignKey("users.id"), nullable=True)  # KAM when DL creates
     delivery_lead_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
     account_manager_id   = Column(Integer, ForeignKey("account_managers.id"), nullable=True)
     deadline             = Column(DateTime, nullable=True)

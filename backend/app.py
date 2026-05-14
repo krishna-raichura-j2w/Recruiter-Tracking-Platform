@@ -168,6 +168,8 @@ def run_migrations(db):
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_source VARCHAR(80)")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_type VARCHAR(50)")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_exclusivity VARCHAR(50)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_target INTEGER")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS kam_id INTEGER REFERENCES users(id)")
 
 
 def seed_data(db):

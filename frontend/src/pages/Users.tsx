@@ -12,6 +12,11 @@ import type { User, TeamLoads, TeamMemberLoad } from '../types';
 
 interface UserForm { name: string; email: string; role: string; }
 
+interface TeamAssignment {
+  id: number; name: string; recruiter_type: string | null;
+  jobs: { job_id: number; role_title: string; client_name: string; assignment_type: string; target: number | null; actual: number }[];
+}
+
 interface ActivityEntry {
   id: number | null;
   full_name: string | null;
@@ -178,6 +183,9 @@ export default function Users() {
     finally { setDetailsLoading(false); }
   };
 
+  // ── Team JD Assignments (DL view) ────────────────────────────────────────
+  const [teamAssignments, setTeamAssignments] = useState<TeamAssignment[]>([]);
+
   // ── Recruiter activity overlay ────────────────────────────────────────────
   const [activityMember, setActivityMember] = useState<TeamMemberLoad | null>(null);
   const [activityData,   setActivityData]   = useState<{ sourced: ActivityEntry[]; called: ActivityEntry[] } | null>(null);
@@ -215,7 +223,10 @@ export default function Users() {
           setRecruiters((r.data.callers ?? []) as TeamMemberLoad[]);
         }).catch(() => {})
       : Promise.resolve();
-    Promise.all([p1, p2]).finally(() => setLoading(false));
+    const p3 = isDeliveryLead
+      ? api.get<TeamAssignment[]>('/users/team-assignments').then((r) => setTeamAssignments(r.data)).catch(() => {})
+      : Promise.resolve();
+    Promise.all([p1, p2, p3]).finally(() => setLoading(false));
   }, [isDeliveryLead]);
 
   const fetchAvailable = () => {
@@ -591,6 +602,66 @@ export default function Users() {
             </div>
           )}
         </div>
+
+        {/* ── JD Assignment Progress ──────────────────────────────────────── */}
+        {isDeliveryLead && teamAssignments.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <Briefcase size={15} className="text-slate-400" />
+              <h3 className="text-sm font-bold text-slate-700">JD Assignment Progress</h3>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {teamAssignments.filter(m => m.jobs.length > 0).map(member => (
+                <div key={member.id} className="px-6 py-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                      {getInitials(member.name)}
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{member.name}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      member.recruiter_type === 'sourcer' ? 'bg-teal-50 text-teal-700' :
+                      member.recruiter_type === 'caller'  ? 'bg-blue-50 text-blue-700'  :
+                      'bg-violet-50 text-violet-700'
+                    }`}>
+                      {member.recruiter_type === 'sourcer' ? 'Sourcer' : member.recruiter_type === 'caller' ? 'Caller' : 'Both'}
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {member.jobs.map((j, idx) => {
+                      const pct = j.target ? Math.min(100, Math.round((j.actual / j.target) * 100)) : null;
+                      return (
+                        <div key={idx} className="bg-slate-50 rounded-xl px-4 py-2.5">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${
+                                j.assignment_type === 'sourcer' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {j.assignment_type === 'sourcer' ? 'SOURCING' : 'CALLING'}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-700 truncate">{j.role_title}</span>
+                              <span className="text-xs text-slate-400 flex-shrink-0">· {j.client_name}</span>
+                            </div>
+                            <span className="text-xs font-bold text-slate-700 flex-shrink-0 ml-3">
+                              {j.actual}{j.target ? ` / ${j.target}` : ''} {pct != null ? `(${pct}%)` : ''}
+                            </span>
+                          </div>
+                          {j.target != null && (
+                            <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${pct! >= 100 ? 'bg-emerald-500' : pct! >= 60 ? 'bg-blue-500' : 'bg-amber-400'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Recruiter Activity Overlay ─────────────────────────────────── */}
         {activityMember && (
