@@ -124,6 +124,16 @@ def list_delivery_leads(
     return result
 
 
+@router.get("/kams")
+def list_kams(
+    db: Session  = Depends(get_db),
+    _            = Depends(require_roles("admin", "delivery_lead")),
+):
+    """DL fetches active KAMs to assign as job owner when creating a JD."""
+    users = service.list_users(db, role=UserRole.kam)
+    return [_out(u) for u in users if u.is_active]
+
+
 @router.get("/team-loads")
 def get_team_loads(
     db: Session  = Depends(get_db),

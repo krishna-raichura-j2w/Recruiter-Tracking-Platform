@@ -22,6 +22,7 @@ class JobCreate(BaseModel):
     salary_range: str | None = None
     delivery_lead_id: int | None = None
     business_head_id: int | None = None
+    kam_id: int | None = None
     deadline: str | None = None
     sourcing_deadline: str | None = None
     calling_deadline: str | None = None

@@ -61,15 +61,26 @@ def get_job(
 def create_job(
     body: JobCreate,
     db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "kam")),
+    current_user = Depends(require_roles("admin", "kam", "delivery_lead")),
 ):
-    """Pod lead uploads JD → status = pending_review, no sourcer yet."""
+    """KAM/DL/Admin creates a JD → status = pending_review."""
     from datetime import datetime
+    role = current_user.role.value
     data = body.model_dump()
+    kam_id = data.pop("kam_id", None)
 
-    # Delivery lead is mandatory — KAMs must assign one
-    if not data.get("delivery_lead_id") and current_user.role.value == "kam":
-        raise HTTPException(status_code=400, detail="A Delivery Lead must be selected before creating a JD.")
+    if role == "delivery_lead":
+        # DL must select a KAM as the job owner
+        if not kam_id:
+            raise HTTPException(status_code=400, detail="A KAM must be selected when a Delivery Lead creates a JD.")
+        # DL is auto-assigned as the delivery lead
+        data["delivery_lead_id"] = current_user.id
+        created_by = kam_id
+    else:
+        # KAM creates — DL mandatory
+        if not data.get("delivery_lead_id") and role == "kam":
+            raise HTTPException(status_code=400, detail="A Delivery Lead must be selected before creating a JD.")
+        created_by = current_user.id
 
     # Job ID must be unique across all jobs
     if data.get("client_job_id") and service.is_job_id_taken(db, data["client_job_id"]):
@@ -82,10 +93,10 @@ def create_job(
             data["deadline"] = datetime.fromisoformat(data["deadline"].replace("Z", "+00:00"))
         except ValueError:
             data["deadline"] = None
-    job = service.create_job(db, data, current_user.id)
+    job = service.create_job(db, data, created_by)
 
-    # Only notify the selected DL, not all DLs
-    if job.delivery_lead_id:
+    # Notify DL (if someone else created the job and DL is assigned)
+    if job.delivery_lead_id and job.delivery_lead_id != current_user.id:
         push(db, job.delivery_lead_id,
             f"New JD uploaded: {job.role_title} for {job.client_name} — pending your review.",
             NotifType.jd_created, entity_id=job.id)
@@ -187,13 +198,26 @@ def update_job(
 def delete_job(
     job_id: int,
     db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "kam")),
+    current_user = Depends(require_roles("admin", "kam", "delivery_lead")),
 ):
-    """KAM: delete only their own pending_review JDs. Admin: delete any."""
-    if current_user.role.value == "admin":
+    """KAM/DL: delete only their own pending_review JDs. Admin: delete any."""
+    role = current_user.role.value
+    if role == "admin":
         job = service.get_job(db, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+        db.delete(job)
+        db.commit()
+        return {"message": "Deleted"}
+    if role == "delivery_lead":
+        # DL can delete pending_review jobs they own as DL
+        job = db.query(service.Job).filter(
+            service.Job.id == job_id,
+            service.Job.delivery_lead_id == current_user.id,
+            service.Job.status == JobStatus.pending_review,
+        ).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found or cannot be deleted")
         db.delete(job)
         db.commit()
         return {"message": "Deleted"}

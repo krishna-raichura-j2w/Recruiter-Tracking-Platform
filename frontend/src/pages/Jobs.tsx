@@ -116,9 +116,11 @@ export default function Jobs() {
 
   const [togglingJobId, setTogglingJobId] = useState<number | null>(null);
 
-  // Delivery lead allocation (KAM only)
+  // Delivery lead allocation (KAM only) + KAM selection (DL only)
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
   const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
+  const [kams, setKams]                             = useState<{ id: number; name: string }[]>([]);
+  const [selectedKamId, setSelectedKamId]           = useState<number | ''>('');
   const [clientOptions, setClientOptions]           = useState<ClientOption[]>([]);
   const [businessHeads, setBusinessHeads]           = useState<{ id: number; name: string }[]>([]);
   const [selectedBhId, setSelectedBhId]             = useState<number | ''>('');
@@ -141,6 +143,7 @@ export default function Jobs() {
   const isKam      = user?.role === 'kam';
   const isDeliveryLead = user?.role === 'delivery_lead';
   const isRecruiter    = user?.role === 'recruiter';
+  const canCreate      = isAdmin || isKam || isDeliveryLead;
   const canManage      = isAdmin || isKam;
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } =
@@ -259,10 +262,16 @@ export default function Jobs() {
     setEditJob(null);
     setShowModal(true);
     setSelectedDeliveryLeadId('');
+    setSelectedKamId('');
     if (isKam || isAdmin) {
       api.get<{ id: number; name: string; clients: string[] }[]>('/users/delivery-leads')
         .then(r => setDeliveryLeads(r.data))
         .catch(() => setDeliveryLeads([]));
+    }
+    if (isDeliveryLead || isAdmin) {
+      api.get<{ id: number; name: string }[]>('/users/kams')
+        .then(r => setKams(r.data))
+        .catch(() => setKams([]));
     }
     api.get<ClientOption[]>('/clients')
       .then(r => setClientOptions(r.data))
@@ -277,7 +286,7 @@ export default function Jobs() {
     setShowModal(false); setEditJob(null); reset({ headcount: 1 }); setApiError('');
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
-    setSelectedDeliveryLeadId(''); setSelectedAmId('');
+    setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedAmId('');
   };
 
   const buildPayload = (data: JobForm) => ({
@@ -297,9 +306,11 @@ export default function Jobs() {
     max_experience:   data.max_experience ? Number(data.max_experience) : null,
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
     jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
-    delivery_lead_id:    !editJob && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
-    business_head_id:    !editJob && selectedBhId ? Number(selectedBhId) : undefined,
-    deadline:            data.deadline ? new Date(data.deadline).toISOString() : null,
+    // KAM creates: assign DL. DL creates: assign KAM (backend auto-sets DL to themselves)
+    delivery_lead_id: !editJob && (isKam || isAdmin) && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
+    kam_id:           !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
+    business_head_id: !editJob && selectedBhId ? Number(selectedBhId) : undefined,
+    deadline:         data.deadline ? new Date(data.deadline).toISOString() : null,
   });
 
   const onSubmit = async (data: JobForm) => {
@@ -307,6 +318,11 @@ export default function Jobs() {
     // DL is mandatory for new JDs created by KAM
     if (!editJob && isKam && !selectedDeliveryLeadId) {
       setApiError('Please select a Delivery Lead before creating a JD.');
+      return;
+    }
+    // KAM is mandatory for new JDs created by DL
+    if (!editJob && isDeliveryLead && !selectedKamId) {
+      setApiError('Please select a KAM before creating a JD.');
       return;
     }
     setSubmitting(true);
@@ -465,7 +481,7 @@ export default function Jobs() {
             </button>
           ))}
         </div>
-        {canManage && (
+        {canCreate && (
           <button onClick={openCreateModal}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
             style={{ backgroundColor: '#3b82f6' }}
@@ -795,6 +811,60 @@ export default function Jobs() {
                 </div>
               )}
 
+              {/* ── KAM selector — DL creating a job ── */}
+              {!editJob && isDeliveryLead && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+                    <UserCheck size={13} className="text-slate-400" />
+                    Assign KAM (Key Account Manager)
+                  </label>
+                  {kams.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No KAMs available.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {kams.map(kam => {
+                        const selected = selectedKamId === kam.id;
+                        return (
+                          <button
+                            key={kam.id}
+                            type="button"
+                            onClick={() => setSelectedKamId(selected ? '' : kam.id)}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                              selected
+                                ? 'border-blue-400 bg-blue-50'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
+                              selected ? 'bg-blue-500' : 'bg-slate-400'
+                            }`}>
+                              {kam.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? 'text-blue-700' : 'text-slate-700'}`}>
+                                {kam.name}
+                              </p>
+                            </div>
+                            {selected && (
+                              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!selectedKamId && (
+                    <p className="text-xs text-red-500 mt-1.5 font-medium">
+                      ⚠ KAM is required — please select one above.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* ── Business Head ── */}
               {!editJob && businessHeads.length > 0 && (
                 <div>
@@ -1093,8 +1163,8 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
               <UserCheck size={13} /> Review & Assign
             </button>
           )}
-          {/* Admin: delete any JD. KAM: delete own pending JDs only */}
-          {(isAdmin || (isKam && job.status === 'pending_review')) && (
+          {/* Admin: delete any JD. KAM/DL: delete own pending JDs only */}
+          {(isAdmin || ((isKam || isDeliveryLead) && job.status === 'pending_review')) && (
             <button
               onClick={onDelete}
               title="Delete this JD"
