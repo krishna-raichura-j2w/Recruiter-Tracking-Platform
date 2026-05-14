@@ -513,7 +513,7 @@ export default function CandidateDetail() {
           notes: '',
         });
       }
-      await saveAssessment(submit);
+      await Promise.all([saveAssessment(submit), saveConsultantProfileSilent()]);
     } catch {
       showMsg('Error saving.');
     } finally {
@@ -546,14 +546,23 @@ export default function CandidateDetail() {
     setSavingProfile(true);
     try {
       const data = profileForm.getValues();
-      await api.post(`/consultant-profile/${id}`, data);
+      const res = await api.post(`/consultant-profile/${id}`, data);
+      setCandidate(prev => prev ? { ...prev, consultant_profile: res.data } : prev);
       showMsg('Consultant profile saved.');
-      loadCandidate();
     } catch {
       showMsg('Error saving profile.');
     } finally {
       setSavingProfile(false);
     }
+  };
+
+  const saveConsultantProfileSilent = async (): Promise<void> => {
+    if (!id) return;
+    try {
+      const data = profileForm.getValues();
+      const res = await api.post(`/consultant-profile/${id}`, data);
+      setCandidate(prev => prev ? { ...prev, consultant_profile: res.data } : prev);
+    } catch { /* non-fatal */ }
   };
 
   // ─── Email generation ──────────────────────────────────────────────────
@@ -1261,7 +1270,7 @@ export default function CandidateDetail() {
                     <button
                       type="button"
                       onClick={async () => {
-                        // Save assessment draft first so the email table has up-to-date data
+                        // Save both assessment + consultant profile so email table has live data
                         try {
                           const data = assessmentForm.getValues();
                           const body = {
@@ -1283,9 +1292,11 @@ export default function CandidateDetail() {
                             gut_score: scoreValues['gut_score'] || null,
                             red_flags: JSON.stringify(data.red_flags ?? []),
                           };
-                          const res = await api.post('/calls/assessment', body);
-                          // Patch candidate.assessment so the email table shows live data
-                          setCandidate(prev => prev ? { ...prev, assessment: res.data } : prev);
+                          const [assessRes] = await Promise.all([
+                            api.post('/calls/assessment', body),
+                            saveConsultantProfileSilent(),
+                          ]);
+                          setCandidate(prev => prev ? { ...prev, assessment: assessRes.data } : prev);
                         } catch { /* proceed anyway — email opens with whatever is in state */ }
 
                         setShowEmailOverlay(true);
