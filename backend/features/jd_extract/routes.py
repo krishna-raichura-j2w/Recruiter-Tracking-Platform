@@ -6,7 +6,7 @@ from features.jd_extract.schema import JDExtractResponse
 
 router = APIRouter(prefix="/jd-extract", tags=["jd-extract"])
 
-ALLOWED_ROLES = ("admin", "kam")
+ALLOWED_ROLES = ("admin", "kam", "delivery_lead")
 IMAGE_MIMES   = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 DOCX_MIMES    = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
