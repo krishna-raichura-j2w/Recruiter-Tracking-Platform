@@ -170,17 +170,45 @@ export default function Users() {
   const [detailsData,   setDetailsData]   = useState<UserDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsTab,    setDetailsTab]    = useState<'overview' | 'jobs' | 'candidates' | 'calls'>('overview');
+  const [editingRoles,  setEditingRoles]  = useState(false);
+  const [editRole,      setEditRole]      = useState('');
+  const [editSecRole,   setEditSecRole]   = useState('');
+  const [savingRoles,   setSavingRoles]   = useState(false);
 
   const openUserDetails = async (u: User) => {
     setDetailsFor(u);
     setDetailsData(null);
     setDetailsTab('overview');
+    setEditingRoles(false);
     setDetailsLoading(true);
     try {
       const { data } = await api.get<UserDetails>(`/users/${u.id}/details`);
       setDetailsData(data);
     } catch { /* surfaced via empty state */ }
     finally { setDetailsLoading(false); }
+  };
+
+  const startEditRoles = (u: User) => {
+    setEditRole(u.role);
+    setEditSecRole(u.secondary_role ?? '');
+    setEditingRoles(true);
+  };
+
+  const saveRoles = async () => {
+    if (!detailsFor) return;
+    setSavingRoles(true);
+    try {
+      await api.patch(`/users/${detailsFor.id}`, {
+        role: editRole || undefined,
+        secondary_role: editSecRole || null,
+      });
+      // Refresh local state
+      setDetailsFor(prev => prev ? { ...prev, role: editRole, secondary_role: editSecRole || null } : prev);
+      setEditingRoles(false);
+      flash('Roles updated.');
+      fetchAll();
+    } catch { flash('Failed to update roles.'); }
+    finally { setSavingRoles(false); }
   };
 
   // ── Team JD Assignments (DL view) ────────────────────────────────────────
@@ -386,9 +414,16 @@ export default function Users() {
                         </td>
                         <td className="py-3 px-5 text-slate-500">{u.email}</td>
                         <td className="py-3 px-5">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleColors[u.role] ?? 'bg-slate-100 text-slate-600'}`}>
-                            {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
-                          </span>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleColors[u.role] ?? 'bg-slate-100 text-slate-600'}`}>
+                              {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
+                            </span>
+                            {u.secondary_role && (
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full opacity-75 ${roleColors[u.secondary_role] ?? 'bg-slate-100 text-slate-600'}`}>
+                                +{ROLES.find((r) => r.value === u.secondary_role)?.label ?? u.secondary_role}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-5">
                           {pickingTypeFor === u.id ? (
@@ -848,9 +883,16 @@ export default function Users() {
                     </td>
                     <td className="py-3.5 px-5 text-slate-500">{u.email}</td>
                     <td className="py-3.5 px-5">
-                      <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${roleColors[u.role] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
-                      </span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${roleColors[u.role] ?? 'bg-slate-100 text-slate-600'}`}>
+                          {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
+                        </span>
+                        {u.secondary_role && (
+                          <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full opacity-75 ${roleColors[u.secondary_role] ?? 'bg-slate-100 text-slate-600'}`}>
+                            +{ROLES.find((r) => r.value === u.secondary_role)?.label ?? u.secondary_role}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-5 text-center">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -1109,6 +1151,80 @@ export default function Users() {
                 </div>
               ) : detailsTab === 'overview' ? (
                 <div className="space-y-5">
+                  {/* ── Role Editor (admin only) ─────────────────── */}
+                  {isAdmin && (
+                    <div className="border border-slate-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Roles</p>
+                        {!editingRoles ? (
+                          <button
+                            onClick={() => startEditRoles(detailsFor!)}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-2.5 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                          >
+                            Edit
+                          </button>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setEditingRoles(false)}
+                              className="text-xs font-semibold text-slate-500 hover:text-slate-700 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={saveRoles}
+                              disabled={savingRoles}
+                              className="text-xs font-semibold text-white px-3 py-1 rounded-lg disabled:opacity-60 transition-colors"
+                              style={{ backgroundColor: '#3b82f6' }}
+                            >
+                              {savingRoles ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {editingRoles ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Primary Role *</label>
+                            <select
+                              value={editRole}
+                              onChange={e => setEditRole(e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+                            >
+                              {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Secondary Role <span className="font-normal text-slate-400">(optional)</span></label>
+                            <select
+                              value={editSecRole}
+                              onChange={e => setEditSecRole(e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+                            >
+                              <option value="">None</option>
+                              {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${roleColors[detailsFor?.role ?? ''] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {ROLES.find(r => r.value === detailsFor?.role)?.label ?? detailsFor?.role}
+                          </span>
+                          {detailsFor?.secondary_role && (
+                            <>
+                              <span className="text-slate-300 text-xs">+</span>
+                              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${roleColors[detailsFor.secondary_role] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {ROLES.find(r => r.value === detailsFor.secondary_role)?.label ?? detailsFor.secondary_role}
+                                <span className="ml-1 text-[10px] opacity-60">(secondary)</span>
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Identity card */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <StatCard icon={UserCheck} label="Status" value={detailsData.user.is_active ? 'Active' : 'Inactive'} tone={detailsData.user.is_active ? 'green' : 'slate'} />
