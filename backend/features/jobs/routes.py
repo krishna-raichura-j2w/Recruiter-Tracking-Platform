@@ -82,6 +82,10 @@ def create_job(
             raise HTTPException(status_code=400, detail="A Delivery Lead must be selected before creating a JD.")
         created_by = current_user.id
 
+    # Business Head is mandatory for all creators
+    if not data.get("account_manager_id") and not data.get("business_head_id"):
+        raise HTTPException(status_code=400, detail="A Business Head must be selected before creating a JD.")
+
     # Job ID must be unique across all jobs
     if data.get("client_job_id") and service.is_job_id_taken(db, data["client_job_id"]):
         raise HTTPException(status_code=400, detail=f"Job ID '{data['client_job_id']}' is already in use. Please use a unique Job ID.")

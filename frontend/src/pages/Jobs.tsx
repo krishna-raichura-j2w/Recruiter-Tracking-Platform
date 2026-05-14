@@ -279,14 +279,14 @@ export default function Jobs() {
     api.get<{ id: number; name: string }[]>('/business-heads')
       .then(r => setBusinessHeads(r.data))
       .catch(() => setBusinessHeads([]));
-    setSelectedAmId('');
+    setSelectedBhId('');
   };
 
   const closeModal = () => {
     setShowModal(false); setEditJob(null); reset({ headcount: 1 }); setApiError('');
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
-    setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedAmId('');
+    setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedBhId('');
   };
 
   const buildPayload = (data: JobForm) => ({
@@ -323,6 +323,11 @@ export default function Jobs() {
     // KAM is mandatory for new JDs created by DL
     if (!editJob && isDeliveryLead && !selectedKamId) {
       setApiError('Please select a KAM before creating a JD.');
+      return;
+    }
+    // Business Head is mandatory for all new JDs
+    if (!editJob && !selectedBhId && businessHeads.length > 0) {
+      setApiError('Please select a Business Head before creating a JD.');
       return;
     }
     setSubmitting(true);
@@ -866,37 +871,46 @@ export default function Jobs() {
               )}
 
               {/* ── Business Head ── */}
-              {!editJob && businessHeads.length > 0 && (
+              {!editJob && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
                     <UserCheck size={13} className="text-slate-400" />
-                    Business Head
+                    Business Head *
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {businessHeads.map(bh => {
-                      const selected = selectedBhId === bh.id;
-                      return (
-                        <button
-                          key={bh.id}
-                          type="button"
-                          onClick={() => setSelectedBhId(selected ? '' : bh.id)}
-                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all ${
-                            selected ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${selected ? 'bg-emerald-500' : 'bg-slate-400'}`}>
-                            {bh.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
-                          </div>
-                          <span className={`text-sm font-semibold ${selected ? 'text-emerald-700' : 'text-slate-700'}`}>{bh.name}</span>
-                          {selected && (
-                            <div className="ml-auto w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                              <svg width="8" height="7" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  {businessHeads.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No business heads available.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {businessHeads.map(bh => {
+                        const selected = selectedBhId === bh.id;
+                        return (
+                          <button
+                            key={bh.id}
+                            type="button"
+                            onClick={() => setSelectedBhId(selected ? '' : bh.id)}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-left transition-all ${
+                              selected ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${selected ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                              {bh.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                             </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                            <span className={`text-sm font-semibold ${selected ? 'text-emerald-700' : 'text-slate-700'}`}>{bh.name}</span>
+                            {selected && (
+                              <div className="ml-auto w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                                <svg width="8" height="7" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!selectedBhId && businessHeads.length > 0 && (
+                    <p className="text-xs text-red-500 mt-1.5 font-medium">
+                      ⚠ Business Head is required — please select one above.
+                    </p>
+                  )}
                 </div>
               )}
 
