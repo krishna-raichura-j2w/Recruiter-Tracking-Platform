@@ -186,6 +186,20 @@ def run_migrations(db):
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_target INTEGER")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS kam_id INTEGER REFERENCES users(id)")
     _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_role VARCHAR(30)")
+    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE")
+    _run("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id          SERIAL PRIMARY KEY,
+            user_id     INTEGER REFERENCES users(id),
+            action      VARCHAR(100),
+            entity_type VARCHAR(100),
+            entity_id   INTEGER,
+            detail      TEXT,
+            created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+    """)
+    _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id)")
+    _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs(created_at DESC)")
 
 
 def seed_data(db):

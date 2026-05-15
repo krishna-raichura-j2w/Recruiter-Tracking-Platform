@@ -51,4 +51,12 @@ def validate(
     current_user = Depends(require_roles(*VALIDATORS)),
 ):
     v = service.validate_candidate(db, body.model_dump(), current_user.id, current_user.name)
+    from infra.models import Candidate
+    from features.activity.service import log as log_activity
+    c = db.query(Candidate).filter(Candidate.id == body.candidate_id).first()
+    verdict = body.model_dump().get("verdict", "")
+    if c and c.job:
+        log_activity(db, current_user.id, "validated_candidate",
+                     f"Validated {c.full_name} ({verdict}) for {c.job.client_name} – {c.job.role_title}",
+                     entity_type="candidate", entity_id=c.id)
     return isofy_datetimes({col.name: getattr(v, col.name) for col in v.__table__.columns})

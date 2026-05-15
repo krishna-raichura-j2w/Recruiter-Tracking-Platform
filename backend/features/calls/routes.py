@@ -28,6 +28,13 @@ def upsert_assessment(
     current_user=Depends(require_roles(*CALLERS)),
 ):
     assessment = service.upsert_assessment(db, body.model_dump(), current_user.id)
+    from infra.models import Candidate
+    from features.activity.service import log as log_activity
+    c = db.query(Candidate).filter(Candidate.id == assessment.candidate_id).first()
+    if c and c.job:
+        log_activity(db, current_user.id, "saved_assessment",
+                     f"Saved assessment for {c.full_name} – {c.job.client_name} ({c.job.role_title})",
+                     entity_type="candidate", entity_id=c.id)
     return isofy_datetimes({
         col.name: getattr(assessment, col.name)
         for col in assessment.__table__.columns

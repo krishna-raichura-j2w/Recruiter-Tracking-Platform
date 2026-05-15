@@ -43,6 +43,13 @@ def submit_to_client(
     result = service.submit_to_client(db, body.candidate_id, body.notes, current_user.id)
     if not result:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    from infra.models import Candidate
+    from features.activity.service import log as log_activity
+    c = db.query(Candidate).filter(Candidate.id == body.candidate_id).first()
+    if c and c.job:
+        log_activity(db, current_user.id, "submitted_to_client",
+                     f"Submitted {c.full_name} to {c.job.client_name} – {c.job.role_title}",
+                     entity_type="candidate", entity_id=c.id)
     return result
 
 
@@ -60,6 +67,12 @@ def update_stage(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Submission not found")
+    # Log stage update
+    from features.activity.service import log as log_activity
+    stage = body.model_dump(exclude_none=True).get("current_stage", "")
+    log_activity(db, current_user.id, "updated_stage",
+                 f"Updated interview stage to {stage.replace('_', ' ')}",
+                 entity_type="submission", entity_id=submission_id)
     return result
 
 

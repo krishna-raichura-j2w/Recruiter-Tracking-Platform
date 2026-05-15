@@ -16,6 +16,7 @@ import {
   GitBranch,
   TrendingUp,
   Settings,
+  Trophy,
 } from 'lucide-react';
 
 interface NavItem {
@@ -37,6 +38,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Clients',             path: '/clients',        icon: <Building2 size={18} /> },
     { label: 'Demand Status',        path: '/demand-status',  icon: <TrendingUp size={18} /> },
     { label: 'Export / Reports',    path: '/export',         icon: <BarChart2 size={18} /> },
+    { label: 'Leaderboard',         path: '/leaderboard',    icon: <Trophy size={18} /> },
     { label: 'Users',               path: '/users',          icon: <UserCheck size={18} /> },
     { label: 'Form Builder',        path: '/form-builder',   icon: <Settings size={18} /> },
   ],

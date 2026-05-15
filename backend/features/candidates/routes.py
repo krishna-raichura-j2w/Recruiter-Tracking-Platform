@@ -110,9 +110,14 @@ def create_candidate(
     sourced_by_id = current_user.id if role == "recruiter" else None
     candidate = service.create_candidate(db, body.model_dump(), sourced_by_id=sourced_by_id)
 
-    # Auto-assign caller from the JD's caller_ids (min-load among all assigned callers)
+    # Log activity
     import json as _json
     job = db.query(Job).filter(Job.id == candidate.job_id).first()
+    from features.activity.service import log as log_activity
+    log_activity(db, current_user.id, "sourced_candidate",
+                 f"Sourced {candidate.full_name} for {job.client_name} – {job.role_title}" if job
+                 else f"Sourced candidate: {candidate.full_name}",
+                 entity_type="candidate", entity_id=candidate.id)
     if job:
         caller_ids = _json.loads(job.caller_ids or '[]') if isinstance(job.caller_ids, str) else []
         if not caller_ids and job.assigned_caller_id:

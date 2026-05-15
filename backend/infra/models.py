@@ -179,6 +179,7 @@ class User(Base):
     must_change_password  = Column(Boolean, default=False)
     pod_lead_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at     = Column(DateTime, default=now_utc)
+    last_login_at  = Column(DateTime, nullable=True)
 
     assigned_candidates = relationship("Candidate", foreign_keys="Candidate.assigned_to_id", back_populates="assigned_to")
     sourced_candidates  = relationship("Candidate", foreign_keys="Candidate.sourced_by_id", back_populates="sourced_by")

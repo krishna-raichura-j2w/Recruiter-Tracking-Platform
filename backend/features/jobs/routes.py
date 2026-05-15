@@ -109,6 +109,11 @@ def create_job(
             f"New JD uploaded: {job.role_title} for {job.client_name} — pending your review.",
             NotifType.jd_created, entity_id=job.id)
     db.commit()
+
+    from features.activity.service import log as log_activity
+    log_activity(db, current_user.id, "created_job",
+                 f"Created JD: {job.role_title} for {job.client_name}",
+                 entity_type="job", entity_id=job.id)
     return service._job_dict(db, job)
 
 
@@ -177,6 +182,11 @@ def confirm_jd(
 
     db.commit()
     db.refresh(job)
+
+    from features.activity.service import log as log_activity
+    log_activity(db, current_user.id, "confirmed_jd",
+                 f"Confirmed JD: {job.role_title} for {job.client_name} (target: {body.sourcing_target})",
+                 entity_type="job", entity_id=job.id)
     return service._job_dict(db, job)
 
 

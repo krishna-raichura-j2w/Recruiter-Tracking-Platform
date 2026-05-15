@@ -16,9 +16,15 @@ class ChangePasswordRequest(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
     user = authenticate_user(db, body.email, body.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    # Record login timestamp + activity log
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    from features.activity.service import log as log_activity
+    log_activity(db, user.id, "login", f"Logged in", entity_type="user", entity_id=user.id)
     return build_token(user)
 
 
