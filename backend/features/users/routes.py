@@ -84,7 +84,7 @@ def update_user(
 
 
 class AssignPodBody(BaseModel):
-    recruiter_type: str  # "sourcer", "caller", or "both"
+    recruiter_type: str = "both"   # kept for backward compat; always "both" now
 
 
 @router.post("/{user_id}/assign-pod")
@@ -95,7 +95,8 @@ def assign_pod(
     current_user = Depends(require_roles("admin", "delivery_lead")),
 ):
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
-    user = service.assign_to_pod(db, user_id, dl_id, recruiter_type=body.recruiter_type)
+    # Always assign as "both" — sourcer/caller distinction removed
+    user = service.assign_to_pod(db, user_id, dl_id, recruiter_type="both")
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return _out(user)
