@@ -20,12 +20,11 @@ def list_users(db: Session, role: str | None = None, pod_lead_id: int | None = N
 
 
 def list_available_team(db: Session, dl_id: int, role: str | None = None) -> list[User]:
-    """Recruiters not on this DL's team — unassigned (NULL) or on another team."""
-    from sqlalchemy import or_
+    """Recruiters with no team assignment at all — pod_lead_id IS NULL."""
     q = db.query(User).filter(
         User.is_active == True,
         User.role == UserRole.recruiter,
-        or_(User.pod_lead_id == None, User.pod_lead_id != dl_id),
+        User.pod_lead_id == None,  # noqa: E711 — only truly unassigned
     )
     return q.order_by(User.name).all()
 

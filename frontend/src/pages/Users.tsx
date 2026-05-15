@@ -785,6 +785,7 @@ export default function Users() {
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">User</th>
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</th>
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
+                  <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Team (DL)</th>
                   <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
                   <th className="py-3.5 px-5" />
                 </tr>
@@ -817,6 +818,17 @@ export default function Users() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="py-3.5 px-5">
+                      {u.pod_lead_name ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-100">
+                          <UsersIcon size={10} /> {u.pod_lead_name}
+                        </span>
+                      ) : u.role === 'recruiter' ? (
+                        <span className="text-xs text-slate-400 italic">Unassigned</span>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="py-3.5 px-5 text-center">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>

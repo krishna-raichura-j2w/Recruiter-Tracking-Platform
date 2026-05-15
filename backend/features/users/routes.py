@@ -11,7 +11,15 @@ from infra.models import UserRole
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-def _out(user) -> dict:
+def _out(user, db=None) -> dict:
+    pod_lead_name = None
+    if user.pod_lead_id and db:
+        from infra.models import User as UserModel
+        pl = db.query(UserModel).filter(UserModel.id == user.pod_lead_id).first()
+        if pl:
+            pod_lead_name = pl.name
+    elif hasattr(user, 'pod_lead') and user.pod_lead:
+        pod_lead_name = user.pod_lead.name
     return {
         "id":             user.id,
         "name":           user.name,
@@ -21,6 +29,7 @@ def _out(user) -> dict:
         "recruiter_type": user.recruiter_type.value if user.recruiter_type else None,
         "is_active":      user.is_active,
         "pod_lead_id":    user.pod_lead_id,
+        "pod_lead_name":  pod_lead_name,
     }
 
 
@@ -42,7 +51,7 @@ def list_users(
         users = service.list_users(db, role=role, pod_lead_id=current_user.id)
     else:
         users = service.list_users(db, role=role)
-    return [_out(u) for u in users]
+    return [_out(u, db) for u in users]
 
 
 @router.post("")
@@ -51,7 +60,7 @@ def create_user(
     db: Session = Depends(get_db),
     _=Depends(require_roles("admin")),
 ):
-    return _out(service.create_user(db, body.model_dump()))
+    return _out(service.create_user(db, body.model_dump()), db)
 
 
 @router.post("/{user_id}/reset-password")
@@ -80,7 +89,7 @@ def update_user(
     user = service.update_user(db, user_id, data)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return _out(user)
+    return _out(user, db)
 
 
 class AssignPodBody(BaseModel):
@@ -99,7 +108,7 @@ def assign_pod(
     user = service.assign_to_pod(db, user_id, dl_id, recruiter_type="both")
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return _out(user)
+    return _out(user, db)
 
 
 @router.get("/delivery-leads")
@@ -120,7 +129,7 @@ def list_delivery_leads(
             .distinct()
             .all()
         )
-        data = _out(u)
+        data = _out(u, db)
         data["clients"] = [r.client_name for r in client_rows]
         result.append(data)
     return result
@@ -133,7 +142,7 @@ def list_kams(
 ):
     """DL fetches active KAMs to assign as job owner when creating a JD."""
     users = service.list_users(db, role=UserRole.kam)
-    return [_out(u) for u in users if u.is_active]
+    return [_out(u, db) for u in users if u.is_active]
 
 
 @router.get("/team-assignments")
@@ -259,7 +268,7 @@ def remove_from_pod(
     user = service.assign_to_pod(db, user_id, None)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return _out(user)
+    return _out(user, db)
 
 
 @router.delete("/{user_id}")

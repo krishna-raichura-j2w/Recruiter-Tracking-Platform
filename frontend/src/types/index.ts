@@ -19,6 +19,7 @@ export interface User {
   recruiter_type: 'sourcer' | 'caller' | 'both' | null;
   is_active: boolean;
   pod_lead_id: number | null;
+  pod_lead_name: string | null;
 }
 
 /** Check if an AuthUser has a given role (primary or secondary). */
