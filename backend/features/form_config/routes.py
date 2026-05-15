@@ -224,6 +224,31 @@ _DEFAULTS: dict[str, dict] = {
             },
         ],
     },
+    "email_fields": {
+        "form_name": "email_fields",
+        "label":     "Email Field Order",
+        "rows": [
+            {"id":"row_name",         "left_label":"Name",                          "left_field":"full_name",              "right_label":"Phone",                     "right_field":"mobile",                 "visible":True},
+            {"id":"row_email",        "left_label":"Email ID",                      "left_field":"email",                  "right_label":"Alternate no",               "right_field":"alt_phone",              "visible":True},
+            {"id":"row_urls",         "left_label":"Company URL",                   "left_field":"j2w_url",                "right_label":"Client Company URL",         "right_field":"client_url",             "visible":True},
+            {"id":"row_resign",       "left_label":"Resignation acceptance",         "left_field":"resignation_acceptance", "right_label":"Replacement & KT",           "right_field":"replacement_kt_status",  "visible":True},
+            {"id":"row_skills",       "left_label":"Skill Set",                     "left_field":"primary_skill_stack",    "right_label":"Role/Responsibilities",      "right_field":"role_responsibilities",  "visible":True},
+            {"id":"row_laptop",       "left_label":"Personal Laptop",               "left_field":"personal_laptop",        "right_label":"Total experience",           "right_field":"total_exp",              "visible":True},
+            {"id":"row_resloc",       "left_label":"Current Residential Location",  "left_field":"current_city",           "right_label":"Client Work Location",       "right_field":"client_work_location",   "visible":True},
+            {"id":"row_workloc",      "left_label":"Current Work Location",         "left_field":"current_work_location",  "right_label":"Current Work Timings",       "right_field":"current_work_timings",   "visible":True},
+            {"id":"row_notice",       "left_label":"Notice Period (on paper)",       "left_field":"notice_period_weeks",    "right_label":"Negotiable Upto",            "right_field":"notice_negotiable_upto", "visible":True},
+            {"id":"row_company",      "left_label":"Current Company",               "left_field":"last_company",           "right_label":"Payroll",                    "right_field":"payroll",                "visible":True},
+            {"id":"row_ctc",          "left_label":"Current CTC",                   "left_field":"current_ctc",            "right_label":"Expected CTC",               "right_field":"expected_ctc",           "visible":True},
+            {"id":"row_relexp",       "left_label":"Relevant experience",           "left_field":"relevant_exp",           "right_label":"Deploying Client",           "right_field":"deploying_client",       "visible":True},
+            {"id":"row_offers",       "left_label":"Offers in Hand",                "left_field":"offers_in_hand",         "right_label":"Offers Pipeline",            "right_field":"offers_pipeline",        "visible":True},
+            {"id":"row_interviews",   "left_label":"Interview Pipeline",            "left_field":"interview_pipeline",     "right_label":"Reason for change",          "right_field":"reason_for_change",      "visible":True},
+            {"id":"row_dob",          "left_label":"DOB",                           "left_field":"dob",                    "right_label":"Telephonic availability",    "right_field":"telephonic_availability", "visible":True},
+            {"id":"row_ide",          "left_label":"IDE Installed",                 "left_field":"ide_installed",          "right_label":"Wifi / Mobile Data",         "right_field":"wifi_connectivity",      "visible":True},
+            {"id":"row_marital",      "left_label":"Marital Status",                "left_field":"marital_status",         "right_label":"LinkedIn",                   "right_field":"linkedin_url",           "visible":True},
+            {"id":"row_health",       "left_label":"Health Issues (self/family)",   "left_field":"health_issues",          "right_label":"Planned Leaves (3 mo)",      "right_field":"planned_leaves",         "visible":True},
+            {"id":"row_interview_av", "left_label":"Interview Avail (next 2 days)", "left_field":"interview_availability_2d","right_label":"Travel Plans",             "right_field":"upcoming_travel",        "visible":True},
+        ],
+    },
 }
 
 
@@ -268,7 +293,8 @@ def init_form_templates():
 
 class TemplateSave(BaseModel):
     label: str
-    sections: list
+    sections: list | None = None
+    rows: list | None = None    # used by email_fields template
 
 
 @router.get("")
@@ -304,7 +330,11 @@ def save_template(
     if not row:
         raise HTTPException(404, detail="Form template not found")
 
-    config = {"form_name": form_name, "label": body.label, "sections": body.sections}
+    config: dict = {"form_name": form_name, "label": body.label}
+    if body.rows is not None:
+        config["rows"] = body.rows
+    else:
+        config["sections"] = body.sections or []
     db.execute(
         text("""
             UPDATE form_templates

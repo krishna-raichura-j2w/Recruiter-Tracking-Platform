@@ -340,6 +340,11 @@ export default function CandidateDetail() {
     logo_data: string | null; description: string | null;
   } | null>(null);
   const [emailJobSkills, setEmailJobSkills] = useState<string | null>(null);
+  const [emailJdText, setEmailJdText] = useState<string | null>(null);
+  const [emailFieldRows, setEmailFieldRows] = useState<{
+    id: string; left_label: string; left_field: string;
+    right_label: string; right_field: string; visible: boolean;
+  }[] | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [message, setMessage] = useState('');
   const [liveScores, setLiveScores] = useState({ tech: 0, soft: 0, overall: 0 });
@@ -493,9 +498,10 @@ export default function CandidateDetail() {
       red_flags: JSON.stringify(data.red_flags ?? []),
     };
     try {
-      await api.post('/calls/assessment', body);
+      const res = await api.post('/calls/assessment', body);
       showMsg(submit ? 'Submitted for validation!' : 'Draft saved.');
-      loadCandidate();
+      // Update assessment in-place — avoids full reload which resets scroll position
+      setCandidate(prev => prev ? { ...prev, assessment: res.data } : prev);
     } catch {
       showMsg('Error saving assessment.');
     }
@@ -1301,16 +1307,21 @@ export default function CandidateDetail() {
                         } catch { /* proceed anyway — email opens with whatever is in state */ }
 
                         setShowEmailOverlay(true);
-                        // Fetch client profile + job skills for the template
+                        // Fetch client profile, job data (skills + JD text), and email field order config
                         try {
-                          const [cr, jr] = await Promise.all([
+                          const [cr, jr, cfgr] = await Promise.all([
                             api.get('/clients').catch(() => ({ data: [] })),
                             candidate?.job_id ? api.get(`/jobs/${candidate.job_id}`).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+                            api.get('/form-config/email_fields').catch(() => ({ data: null })),
                           ]);
                           const matched = (cr.data as { name: string; short_name: string | null; website_url: string | null; logo_data: string | null; description: string | null }[])
                             .find(c => c.name.toLowerCase() === candidate?.client_name?.toLowerCase());
                           setEmailClient(matched ?? null);
-                          setEmailJobSkills((jr.data as { skill_stack?: string | null } | null)?.skill_stack ?? null);
+                          const jobData = jr.data as { skill_stack?: string | null; jd_raw_text?: string | null } | null;
+                          setEmailJobSkills(jobData?.skill_stack ?? null);
+                          setEmailJdText(jobData?.jd_raw_text ?? null);
+                          const cfg = cfgr.data as { rows?: typeof emailFieldRows } | null;
+                          setEmailFieldRows(cfg?.rows ?? null);
                         } catch { /* ignore */ }
                       }}
                       disabled={candidate.mail_sent}
@@ -1592,27 +1603,79 @@ export default function CandidateDetail() {
           : '—';
 
         const v = (s: string | number | null | undefined): string => s != null ? String(s) : '—';
-        const rows: [string, string, string, string][] = [
-          ['Name',                         v(candidate.full_name),                         'Phone',                    v(candidate.mobile)],
-          ['Email ID',                     v(candidate.email),                             'Alternate no',             v(a?.alt_phone)],
-          ['Company URL',                  'http://www.joulestowatts.com',                 'Client Company URL',       clientUrl],
-          ['Resignation acceptance',       v(cp?.resignation_acceptance),                  'Replacement &amp; KT',     v(cp?.replacement_kt_status)],
-          ['Skill Set',                    v(a?.primary_skill_stack),                      'Role/Responsibilities',    v(cp?.role_responsibilities)],
-          ['Personal Laptop',              v(cp?.personal_laptop),                         'Total experience',         a?.total_exp != null ? `${a.total_exp} yrs` : '—'],
-          ['Current Residential Location', v(a?.current_city),                             'Client Work Location',     v(cp?.client_work_location)],
-          ['Current Work Location',        v(cp?.current_work_location),                   'Current Work Timings',     v(cp?.current_work_timings)],
-          ['Notice Period (on paper)',      a?.notice_period_weeks != null ? `${a.notice_period_weeks} weeks` : '—', 'Negotiable Upto', v(cp?.notice_negotiable_upto)],
-          ['Current Company',              v(a?.last_company),                             'Payroll',                  v(cp?.payroll)],
-          ['Current CTC',                  a?.current_ctc != null ? `${a.current_ctc} LPA` : '—', 'Expected CTC',   a?.expected_ctc != null ? `${a.expected_ctc} LPA` : '—'],
-          ['Relevant experience',          a?.relevant_exp != null ? `${a.relevant_exp} yrs` : '—', 'Deploying Client', v(a?.deploying_client)],
-          ['Offers in Hand',               v(a?.offers_in_hand),                           'Offers Pipeline',          v(cp?.offers_pipeline)],
-          ['Interview Pipeline',           v(cp?.interview_pipeline),                      'Reason for change',        v(a?.reason_for_change)],
-          ['DOB',                          v(cp?.dob),                                     'Telephonic availability',  v(cp?.telephonic_availability)],
-          ['IDE Installed',                v(cp?.ide_installed),                           'Wifi / Mobile Data',       v(cp?.wifi_connectivity)],
-          ['Marital Status',               v(cp?.marital_status),                          'LinkedIn',                 v(candidate.linkedin_url)],
-          ['Health Issues (self/family)',  v(cp?.health_issues),                           'Planned Leaves (3 mo)',    v(cp?.planned_leaves)],
-          ['Interview Avail (next 2 days)',v(cp?.interview_availability_2d),               'Travel Plans',             v(cp?.upcoming_travel)],
+
+        // Resolve a field reference to its actual value
+        const fieldVal = (fieldKey: string): string => {
+          const map: Record<string, string> = {
+            full_name:               v(candidate.full_name),
+            mobile:                  v(candidate.mobile),
+            email:                   v(candidate.email),
+            linkedin_url:            v(candidate.linkedin_url),
+            client_name:             v(candidate.client_name),
+            j2w_url:                 'http://www.joulestowatts.com',
+            client_url:              clientUrl,
+            alt_phone:               v(a?.alt_phone),
+            primary_skill_stack:     v(a?.primary_skill_stack),
+            total_exp:               a?.total_exp != null ? `${a.total_exp} yrs` : '—',
+            relevant_exp:            a?.relevant_exp != null ? `${a.relevant_exp} yrs` : '—',
+            notice_period_weeks:     a?.notice_period_weeks != null ? `${a.notice_period_weeks} weeks` : '—',
+            current_ctc:             a?.current_ctc != null ? `${a.current_ctc} LPA` : '—',
+            expected_ctc:            a?.expected_ctc != null ? `${a.expected_ctc} LPA` : '—',
+            current_city:            v(a?.current_city),
+            deploying_client:        v(a?.deploying_client),
+            offers_in_hand:          v(a?.offers_in_hand),
+            reason_for_change:       v(a?.reason_for_change),
+            last_company:            v(a?.last_company),
+            resignation_acceptance:  v(cp?.resignation_acceptance),
+            replacement_kt_status:   v(cp?.replacement_kt_status),
+            role_responsibilities:   v(cp?.role_responsibilities),
+            personal_laptop:         v(cp?.personal_laptop),
+            client_work_location:    v(cp?.client_work_location),
+            current_work_location:   v(cp?.current_work_location),
+            current_work_timings:    v(cp?.current_work_timings),
+            notice_negotiable_upto:  v(cp?.notice_negotiable_upto),
+            payroll:                 v(cp?.payroll),
+            offers_pipeline:         v(cp?.offers_pipeline),
+            interview_pipeline:      v(cp?.interview_pipeline),
+            dob:                     v(cp?.dob),
+            telephonic_availability: v(cp?.telephonic_availability),
+            ide_installed:           v(cp?.ide_installed),
+            wifi_connectivity:       v(cp?.wifi_connectivity),
+            marital_status:          v(cp?.marital_status),
+            health_issues:           v(cp?.health_issues),
+            planned_leaves:          v(cp?.planned_leaves),
+            interview_availability_2d: v(cp?.interview_availability_2d),
+            upcoming_travel:         v(cp?.upcoming_travel),
+          };
+          return map[fieldKey] ?? '—';
+        };
+
+        // Use configured row order (from admin settings) or fall back to defaults
+        const DEFAULT_ROWS = [
+          {left_label:'Name',left_field:'full_name',right_label:'Phone',right_field:'mobile',visible:true},
+          {left_label:'Email ID',left_field:'email',right_label:'Alternate no',right_field:'alt_phone',visible:true},
+          {left_label:'Company URL',left_field:'j2w_url',right_label:'Client Company URL',right_field:'client_url',visible:true},
+          {left_label:'Resignation acceptance',left_field:'resignation_acceptance',right_label:'Replacement & KT',right_field:'replacement_kt_status',visible:true},
+          {left_label:'Skill Set',left_field:'primary_skill_stack',right_label:'Role/Responsibilities',right_field:'role_responsibilities',visible:true},
+          {left_label:'Personal Laptop',left_field:'personal_laptop',right_label:'Total experience',right_field:'total_exp',visible:true},
+          {left_label:'Current Residential Location',left_field:'current_city',right_label:'Client Work Location',right_field:'client_work_location',visible:true},
+          {left_label:'Current Work Location',left_field:'current_work_location',right_label:'Current Work Timings',right_field:'current_work_timings',visible:true},
+          {left_label:'Notice Period (on paper)',left_field:'notice_period_weeks',right_label:'Negotiable Upto',right_field:'notice_negotiable_upto',visible:true},
+          {left_label:'Current Company',left_field:'last_company',right_label:'Payroll',right_field:'payroll',visible:true},
+          {left_label:'Current CTC',left_field:'current_ctc',right_label:'Expected CTC',right_field:'expected_ctc',visible:true},
+          {left_label:'Relevant experience',left_field:'relevant_exp',right_label:'Deploying Client',right_field:'deploying_client',visible:true},
+          {left_label:'Offers in Hand',left_field:'offers_in_hand',right_label:'Offers Pipeline',right_field:'offers_pipeline',visible:true},
+          {left_label:'Interview Pipeline',left_field:'interview_pipeline',right_label:'Reason for change',right_field:'reason_for_change',visible:true},
+          {left_label:'DOB',left_field:'dob',right_label:'Telephonic availability',right_field:'telephonic_availability',visible:true},
+          {left_label:'IDE Installed',left_field:'ide_installed',right_label:'Wifi / Mobile Data',right_field:'wifi_connectivity',visible:true},
+          {left_label:'Marital Status',left_field:'marital_status',right_label:'LinkedIn',right_field:'linkedin_url',visible:true},
+          {left_label:'Health Issues (self/family)',left_field:'health_issues',right_label:'Planned Leaves (3 mo)',right_field:'planned_leaves',visible:true},
+          {left_label:'Interview Avail (next 2 days)',left_field:'interview_availability_2d',right_label:'Travel Plans',right_field:'upcoming_travel',visible:true},
         ];
+        const activeRows = (emailFieldRows ?? DEFAULT_ROWS).filter(r => r.visible);
+        const rows: [string, string, string, string][] = activeRows.map(r =>
+          [r.left_label, fieldVal(r.left_field), r.right_label, fieldVal(r.right_field)]
+        );
 
         const ec = emailClient;
         const LABEL = 'border:1px solid #8ea9c1;padding:5px 10px;background:#dce6f1;font-weight:bold;font-size:12px;font-family:Arial,sans-serif;white-space:nowrap;color:#1a202c;';
@@ -1653,6 +1716,10 @@ ${rows.map(([ll, lv, rl, rv]) =>
 
 ${emailJobSkills ? `<br><p style="font-size:12px;font-weight:bold;margin:16px 0 4px;">Mandatory Skills</p>
 <p style="font-size:12px;margin:0 0 16px;color:#374151;">${emailJobSkills}</p>` : ''}
+
+${emailJdText ? `<br><hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+<p style="font-size:12px;font-weight:bold;margin:0 0 8px;color:#1a202c;">Job Description</p>
+<div style="font-size:12px;color:#374151;line-height:1.8;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">${emailJdText.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : ''}
 
 <br>
 <p style="margin:0;font-size:13px;">--</p>

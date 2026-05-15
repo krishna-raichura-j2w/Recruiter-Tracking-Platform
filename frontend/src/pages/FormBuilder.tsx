@@ -368,12 +368,80 @@ function SectionCard({
   );
 }
 
+// ── Email Field Row editor ────────────────────────────────────────────────────
+
+interface EmailRow {
+  id: string; left_label: string; left_field: string;
+  right_label: string; right_field: string; visible: boolean;
+}
+
+function EmailFieldEditor({ rows, onChange }: { rows: EmailRow[]; onChange: (r: EmailRow[]) => void }) {
+  const move = (idx: number, dir: -1 | 1) => {
+    const next = [...rows];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    onChange(next);
+  };
+  const toggle = (idx: number) => {
+    const next = rows.map((r, i) => i === idx ? { ...r, visible: !r.visible } : r);
+    onChange(next);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+        <h3 className="font-semibold text-sm text-slate-700">Consultant Data Block — Row Order</h3>
+        <p className="text-xs text-slate-400 mt-0.5">Reorder or hide rows in the generated email. Each row has a left column and right column.</p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {rows.map((row, idx) => (
+          <div key={row.id}
+            className={`flex items-center gap-3 px-5 py-3 transition-colors ${row.visible ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
+            <GripVertical size={14} className="text-slate-300 flex-shrink-0" />
+            <span className="text-xs font-semibold text-slate-400 w-5 text-right flex-shrink-0">{idx + 1}</span>
+            <div className="flex-1 grid grid-cols-2 gap-3 min-w-0">
+              <div className="bg-slate-50 rounded-lg px-3 py-1.5">
+                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Left</p>
+                <p className="text-xs font-medium text-slate-700 truncate">{row.left_label}</p>
+                <p className="text-[10px] text-slate-400 font-mono truncate">{row.left_field}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg px-3 py-1.5">
+                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Right</p>
+                <p className="text-xs font-medium text-slate-700 truncate">{row.right_label}</p>
+                <p className="text-[10px] text-slate-400 font-mono truncate">{row.right_field}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={() => move(idx, -1)} disabled={idx === 0}
+                className="p-1 rounded hover:bg-slate-100 disabled:opacity-20" title="Move up">
+                <ChevronUp size={14} className="text-slate-500" />
+              </button>
+              <button onClick={() => move(idx, 1)} disabled={idx === rows.length - 1}
+                className="p-1 rounded hover:bg-slate-100 disabled:opacity-20" title="Move down">
+                <ChevronDown size={14} className="text-slate-500" />
+              </button>
+              <button onClick={() => toggle(idx)}
+                className="p-1 rounded hover:bg-slate-100" title={row.visible ? 'Hide row' : 'Show row'}>
+                {row.visible
+                  ? <Eye size={14} className="text-emerald-500" />
+                  : <EyeOff size={14} className="text-slate-400" />}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function FormBuilder() {
   const [metas, setMetas]             = useState<TemplateMeta[]>([]);
   const [activeForm, setActiveForm]   = useState<string>('caller_assessment');
   const [template, setTemplate]       = useState<FormTemplate | null>(null);
+  const [emailRows, setEmailRows]     = useState<EmailRow[] | null>(null);
   const [loading, setLoading]         = useState(false);
   const [saving, setSaving]           = useState(false);
   const [toast, setToast]             = useState('');
@@ -388,8 +456,16 @@ export default function FormBuilder() {
 
   const fetchTemplate = useCallback((name: string) => {
     setLoading(true);
-    api.get<FormTemplate>(`/form-config/${name}`)
-      .then(r => setTemplate(r.data))
+    api.get<FormTemplate & { rows?: EmailRow[] }>(`/form-config/${name}`)
+      .then(r => {
+        if (name === 'email_fields') {
+          setEmailRows(r.data.rows ?? []);
+          setTemplate(null);
+        } else {
+          setTemplate(r.data);
+          setEmailRows(null);
+        }
+      })
       .catch(() => showToast('Failed to load template'))
       .finally(() => setLoading(false));
   }, []);
@@ -398,14 +474,17 @@ export default function FormBuilder() {
   useEffect(() => { if (activeForm) fetchTemplate(activeForm); }, [activeForm, fetchTemplate]);
 
   const handleSave = async () => {
-    if (!template) return;
     setSaving(true);
     try {
-      await api.put(`/form-config/${template.form_name}`, {
-        label: template.label,
-        sections: template.sections,
-      });
-      showToast('✅ Form saved successfully!');
+      if (activeForm === 'email_fields' && emailRows) {
+        await api.put('/form-config/email_fields', { label: 'Email Field Order', rows: emailRows });
+      } else if (template) {
+        await api.put(`/form-config/${template.form_name}`, {
+          label: template.label,
+          sections: template.sections,
+        });
+      }
+      showToast('✅ Saved successfully!');
       fetchMetas();
     } catch {
       showToast('❌ Save failed. Please try again.');
@@ -417,9 +496,13 @@ export default function FormBuilder() {
   const handleReset = async () => {
     if (!confirm('Reset this form to its original default? All your changes will be lost.')) return;
     try {
-      const { data } = await api.post<FormTemplate>(`/form-config/${activeForm}/reset`);
-      setTemplate(data);
-      showToast('Form reset to defaults.');
+      const { data } = await api.post<FormTemplate & { rows?: EmailRow[] }>(`/form-config/${activeForm}/reset`);
+      if (activeForm === 'email_fields') {
+        setEmailRows((data as unknown as { rows: EmailRow[] }).rows ?? []);
+      } else {
+        setTemplate(data);
+      }
+      showToast('Reset to defaults.');
     } catch {
       showToast('Reset failed.');
     }
@@ -507,21 +590,25 @@ export default function FormBuilder() {
         ))}
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 mb-5 text-xs">
-        {FIELD_TYPES.map(ft => (
-          <span key={ft.value} className={`px-2 py-0.5 rounded font-medium ${TYPE_BADGE[ft.value]}`}>
-            {ft.value} = {ft.label}
-          </span>
-        ))}
-        <span className="px-2 py-0.5 rounded font-medium bg-violet-50 text-violet-600">custom = not tied to a DB column</span>
-      </div>
+      {/* Legend — hidden for email_fields tab */}
+      {activeForm !== 'email_fields' && (
+        <div className="flex flex-wrap gap-3 mb-5 text-xs">
+          {FIELD_TYPES.map(ft => (
+            <span key={ft.value} className={`px-2 py-0.5 rounded font-medium ${TYPE_BADGE[ft.value]}`}>
+              {ft.value} = {ft.label}
+            </span>
+          ))}
+          <span className="px-2 py-0.5 rounded font-medium bg-violet-50 text-violet-600">custom = not tied to a DB column</span>
+        </div>
+      )}
 
-      {/* Sections */}
+      {/* Sections / Email editor */}
       {loading ? (
         <div className="space-y-4 animate-pulse">
           {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-100 rounded-xl" />)}
         </div>
+      ) : activeForm === 'email_fields' && emailRows ? (
+        <EmailFieldEditor rows={emailRows} onChange={setEmailRows} />
       ) : (
         <div className="space-y-4">
           {sortedSections.map((section, idx) => (
