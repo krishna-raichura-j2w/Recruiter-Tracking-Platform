@@ -338,8 +338,10 @@ function JdRow({ story }: { story: JobStory }) {
             </div>
             <div className="flex gap-3">
               <JdStep num={2} label="DL Verified & Assigned" ts={story.confirmed_at} by={story.delivery_lead}
-                note={[story.sourcer_names.length ? `Sourcer: ${story.sourcer_names.join(', ')}` : '',
-                       story.caller_names.length  ? `Caller: ${story.caller_names.join(', ')}`  : ''].filter(Boolean).join('  ·  ') || null}
+                note={(() => {
+                  const recs = [...new Set([...story.sourcer_names, ...story.caller_names])];
+                  return recs.length ? `Recruiters: ${recs.join(', ')}` : null;
+                })()}
                 dotDone="bg-white" dotPending="border-slate-600" last />
             </div>
           </div>
@@ -413,8 +415,7 @@ export default function FollowUp() {
           'Client':            story.client_name,
           'Business Head':     story.business_head || '—',
           'DL':                story.delivery_lead || '—',
-          'Sourcers':          story.sourcer_names.join(', ') || '—',
-          'Callers':           story.caller_names.join(', ')  || '—',
+          'Recruiters':        [...new Set([...story.sourcer_names, ...story.caller_names])].join(', ') || '—',
           'JD Created':        fmtTs(story.created_at),
           'DL Confirmed':      fmtTs(story.confirmed_at),
           'Deadline':          story.deadline ? fmtTs(story.deadline) : '—',

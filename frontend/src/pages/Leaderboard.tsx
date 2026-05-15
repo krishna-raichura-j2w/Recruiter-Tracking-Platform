@@ -617,7 +617,7 @@ function KAMTab({ data }: { data: PodReport }) {
                       <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: d.selections > 0 ? 700 : 400, background: d.selections > 0 ? '#bbf7d0' : undefined }}>{d.selections}</td>
                       <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: d.today_subs > 0 ? 700 : 400, background: d.today_subs > 0 ? '#dcfce7' : undefined }}>{d.today_subs}</td>
                       <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0' }}>{d.dl_name || '—'}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.sourcer_names.join(', ') || '—'}</td>
+                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{[...new Set([...(d.sourcer_names??[]),...(d.caller_names??[])])].join(', ') || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

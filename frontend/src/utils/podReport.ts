@@ -279,7 +279,7 @@ function buildDemandStatus(wb: ExcelJS.Workbook, data: PodReport) {
     const rowData: (string | number)[] = [
       j.client_name, j.client_job_id, j.demand_type, j.created_at,
       j.role_title, j.headcount, '', '', '',
-      j.kam_name, j.dl_name, j.sourcer_names.join(', '), '',
+      j.kam_name, j.dl_name, [...new Set([...(j.sourcer_names??[]),...(j.caller_names??[])])].join(', '), '',
       j.total_submitted, '', '', j.rejections, '', '',
       j.l1_count, '', '', '', '', '',
       j.l2_count, '', '', '', '', '',
@@ -489,7 +489,7 @@ function buildDLAllocation(wb: ExcelJS.Workbook, data: PodReport) {
       const status = d.selections > 0 ? '✓ Done' : d.total_submitted > 0 ? '~ Active' : d.total_sourced > 0 ? '⚠ Behind' : '○ Not started';
       const vals: (string | number)[] = [
         d.client_name, d.role_title,
-        d.sourcer_names[0] || '', d.caller_names[0] || '',
+        [...new Set([...(d.sourcer_names??[]),...(d.caller_names??[])])].join(', ') || '',
         d.sourcing_target ?? '',
         dl.dl_name,
         d.total_sourced, d.total_submitted, status,

@@ -201,6 +201,25 @@ def run_migrations(db):
     _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id)")
     _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs(created_at DESC)")
 
+    # ── Merge sourcer_ids + caller_ids → unified recruiter list ──────────────
+    # Old data had separate sourcer/caller people; unify them so nothing breaks.
+    try:
+        import json as _json
+        rows = db.execute(text("SELECT id, sourcer_ids, caller_ids FROM jobs")).fetchall()
+        for row in rows:
+            s = _json.loads(row.sourcer_ids or '[]') if isinstance(row.sourcer_ids, str) else (row.sourcer_ids or [])
+            c = _json.loads(row.caller_ids  or '[]') if isinstance(row.caller_ids,  str) else (row.caller_ids  or [])
+            merged = list(dict.fromkeys(s + c))   # union, preserve order, deduplicate
+            if merged != s or merged != c:
+                db.execute(
+                    text("UPDATE jobs SET sourcer_ids = :s, caller_ids = :c WHERE id = :id"),
+                    {"s": _json.dumps(merged), "c": _json.dumps(merged), "id": row.id},
+                )
+        db.commit()
+    except Exception as _e:
+        db.rollback()
+        print(f"[migration] merge sourcer/caller: {_e}")
+
 
 def seed_data(db):
     # Check by admin email so DL insertion in run_migrations() doesn't block seeding

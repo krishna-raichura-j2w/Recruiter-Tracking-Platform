@@ -249,7 +249,7 @@ function DemandStatusView({ data }: { data: PodReport }) {
                   <TD bg={bg} center>{j.headcount}</TD>
                   <TD bg={bg}>{j.kam_name}</TD>
                   <TD bg={bg}>{j.dl_name}</TD>
-                  <TD bg={bg}>{j.sourcer_names.join(', ')}</TD>
+                  <TD bg={bg}>{[...new Set([...(j.sourcer_names??[]),...(j.caller_names??[])])].join(', ')}</TD>
                   <TD center>{j.total_sourced}</TD>
                   <TD center>{j.validated}</TD>
                   <TD center bg={j.total_submitted > 0 ? '#dbeafe' : '#fff'}>{j.total_submitted}</TD>
@@ -313,7 +313,7 @@ function KAMView({ data }: { data: PodReport }) {
                       <TD bg={bg}>{d.client_job_id}</TD>
                       <TD bg={bg} bold>{d.client_name}</TD>
                       <TD bg={bg}>{d.role_title}</TD>
-                      <TD bg={bg}>{d.sourcer_names?.join(', ')}</TD>
+                      <TD bg={bg}>{[...new Set([...(d.sourcer_names??[]),...(d.caller_names??[])])].join(', ')}</TD>
                       <TD center>{d.d2_subs}</TD>
                       <TD center>{d.d1_subs}</TD>
                       <TD center bg={d.today_subs > 0 ? '#dcfce7' : '#fff'}>{d.today_subs}</TD>
@@ -382,8 +382,7 @@ function DLView({ data }: { data: PodReport }) {
                     <tr key={d.id}>
                       <TD bg={bg} bold>{d.client_name}</TD>
                       <TD bg={bg}>{d.role_title}</TD>
-                      <TD bg={bg}>{d.sourcer_names.join(', ')}</TD>
-                      <TD bg={bg}>{d.caller_names.join(', ')}</TD>
+                      <TD bg={bg}>{[...new Set([...(d.sourcer_names??[]),...(d.caller_names??[])])].join(', ')}</TD>
                       <TD center>{d.sourcing_target ?? '—'}</TD>
                       <TD center>{d.total_sourced}</TD>
                       <TD center bg={d.total_submitted > 0 ? '#dbeafe' : '#fff'}>{d.total_submitted}</TD>

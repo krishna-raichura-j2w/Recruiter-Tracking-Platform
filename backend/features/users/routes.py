@@ -170,26 +170,16 @@ def get_team_assignments(
     for job in jobs:
         sourcer_ids = _json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
         caller_ids  = _json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
+        # Unified recruiter list — deduped union so each person appears once per job
+        recruiter_ids = list(dict.fromkeys(sourcer_ids + caller_ids))
 
-        for uid in sourcer_ids:
-            if not _ensure(uid, "sourcer"):
+        for uid in recruiter_ids:
+            if not _ensure(uid, "recruiter"):
                 continue
             sourced = db.query(Candidate).filter(
                 Candidate.job_id == job.id,
                 Candidate.sourced_by_id == uid,
             ).count()
-            members[uid]["jobs"].append({
-                "job_id": job.id,
-                "role_title": job.role_title,
-                "client_name": job.client_name,
-                "assignment_type": "sourcer",
-                "target": job.sourcing_target,
-                "actual": sourced,
-            })
-
-        for uid in caller_ids:
-            if not _ensure(uid, "caller"):
-                continue
             called = db.query(Candidate).filter(
                 Candidate.job_id == job.id,
                 Candidate.assigned_to_id == uid,
@@ -198,9 +188,11 @@ def get_team_assignments(
                 "job_id": job.id,
                 "role_title": job.role_title,
                 "client_name": job.client_name,
-                "assignment_type": "caller",
+                "assignment_type": "recruiter",
                 "target": job.sourcing_target,
-                "actual": called,
+                "actual": sourced + called,
+                "sourced": sourced,
+                "called": called,
             })
 
     return list(members.values())

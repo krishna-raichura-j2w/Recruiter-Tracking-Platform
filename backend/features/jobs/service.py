@@ -28,6 +28,17 @@ def _job_dict(db: Session, job: Job) -> dict:
         if u: caller_names.append(u.name)
     d["caller_names"] = caller_names
 
+    # Unified recruiter list (union of both, deduped) — used by all new UI
+    all_ids = list(dict.fromkeys(d["sourcer_ids"] + d["caller_ids"]))
+    seen = set()
+    recruiter_names = []
+    for name in sourcer_names + caller_names:
+        if name not in seen:
+            seen.add(name)
+            recruiter_names.append(name)
+    d["recruiter_ids"]   = all_ids
+    d["recruiter_names"] = recruiter_names
+
     # Serialize DateTime fields to ISO strings (UTC-aware)
     for dt_field in ("deadline", "sourcing_deadline", "calling_deadline", "created_at", "updated_at"):
         v = d.get(dt_field)

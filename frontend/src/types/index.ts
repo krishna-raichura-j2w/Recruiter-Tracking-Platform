@@ -76,8 +76,12 @@ export interface Job {
   assigned_sourcer_name: string | null;
   assigned_caller_id: number | null;
   assigned_caller_name: string | null;
+  sourcer_ids: number[];
+  caller_ids: number[];
+  recruiter_ids: number[];
   sourcer_names: string[];
   caller_names: string[];
+  recruiter_names: string[];
   delivery_lead_id: number | null;
   delivery_lead_name: string | null;
   business_head_id: number | null;

@@ -118,11 +118,14 @@ def create_job(
 
 
 class AssignJDBody(BaseModel):
-    sourcer_ids: list[int]
-    caller_ids: list[int]
+    recruiter_ids: list[int] = []       # unified — same people source and call
     sourcing_target: int | None = None
     sourcing_deadline: str | None = None
     calling_deadline: str | None = None
+
+
+class ReassignBody(BaseModel):
+    recruiter_ids: list[int]
 
 
 @router.post("/{job_id}/confirm")
@@ -132,17 +135,21 @@ def confirm_jd(
     db: Session  = Depends(get_db),
     current_user = Depends(require_roles("delivery_lead", "admin")),
 ):
-    """Delivery Lead reviews JD, assigns sourcer + caller, sets status = open."""
+    """Delivery Lead reviews JD, assigns recruiters (single unified pool), sets status = open."""
     import json
     from datetime import datetime
     job = service.get_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job.sourcer_ids         = json.dumps(body.sourcer_ids)
-    job.caller_ids          = json.dumps(body.caller_ids)
-    job.assigned_sourcer_id = body.sourcer_ids[0] if body.sourcer_ids else None
-    job.assigned_caller_id  = body.caller_ids[0]  if body.caller_ids  else None
+    if not body.recruiter_ids:
+        raise HTTPException(status_code=400, detail="Select at least one recruiter.")
+
+    # Both sourcer_ids and caller_ids point to the same unified recruiter list
+    job.sourcer_ids         = json.dumps(body.recruiter_ids)
+    job.caller_ids          = json.dumps(body.recruiter_ids)
+    job.assigned_sourcer_id = body.recruiter_ids[0]
+    job.assigned_caller_id  = body.recruiter_ids[0]
     job.delivery_lead_id    = current_user.id
     job.status              = JobStatus.open
     if body.sourcing_target is not None:
@@ -165,19 +172,11 @@ def confirm_jd(
         job.calling_warned    = False
         job.calling_alerted   = False
 
-    # Notify assigned sourcers
-    for uid in body.sourcer_ids:
+    for uid in body.recruiter_ids:
         u = db.query(User).filter(User.id == uid).first()
         if u:
             push(db, uid,
-                f"You've been assigned as sourcer for {job.role_title} ({job.client_name}). Start sourcing!",
-                NotifType.jd_assigned, entity_id=job.id)
-    # Notify assigned callers
-    for uid in body.caller_ids:
-        u = db.query(User).filter(User.id == uid).first()
-        if u:
-            push(db, uid,
-                f"You've been assigned as caller for {job.role_title} ({job.client_name}). Candidates will be routed to you.",
+                f"You've been assigned to {job.role_title} ({job.client_name}). Start sourcing and screening!",
                 NotifType.jd_assigned, entity_id=job.id)
 
     db.commit()
@@ -186,6 +185,47 @@ def confirm_jd(
     from features.activity.service import log as log_activity
     log_activity(db, current_user.id, "confirmed_jd",
                  f"Confirmed JD: {job.role_title} for {job.client_name} (target: {body.sourcing_target})",
+                 entity_type="job", entity_id=job.id)
+    return service._job_dict(db, job)
+
+
+@router.patch("/{job_id}/reassign")
+def reassign_recruiters(
+    job_id: int,
+    body: ReassignBody,
+    db: Session  = Depends(get_db),
+    current_user = Depends(require_roles("delivery_lead", "admin")),
+):
+    """DL reassigns recruiters on an already-open job without changing any other state."""
+    import json
+    job = service.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not body.recruiter_ids:
+        raise HTTPException(status_code=400, detail="Select at least one recruiter.")
+
+    old_ids = set(json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else [])
+    new_ids = set(body.recruiter_ids)
+
+    job.sourcer_ids         = json.dumps(body.recruiter_ids)
+    job.caller_ids          = json.dumps(body.recruiter_ids)
+    job.assigned_sourcer_id = body.recruiter_ids[0]
+    job.assigned_caller_id  = body.recruiter_ids[0]
+
+    # Notify newly added recruiters only
+    for uid in new_ids - old_ids:
+        u = db.query(User).filter(User.id == uid).first()
+        if u:
+            push(db, uid,
+                f"You've been assigned to {job.role_title} ({job.client_name}).",
+                NotifType.jd_assigned, entity_id=job.id)
+
+    db.commit()
+    db.refresh(job)
+
+    from features.activity.service import log as log_activity
+    log_activity(db, current_user.id, "reassigned_recruiters",
+                 f"Reassigned recruiters on {job.role_title} ({job.client_name})",
                  entity_type="job", entity_id=job.id)
     return service._job_dict(db, job)
 

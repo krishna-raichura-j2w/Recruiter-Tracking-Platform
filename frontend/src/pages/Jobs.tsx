@@ -126,16 +126,12 @@ export default function Jobs() {
   const [selectedBhId, setSelectedBhId]             = useState<number | ''>('');
 
   // DL confirm-JD modal state
-  const [confirmJob, setConfirmJob]         = useState<Job | null>(null);
-  const [dlTeam, setDlTeam]                 = useState<{
-    id: number; name: string;
-    recruiter_type: string | null;
-    sourcing_load: number; calling_load: number;
-  }[]>([]);
-  const [selectedSourcers, setSelectedSourcers] = useState<number[]>([]);
-  const [selectedCallers,  setSelectedCallers]  = useState<number[]>([]);
-  const [confirming, setConfirming]         = useState(false);
-  const [confirmError, setConfirmError]     = useState('');
+  const [confirmJob, setConfirmJob]             = useState<Job | null>(null);
+  const [reassignJob, setReassignJob]           = useState<Job | null>(null);
+  const [dlTeam, setDlTeam]                     = useState<{ id: number; name: string; sourcing_load: number; calling_load: number }[]>([]);
+  const [selectedRecruiters, setSelectedRecruiters] = useState<number[]>([]);
+  const [confirming, setConfirming]             = useState(false);
+  const [confirmError, setConfirmError]         = useState('');
   const [sourcingDeadline, setSourcingDeadline] = useState('');
   const [callingDeadline,  setCallingDeadline]  = useState('');
   const [sourcingTarget,   setSourcingTarget]   = useState('');
@@ -159,29 +155,38 @@ export default function Jobs() {
   const jobsSignal = useSignal('jobs');
   useEffect(() => { fetchJobs(); }, [jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const fetchDlTeam = async () => {
+    const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads');
+    return res.data.sourcers ?? [];
+  };
+
   const openConfirmModal = async (job: Job) => {
     setConfirmJob(job);
     setConfirmError('');
     try {
-      const res = await api.get<{
-        sourcers: { id: number; name: string; recruiter_type: string | null; sourcing_load: number; calling_load: number }[]
-      }>('/users/team-loads');
-      const team = res.data.sourcers ?? [];
+      const team = await fetchDlTeam();
       setDlTeam(team);
-      // Auto-select recommended: lowest load for each type ('both' can do either)
-      const sourcers = team.filter(m => m.recruiter_type === 'sourcer' || m.recruiter_type === 'both');
-      const callers  = team.filter(m => m.recruiter_type === 'caller'  || m.recruiter_type === 'both');
-      if (sourcers.length) {
-        const rec = sourcers.reduce((a, b) => a.sourcing_load <= b.sourcing_load ? a : b);
-        setSelectedSourcers([rec.id]);
-      } else { setSelectedSourcers([]); }
-      if (callers.length) {
-        const rec = callers.reduce((a, b) => a.calling_load <= b.calling_load ? a : b);
-        setSelectedCallers([rec.id]);
-      } else { setSelectedCallers([]); }
-    } catch {
-      setDlTeam([]); setSelectedSourcers([]); setSelectedCallers([]);
-    }
+      // Auto-select lowest-load recruiter
+      if (team.length) {
+        const rec = team.reduce((a, b) => (a.sourcing_load + a.calling_load) <= (b.sourcing_load + b.calling_load) ? a : b);
+        setSelectedRecruiters([rec.id]);
+      } else { setSelectedRecruiters([]); }
+    } catch { setDlTeam([]); setSelectedRecruiters([]); }
+  };
+
+  const openReassignModal = async (job: Job) => {
+    setReassignJob(job);
+    setConfirmError('');
+    try {
+      const team = await fetchDlTeam();
+      setDlTeam(team);
+      // Pre-select currently assigned recruiters
+      // Use unified recruiter_ids; fall back to union of sourcer+caller for old data
+      const currentIds: number[] = Array.isArray(job.recruiter_ids) && job.recruiter_ids.length
+        ? job.recruiter_ids
+        : [...new Set([...(Array.isArray(job.sourcer_ids) ? job.sourcer_ids : []), ...(Array.isArray(job.caller_ids) ? job.caller_ids : [])])];
+      setSelectedRecruiters(currentIds.length ? currentIds : []);
+    } catch { setDlTeam([]); setSelectedRecruiters([]); }
   };
 
   const toggleSelect = (id: number, list: number[], setList: (v: number[]) => void) => {
@@ -190,24 +195,35 @@ export default function Jobs() {
 
   const handleConfirmJD = async () => {
     if (!confirmJob) return;
-    if (!selectedSourcers.length) { setConfirmError('Select at least one sourcing recruiter.'); return; }
-    if (!selectedCallers.length)  { setConfirmError('Select at least one calling recruiter.'); return; }
+    if (!selectedRecruiters.length) { setConfirmError('Select at least one recruiter.'); return; }
     setConfirming(true); setConfirmError('');
     try {
       await api.post(`/jobs/${confirmJob.id}/confirm`, {
-        sourcer_ids:       selectedSourcers,
-        caller_ids:        selectedCallers,
+        recruiter_ids:     selectedRecruiters,
         sourcing_target:   sourcingTarget ? Number(sourcingTarget) : null,
         sourcing_deadline: sourcingDeadline ? new Date(sourcingDeadline).toISOString() : null,
         calling_deadline:  callingDeadline  ? new Date(callingDeadline).toISOString()  : null,
       });
       setConfirmJob(null);
-      setSourcingDeadline('');
-      setCallingDeadline('');
-      setSourcingTarget('');
+      setSourcingDeadline(''); setCallingDeadline(''); setSourcingTarget('');
       fetchJobs();
     } catch {
       setConfirmError('Failed to confirm JD. Please try again.');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!reassignJob) return;
+    if (!selectedRecruiters.length) { setConfirmError('Select at least one recruiter.'); return; }
+    setConfirming(true); setConfirmError('');
+    try {
+      await api.patch(`/jobs/${reassignJob.id}/reassign`, { recruiter_ids: selectedRecruiters });
+      setReassignJob(null);
+      fetchJobs();
+    } catch {
+      setConfirmError('Failed to reassign. Please try again.');
     } finally {
       setConfirming(false);
     }
@@ -550,6 +566,7 @@ export default function Jobs() {
               onToggleStatus={handleToggleStatus}
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
+              onReassign={() => openReassignModal(job)}
               onDelete={async () => {
                 if (!confirm(`Delete JD "${job.role_title}" (${job.client_job_id ?? ''})? This cannot be undone.`)) return;
                 try {
@@ -571,113 +588,43 @@ export default function Jobs() {
         <JDDrawer job={selectedJob} onClose={() => setSelectedJob(null)} />
       )}
 
-      {/* DL: Confirm JD — card picker with multi-select */}
+      {/* DL: Confirm JD modal */}
       {confirmJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 flex-shrink-0">
-              <div>
-                <h3 className="text-base font-bold text-slate-800">Review & Assign JD</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{confirmJob.role_title} · {confirmJob.client_name}</p>
-              </div>
-              <button onClick={() => setConfirmJob(null)} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
+        <RecruiterAssignModal
+          title="Review & Assign JD"
+          subtitle={`${confirmJob.role_title} · ${confirmJob.client_name}`}
+          team={dlTeam}
+          selected={selectedRecruiters}
+          onToggle={(id) => toggleSelect(id, selectedRecruiters, setSelectedRecruiters)}
+          error={confirmError}
+          confirming={confirming}
+          onCancel={() => { setConfirmJob(null); setConfirmError(''); }}
+          onConfirm={handleConfirmJD}
+          confirmLabel="Confirm & Open JD"
+          showDeadlines
+          sourcingTarget={sourcingTarget}
+          sourcingDeadline={sourcingDeadline}
+          callingDeadline={callingDeadline}
+          onTargetChange={setSourcingTarget}
+          onSourcingDeadlineChange={setSourcingDeadline}
+          onCallingDeadlineChange={setCallingDeadline}
+        />
+      )}
 
-            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
-              <RecruiterPickerSection
-                title="Sourcing Recruiters"
-                subtitle="Will find and add candidates for this JD"
-                accentColor="teal"
-                members={dlTeam.filter(m => m.recruiter_type === 'sourcer' || m.recruiter_type === 'both')}
-                allMembers={dlTeam}
-                selectedIds={selectedSourcers}
-                loadKey="sourcing_load"
-                loadLabel="JDs"
-                onToggle={(id) => toggleSelect(id, selectedSourcers, setSelectedSourcers)}
-              />
-              <RecruiterPickerSection
-                title="Calling Recruiters"
-                subtitle="Will screen and call sourced candidates"
-                accentColor="blue"
-                members={dlTeam.filter(m => m.recruiter_type === 'caller' || m.recruiter_type === 'both')}
-                allMembers={dlTeam}
-                selectedIds={selectedCallers}
-                loadKey="calling_load"
-                loadLabel="candidates"
-                onToggle={(id) => toggleSelect(id, selectedCallers, setSelectedCallers)}
-              />
-
-              {/* Sourcing target */}
-              <div className="border border-blue-100 bg-blue-50 rounded-xl p-4">
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-3">Sourcing Target *</p>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Total Candidates to Source</label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="e.g. 20"
-                    value={sourcingTarget}
-                    onChange={(e) => setSourcingTarget(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 bg-white"
-                  />
-                  <p className="text-xs text-blue-600 mt-1.5 opacity-80">Shared target across all assigned sourcers and callers.</p>
-                </div>
-              </div>
-
-              {/* Task deadlines */}
-              <div className="border border-amber-100 bg-amber-50 rounded-xl p-4 space-y-3">
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Task Deadlines (optional)</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Sourcing Deadline</label>
-                    <input
-                      type="datetime-local"
-                      value={sourcingDeadline}
-                      onChange={(e) => setSourcingDeadline(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Calling Deadline</label>
-                    <input
-                      type="datetime-local"
-                      value={callingDeadline}
-                      onChange={(e) => setCallingDeadline(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-amber-600 opacity-80">Recruiters get a 15-min warning + overdue alert if not completed in time.</p>
-              </div>
-
-              {confirmError && (
-                <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-xl px-3 py-2">{confirmError}</p>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0 bg-slate-50">
-              <div className="flex-1 text-xs text-slate-500 flex items-center gap-3">
-                <span className="text-teal-700 font-semibold">{selectedSourcers.length} sourcer{selectedSourcers.length !== 1 ? 's' : ''}</span>
-                <span>·</span>
-                <span className="text-blue-700 font-semibold">{selectedCallers.length} caller{selectedCallers.length !== 1 ? 's' : ''}</span>
-                <span className="text-slate-400">selected</span>
-              </div>
-              <button type="button" onClick={() => setConfirmJob(null)}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-100">
-                Cancel
-              </button>
-              <button type="button" onClick={handleConfirmJD} disabled={confirming}
-                className="px-6 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
-                style={{ backgroundColor: '#3b82f6' }}>
-                {confirming ? 'Confirming…' : 'Confirm & Open JD'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* DL: Reassign recruiters modal */}
+      {reassignJob && (
+        <RecruiterAssignModal
+          title="Reassign Recruiters"
+          subtitle={`${reassignJob.role_title} · ${reassignJob.client_name}`}
+          team={dlTeam}
+          selected={selectedRecruiters}
+          onToggle={(id) => toggleSelect(id, selectedRecruiters, setSelectedRecruiters)}
+          error={confirmError}
+          confirming={confirming}
+          onCancel={() => { setReassignJob(null); setConfirmError(''); }}
+          onConfirm={handleReassign}
+          confirmLabel="Save Reassignment"
+        />
       )}
 
       {/* New / Edit Job Modal */}
@@ -1102,11 +1049,12 @@ interface JobCardProps {
   onToggleStatus: (job: Job) => void;
   onEdit: () => void;
   onConfirm: () => void;
+  onReassign: () => void;
   onDelete: () => void;
   toggling: boolean;
 }
 
-function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const skills = job.skill_stack
@@ -1149,7 +1097,12 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
               </>
             )}
           </p>
-          {(job.business_head_name || job.delivery_lead_name || (job.sourcer_names?.length > 0) || (job.caller_names?.length > 0)) && (
+          {(() => {
+            // Unified recruiter display — handles both old (separate) and new (merged) data
+            const recNames = job.recruiter_names?.length
+              ? job.recruiter_names
+              : [...new Set([...(job.sourcer_names ?? []), ...(job.caller_names ?? [])])];
+            return (job.business_head_name || job.delivery_lead_name || recNames.length > 0) && (
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
               {job.business_head_name && (
                 <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
@@ -1161,18 +1114,14 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                   <UserCheck size={11} /> DL: {job.delivery_lead_name}
                 </p>
               )}
-              {job.sourcer_names?.length > 0 && (
-                <p className="text-xs text-teal-600 font-semibold flex items-center gap-1">
-                  <Users size={11} /> Sourcing: {job.sourcer_names.join(', ')}
-                </p>
-              )}
-              {job.caller_names?.length > 0 && (
+              {recNames.length > 0 && (
                 <p className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                  <Phone size={11} /> Calling: {job.caller_names.join(', ')}
+                  <Users size={11} /> Recruiters: {recNames.join(', ')}
                 </p>
               )}
             </div>
-          )}
+            );
+          })()}
           {deadlineLabel && (
             <div className="flex items-center gap-1.5 mt-1">
               <Clock size={11} className={isOvertime ? 'text-red-500' : 'text-slate-400'} />
@@ -1188,13 +1137,18 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Delivery Lead: review & assign sourcer for pending JDs */}
+          {/* Delivery Lead: review & assign for pending JDs */}
           {isDeliveryLead && job.status === 'pending_review' && (
-            <button
-              onClick={onConfirm}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-all"
-            >
+            <button onClick={onConfirm}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-all">
               <UserCheck size={13} /> Review & Assign
+            </button>
+          )}
+          {/* Delivery Lead / Admin: reassign recruiters on open jobs */}
+          {(isDeliveryLead || isAdmin) && job.status === 'open' && (
+            <button onClick={onReassign}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-all">
+              <Users size={13} /> Reassign
             </button>
           )}
           {/* Admin: delete any JD. KAM/DL: delete own pending JDs only */}
@@ -1372,130 +1326,131 @@ function DeadlinePill({ label, deadline, color }: { label: string; deadline: str
 }
 
 
-// ── Recruiter Picker Section (inside confirm modal) ───────────────────────────
+// ── Recruiter Assign Modal (confirm + reassign) ───────────────────────────────
 
-interface RecruiterMember {
-  id: number; name: string;
-  recruiter_type: string | null;
-  sourcing_load: number; calling_load: number;
-}
-
-interface RecruiterPickerSectionProps {
-  title: string;
-  subtitle: string;
-  accentColor: 'teal' | 'blue';
-  members: RecruiterMember[];        // typed members for this role
-  allMembers: RecruiterMember[];     // full team (fallback if no typed members)
-  selectedIds: number[];
-  loadKey: 'sourcing_load' | 'calling_load';
-  loadLabel: string;
+interface RecruiterAssignModalProps {
+  title: string; subtitle: string;
+  team: { id: number; name: string; sourcing_load: number; calling_load: number }[];
+  selected: number[];
   onToggle: (id: number) => void;
+  error: string; confirming: boolean;
+  onCancel: () => void; onConfirm: () => void; confirmLabel: string;
+  showDeadlines?: boolean;
+  sourcingTarget?: string; sourcingDeadline?: string; callingDeadline?: string;
+  onTargetChange?: (v: string) => void;
+  onSourcingDeadlineChange?: (v: string) => void;
+  onCallingDeadlineChange?: (v: string) => void;
 }
 
-function RecruiterPickerSection({
-  title, subtitle, accentColor, members, allMembers,
-  selectedIds, loadKey, loadLabel, onToggle,
-}: RecruiterPickerSectionProps) {
-  const pool = members.length > 0 ? members : allMembers;
-  const sorted = [...pool].sort((a, b) => a[loadKey] - b[loadKey]);
-  const minLoad = sorted[0]?.[loadKey] ?? 0;
-
-  const initials = (name: string) =>
-    name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-
-  const accent = {
-    teal: {
-      border:  'border-teal-400',
-      bg:      'bg-teal-50',
-      check:   'bg-teal-500',
-      badge:   'bg-teal-100 text-teal-700',
-      label:   'text-teal-700',
-      rec:     'bg-amber-50 border border-amber-200 text-amber-700',
-      header:  'text-teal-700',
-    },
-    blue: {
-      border:  'border-blue-400',
-      bg:      'bg-blue-50',
-      check:   'bg-blue-500',
-      badge:   'bg-blue-100 text-blue-700',
-      label:   'text-blue-700',
-      rec:     'bg-amber-50 border border-amber-200 text-amber-700',
-      header:  'text-blue-700',
-    },
-  }[accentColor];
+function RecruiterAssignModal({
+  title, subtitle, team, selected, onToggle, error, confirming,
+  onCancel, onConfirm, confirmLabel, showDeadlines,
+  sourcingTarget, sourcingDeadline, callingDeadline,
+  onTargetChange, onSourcingDeadlineChange, onCallingDeadlineChange,
+}: RecruiterAssignModalProps) {
+  const initials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const sorted = [...team].sort((a, b) => (a.sourcing_load + a.calling_load) - (b.sourcing_load + b.calling_load));
+  const minLoad = (sorted[0]?.sourcing_load ?? 0) + (sorted[0]?.calling_load ?? 0);
 
   return (
-    <div>
-      <div className="mb-3">
-        <h4 className={`text-sm font-bold ${accent.header}`}>{title}</h4>
-        <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
-        {members.length === 0 && (
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mt-2 inline-block">
-            No members typed as this role yet — showing full team
-          </p>
-        )}
-      </div>
-      {pool.length === 0 ? (
-        <p className="text-sm text-slate-400">No team members available.</p>
-      ) : (
-        <div className="grid grid-cols-3 gap-2.5">
-          {sorted.map((m) => {
-            const selected   = selectedIds.includes(m.id);
-            const isRecommended = m[loadKey] === minLoad;
-            const load = m[loadKey];
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => onToggle(m.id)}
-                className={`relative text-left rounded-xl border-2 p-3 transition-all ${
-                  selected
-                    ? `${accent.border} ${accent.bg}`
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                {/* Checkmark */}
-                {selected && (
-                  <div className={`absolute top-2 right-2 w-5 h-5 rounded-full ${accent.check} flex items-center justify-center`}>
-                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                      <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                )}
-
-                {/* Avatar + name */}
-                <div className="flex items-center gap-2 mb-2 pr-5">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${selected ? accent.check : 'bg-slate-400'}`}>
-                    {initials(m.name)}
-                  </div>
-                  <span className="text-xs font-semibold text-slate-800 leading-tight">{m.name}</span>
-                </div>
-
-                {/* Type badge */}
-                {m.recruiter_type && (
-                  <span className={`inline-block text-xs font-semibold px-1.5 py-0.5 rounded-full mb-1.5 ${accent.badge}`}>
-                    {m.recruiter_type}
-                  </span>
-                )}
-
-                {/* Load */}
-                <p className="text-xs text-slate-500">
-                  <span className={`font-bold ${load === 0 ? 'text-slate-400' : load < 4 ? 'text-emerald-600' : load < 7 ? 'text-amber-600' : 'text-red-600'}`}>
-                    {load}
-                  </span>{' '}{loadLabel}
-                </p>
-
-                {/* Recommended badge */}
-                {isRecommended && (
-                  <span className={`mt-1.5 inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full ${accent.rec}`}>
-                    ★ Recommended
-                  </span>
-                )}
-              </button>
-            );
-          })}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <h3 className="text-base font-bold text-slate-800">{title}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
+          </div>
+          <button onClick={onCancel} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"><X size={18} /></button>
         </div>
-      )}
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {/* Unified recruiter picker */}
+          <div>
+            <h4 className="text-sm font-bold text-blue-700 mb-1">Assign Recruiters</h4>
+            <p className="text-xs text-slate-400 mb-3">Each recruiter will handle sourcing and screening for this JD.</p>
+            {sorted.length === 0
+              ? <p className="text-sm text-slate-400">No team members available.</p>
+              : <div className="grid grid-cols-3 gap-2.5">
+                  {sorted.map(m => {
+                    const isSelected = selected.includes(m.id);
+                    const load = m.sourcing_load + m.calling_load;
+                    const isRec = load === minLoad;
+                    return (
+                      <button key={m.id} type="button" onClick={() => onToggle(m.id)}
+                        className={`relative text-left rounded-xl border-2 p-3 transition-all ${
+                          isSelected ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                        }`}>
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                              <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mb-2 pr-5">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${isSelected ? 'bg-blue-500' : 'bg-slate-400'}`}>
+                            {initials(m.name)}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-800 leading-tight">{m.name}</span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          <span className={`font-bold ${load === 0 ? 'text-slate-400' : load < 5 ? 'text-emerald-600' : load < 10 ? 'text-amber-600' : 'text-red-600'}`}>{load}</span> active JDs
+                        </p>
+                        {isRec && (
+                          <span className="mt-1.5 inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">★ Recommended</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+            }
+          </div>
+
+          {/* Sourcing target + deadlines (confirm only) */}
+          {showDeadlines && (
+            <>
+              <div className="border border-blue-100 bg-blue-50 rounded-xl p-4">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">Sourcing Target</p>
+                <input type="number" min="1" placeholder="e.g. 20" value={sourcingTarget}
+                  onChange={e => onTargetChange?.(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 bg-white" />
+                <p className="text-xs text-blue-600 mt-1.5 opacity-80">Shared target across all assigned recruiters.</p>
+              </div>
+              <div className="border border-amber-100 bg-amber-50 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Deadlines (optional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Sourcing Deadline</label>
+                    <input type="datetime-local" value={sourcingDeadline} onChange={e => onSourcingDeadlineChange?.(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-amber-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Calling Deadline</label>
+                    <input type="datetime-local" value={callingDeadline} onChange={e => onCallingDeadlineChange?.(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-amber-400" />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {error && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0 bg-slate-50">
+          <div className="flex-1 text-xs text-slate-500 flex items-center">
+            <span className="font-semibold text-blue-700">{selected.length} recruiter{selected.length !== 1 ? 's' : ''}</span>
+            <span className="ml-1 text-slate-400">selected</span>
+          </div>
+          <button type="button" onClick={onCancel}
+            className="px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button type="button" onClick={onConfirm} disabled={confirming}
+            className="px-6 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
+            style={{ backgroundColor: '#3b82f6' }}>
+            {confirming ? 'Saving…' : confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
