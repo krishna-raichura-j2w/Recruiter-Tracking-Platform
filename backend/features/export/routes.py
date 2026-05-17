@@ -315,7 +315,7 @@ def pod_report(
             "name":           r.name,
             "recruiter_type": r.recruiter_type.value if r.recruiter_type else "both",
             "dl_name":        dl.name if dl else "",
-            "sourcing_load":  sum(1 for j in jobs if r.id == j.assigned_sourcer_id),
+            "sourcing_load":  sum(1 for j in jobs if r.id in (json.loads(j.sourcer_ids or '[]') if isinstance(j.sourcer_ids, str) else [])),
             "calling_load":   len([c for c in all_cands if c.assigned_to_id == r.id
                                    and c.status not in (CandidateStatus.joined, CandidateStatus.backed_out, CandidateStatus.rejected)]),
             "assigned_jobs":  my_jobs,

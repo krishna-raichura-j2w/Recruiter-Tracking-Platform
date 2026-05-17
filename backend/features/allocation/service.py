@@ -4,10 +4,11 @@ Round-robin / min-load allocation for sourcers, callers, and validators.
 Strategy: always assign to the active team member with the fewest current
 open items. Ties are broken by user ID (smallest ID = longest-tenured).
 
-  Sourcers  → count open (non-closed) Jobs assigned to them
+  Sourcers  → count open (non-closed) Jobs where recruiter appears in sourcer_ids array
   Callers   → count active Candidates assigned to them
   Validators→ count Candidates pending validation assigned to them
 """
+import json
 from sqlalchemy.orm import Session
 from infra.models import User, Job, Candidate, UserRole, JobStatus, CandidateStatus
 
@@ -26,10 +27,16 @@ def _team(db: Session, pod_lead_id: int, role: UserRole) -> list[User]:
 
 
 def _sourcer_load(db: Session, user_id: int) -> int:
-    return db.query(Job).filter(
-        Job.assigned_sourcer_id == user_id,
-        Job.status != JobStatus.closed,
-    ).count()
+    # Must check sourcer_ids JSON array because multiple recruiters share a JD.
+    # assigned_sourcer_id only points to the first recruiter, so non-primary
+    # recruiters would show zero load if we queried that field instead.
+    open_jobs = db.query(Job).filter(Job.status != JobStatus.closed).all()
+    count = 0
+    for job in open_jobs:
+        ids = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else (job.sourcer_ids or [])
+        if user_id in ids:
+            count += 1
+    return count
 
 
 def _caller_load(db: Session, user_id: int) -> int:
