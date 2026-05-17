@@ -496,56 +496,68 @@ export default function Jobs() {
         </div>
       )}
 
-      {/* ── Status tabs + New Job ───────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-          {tabs.map((t) => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                activeTab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {t.label}
-              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
-                activeTab === t.key ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'
-              }`}>
-                {t.key === 'all' ? jobs.length : jobs.filter((j) => j.status === t.key).length}
-              </span>
-            </button>
-          ))}
+      {/* ── Toolbar: tabs + search + new job ────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        {/* Status tabs */}
+        <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#E8EDF3' }}>
+          {tabs.map(t => {
+            const count = t.key === 'all' ? jobs.length : jobs.filter(j => j.status === t.key).length;
+            const active = activeTab === t.key;
+            const dotColor: Record<string, string> = { pending_review: '#F59E0B', open: '#10B981', on_hold: '#94A3B8', closed: '#CBD5E1' };
+            return (
+              <button key={t.key} onClick={() => setActiveTab(t.key)}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all"
+                style={active
+                  ? { background: '#FFFFFF', color: '#0F172A', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }
+                  : { background: 'transparent', color: '#64748B' }
+                }>
+                {t.key !== 'all' && (
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: active ? dotColor[t.key] : '#94A3B8' }} />
+                )}
+                {t.label}
+                <span
+                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={active
+                    ? { background: '#EFF6FF', color: '#2563EB' }
+                    : { background: 'rgba(0,0,0,0.08)', color: '#94A3B8' }
+                  }>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
-        {canCreate && (
-          <button onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
-            style={{ backgroundColor: '#3b82f6' }}
-          >
-            <Plus size={16} /> New Job
-          </button>
-        )}
-      </div>
 
-      {/* ── Search bar ─────────────────────────────────────────────────── */}
-      <div className="mb-5">
         <div className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          {/* Search */}
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by role or company…"
+              placeholder="Search role or company…"
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+              onChange={e => setSearchText(e.target.value)}
+              className="pl-8 pr-4 py-2 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+              style={{ border: '1px solid #E2E8F0', width: 220, focusBorderColor: '#2563EB' }}
             />
           </div>
           {(searchText || clientFilter) && (
             <button onClick={() => { setSearchText(''); setClientFilter(''); }}
-              className="text-xs px-3 py-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center gap-1">
-              <X size={12} /> Clear
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 transition-all"
+              style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+              <X size={11} /> Clear
             </button>
           )}
-          <span className="text-xs text-slate-400 ml-1">
-            {filteredJobs.length} of {jobs.length} jobs
+          <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">
+            {filteredJobs.length}/{jobs.length}
           </span>
+          {canCreate && (
+            <button onClick={openCreateModal}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-bold hover:opacity-90 transition-all"
+              style={{ background: '#2563EB', boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}>
+              <Plus size={14} /> New JD
+            </button>
+          )}
         </div>
       </div>
 
@@ -1065,238 +1077,351 @@ interface JobCardProps {
   toggling: boolean;
 }
 
+const STATUS_CONFIG: Record<string, { label: string; border: string; bg: string; badge: string; badgeText: string; dot: string }> = {
+  pending_review: { label: 'Pending Review', border: '#F59E0B', bg: '#FFFBEB', badge: '#FEF3C7', badgeText: '#92400E', dot: '#F59E0B' },
+  open:           { label: 'Open',           border: '#10B981', bg: '#FFFFFF', badge: '#D1FAE5', badgeText: '#065F46', dot: '#10B981' },
+  on_hold:        { label: 'On Hold',        border: '#94A3B8', bg: '#FFFFFF', badge: '#F1F5F9', badgeText: '#475569', dot: '#94A3B8' },
+  closed:         { label: 'Closed',         border: '#CBD5E1', bg: '#F8FAFC', badge: '#F1F5F9', badgeText: '#9CA3AF', dot: '#CBD5E1' },
+};
+
+function Avatar({ name, size = 28, color }: { name: string; size?: number; color?: string }) {
+  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const colors = ['#3B82F6','#8B5CF6','#10B981','#F59E0B','#EF4444','#06B6D4','#EC4899','#6366F1'];
+  const bg = color ?? colors[name.charCodeAt(0) % colors.length];
+  return (
+    <div
+      title={name}
+      className="flex items-center justify-center rounded-full text-white font-bold flex-shrink-0"
+      style={{ width: size, height: size, background: bg, fontSize: size * 0.38, border: '2px solid white' }}
+    >
+      {initials}
+    </div>
+  );
+}
+
 function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const skills = job.skill_stack
-    ? job.skill_stack.split(',').map((s) => s.trim()).filter(Boolean)
-    : [];
-  const visibleSkills = expanded ? skills : skills.slice(0, 4);
-  const extraCount = skills.length - 4;
+  const cfg = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.open;
 
-  const expLabel = job.min_experience != null || job.max_experience != null
-    ? [job.min_experience, job.max_experience].filter((v) => v != null).join('–') + ' yrs'
+  const skills = job.skill_stack ? job.skill_stack.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const visibleSkills = expanded ? skills : skills.slice(0, 5);
+  const extraSkillCount = skills.length - 5;
+
+  const expLabel = (job.min_experience != null || job.max_experience != null)
+    ? [job.min_experience, job.max_experience].filter(v => v != null).join('–') + ' yrs'
     : null;
 
   const deadline = job.deadline ? new Date(job.deadline) : null;
-  const isOvertime = deadline != null && job.status !== 'closed' && deadline < new Date();
-  const deadlineLabel = deadline
-    ? deadline.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : null;
+  const isOverdue = deadline != null && job.status !== 'closed' && deadline < new Date();
+
+  const recNames: string[] = job.recruiter_names?.length
+    ? job.recruiter_names
+    : [...new Set([...(job.sourcer_names ?? []), ...(job.caller_names ?? [])])];
+
+  const isPending = job.status === 'pending_review';
+  const isOpen    = job.status === 'open';
 
   return (
-    <div className={`rounded-2xl border shadow-sm hover:shadow-md transition-shadow p-5 ${
-      isOvertime ? 'bg-red-50/60 border-red-200' : 'bg-white border-slate-100'
-    }`}>
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-base font-bold text-slate-800 leading-snug">{job.role_title}</h3>
-            {job.client_job_id && (
-              <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-700 text-xs font-mono font-semibold tracking-wide flex-shrink-0">
-                {job.client_job_id}
-              </span>
-            )}
+    <div
+      className="bg-white rounded-2xl overflow-hidden transition-all duration-200"
+      style={{
+        border: '1px solid #E8EDF3',
+        borderLeft: `4px solid ${isOverdue ? '#EF4444' : cfg.border}`,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+      }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'}
+    >
+      {/* ── DL: Prominent pending banner ────────────────────────── */}
+      {isDeliveryLead && isPending && (
+        <div
+          className="px-5 py-2.5 flex items-center justify-between"
+          style={{ background: 'linear-gradient(90deg, #FFFBEB, #FEF9EC)', borderBottom: '1px solid #FDE68A' }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-sm">⏳</span>
+            <span className="text-xs font-bold text-amber-800">Awaiting your review — assign recruiters to open this JD</span>
           </div>
-          <p className="text-sm text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-            <span className="font-medium text-slate-500">{job.client_name}</span>
-            {job.location && (
-              <>
-                <span className="text-slate-300">•</span>
-                <MapPin size={12} className="text-slate-400 flex-shrink-0" />
-                <span>{job.location}</span>
-              </>
-            )}
-          </p>
-          {(() => {
-            // Unified recruiter display — handles both old (separate) and new (merged) data
-            const recNames = job.recruiter_names?.length
-              ? job.recruiter_names
-              : [...new Set([...(job.sourcer_names ?? []), ...(job.caller_names ?? [])])];
-            return (job.business_head_name || job.delivery_lead_name || recNames.length > 0) && (
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-              {job.business_head_name && (
-                <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                  <UserCheck size={11} /> BH: {job.business_head_name}
-                </p>
+          <button
+            onClick={onConfirm}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:opacity-90"
+            style={{ background: '#D97706' }}
+          >
+            <UserCheck size={13} /> Review & Assign →
+          </button>
+        </div>
+      )}
+
+      <div className="px-5 py-4">
+        {/* ── Row 1: title + status + actions ───────────────────── */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            {/* Title row */}
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <h3 className="text-sm font-bold text-slate-800 leading-snug">{job.role_title}</h3>
+              {job.client_job_id && (
+                <code className="px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide"
+                  style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                  #{job.client_job_id}
+                </code>
               )}
-              {job.delivery_lead_name && (
-                <p className="text-xs text-indigo-600 font-semibold flex items-center gap-1">
-                  <UserCheck size={11} /> DL: {job.delivery_lead_name}
-                </p>
-              )}
-              {recNames.length > 0 && (
-                <p className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                  <Users size={11} /> Recruiters: {recNames.join(', ')}
-                </p>
-              )}
-            </div>
-            );
-          })()}
-          {deadlineLabel && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <Clock size={11} className={isOvertime ? 'text-red-500' : 'text-slate-400'} />
-              <span className={`text-xs font-semibold ${isOvertime ? 'text-red-600' : 'text-slate-500'}`}>
-                Deadline: {deadlineLabel}
+              {/* Status badge */}
+              <span
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{ background: cfg.badge, color: cfg.badgeText }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: cfg.dot }} />
+                {cfg.label}
               </span>
-              {isOvertime && (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold tracking-wide animate-pulse">
-                  OVERTIME
+              {isOverdue && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 animate-pulse">
+                  ⚠ Overdue
                 </span>
               )}
             </div>
-          )}
+
+            {/* Client + location */}
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-slate-600">{job.client_name}</span>
+              {job.location && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <MapPin size={10} className="text-slate-400 flex-shrink-0" />
+                  <span>{job.location}</span>
+                </>
+              )}
+              {job.work_mode && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className={`font-medium ${MODE_COLORS[job.work_mode] ?? 'text-slate-500'}`}>{job.work_mode}</span>
+                </>
+              )}
+              {expLabel && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-semibold text-amber-600">{expLabel}</span>
+                </>
+              )}
+              {job.salary_range && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-semibold text-violet-600">{job.salary_range}</span>
+                </>
+              )}
+            </p>
+          </div>
+
+          {/* ── Actions ──────────────────────────────────────────── */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Primary CTA for recruiter */}
+            {isRecruiter && isOpen && (
+              <button onClick={onViewCandidates}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:opacity-90"
+                style={{ background: '#2563EB' }}>
+                + Source Candidates
+              </button>
+            )}
+
+            {/* Reassign button for DL/Admin on open jobs */}
+            {(isDeliveryLead || isAdmin) && isOpen && (
+              <button onClick={onReassign}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                style={{ background: '#EDE9FE', color: '#5B21B6', border: '1px solid #DDD6FE' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#DDD6FE'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#EDE9FE'; }}>
+                <Users size={12} /> Reassign
+              </button>
+            )}
+
+            {/* View JD */}
+            <button onClick={onViewJD}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#DCFCE7'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#F0FDF4'; }}>
+              <BookOpen size={12} /> View JD
+            </button>
+
+            {/* View candidates (non-recruiter) */}
+            {!isRecruiter && (
+              <button onClick={onViewCandidates}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                style={{ background: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#F1F5F9'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#F8FAFC'; }}>
+                Candidates <ChevronRight size={12} />
+              </button>
+            )}
+
+            {/* ⋮ More menu */}
+            {(isAdmin || isKam || isDeliveryLead || canToggle) && (
+              <div className="relative">
+                <button
+                  onClick={() => setMenuOpen(v => !v)}
+                  className="flex items-center justify-center w-8 h-8 rounded-xl transition-all"
+                  style={{ background: menuOpen ? '#F1F5F9' : 'transparent', color: '#64748B', border: '1px solid transparent' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#F1F5F9'; (e.currentTarget as HTMLElement).style.borderColor = '#E2E8F0'; }}
+                  onMouseLeave={e => { if (!menuOpen) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; } }}
+                >
+                  <span className="text-slate-500 font-bold text-base leading-none" style={{ letterSpacing: '1px' }}>···</span>
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+                    <div
+                      className="absolute right-0 mt-1 bg-white rounded-xl border z-40 py-1 overflow-hidden"
+                      style={{ minWidth: 160, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', borderColor: '#E8EDF3' }}
+                    >
+                      {(isAdmin || isKam || isDeliveryLead) && (
+                        <button onClick={() => { setMenuOpen(false); onEdit(); }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left">
+                          <Pencil size={13} className="text-slate-400" /> Edit JD
+                        </button>
+                      )}
+                      {canToggle && job.status !== 'pending_review' && (
+                        <button onClick={() => { setMenuOpen(false); onToggleStatus(job); }} disabled={toggling}
+                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold transition-colors text-left disabled:opacity-60"
+                          style={{ color: job.status === 'closed' ? '#059669' : '#DC2626' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = job.status === 'closed' ? '#F0FDF4' : '#FEF2F2'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                        >
+                          {job.status === 'closed'
+                            ? <><Unlock size={13} /> Reopen JD</>
+                            : <><Lock size={13} /> Put On Hold / Close</>}
+                        </button>
+                      )}
+                      {(isAdmin || ((isKam || isDeliveryLead) && isPending)) && (
+                        <>
+                          <div className="mx-3 my-1 border-t border-slate-100" />
+                          <button onClick={() => { setMenuOpen(false); onDelete(); }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors text-left">
+                            <Trash2 size={13} /> Delete JD
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Delivery Lead: review & assign for pending JDs */}
-          {isDeliveryLead && job.status === 'pending_review' && (
-            <button onClick={onConfirm}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-all">
-              <UserCheck size={13} /> Review & Assign
-            </button>
-          )}
-          {/* Delivery Lead / Admin: reassign recruiters on open jobs */}
-          {(isDeliveryLead || isAdmin) && job.status === 'open' && (
-            <button onClick={onReassign}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-all">
-              <Users size={13} /> Reassign
-            </button>
-          )}
-          {/* Admin: delete any JD. KAM/DL: delete own pending JDs only */}
-          {(isAdmin || ((isKam || isDeliveryLead) && job.status === 'pending_review')) && (
-            <button
-              onClick={onDelete}
-              title="Delete this JD"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 text-xs font-semibold text-red-600 hover:bg-red-100 transition-all"
-            >
-              <Trash2 size={13} /> Delete
-            </button>
-          )}
-          {/* Admin, KAM, DL: edit */}
-          {(isAdmin || isKam || isDeliveryLead) && (
-            <button
-              onClick={onEdit}
-              title="Edit this job"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all"
-            >
-              <Pencil size={13} /> Edit
-            </button>
-          )}
-          {/* Toggle open/close */}
-          {canToggle && job.status !== 'pending_review' && (
-            <button
-              onClick={() => onToggleStatus(job)}
-              disabled={toggling}
-              title={job.status === 'closed' ? 'Reopen this opening' : 'Close this opening'}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all disabled:opacity-60 ${
-                job.status === 'closed'
-                  ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
-                  : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
-              }`}
-            >
-              {job.status === 'closed'
-                ? <><Unlock size={13} /> Reopen</>
-                : <><Lock size={13} /> Close</>}
-            </button>
-          )}
-          <button
-            onClick={onViewJD}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition-all"
-          >
-            <BookOpen size={13} /> View JD
-          </button>
-          <button
-            onClick={onViewCandidates}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
-          >
-            {isRecruiter ? 'Source Candidates' : 'View Candidates'} <ChevronRight size={13} />
-          </button>
-        </div>
-      </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {job.work_mode && (
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${MODE_COLORS[job.work_mode] ?? 'bg-slate-100 text-slate-600'}`}>
-            {job.work_mode}
-          </span>
-        )}
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[job.status] ?? 'bg-slate-100 text-slate-500'}`}>
-          {job.status === 'pending_review' ? 'Pending Review' : job.status === 'on_hold' ? 'On Hold' : job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-        </span>
-        {job.demand_type && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{job.demand_type}</span>
-        )}
-        {job.demand_exclusivity && (
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${job.demand_exclusivity === 'Exclusive' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-            {job.demand_exclusivity}
-          </span>
-        )}
-        {job.demand_source && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
-            via {job.demand_source}
-          </span>
-        )}
-        {job.salary_range && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{job.salary_range}</span>
-        )}
-      </div>
-
-      {job.jd_summary && (
-        <p className={`text-sm text-slate-600 leading-relaxed mb-3 ${!expanded ? 'line-clamp-3' : ''}`}>
-          {job.jd_summary}
-        </p>
-      )}
-
-      {skills.length > 0 && (
+        {/* ── Row 2: Tags + Skills ────────────────────────────────── */}
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {visibleSkills.map((s) => (
-            <span key={s} className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-medium">{s}</span>
+          {job.demand_type && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {job.demand_type}
+            </span>
+          )}
+          {job.demand_exclusivity && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${job.demand_exclusivity === 'Exclusive' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+              {job.demand_exclusivity}
+            </span>
+          )}
+          {job.demand_source && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+              via {job.demand_source}
+            </span>
+          )}
+          {visibleSkills.map(s => (
+            <span key={s} className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+              style={{ background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}>
+              {s}
+            </span>
           ))}
-          {!expanded && extraCount > 0 && (
+          {!expanded && extraSkillCount > 0 && (
             <button onClick={() => setExpanded(true)}
-              className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors">
-              View all {skills.length} skills
+              className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>
+              +{extraSkillCount} more
             </button>
           )}
-          {expanded && extraCount > 0 && (
+          {expanded && extraSkillCount > 0 && (
             <button onClick={() => setExpanded(false)}
-              className="text-xs px-2.5 py-1 rounded-lg bg-slate-50 text-slate-500 font-semibold hover:bg-slate-100 transition-colors">
+              className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
               Show less
             </button>
           )}
         </div>
-      )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 pt-2 border-t border-slate-50">
-        {expLabel && <span className="font-semibold text-amber-600">Exp: {expLabel}</span>}
-        <span className="flex items-center gap-1"><Users size={12} /> HC: {job.headcount}</span>
-        <span className="flex items-center gap-1">
-          <Briefcase size={12} />
-          {job.candidate_count} sourced
-          {isRecruiter && (
-            <span className="text-teal-500 font-semibold ml-1">· add more anytime</span>
-          )}
-        </span>
-        <span className="flex items-center gap-1 ml-auto">
-          <Calendar size={11} />
-          Posted {timeAgo(job.created_at)}
-          {job.updated_at && job.updated_at !== job.created_at && (
-            <span className="text-slate-300 ml-1">· updated {timeAgo(job.updated_at)}</span>
-          )}
-        </span>
-      </div>
+        {/* ── JD summary ──────────────────────────────────────────── */}
+        {job.jd_summary && (
+          <p className={`text-xs text-slate-500 leading-relaxed mb-3 ${expanded ? '' : 'line-clamp-2'}`}>
+            {job.jd_summary}
+          </p>
+        )}
 
-      {/* Task deadlines */}
-      {(job.sourcing_deadline || job.calling_deadline) && (
-        <div className="mt-2 pt-2 border-t border-slate-50 flex flex-wrap gap-3">
-          {job.sourcing_deadline && (
-            <DeadlinePill label="Sourcing" deadline={job.sourcing_deadline} color="teal" />
-          )}
-          {job.calling_deadline && (
-            <DeadlinePill label="Calling" deadline={job.calling_deadline} color="blue" />
-          )}
+        {/* ── Row 3: People + Stats + Deadline ───────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+          {/* Left: Recruiter avatars + DL + BH */}
+          <div className="flex items-center gap-3">
+            {recNames.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex" style={{ gap: -6 }}>
+                  {recNames.slice(0, 4).map((name, i) => (
+                    <div key={name} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: recNames.length - i }}>
+                      <Avatar name={name} size={26} />
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 leading-none">
+                    {recNames.length === 1 ? recNames[0] : `${recNames.length} recruiters`}
+                  </p>
+                  {recNames.length > 1 && (
+                    <p className="text-[9px] text-slate-400 leading-none mt-0.5">{recNames.slice(0, 2).join(', ')}{recNames.length > 2 ? ` +${recNames.length - 2}` : ''}</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {isPending && !recNames.length && (
+              <span className="text-[10px] font-semibold text-amber-600 flex items-center gap-1">
+                <Users size={10} /> No recruiters assigned yet
+              </span>
+            )}
+            {job.delivery_lead_name && (
+              <span className="text-[10px] font-semibold text-indigo-600 flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50">
+                <UserCheck size={9} /> DL: {job.delivery_lead_name}
+              </span>
+            )}
+          </div>
+
+          {/* Right: Stats */}
+          <div className="flex items-center gap-3">
+            {/* Candidate count */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <Users size={11} className="text-slate-400" />
+              <span className="text-xs font-bold text-slate-600">{job.candidate_count ?? 0}</span>
+              <span className="text-[10px] text-slate-400">candidates</span>
+            </div>
+            {/* HC */}
+            <span className="text-[10px] text-slate-400 font-medium">HC: <strong className="text-slate-600">{job.headcount}</strong></span>
+            {/* Posted */}
+            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+              <Calendar size={9} /> {timeAgo(job.created_at)}
+            </span>
+          </div>
         </div>
-      )}
+
+        {/* ── Deadlines row ───────────────────────────────────────── */}
+        {(job.deadline || job.sourcing_deadline || job.calling_deadline) && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+            {job.deadline && (
+              <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-bold ${isOverdue ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-slate-50 text-slate-500 border border-slate-100'}`}>
+                <Clock size={10} />
+                Deadline: {new Date(job.deadline).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
+                {isOverdue && ' — Overdue!'}
+              </div>
+            )}
+            {job.sourcing_deadline && <DeadlinePill label="Sourcing by" deadline={job.sourcing_deadline} color="teal" />}
+            {job.calling_deadline  && <DeadlinePill label="Calling by"  deadline={job.calling_deadline}  color="blue" />}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -471,102 +471,111 @@ export default function Users() {
           </div>
         )}
 
-        {/* Team table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          {loading ? (
-            <div className="p-8 space-y-3 animate-pulse">
-              {[...Array(5)].map((_, i) => <div key={i} className="h-14 bg-slate-100 rounded-xl" />)}
-            </div>
-          ) : recruiters.length === 0 ? (
-            <div className="text-center py-16 text-slate-400">
-              <UserPlus className="mx-auto mb-3 opacity-30" size={36} />
-              <p className="text-sm font-medium">No recruiters in your team yet.</p>
-              <p className="text-xs mt-1">Click "Add Recruiter" to get started.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100">
-                  <tr>
-                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Recruiter</th>
-                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</th>
-                    <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
-                    <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      <span className="flex items-center justify-center gap-1"><Briefcase size={11} /> JD Sourcing</span>
-                    </th>
-                    <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      <span className="flex items-center justify-center gap-1"><Phone size={11} /> Calling</span>
-                    </th>
-                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Workload</th>
-                    <th className="py-3.5 px-5 w-16" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {recruiters.map((m, i) => (
-                    <tr
-                      key={m.id}
-                      className={`border-b border-slate-50 hover:bg-blue-50/20 transition-colors ${i % 2 === 1 ? 'bg-slate-50/30' : ''}`}
-                    >
-                      <td className="py-3.5 px-5">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                            style={{ backgroundColor: '#3b82f6' }}
-                          >
-                            {getInitials(m.name)}
-                          </div>
-                          <button
-                            onClick={() => openActivity(m)}
-                            className="font-semibold text-slate-800 hover:text-blue-600 hover:underline text-left"
-                          >
-                            {m.name}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-5 text-slate-500">{m.email}</td>
-                      <td className="py-3.5 px-5 text-center">
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                          <UsersIcon size={10} /> Recruiter
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-5 text-center">
-                        {m.sourcing_load > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
-                            <Briefcase size={10} /> {m.sourcing_load} {m.sourcing_load === 1 ? 'JD' : 'JDs'}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-5 text-center">
-                        {m.calling_load > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                            <Phone size={10} /> {m.calling_load} {m.calling_load === 1 ? 'candidate' : 'candidates'}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-5">
-                        <WorkloadBar total={m.load} max={maxLoad + 2} />
-                      </td>
-                      <td className="py-3.5 px-5 text-right">
+        {/* ── Team cards ──────────────────────────────────────────────────── */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 animate-pulse">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-40 bg-white rounded-2xl border border-slate-100" />)}
+          </div>
+        ) : recruiters.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-100 text-center py-20 text-slate-400">
+            <UserPlus className="mx-auto mb-3 opacity-20" size={40} />
+            <p className="text-sm font-semibold">No recruiters in your team yet</p>
+            <p className="text-xs mt-1 text-slate-400">Click "Add Recruiter" to bring someone in</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {recruiters.map(m => {
+              const MAX_LOAD = 8;
+              const pct = Math.min(100, Math.round((m.load / MAX_LOAD) * 100));
+              const loadColor = m.load === 0 ? '#10B981' : m.load < 4 ? '#10B981' : m.load < 7 ? '#F59E0B' : '#EF4444';
+              const loadLabel = m.load === 0 ? 'Available' : m.load < 4 ? 'Light' : m.load < 7 ? 'Moderate' : 'Heavy';
+              const avatarColors = ['#3B82F6','#8B5CF6','#10B981','#F59E0B','#EF4444','#06B6D4'];
+              const avatarBg = avatarColors[m.id % avatarColors.length];
+              return (
+                <div
+                  key={m.id}
+                  className="bg-white rounded-2xl p-5 transition-all"
+                  style={{ border: '1px solid #E8EDF3', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0"
+                        style={{ background: avatarBg }}
+                      >
+                        {getInitials(m.name)}
+                      </div>
+                      <div>
                         <button
-                          onClick={() => handleRemoveFromTeam(m.id)}
-                          disabled={actioningId === m.id}
-                          className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-60"
-                          title="Remove from team"
+                          onClick={() => openActivity(m)}
+                          className="text-sm font-bold text-slate-800 hover:text-blue-600 transition-colors text-left leading-tight"
                         >
-                          <UserMinus size={14} />
+                          {m.name}
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5 leading-tight truncate max-w-[140px]">{m.email}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveFromTeam(m.id)}
+                      disabled={actioningId === m.id}
+                      title="Remove from team"
+                      className="p-1.5 rounded-lg transition-colors disabled:opacity-50"
+                      style={{ color: '#CBD5E1' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#EF4444'; (e.currentTarget as HTMLElement).style.background = '#FEF2F2'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#CBD5E1'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                    >
+                      <UserMinus size={14} />
+                    </button>
+                  </div>
+
+                  {/* Load stats */}
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="px-3 py-2 rounded-xl" style={{ background: '#F0FDF4', border: '1px solid #D1FAE5' }}>
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <Briefcase size={10} className="text-emerald-500" />
+                        <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">JDs Assigned</span>
+                      </div>
+                      <p className="text-xl font-black text-emerald-700 leading-none">{m.sourcing_load}</p>
+                      <p className="text-[9px] text-emerald-500 mt-0.5">open job demands</p>
+                    </div>
+                    <div className="px-3 py-2 rounded-xl" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <Phone size={10} className="text-blue-500" />
+                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide">Candidates</span>
+                      </div>
+                      <p className="text-xl font-black text-blue-700 leading-none">{m.calling_load}</p>
+                      <p className="text-[9px] text-blue-500 mt-0.5">active to screen</p>
+                    </div>
+                  </div>
+
+                  {/* Workload bar */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Workload</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: `${loadColor}18`, color: loadColor }}>
+                        {loadLabel}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: '#F1F5F9' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, background: loadColor }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[9px] text-slate-400">{m.load} tasks</span>
+                      <span className="text-[9px] text-slate-400">{MAX_LOAD} max capacity</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── JD Assignment Progress ──────────────────────────────────────── */}
         {isDeliveryLead && teamAssignments.length > 0 && (
