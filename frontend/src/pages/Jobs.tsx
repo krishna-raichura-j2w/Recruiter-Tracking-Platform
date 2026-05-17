@@ -129,6 +129,7 @@ export default function Jobs() {
   const [confirmJob, setConfirmJob]             = useState<Job | null>(null);
   const [reassignJob, setReassignJob]           = useState<Job | null>(null);
   const [dlTeam, setDlTeam]                     = useState<{ id: number; name: string; sourcing_load: number; calling_load: number }[]>([]);
+  const [loadingTeam, setLoadingTeam]           = useState(false);
   const [selectedRecruiters, setSelectedRecruiters] = useState<number[]>([]);
   const [confirming, setConfirming]             = useState(false);
   const [confirmError, setConfirmError]         = useState('');
@@ -163,6 +164,9 @@ export default function Jobs() {
   const openConfirmModal = async (job: Job) => {
     setConfirmJob(job);
     setConfirmError('');
+    setDlTeam([]);
+    setSelectedRecruiters([]);
+    setLoadingTeam(true);
     try {
       const team = await fetchDlTeam();
       setDlTeam(team);
@@ -170,23 +174,28 @@ export default function Jobs() {
       if (team.length) {
         const rec = team.reduce((a, b) => (a.sourcing_load + a.calling_load) <= (b.sourcing_load + b.calling_load) ? a : b);
         setSelectedRecruiters([rec.id]);
-      } else { setSelectedRecruiters([]); }
+      }
     } catch { setDlTeam([]); setSelectedRecruiters([]); }
+    finally { setLoadingTeam(false); }
   };
 
   const openReassignModal = async (job: Job) => {
     setReassignJob(job);
     setConfirmError('');
+    setDlTeam([]);
+    setSelectedRecruiters([]);
+    setLoadingTeam(true);
     try {
       const team = await fetchDlTeam();
       setDlTeam(team);
-      // Pre-select currently assigned recruiters
-      // Use unified recruiter_ids; fall back to union of sourcer+caller for old data
-      const currentIds: number[] = Array.isArray(job.recruiter_ids) && job.recruiter_ids.length
+      const teamIds = new Set(team.map((m) => m.id));
+      // Pre-select currently assigned recruiters that are still in this DL's team
+      const rawIds: number[] = Array.isArray(job.recruiter_ids) && job.recruiter_ids.length
         ? job.recruiter_ids
         : [...new Set([...(Array.isArray(job.sourcer_ids) ? job.sourcer_ids : []), ...(Array.isArray(job.caller_ids) ? job.caller_ids : [])])];
-      setSelectedRecruiters(currentIds.length ? currentIds : []);
+      setSelectedRecruiters(rawIds.filter((id) => teamIds.has(id)));
     } catch { setDlTeam([]); setSelectedRecruiters([]); }
+    finally { setLoadingTeam(false); }
   };
 
   const toggleSelect = (id: number, list: number[], setList: (v: number[]) => void) => {
@@ -594,11 +603,12 @@ export default function Jobs() {
           title="Review & Assign JD"
           subtitle={`${confirmJob.role_title} · ${confirmJob.client_name}`}
           team={dlTeam}
+          loadingTeam={loadingTeam}
           selected={selectedRecruiters}
           onToggle={(id) => toggleSelect(id, selectedRecruiters, setSelectedRecruiters)}
           error={confirmError}
           confirming={confirming}
-          onCancel={() => { setConfirmJob(null); setConfirmError(''); }}
+          onCancel={() => { setConfirmJob(null); setConfirmError(''); setSelectedRecruiters([]); setDlTeam([]); }}
           onConfirm={handleConfirmJD}
           confirmLabel="Confirm & Open JD"
           showDeadlines
@@ -617,11 +627,12 @@ export default function Jobs() {
           title="Reassign Recruiters"
           subtitle={`${reassignJob.role_title} · ${reassignJob.client_name}`}
           team={dlTeam}
+          loadingTeam={loadingTeam}
           selected={selectedRecruiters}
           onToggle={(id) => toggleSelect(id, selectedRecruiters, setSelectedRecruiters)}
           error={confirmError}
           confirming={confirming}
-          onCancel={() => { setReassignJob(null); setConfirmError(''); }}
+          onCancel={() => { setReassignJob(null); setConfirmError(''); setSelectedRecruiters([]); setDlTeam([]); }}
           onConfirm={handleReassign}
           confirmLabel="Save Reassignment"
         />
@@ -1331,6 +1342,7 @@ function DeadlinePill({ label, deadline, color }: { label: string; deadline: str
 interface RecruiterAssignModalProps {
   title: string; subtitle: string;
   team: { id: number; name: string; sourcing_load: number; calling_load: number }[];
+  loadingTeam?: boolean;
   selected: number[];
   onToggle: (id: number) => void;
   error: string; confirming: boolean;
@@ -1343,7 +1355,7 @@ interface RecruiterAssignModalProps {
 }
 
 function RecruiterAssignModal({
-  title, subtitle, team, selected, onToggle, error, confirming,
+  title, subtitle, team, loadingTeam, selected, onToggle, error, confirming,
   onCancel, onConfirm, confirmLabel, showDeadlines,
   sourcingTarget, sourcingDeadline, callingDeadline,
   onTargetChange, onSourcingDeadlineChange, onCallingDeadlineChange,
@@ -1368,8 +1380,10 @@ function RecruiterAssignModal({
           <div>
             <h4 className="text-sm font-bold text-blue-700 mb-1">Assign Recruiters</h4>
             <p className="text-xs text-slate-400 mb-3">Each recruiter will handle sourcing and screening for this JD.</p>
-            {sorted.length === 0
-              ? <p className="text-sm text-slate-400">No team members available.</p>
+            {loadingTeam
+              ? <div className="flex items-center gap-2 py-4 text-sm text-slate-400"><Loader2 size={16} className="animate-spin" /> Loading team…</div>
+              : sorted.length === 0
+              ? <p className="text-sm text-slate-400">No team members in your pod yet.</p>
               : <div className="grid grid-cols-3 gap-2.5">
                   {sorted.map(m => {
                     const isSelected = selected.includes(m.id);
@@ -1439,12 +1453,14 @@ function RecruiterAssignModal({
 
         <div className="flex gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0 bg-slate-50">
           <div className="flex-1 text-xs text-slate-500 flex items-center">
-            <span className="font-semibold text-blue-700">{selected.length} recruiter{selected.length !== 1 ? 's' : ''}</span>
-            <span className="ml-1 text-slate-400">selected</span>
+            {loadingTeam
+              ? <span className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Loading team…</span>
+              : <><span className="font-semibold text-blue-700">{selected.length} recruiter{selected.length !== 1 ? 's' : ''}</span><span className="ml-1 text-slate-400">selected</span></>
+            }
           </div>
           <button type="button" onClick={onCancel}
             className="px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
-          <button type="button" onClick={onConfirm} disabled={confirming}
+          <button type="button" onClick={onConfirm} disabled={confirming || loadingTeam}
             className="px-6 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
             style={{ backgroundColor: '#3b82f6' }}>
             {confirming ? 'Saving…' : confirmLabel}

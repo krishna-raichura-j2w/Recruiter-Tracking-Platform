@@ -145,6 +145,17 @@ def confirm_jd(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
+    # Validate all recruiter IDs are active members of the DL's team
+    dl_id = current_user.id
+    for uid in body.recruiter_ids:
+        member = db.query(User).filter(
+            User.id == uid,
+            User.pod_lead_id == dl_id,
+            User.is_active == True,
+        ).first()
+        if not member:
+            raise HTTPException(status_code=400, detail=f"Recruiter ID {uid} is not an active member of your team.")
+
     # Both sourcer_ids and caller_ids point to the same unified recruiter list
     job.sourcer_ids         = json.dumps(body.recruiter_ids)
     job.caller_ids          = json.dumps(body.recruiter_ids)
@@ -203,6 +214,17 @@ def reassign_recruiters(
         raise HTTPException(status_code=404, detail="Job not found")
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
+
+    # Validate all recruiter IDs are active members of the DL's team
+    dl_id = current_user.id
+    for uid in body.recruiter_ids:
+        member = db.query(User).filter(
+            User.id == uid,
+            User.pod_lead_id == dl_id,
+            User.is_active == True,
+        ).first()
+        if not member:
+            raise HTTPException(status_code=400, detail=f"Recruiter ID {uid} is not an active member of your team.")
 
     old_ids = set(json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else [])
     new_ids = set(body.recruiter_ids)

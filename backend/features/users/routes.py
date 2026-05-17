@@ -152,7 +152,7 @@ def get_team_assignments(
 ):
     """Per-JD assignment progress for each DL's team member (target vs actual)."""
     import json as _json
-    from infra.models import Job, JobStatus, Candidate, CandidateStatus
+    from infra.models import Job, JobStatus, Candidate, CandidateStatus, User
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
     if dl_id is None:
         return []
