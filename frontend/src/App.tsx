@@ -189,8 +189,8 @@ export default function App() {
           </Routes>
         </ForceChangePasswordGate>
       </BrowserRouter>
-      </RealtimeProvider>
       </NavCountsProvider>
+      </RealtimeProvider>
     </AuthProvider>
   );
 }
