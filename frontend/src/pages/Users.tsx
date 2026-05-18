@@ -1499,6 +1499,93 @@ export default function Users() {
         </div>
       )}
 
+      {/* ── Reassign DL Modal ─────────────────────────────────────────── */}
+      {reassignFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                  <RefreshCw size={15} className="text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Reassign Team</h3>
+                  <p className="text-xs text-slate-400">{reassignFor.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setReassignFor(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Current teams */}
+              {(reassignFor.pod_lead_names?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-1.5">Current team(s)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {reassignFor.pod_lead_names.map(n => (
+                      <span key={n} className="text-xs px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-100 font-semibold">{n}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Remove from (optional) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Remove from team <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <select
+                  value={reassignFrom}
+                  onChange={e => setReassignFrom(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-orange-400"
+                >
+                  <option value="">— Keep all current teams —</option>
+                  {dlList.map(dl => (
+                    <option key={dl.id} value={String(dl.id)}>{dl.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Assign to */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Assign to DL <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={reassignTo}
+                  onChange={e => setReassignTo(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+                >
+                  <option value="">Select delivery lead…</option>
+                  {dlList.map(dl => (
+                    <option key={dl.id} value={String(dl.id)}>{dl.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setReassignFor(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReassign}
+                  disabled={reassignSaving || !reassignTo}
+                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
+                  style={{ backgroundColor: '#f97316' }}
+                >
+                  {reassignSaving ? 'Reassigning…' : 'Reassign'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirm Deactivate */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
