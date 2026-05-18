@@ -554,6 +554,21 @@ export default function FollowUp() {
           <option value="">All companies</option>
           {companies.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select value={filterBh} onChange={e => setFilterBh(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none min-w-32">
+          <option value="">All BH</option>
+          {bhs.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <select value={filterKam} onChange={e => setFilterKam(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none min-w-32">
+          <option value="">All KAM</option>
+          {kams.map(k => <option key={k} value={k}>{k}</option>)}
+        </select>
+        <select value={filterDl} onChange={e => setFilterDl(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none min-w-32">
+          <option value="">All DL</option>
+          {dls.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
           className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none min-w-40">
           <option value="">All statuses</option>
@@ -562,8 +577,19 @@ export default function FollowUp() {
             <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
           ))}
         </select>
-        {(search || filterCompany || filterStatus) && (
-          <button onClick={() => { setSearch(''); setFilterCompany(''); setFilterStatus(''); }}
+        <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white">
+          <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+            className="text-xs bg-transparent focus:outline-none text-slate-700" max={filterTo || undefined} />
+          <span className="text-slate-300 text-xs">→</span>
+          <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+            className="text-xs bg-transparent focus:outline-none text-slate-700" min={filterFrom || undefined} />
+        </div>
+        {(search || filterCompany || filterStatus || filterBh || filterKam || filterDl || filterFrom || filterTo) && (
+          <button onClick={() => {
+              setSearch(''); setFilterCompany(''); setFilterStatus('');
+              setFilterBh(''); setFilterKam(''); setFilterDl('');
+              setFilterFrom(''); setFilterTo('');
+            }}
             className="text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1">
             ✕ Clear
           </button>
