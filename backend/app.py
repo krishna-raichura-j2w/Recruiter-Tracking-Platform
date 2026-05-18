@@ -93,6 +93,9 @@ def ensure_schema():
             # If a prior deploy created job_id as VARCHAR, convert to INTEGER (idempotent)
             "ALTER TABLE jobs         ALTER COLUMN job_id TYPE INTEGER USING NULLIF(job_id::text, '')::INTEGER",
             "ALTER TABLE probing_data ALTER COLUMN job_id TYPE INTEGER USING NULLIF(job_id::text, '')::INTEGER",
+            # Creator email snapshot
+            "ALTER TABLE jobs         ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
+            "ALTER TABLE probing_data ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
         ]
         for sql in stmts:
             try:

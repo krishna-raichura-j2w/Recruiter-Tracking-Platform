@@ -40,7 +40,11 @@ def create_probing(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
-    row = ProbingData(**body.model_dump(), created_by_id=current_user.id)
+    row = ProbingData(
+        **body.model_dump(),
+        created_by_id=current_user.id,
+        email_id=current_user.email,
+    )
     db.add(row)
     db.commit()
     db.refresh(row)

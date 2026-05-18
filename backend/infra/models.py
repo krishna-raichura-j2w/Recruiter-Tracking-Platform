@@ -268,6 +268,7 @@ class Job(Base):
     calling_warned       = Column(Boolean, default=False)
     calling_alerted      = Column(Boolean, default=False)
     created_by_id        = Column(Integer, ForeignKey("users.id"))
+    email_id             = Column(String(200), nullable=True)   # creator's email (snapshot at create time)
     created_at           = Column(DateTime, default=now_utc)
     updated_at           = Column(DateTime, default=now_utc, onupdate=now_utc)
 
@@ -298,6 +299,7 @@ class ProbingData(Base):
     urgency_eta                 = Column(Text, nullable=True)
     skill_type                  = Column(Text, nullable=True)
     created_by_id               = Column(Integer, ForeignKey("users.id"), nullable=True)
+    email_id                    = Column(String(200), nullable=True)  # creator's email (snapshot)
     created_at                  = Column(DateTime, default=now_utc)
     updated_at                  = Column(DateTime, default=now_utc, onupdate=now_utc)
 

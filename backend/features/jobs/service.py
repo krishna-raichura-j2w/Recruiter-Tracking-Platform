@@ -114,7 +114,10 @@ def is_job_id_taken(db: Session, client_job_id: str, exclude_job_id: int | None 
 
 
 def create_job(db: Session, data: dict, created_by_id: int) -> Job:
-    job = Job(**data, created_by_id=created_by_id)
+    # Snapshot creator email so reports survive even if the user row is later deleted.
+    creator = db.query(User).filter(User.id == created_by_id).first()
+    email_id = creator.email if creator else None
+    job = Job(**data, created_by_id=created_by_id, email_id=email_id)
     db.add(job)
     db.commit()
     db.refresh(job)
