@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 from infra.models import (
-    User, UserRole,
+    User, UserRole, PodMembership,
     Candidate, CallLog, Job, JobStatus,
     Submission, ConsultantMail, Notification,
     to_iso_utc,
@@ -16,7 +16,9 @@ def list_users(db: Session, role: str | None = None, pod_lead_id: int | None = N
     if role:
         q = q.filter(User.role == role)
     if pod_lead_id is not None:
-        q = q.filter(User.pod_lead_id == pod_lead_id)
+        # Use pod_memberships junction table so multi-team users appear under every DL
+        member_ids = db.query(PodMembership.user_id).filter(PodMembership.pod_lead_id == pod_lead_id).subquery()
+        q = q.filter(User.id.in_(member_ids))
     if search:
         s = f"%{search.lower()}%"
         q = q.filter(func.lower(User.name).like(s) | func.lower(User.email).like(s))
@@ -28,14 +30,30 @@ def list_users(db: Session, role: str | None = None, pod_lead_id: int | None = N
     return items, len(items)
 
 
-def list_available_team(db: Session, dl_id: int, role: str | None = None) -> list[User]:
-    """Recruiters with no team assignment at all — pod_lead_id IS NULL."""
-    q = db.query(User).filter(
-        User.is_active == True,
-        User.role == UserRole.recruiter,
-        User.pod_lead_id == None,  # noqa: E711 — only truly unassigned
+def get_pod_lead_names(db: Session, user_id: int) -> list[str]:
+    """Return names of all DLs this user belongs to (multi-team support)."""
+    rows = (
+        db.query(User.name)
+        .join(PodMembership, PodMembership.pod_lead_id == User.id)
+        .filter(PodMembership.user_id == user_id)
+        .all()
     )
-    return q.order_by(User.name).all()
+    return [r.name for r in rows]
+
+
+def list_available_team(db: Session, dl_id: int) -> list[User]:
+    """Active users NOT already in this DL's team (any role can be added)."""
+    already_in_team = db.query(PodMembership.user_id).filter(PodMembership.pod_lead_id == dl_id).subquery()
+    return (
+        db.query(User)
+        .filter(
+            User.is_active == True,  # noqa: E712
+            User.id != dl_id,
+            ~User.id.in_(already_in_team),
+        )
+        .order_by(User.name)
+        .all()
+    )
 
 
 DEFAULT_PASSWORD = "joules@123"
@@ -92,11 +110,43 @@ def assign_to_pod(db: Session, user_id: int, pod_lead_id: int | None, recruiter_
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return None
-    user.pod_lead_id = pod_lead_id
-    if recruiter_type is not None:
-        user.recruiter_type = recruiter_type
-    elif pod_lead_id is None:
-        user.recruiter_type = None  # clear type when removing from team
+    if pod_lead_id is not None:
+        # Add to pod_memberships (ignore if already a member)
+        existing = db.query(PodMembership).filter(
+            PodMembership.user_id == user_id,
+            PodMembership.pod_lead_id == pod_lead_id,
+        ).first()
+        if not existing:
+            db.add(PodMembership(user_id=user_id, pod_lead_id=pod_lead_id))
+        # Keep pod_lead_id on user for backward compat (first/primary team)
+        if user.pod_lead_id is None:
+            user.pod_lead_id = pod_lead_id
+        if recruiter_type is not None:
+            user.recruiter_type = recruiter_type
+    else:
+        # Remove ALL pod memberships (used by admin clear-all)
+        db.query(PodMembership).filter(PodMembership.user_id == user_id).delete()
+        user.pod_lead_id = None
+        user.recruiter_type = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def remove_from_pod(db: Session, user_id: int, pod_lead_id: int) -> User | None:
+    """Remove user from one specific DL's team."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    db.query(PodMembership).filter(
+        PodMembership.user_id == user_id,
+        PodMembership.pod_lead_id == pod_lead_id,
+    ).delete()
+    # Update pod_lead_id to next remaining membership (or NULL)
+    remaining = db.query(PodMembership).filter(PodMembership.user_id == user_id).first()
+    user.pod_lead_id = remaining.pod_lead_id if remaining else None
+    if user.pod_lead_id is None:
+        user.recruiter_type = None
     db.commit()
     db.refresh(user)
     return user

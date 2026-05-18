@@ -10,20 +10,19 @@ open items. Ties are broken by user ID (smallest ID = longest-tenured).
 """
 import json
 from sqlalchemy.orm import Session
-from infra.models import User, Job, Candidate, UserRole, JobStatus, CandidateStatus
+from infra.models import User, Job, Candidate, UserRole, JobStatus, CandidateStatus, PodMembership
 
 
-def _team(db: Session, pod_lead_id: int, role: UserRole) -> list[User]:
-    return (
-        db.query(User)
-        .filter(
-            User.pod_lead_id == pod_lead_id,
-            User.role == role,
-            User.is_active == True,
-        )
-        .order_by(User.id)
-        .all()
+def _team(db: Session, pod_lead_id: int, role: UserRole | None = None) -> list[User]:
+    """All active team members for a given DL, optionally filtered by role."""
+    member_ids = db.query(PodMembership.user_id).filter(PodMembership.pod_lead_id == pod_lead_id).subquery()
+    q = db.query(User).filter(
+        User.id.in_(member_ids),
+        User.is_active == True,  # noqa: E712
     )
+    if role is not None:
+        q = q.filter(User.role == role)
+    return q.order_by(User.id).all()
 
 
 def _sourcer_load(db: Session, user_id: int) -> int:
@@ -80,7 +79,7 @@ def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
     return min(members, key=lambda m: load_fn(db, m.id))
 
 
-def team_loads(db: Session, pod_lead_id: int, role: UserRole) -> list[dict]:
+def team_loads(db: Session, pod_lead_id: int, role: UserRole | None = None) -> list[dict]:
     """Return each member with their current load counts — used by frontend."""
     members = _team(db, pod_lead_id, role)
     result = []

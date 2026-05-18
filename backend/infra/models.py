@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, Integer, String, Boolean, Float, DateTime,
-    ForeignKey, Text, Enum as SAEnum
+    ForeignKey, Text, Enum as SAEnum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from core.database import Base
@@ -188,6 +188,22 @@ class User(Base):
     validations         = relationship("Validation", back_populates="delivery_lead")
     submissions         = relationship("Submission", back_populates="delivery_lead")
     notifications       = relationship("Notification", back_populates="user")
+    pod_memberships     = relationship("PodMembership", foreign_keys="PodMembership.user_id", back_populates="user", cascade="all, delete-orphan")
+    led_pod_memberships = relationship("PodMembership", foreign_keys="PodMembership.pod_lead_id", back_populates="pod_lead")
+
+
+class PodMembership(Base):
+    """Junction table: one user can belong to multiple DL teams."""
+    __tablename__ = "pod_memberships"
+    id          = Column(Integer, primary_key=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    pod_lead_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at  = Column(DateTime, default=now_utc)
+
+    __table_args__ = (UniqueConstraint("user_id", "pod_lead_id", name="uq_pod_membership"),)
+
+    user     = relationship("User", foreign_keys=[user_id],     back_populates="pod_memberships")
+    pod_lead = relationship("User", foreign_keys=[pod_lead_id], back_populates="led_pod_memberships")
 
 
 class BusinessHead(Base):

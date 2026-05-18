@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from core.config import settings
 from core.database import create_tables, SessionLocal
 from core.security import hash_password
-from infra.models import User, UserRole, Job, JobStatus, WorkMode
+from infra.models import User, UserRole, Job, JobStatus, WorkMode, PodMembership
 # Remove KAM imports (role no longer exists)
 
 from features.auth.routes import router as auth_router
@@ -201,6 +201,38 @@ def run_migrations(db):
     _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id)")
     _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs(created_at DESC)")
 
+    # ── Multi-team membership table ───────────────────────────────────────────
+    _run("""
+        CREATE TABLE IF NOT EXISTS pod_memberships (
+            id          SERIAL PRIMARY KEY,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            pod_lead_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            CONSTRAINT uq_pod_membership UNIQUE (user_id, pod_lead_id)
+        )
+    """)
+    _run("CREATE INDEX IF NOT EXISTS ix_pod_memberships_user_id     ON pod_memberships(user_id)")
+    _run("CREATE INDEX IF NOT EXISTS ix_pod_memberships_pod_lead_id ON pod_memberships(pod_lead_id)")
+
+    # Backfill existing pod_lead_id values into pod_memberships
+    try:
+        rows = db.execute(text("SELECT id, pod_lead_id FROM users WHERE pod_lead_id IS NOT NULL")).fetchall()
+        for row in rows:
+            db.execute(
+                text("""
+                    INSERT INTO pod_memberships (user_id, pod_lead_id)
+                    VALUES (:uid, :plid)
+                    ON CONFLICT (user_id, pod_lead_id) DO NOTHING
+                """),
+                {"uid": row.id, "plid": row.pod_lead_id},
+            )
+        if rows:
+            db.commit()
+            print(f"[migration] backfilled {len(rows)} pod memberships from pod_lead_id")
+    except Exception as _e:
+        db.rollback()
+        print(f"[migration] pod_memberships backfill: {_e}")
+
     # ── Merge sourcer_ids + caller_ids → unified recruiter list ──────────────
     # Old data had separate sourcer/caller people; unify them so nothing breaks.
     try:
@@ -249,11 +281,18 @@ def seed_data(db):
         ("Ravi Kumar",   "ravi@j2w.com",        "rec123", UserRole.recruiter),
         ("Rakshith B",   "rakshith@j2w.com",    "rec123", UserRole.recruiter),
     ]
+    members_created = []
     for name, email, pwd, urole in team_members:
-        db.add(User(name=name, email=email, password_hash=hash_password(pwd),
-                    role=urole, pod_lead_id=dl.id))
+        u = User(name=name, email=email, password_hash=hash_password(pwd),
+                 role=urole, pod_lead_id=dl.id)
+        db.add(u)
+        members_created.append(u)
 
     db.flush()
+
+    # Populate pod_memberships for seed data
+    for u in members_created:
+        db.add(PodMembership(user_id=u.id, pod_lead_id=dl.id))
 
     # ── Jobs (created by Pod Lead, pending DL review) ─────────────────────
     jobs_data = [

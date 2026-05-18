@@ -27,9 +27,16 @@ def list_pending(db: Session, skip: int = 0, limit: int = 0):
 
 def list_pending_for_validator(db: Session, validator_id: int, skip: int = 0, limit: int = 0):
     q = _pending_query(db, validator_id)
+    # A validator must not validate candidates they personally sourced or called
+    q = q.filter(
+        Candidate.sourced_by_id != validator_id,
+        Candidate.assigned_to_id != validator_id,
+    )
     total = db.query(Candidate.id).filter(
         Candidate.assigned_validator_id == validator_id,
         Candidate.status == CandidateStatus.ready_for_validation,
+        Candidate.sourced_by_id != validator_id,
+        Candidate.assigned_to_id != validator_id,
     ).count()
     if limit > 0:
         return q.offset(skip).limit(limit).all(), total

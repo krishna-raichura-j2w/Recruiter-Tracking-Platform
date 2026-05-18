@@ -20,6 +20,7 @@ export interface User {
   is_active: boolean;
   pod_lead_id: number | null;
   pod_lead_name: string | null;
+  pod_lead_names: string[];
 }
 
 /** Check if an AuthUser has a given role (primary or secondary). */

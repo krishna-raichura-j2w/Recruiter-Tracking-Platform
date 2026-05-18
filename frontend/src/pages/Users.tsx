@@ -335,8 +335,11 @@ export default function Users() {
   const handleRemoveFromTeam = async (userId: number) => {
     setActioningId(userId);
     try {
-      await api.delete(`/users/${userId}/pod`);
-      flash('Recruiter removed from team.');
+      // Pass pod_lead_id so multi-team users are only removed from THIS DL's team
+      await api.delete(`/users/${userId}/pod`, {
+        data: currentUser?.role === 'delivery_lead' ? { pod_lead_id: currentUser.id } : {},
+      });
+      flash('Removed from team.');
       fetchAll(); fetchAvailable();
     } catch { flash('Failed to remove.'); }
     finally { setActioningId(null); }
@@ -537,6 +540,12 @@ export default function Users() {
                           {m.name}
                         </button>
                         <p className="text-[10px] text-slate-400 mt-0.5 leading-tight truncate max-w-[140px]">{m.email}</p>
+                        {/* Show role badge if not a plain recruiter */}
+                        {m.role !== 'recruiter' && (
+                          <span className={`mt-0.5 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full ${roleColors[m.role] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {ROLES.find(r => r.value === m.role)?.label ?? m.role}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <button
@@ -861,11 +870,15 @@ export default function Users() {
                       </div>
                     </td>
                     <td className="py-3.5 px-5">
-                      {u.pod_lead_name ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-100">
-                          <UsersIcon size={10} /> {u.pod_lead_name}
-                        </span>
-                      ) : u.role === 'recruiter' ? (
+                      {(u.pod_lead_names?.length ?? 0) > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(u.pod_lead_names ?? [u.pod_lead_name].filter(Boolean)).map((name) => (
+                            <span key={name} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-100">
+                              <UsersIcon size={9} /> {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : ['recruiter', 'delivery_lead'].includes(u.role) ? (
                         <span className="text-xs text-slate-400 italic">Unassigned</span>
                       ) : (
                         <span className="text-xs text-slate-300">—</span>

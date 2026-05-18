@@ -12,14 +12,13 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 def _out(user, db=None) -> dict:
-    pod_lead_name = None
-    if user.pod_lead_id and db:
-        from infra.models import User as UserModel
-        pl = db.query(UserModel).filter(UserModel.id == user.pod_lead_id).first()
-        if pl:
-            pod_lead_name = pl.name
-    elif hasattr(user, 'pod_lead') and user.pod_lead:
-        pod_lead_name = user.pod_lead.name
+    pod_lead_names: list[str] = []
+    if db:
+        pod_lead_names = service.get_pod_lead_names(db, user.id)
+    elif hasattr(user, 'pod_memberships') and user.pod_memberships:
+        pod_lead_names = [m.pod_lead.name for m in user.pod_memberships if m.pod_lead]
+    # Primary pod lead for backward compat
+    pod_lead_name = pod_lead_names[0] if pod_lead_names else None
     return {
         "id":             user.id,
         "name":           user.name,
@@ -30,6 +29,7 @@ def _out(user, db=None) -> dict:
         "is_active":      user.is_active,
         "pod_lead_id":    user.pod_lead_id,
         "pod_lead_name":  pod_lead_name,
+        "pod_lead_names": pod_lead_names,
     }
 
 
@@ -125,7 +125,7 @@ def list_delivery_leads(
 ):
     """KAM fetches active delivery leads; includes the clients each DL is currently handling."""
     from infra.models import Job, JobStatus
-    users = service.list_users(db, role=UserRole.delivery_lead)
+    users, _ = service.list_users(db, role=UserRole.delivery_lead)
     result = []
     for u in users:
         if not u.is_active:
@@ -148,7 +148,7 @@ def list_kams(
     _            = Depends(require_roles("admin", "delivery_lead")),
 ):
     """DL fetches active KAMs to assign as job owner when creating a JD."""
-    users = service.list_users(db, role=UserRole.kam)
+    users, _ = service.list_users(db, role=UserRole.kam)
     return [_out(u, db) for u in users if u.is_active]
 
 
@@ -224,10 +224,10 @@ def get_team_loads(
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
     if dl_id is None:
         return {"sourcers": [], "callers": []}
-    recruiters = team_loads(db, dl_id, UserRole.recruiter)
+    members = team_loads(db, dl_id)   # all team members regardless of role
     return {
-        "sourcers": recruiters,
-        "callers":  recruiters,
+        "sourcers": members,
+        "callers":  members,
     }
 
 
@@ -266,13 +266,30 @@ def get_details(
     return data
 
 
+class RemovePodBody(BaseModel):
+    pod_lead_id: int | None = None  # which DL's team to remove from; defaults to current user if DL
+
+
 @router.delete("/{user_id}/pod")
 def remove_from_pod(
     user_id: int,
+    body: RemovePodBody = RemovePodBody(),
     db: Session  = Depends(get_db),
-    _            = Depends(require_roles("admin", "delivery_lead")),
+    current_user = Depends(require_roles("admin", "delivery_lead")),
 ):
-    user = service.assign_to_pod(db, user_id, None)
+    # Determine which DL's team to remove from
+    if body.pod_lead_id:
+        dl_id = body.pod_lead_id
+    elif current_user.role.value == "delivery_lead":
+        dl_id = current_user.id
+    else:
+        # Admin removing without specifying → clear ALL memberships
+        user = service.assign_to_pod(db, user_id, None)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return _out(user, db)
+
+    user = service.remove_from_pod(db, user_id, dl_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return _out(user, db)
