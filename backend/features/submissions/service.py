@@ -112,11 +112,29 @@ def _load(db: Session):
     )
 
 
+def _parse_date(s):
+    if not s:
+        return None
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
+
+
 def list_validated_candidates(
     db: Session,
     kam_id: int | None = None,
     dl_id: int | None = None,
     search: str | None = None,
+    # Admin-facing filters
+    client_name: str | None = None,
+    business_head_id: int | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
@@ -131,12 +149,25 @@ def list_validated_candidates(
     candidates = q.all()
     result = []
     sq = search.lower() if search else None
+    cf = client_name.strip().lower() if client_name else None
+    from datetime import timedelta
+    fd = _parse_date(from_date)
+    td = _parse_date(to_date)
+    td_end = td + timedelta(days=1) if td else None
     for c in candidates:
         if c.submission:
             continue
         if kam_id and c.job and c.job.created_by_id != kam_id:
             continue
         if dl_id and c.job and c.job.delivery_lead_id != dl_id:
+            continue
+        if cf and (not c.job or (c.job.client_name or '').strip().lower() != cf):
+            continue
+        if business_head_id and (not c.job or c.job.account_manager_id != business_head_id):
+            continue
+        if fd and c.updated_at and c.updated_at.replace(tzinfo=None) < fd.replace(tzinfo=None):
+            continue
+        if td_end and c.updated_at and c.updated_at.replace(tzinfo=None) >= td_end.replace(tzinfo=None):
             continue
         if sq:
             haystack = ' '.join(filter(None, [
@@ -174,6 +205,13 @@ def list_submissions(
     dl_id: int | None = None,
     closed: bool = False,
     search: str | None = None,
+    # Admin-facing filters
+    client_name: str | None = None,
+    business_head_id: int | None = None,
+    delivery_lead_id: int | None = None,
+    kam_filter_id: int | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
@@ -182,6 +220,24 @@ def list_submissions(
         subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.created_by_id == kam_id]
     if dl_id:
         subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.delivery_lead_id == dl_id]
+    # Admin-driven filters (don't override scope, just narrow it further)
+    if client_name:
+        cf = client_name.strip().lower()
+        subs = [s for s in subs if s.candidate and s.candidate.job and (s.candidate.job.client_name or '').strip().lower() == cf]
+    if business_head_id:
+        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.account_manager_id == business_head_id]
+    if delivery_lead_id:
+        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.delivery_lead_id == delivery_lead_id]
+    if kam_filter_id:
+        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.created_by_id == kam_filter_id]
+    from datetime import timedelta
+    fd = _parse_date(from_date)
+    td = _parse_date(to_date)
+    td_end = td + timedelta(days=1) if td else None
+    if fd:
+        subs = [s for s in subs if s.updated_at and s.updated_at.replace(tzinfo=None) >= fd.replace(tzinfo=None)]
+    if td_end:
+        subs = [s for s in subs if s.updated_at and s.updated_at.replace(tzinfo=None) < td_end.replace(tzinfo=None)]
     if closed:
         subs = [s for s in subs if s.current_stage in TERMINAL_STAGES]
     else:

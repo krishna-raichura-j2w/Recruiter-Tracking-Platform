@@ -16,13 +16,23 @@ def ready_to_submit(
     search: str | None = Query(None),
     skip:   int        = Query(0, ge=0),
     limit:  int        = Query(50, ge=0, le=500),
+    # Filters (admin-only effectively; KAM/DL stay scoped to their JDs)
+    client_name:      str | None = Query(None),
+    business_head_id: int | None = Query(None),
+    from_date:        str | None = Query(None),
+    to_date:          str | None = Query(None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*ALLOWED)),
 ):
     role   = current_user.role.value
     kam_id = current_user.id if role == "kam" else None
     dl_id  = current_user.id if role == "delivery_lead" else None
-    items, total = service.list_validated_candidates(db, kam_id=kam_id, dl_id=dl_id, search=search, skip=skip, limit=limit)
+    items, total = service.list_validated_candidates(
+        db, kam_id=kam_id, dl_id=dl_id, search=search,
+        client_name=client_name, business_head_id=business_head_id,
+        from_date=from_date, to_date=to_date,
+        skip=skip, limit=limit,
+    )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
@@ -32,13 +42,28 @@ def list_submissions(
     search: str | None = Query(None),
     skip:   int        = Query(0, ge=0),
     limit:  int        = Query(50, ge=0, le=500),
+    # Filters
+    client_name:       str | None = Query(None),
+    business_head_id:  int | None = Query(None),
+    kam_filter_id:     int | None = Query(None, alias="kam_id"),
+    delivery_lead_id:  int | None = Query(None),
+    from_date:         str | None = Query(None),
+    to_date:           str | None = Query(None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*ALLOWED, "recruiter")),
 ):
     role   = current_user.role.value
-    kam_id = current_user.id if role == "kam" else None
-    dl_id  = current_user.id if role == "delivery_lead" else None
-    items, total = service.list_submissions(db, kam_id=kam_id, dl_id=dl_id, closed=closed, search=search, skip=skip, limit=limit)
+    # Role-scoped IDs (KAM/DL only see their own; admin sees all, then applies filters)
+    scoped_kam_id = current_user.id if role == "kam" else None
+    scoped_dl_id  = current_user.id if role == "delivery_lead" else None
+    items, total = service.list_submissions(
+        db, kam_id=scoped_kam_id, dl_id=scoped_dl_id,
+        closed=closed, search=search,
+        client_name=client_name, business_head_id=business_head_id,
+        delivery_lead_id=delivery_lead_id, kam_filter_id=kam_filter_id,
+        from_date=from_date, to_date=to_date,
+        skip=skip, limit=limit,
+    )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 

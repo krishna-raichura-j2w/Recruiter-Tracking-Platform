@@ -9,6 +9,8 @@ import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
 import PaginationBar from '../components/PaginationBar';
+import FilterBar, { emptyFilters, toQueryParams, type FilterValues } from '../components/FilterBar';
+import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { Candidate } from '../types';
 
@@ -339,6 +341,9 @@ function FullDetailsModal({ candidate, onClose }: { candidate: Candidate; onClos
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function Submissions() {
+  const { user } = useAuth();
+  const isKam = user?.role === 'kam' || user?.secondary_role === 'kam';
+  const isDl  = user?.role === 'delivery_lead' || user?.secondary_role === 'delivery_lead';
   const [ready, setReady]           = useState<ReadyCandidate[]>([]);
   const [loading, setLoading]       = useState(true);
   const [submitting, setSubmitting] = useState<number | null>(null);
@@ -354,6 +359,7 @@ export default function Submissions() {
   const [total, setTotal]     = useState(0);
   const [search, setSearch]   = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [filters, setFilters] = useState<FilterValues>(emptyFilters);
 
   // Full details modal
   const [detailCandidate, setDetailCandidate] = useState<Candidate | null>(null);
@@ -370,8 +376,11 @@ export default function Submissions() {
       const params: Record<string, string | number> = {
         skip:  (page - 1) * perPage,
         limit: perPage,
+        ...toQueryParams(filters),
       };
       if (search) params.search = search;
+      // /submissions/ready only honors client_name + business_head_id + date range
+      // (KAM/DL scoping is auto-applied by the backend for those roles).
       const { data } = await api.get('/submissions/ready', { params }).catch(() => ({ data: { items: [], total: 0 } }));
       const resp = data as { items: ReadyCandidate[]; total: number } | ReadyCandidate[];
       if (Array.isArray(resp)) {
@@ -384,13 +393,13 @@ export default function Submissions() {
     } finally {
       setLoading(false);
     }
-  }, [page, perPage, search]);
+  }, [page, perPage, search, filters]);
 
   const submissionsSignal = useSignal('submissions');
   useEffect(() => { fetchData(); }, [fetchData, submissionsSignal]);
 
-  // Reset page when search changes
-  useEffect(() => { setPage(1); }, [search]);
+  // Reset page when search or filters change
+  useEffect(() => { setPage(1); }, [search, filters]);
 
   const openDetails = async (id: number) => {
     setDetailLoading(id);
@@ -449,6 +458,18 @@ export default function Submissions() {
           {toast}
         </div>
       )}
+
+      {/* Filters */}
+      <FilterBar
+        value={filters}
+        onChange={setFilters}
+        show={{
+          // KAMs/DLs are already scoped server-side — hide those selectors for them.
+          kam_id: !isKam,
+          delivery_lead_id: !isDl,
+        }}
+        className="mb-4"
+      />
 
       {/* Search bar */}
       <div className="flex items-center gap-3 mb-5">

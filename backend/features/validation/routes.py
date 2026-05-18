@@ -33,14 +33,28 @@ def _serialize_candidate(c) -> dict:
 def pending_queue(
     skip:  int   = Query(0, ge=0),
     limit: int   = Query(50, ge=0, le=500),
+    # Filters (admin can use freely; DLs are still scoped to their own queue)
+    client_name:       str | None = Query(None),
+    business_head_id:  int | None = Query(None),
+    kam_id:            int | None = Query(None),
+    delivery_lead_id:  int | None = Query(None),
+    validator_id:      int | None = Query(None),
+    from_date:         str | None = Query(None, description="YYYY-MM-DD or ISO 8601"),
+    to_date:           str | None = Query(None, description="YYYY-MM-DD or ISO 8601 (inclusive)"),
     db: Session  = Depends(get_db),
     current_user = Depends(require_roles(*VALIDATORS)),
 ):
     role = current_user.role.value
+    filters = dict(
+        client_name=client_name, business_head_id=business_head_id, kam_id=kam_id,
+        delivery_lead_id=delivery_lead_id, validator_id=validator_id,
+        from_date=from_date, to_date=to_date,
+    )
     if role == "delivery_lead":
-        candidates, total = service.list_pending_for_validator(db, current_user.id, skip=skip, limit=limit)
+        # DLs stay scoped to candidates assigned to them; other filters layer on top.
+        candidates, total = service.list_pending_for_validator(db, current_user.id, skip=skip, limit=limit, **filters)
     else:
-        candidates, total = service.list_pending(db, skip=skip, limit=limit)
+        candidates, total = service.list_pending(db, skip=skip, limit=limit, **filters)
 
     return {"items": [_serialize_candidate(c) for c in candidates], "total": total, "skip": skip, "limit": limit}
 

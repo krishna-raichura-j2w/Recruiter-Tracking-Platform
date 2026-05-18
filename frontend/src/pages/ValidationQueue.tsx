@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSignal } from '../context/RealtimeContext';
-import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink, UserCheck } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
 import PaginationBar from '../components/PaginationBar';
+import FilterBar, { emptyFilters, toQueryParams, type FilterValues } from '../components/FilterBar';
+import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { Candidate, Assessment } from '../types';
 
@@ -14,11 +16,14 @@ interface QueueItem {
 }
 
 export default function ValidationQueue() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page,    setPage]    = useState(1);
   const [perPage, setPerPage] = useState(50);
   const [total,   setTotal]   = useState(0);
+  const [filters, setFilters] = useState<FilterValues>(emptyFilters);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [fullCandidate, setFullCandidate] = useState<Candidate | null>(null);
   const [comment, setComment] = useState('');
@@ -32,7 +37,7 @@ export default function ValidationQueue() {
     setLoading(true);
     api
       .get<{ items: QueueItem[]; total: number } | QueueItem[]>('/validation/queue', {
-        params: { skip: (page - 1) * perPage, limit: perPage },
+        params: { skip: (page - 1) * perPage, limit: perPage, ...toQueryParams(filters) },
       })
       .then((res) => {
         if (Array.isArray(res.data)) { setQueue(res.data); setTotal(res.data.length); }
@@ -40,7 +45,10 @@ export default function ValidationQueue() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [page, perPage]);
+  }, [page, perPage, filters]);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPage(1); }, [filters]);
 
   const validationSignal = useSignal('validation');
   useEffect(() => { fetchQueue(); }, [fetchQueue, validationSignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -105,6 +113,16 @@ export default function ValidationQueue() {
         </div>
       )}
 
+      {/* Filters */}
+      <div className="mb-4">
+        <FilterBar value={filters} onChange={setFilters} />
+        {!loading && (
+          <p className="text-xs text-slate-400 mt-2 px-1">
+            Showing <span className="font-semibold text-slate-600">{total}</span> candidate{total !== 1 ? 's' : ''} pending validation
+          </p>
+        )}
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         {loading ? (
@@ -125,7 +143,10 @@ export default function ValidationQueue() {
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Job / Client</th>
                   <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Score</th>
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Recommend</th>
-                  <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Assigned To</th>
+                  <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Caller</th>
+                  {isAdmin && (
+                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Validator</th>
+                  )}
                   <th className="py-3.5 px-5" />
                 </tr>
               </thead>
@@ -157,6 +178,17 @@ export default function ValidationQueue() {
                       )}
                     </td>
                     <td className="py-3.5 px-5 text-slate-500 text-xs">{item.candidate.assigned_to_name ?? '—'}</td>
+                    {isAdmin && (
+                      <td className="py-3.5 px-5 text-xs">
+                        {item.candidate.assigned_validator_name ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold">
+                            <UserCheck size={11} /> {item.candidate.assigned_validator_name}
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 font-semibold">⚠ Unassigned</span>
+                        )}
+                      </td>
+                    )}
                     <td className="py-3.5 px-5 text-right">
                       <button
                         onClick={() => {

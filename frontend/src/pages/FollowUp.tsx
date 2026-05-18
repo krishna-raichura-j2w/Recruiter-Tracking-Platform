@@ -404,6 +404,11 @@ export default function FollowUp() {
   const [search, setSearch]   = useState('');
   const [filterCompany, setFilterCompany] = useState('');
   const [filterStatus,  setFilterStatus]  = useState('');
+  const [filterBh, setFilterBh]   = useState('');
+  const [filterKam, setFilterKam] = useState('');
+  const [filterDl, setFilterDl]   = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo,   setFilterTo]   = useState('');
 
   const exportExcel = () => {
     const rows: Record<string, string>[] = [];
@@ -474,11 +479,28 @@ export default function FollowUp() {
 
   const companies = useMemo(() =>
     [...new Set(stories.map(s => s.client_name).filter(Boolean))].sort(), [stories]);
+  const bhs = useMemo(() =>
+    [...new Set(stories.map(s => s.business_head).filter((x): x is string => !!x))].sort(), [stories]);
+  const kams = useMemo(() =>
+    [...new Set(stories.map(s => s.created_by).filter((x): x is string => !!x))].sort(), [stories]);
+  const dls = useMemo(() =>
+    [...new Set(stories.map(s => s.delivery_lead).filter((x): x is string => !!x))].sort(), [stories]);
 
   const filtered = useMemo(() =>
     stories.filter(s => {
       if (filterCompany && s.client_name !== filterCompany) return false;
       if (filterStatus  && !s.candidates.some(c => c.status === filterStatus)) return false;
+      if (filterBh  && s.business_head !== filterBh) return false;
+      if (filterKam && s.created_by    !== filterKam) return false;
+      if (filterDl  && s.delivery_lead !== filterDl) return false;
+      if (filterFrom) {
+        const minT = new Date(filterFrom).getTime();
+        if (!s.created_at || new Date(s.created_at).getTime() < minT) return false;
+      }
+      if (filterTo) {
+        const maxT = new Date(filterTo).getTime() + 86_400_000;  // inclusive
+        if (!s.created_at || new Date(s.created_at).getTime() >= maxT) return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         return s.role_title.toLowerCase().includes(q)
@@ -486,7 +508,7 @@ export default function FollowUp() {
           || s.candidates.some(c => c.full_name?.toLowerCase().includes(q));
       }
       return true;
-    }), [stories, filterCompany, filterStatus, search]);
+    }), [stories, filterCompany, filterStatus, filterBh, filterKam, filterDl, filterFrom, filterTo, search]);
 
   const totalCands  = filtered.reduce((n, j) => n + j.candidate_count, 0);
   const overtimeJDs = filtered.filter(s => {

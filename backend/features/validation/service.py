@@ -1,11 +1,54 @@
+from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from infra.models import (
-    Validation, Candidate, CandidateStatus, ValidationStatus, Notification, NotifType, UserRole
+    Validation, Candidate, CandidateStatus, ValidationStatus, Notification, NotifType, UserRole, Job
 )
 from features.notifications.service import push, push_to_role
 
 
-def _pending_query(db: Session, validator_id: int | None = None):
+def _parse_date(s: str | None):
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
+
+
+def _apply_filters(q, *, client_name=None, business_head_id=None, kam_id=None,
+                   delivery_lead_id=None, validator_id=None, from_date=None, to_date=None):
+    """Apply optional admin filters to a Candidate query. Joins Job lazily."""
+    needs_job_join = any(v is not None for v in (client_name, business_head_id, kam_id, delivery_lead_id))
+    if needs_job_join:
+        q = q.join(Job, Candidate.job_id == Job.id)
+        if client_name:
+            q = q.filter(func.lower(Job.client_name) == client_name.strip().lower())
+        if business_head_id:
+            q = q.filter(Job.account_manager_id == business_head_id)
+        if kam_id:
+            q = q.filter(Job.created_by_id == kam_id)
+        if delivery_lead_id:
+            q = q.filter(Job.delivery_lead_id == delivery_lead_id)
+    if validator_id:
+        q = q.filter(Candidate.assigned_validator_id == validator_id)
+    if from_date:
+        d = _parse_date(from_date)
+        if d:
+            q = q.filter(Candidate.updated_at >= d)
+    if to_date:
+        d = _parse_date(to_date)
+        if d:
+            # to_date is inclusive — extend by one day to include same-day events
+            from datetime import timedelta
+            q = q.filter(Candidate.updated_at < d + timedelta(days=1))
+    return q
+
+
+def _pending_query(db: Session, validator_id: int | None = None, **filters):
     q = db.query(Candidate).options(
         joinedload(Candidate.assessment),
         joinedload(Candidate.assigned_to),
@@ -14,30 +57,26 @@ def _pending_query(db: Session, validator_id: int | None = None):
     ).filter(Candidate.status == CandidateStatus.ready_for_validation)
     if validator_id:
         q = q.filter(Candidate.assigned_validator_id == validator_id)
+    q = _apply_filters(q, **filters)
     return q.order_by(Candidate.updated_at.desc())
 
 
-def list_pending(db: Session, skip: int = 0, limit: int = 0):
-    q = _pending_query(db)
-    total = db.query(Candidate.id).filter(Candidate.status == CandidateStatus.ready_for_validation).count()
+def list_pending(db: Session, skip: int = 0, limit: int = 0, **filters):
+    q = _pending_query(db, **filters)
+    total = q.with_entities(func.count(Candidate.id)).order_by(None).scalar() or 0
     if limit > 0:
         return q.offset(skip).limit(limit).all(), total
     return q.all(), total
 
 
-def list_pending_for_validator(db: Session, validator_id: int, skip: int = 0, limit: int = 0):
-    q = _pending_query(db, validator_id)
+def list_pending_for_validator(db: Session, validator_id: int, skip: int = 0, limit: int = 0, **filters):
+    q = _pending_query(db, validator_id, **filters)
     # A validator must not validate candidates they personally sourced or called
     q = q.filter(
         Candidate.sourced_by_id != validator_id,
         Candidate.assigned_to_id != validator_id,
     )
-    total = db.query(Candidate.id).filter(
-        Candidate.assigned_validator_id == validator_id,
-        Candidate.status == CandidateStatus.ready_for_validation,
-        Candidate.sourced_by_id != validator_id,
-        Candidate.assigned_to_id != validator_id,
-    ).count()
+    total = q.with_entities(func.count(Candidate.id)).order_by(None).scalar() or 0
     if limit > 0:
         return q.offset(skip).limit(limit).all(), total
     return q.all(), total
