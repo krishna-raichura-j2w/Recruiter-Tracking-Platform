@@ -76,25 +76,34 @@ def upsert_assessment(db: Session, data: dict, caller_id: int) -> Assessment:
         candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
         if candidate:
             candidate.status = CandidateStatus.ready_for_validation
-            # Auto-allocate to min-load validator in pod
             from infra.models import User, UserRole, NotifType
             from features.notifications.service import push
-            caller = db.query(User).filter(User.id == caller_id).first()
-            pod_lead_id = caller.pod_lead_id if caller else None
+            # The validator is the JOB's delivery lead. Fall back to min-load
+            # allocation only when the job has no DL assigned.
             validator = None
-            if pod_lead_id:
-                from features.allocation.service import get_min_load
-                validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
-                if not validator:
-                    validator = db.query(User).filter(
-                        User.id == pod_lead_id, User.role == UserRole.delivery_lead
-                    ).first()
-                if validator:
-                    candidate.assigned_validator_id = validator.id
+            job = candidate.job
+            if job and job.delivery_lead_id:
+                validator = db.query(User).filter(
+                    User.id == job.delivery_lead_id,
+                    User.role == UserRole.delivery_lead,
+                    User.is_active == True,  # noqa: E712
+                ).first()
+            if not validator:
+                # Fallback: allocate via the caller's pod (legacy behavior)
+                caller = db.query(User).filter(User.id == caller_id).first()
+                pod_lead_id = caller.pod_lead_id if caller else None
+                if pod_lead_id:
+                    from features.allocation.service import get_min_load
+                    validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
+                    if not validator:
+                        validator = db.query(User).filter(
+                            User.id == pod_lead_id, User.role == UserRole.delivery_lead
+                        ).first()
+            if validator:
+                candidate.assigned_validator_id = validator.id
             # Notify the assigned validator (DL)
-            target_dl_id = validator.id if validator else pod_lead_id
+            target_dl_id = validator.id if validator else (job.delivery_lead_id if job else None)
             if target_dl_id:
-                job = candidate.job
                 push(db, target_dl_id,
                     f"{candidate.full_name} is ready for validation — {job.role_title if job else ''} ({job.client_name if job else ''}). Score: {assessment.overall_score or '—'}",
                     NotifType.ready_for_validation, entity_id=candidate.id)

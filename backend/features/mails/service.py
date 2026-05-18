@@ -90,22 +90,31 @@ def update_mail(db: Session, mail_id: int, data: dict, updated_by_role: str) -> 
         candidate = db.query(Candidate).filter(Candidate.id == mail.candidate_id).first()
         if candidate and candidate.status not in _POST_VALIDATION_STATUSES:
             candidate.status = CandidateStatus.ready_for_validation
-            # Auto-assign validator via sender's pod (mirrors assessment submit_for_review logic)
-            if not candidate.assigned_validator_id and mail.sent_by_id:
+            # The validator is the JOB's delivery lead. Fall back to sender's
+            # pod allocation only when the job has no DL assigned.
+            if not candidate.assigned_validator_id:
                 from infra.models import User, UserRole
-                sender = db.query(User).filter(User.id == mail.sent_by_id).first()
-                pod_lead_id = sender.pod_lead_id if sender else None
-                if pod_lead_id:
-                    from features.allocation.service import get_min_load
-                    validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
-                    if not validator:
-                        # pod_lead_id IS the DL — assign directly to them
-                        validator = db.query(User).filter(
-                            User.id == pod_lead_id,
-                            User.role == UserRole.delivery_lead,
-                        ).first()
-                    if validator:
-                        candidate.assigned_validator_id = validator.id
+                validator = None
+                job = candidate.job
+                if job and job.delivery_lead_id:
+                    validator = db.query(User).filter(
+                        User.id == job.delivery_lead_id,
+                        User.role == UserRole.delivery_lead,
+                        User.is_active == True,  # noqa: E712
+                    ).first()
+                if not validator and mail.sent_by_id:
+                    sender = db.query(User).filter(User.id == mail.sent_by_id).first()
+                    pod_lead_id = sender.pod_lead_id if sender else None
+                    if pod_lead_id:
+                        from features.allocation.service import get_min_load
+                        validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
+                        if not validator:
+                            validator = db.query(User).filter(
+                                User.id == pod_lead_id,
+                                User.role == UserRole.delivery_lead,
+                            ).first()
+                if validator:
+                    candidate.assigned_validator_id = validator.id
     if data.get("dl_verified") is True and updated_by_role in ("delivery_lead", "admin"):
         mail.dl_verified = True
         mail.dl_verified_at = now
