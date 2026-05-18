@@ -79,15 +79,16 @@ interface ProbingForm {
   skill_type:                 string;
 }
 
+// Visible probing questions — `work_mode` and `work_location` are intentionally
+// omitted because they duplicate JD fields (work_mode, location); on submit
+// we mirror those JD values into the probing record so both DB columns stay populated.
 const PROBING_QUESTIONS: { key: keyof ProbingForm; label: string; placeholder: string }[] = [
   { key: 'reporting_manager_location', label: 'Is the reporting manager located in India or overseas? (Who are the stakeholders)', placeholder: 'e.g. India' },
   { key: 'onsite_opportunities',       label: 'Are they onsite opportunities? (travel)',                                            placeholder: 'Yes / No' },
   { key: 'project_size',               label: 'What is the project size or team size?',                                            placeholder: 'e.g. 8' },
   { key: 'project_count',              label: 'Will the candidate be handling 1 project or multiple projects?',                    placeholder: 'e.g. 1' },
-  { key: 'work_mode',                  label: 'Work Mode (Hybrid/WFO/WFH)',                                                         placeholder: 'Hybrid' },
   { key: 'candidate_role',             label: 'Candidate Role in the project (Individual contributor/Lead)',                       placeholder: 'Individual' },
   { key: 'feedback_eta',               label: 'How soon can we expect feedback (Panel Availability)',                              placeholder: '48 hours' },
-  { key: 'work_location',              label: 'Work Location',                                                                     placeholder: 'e.g. Bangalore' },
   { key: 'interview_type',             label: 'Will the interview be F1F or Onsite?',                                              placeholder: 'Virtual and F2F' },
   { key: 'role_clarity',               label: 'Role clarity (technical expertise expected by the candidate)',                      placeholder: 'e.g. Invoice Validation' },
   { key: 'notice_period',              label: 'Notice Period (Immediate/15days max.)',                                              placeholder: 'Immediate' },
@@ -464,6 +465,10 @@ export default function Jobs() {
         try {
           const res = await api.post<{ id: number }>('/probing', {
             ...probingForm,
+            // Mirror JD-form values into the probing columns that duplicate them,
+            // so both tables stay populated from a single user input.
+            work_mode:     data.work_mode || null,
+            work_location: data.location  || null,
             job_id: data.job_id && data.job_id.trim() ? data.job_id.trim() : null,
           });
           probingIdForPayload = res.data.id;
@@ -897,7 +902,7 @@ export default function Jobs() {
 
                   <div className="p-5 space-y-5">
                     {([
-                      { title: 'Stakeholders & Setup',    keys: ['reporting_manager_location','work_location','work_mode','onsite_opportunities'] },
+                      { title: 'Stakeholders & Setup',    keys: ['reporting_manager_location','onsite_opportunities'] },
                       { title: 'Role & Project',          keys: ['candidate_role','project_size','project_count','role_clarity','skill_type'] },
                       { title: 'Interview & Timeline',    keys: ['interview_type','interview_rounds_count','feedback_eta','urgency_eta','notice_period'] },
                     ] as { title: string; keys: (keyof ProbingForm)[] }[]).map(group => (
