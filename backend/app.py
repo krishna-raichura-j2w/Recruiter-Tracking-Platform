@@ -38,10 +38,65 @@ from features.form_config.routes import router as form_config_router, init_form_
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
 
+def ensure_schema():
+    """Always-on DDL: create tables/columns that must exist before any request is served.
+    Uses IF NOT EXISTS / IF NOT EXISTS so it is safe to run on every startup, even with
+    multiple instances and regardless of RUN_STARTUP_BOOTSTRAP."""
+    from sqlalchemy import text
+    from core.database import engine, SessionLocal as _SL
+
+    # Let SQLAlchemy create ALL ORM-defined tables (no-ops for existing ones)
+    from core.database import Base
+    from infra import models as _m  # noqa: F401 — registers all models
+    Base.metadata.create_all(bind=engine)
+
+    # Belt-and-suspenders: also create via raw DDL (catches edge-cases where
+    # create_all silently skips due to partial metadata load)
+    db = _SL()
+    try:
+        stmts = [
+            """CREATE TABLE IF NOT EXISTS pod_memberships (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                pod_lead_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                CONSTRAINT uq_pod_membership UNIQUE (user_id, pod_lead_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_pod_memberships_user_id     ON pod_memberships(user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_pod_memberships_pod_lead_id ON pod_memberships(pod_lead_id)",
+        ]
+        for sql in stmts:
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        # Backfill existing pod_lead_id values into pod_memberships
+        try:
+            rows = db.execute(text("SELECT id, pod_lead_id FROM users WHERE pod_lead_id IS NOT NULL")).fetchall()
+            for row in rows:
+                db.execute(
+                    text("""INSERT INTO pod_memberships (user_id, pod_lead_id)
+                            VALUES (:uid, :plid)
+                            ON CONFLICT (user_id, pod_lead_id) DO NOTHING"""),
+                    {"uid": row.id, "plid": row.pod_lead_id},
+                )
+            if rows:
+                db.commit()
+        except Exception as _e:
+            db.rollback()
+            print(f"[ensure_schema] pod_memberships backfill: {_e}")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app_):
-    # Schema + data bootstrap. Must run inside lifespan because FastAPI ignores
-    # @app.on_event handlers when a `lifespan` is provided.
+    # Always ensure critical schema additions exist (idempotent, safe for multi-instance).
+    ensure_schema()
+
+    # Full bootstrap (seed data, all migrations) — only when explicitly enabled.
     if settings.run_startup_bootstrap:
         create_tables()
         db = SessionLocal()
@@ -201,37 +256,8 @@ def run_migrations(db):
     _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id)")
     _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs(created_at DESC)")
 
-    # ── Multi-team membership table ───────────────────────────────────────────
-    _run("""
-        CREATE TABLE IF NOT EXISTS pod_memberships (
-            id          SERIAL PRIMARY KEY,
-            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            pod_lead_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            CONSTRAINT uq_pod_membership UNIQUE (user_id, pod_lead_id)
-        )
-    """)
-    _run("CREATE INDEX IF NOT EXISTS ix_pod_memberships_user_id     ON pod_memberships(user_id)")
-    _run("CREATE INDEX IF NOT EXISTS ix_pod_memberships_pod_lead_id ON pod_memberships(pod_lead_id)")
-
-    # Backfill existing pod_lead_id values into pod_memberships
-    try:
-        rows = db.execute(text("SELECT id, pod_lead_id FROM users WHERE pod_lead_id IS NOT NULL")).fetchall()
-        for row in rows:
-            db.execute(
-                text("""
-                    INSERT INTO pod_memberships (user_id, pod_lead_id)
-                    VALUES (:uid, :plid)
-                    ON CONFLICT (user_id, pod_lead_id) DO NOTHING
-                """),
-                {"uid": row.id, "plid": row.pod_lead_id},
-            )
-        if rows:
-            db.commit()
-            print(f"[migration] backfilled {len(rows)} pod memberships from pod_lead_id")
-    except Exception as _e:
-        db.rollback()
-        print(f"[migration] pod_memberships backfill: {_e}")
+    # pod_memberships table + backfill is handled by ensure_schema() which runs
+    # unconditionally at startup — no need to repeat it here.
 
     # ── Merge sourcer_ids + caller_ids → unified recruiter list ──────────────
     # Old data had separate sourcer/caller people; unify them so nothing breaks.
