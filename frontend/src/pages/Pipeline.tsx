@@ -245,11 +245,15 @@ export default function Pipeline() {
     setLoading(true);
     try {
       const [a, c] = await Promise.all([
-        api.get('/submissions?closed=false').catch(() => ({ data: [] })),
-        api.get('/submissions?closed=true').catch(() => ({ data: [] })),
+        api.get('/submissions', { params: { closed: false, limit: 500 } }).catch(() => ({ data: { items: [] } })),
+        api.get('/submissions', { params: { closed: true,  limit: 500 } }).catch(() => ({ data: { items: [] } })),
       ]);
-      setActive(a.data as Sub[]);
-      setClosed(c.data as Sub[]);
+      const extract = (d: unknown): Sub[] => {
+        if (Array.isArray(d)) return d as Sub[];
+        return ((d as { items?: Sub[] })?.items ?? []) as Sub[];
+      };
+      setActive(extract(a.data));
+      setClosed(extract(c.data));
     } finally {
       setLoading(false);
     }
