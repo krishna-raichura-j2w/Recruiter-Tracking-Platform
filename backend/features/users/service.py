@@ -41,19 +41,33 @@ def get_pod_lead_names(db: Session, user_id: int) -> list[str]:
     return [r.name for r in rows]
 
 
-def list_available_team(db: Session, dl_id: int) -> list[User]:
+def list_available_team(
+    db: Session,
+    dl_id: int,
+    role: str | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 0,
+) -> tuple[list[User], int]:
     """Active users NOT already in this DL's team (any role can be added)."""
+    from sqlalchemy import func
     already_in_team = db.query(PodMembership.user_id).filter(PodMembership.pod_lead_id == dl_id).subquery()
-    return (
-        db.query(User)
-        .filter(
-            User.is_active == True,  # noqa: E712
-            User.id != dl_id,
-            ~User.id.in_(already_in_team),
-        )
-        .order_by(User.name)
-        .all()
+    q = db.query(User).filter(
+        User.is_active == True,  # noqa: E712
+        User.id != dl_id,
+        ~User.id.in_(already_in_team),
     )
+    if role:
+        q = q.filter(User.role == role)
+    if search:
+        s = f"%{search.lower()}%"
+        q = q.filter(func.lower(User.name).like(s) | func.lower(User.email).like(s))
+    q = q.order_by(User.name)
+    if limit > 0:
+        total = q.count()
+        return q.offset(skip).limit(limit).all(), total
+    items = q.all()
+    return items, len(items)
 
 
 DEFAULT_PASSWORD = "joules@123"
@@ -147,6 +161,35 @@ def remove_from_pod(db: Session, user_id: int, pod_lead_id: int) -> User | None:
     user.pod_lead_id = remaining.pod_lead_id if remaining else None
     if user.pod_lead_id is None:
         user.recruiter_type = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def reassign_pod(db: Session, user_id: int, from_dl_id: int | None, to_dl_id: int) -> User | None:
+    """Move user from one DL's team to another (or just add to a new team if from_dl_id is None)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    if from_dl_id:
+        db.query(PodMembership).filter(
+            PodMembership.user_id == user_id,
+            PodMembership.pod_lead_id == from_dl_id,
+        ).delete()
+    # Add to new team
+    existing = db.query(PodMembership).filter(
+        PodMembership.user_id == user_id,
+        PodMembership.pod_lead_id == to_dl_id,
+    ).first()
+    if not existing:
+        db.add(PodMembership(user_id=user_id, pod_lead_id=to_dl_id))
+    # Update primary pod_lead_id
+    remaining = db.query(PodMembership).filter(PodMembership.user_id == user_id).first()
+    if remaining:
+        user.pod_lead_id = remaining.pod_lead_id if remaining.pod_lead_id != to_dl_id else to_dl_id
+    user.pod_lead_id = to_dl_id
+    if not user.recruiter_type:
+        user.recruiter_type = "both"
     db.commit()
     db.refresh(user)
     return user

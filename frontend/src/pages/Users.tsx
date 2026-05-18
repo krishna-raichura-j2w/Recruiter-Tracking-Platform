@@ -114,9 +114,15 @@ export default function Users() {
   const [userSearchInput, setUserSearchInput] = useState('');
   const [recruiters, setRecruiters] = useState<TeamMemberLoad[]>([]);
   const [available, setAvailable]   = useState<User[]>([]);
+  const [poolTotal, setPoolTotal]   = useState(0);
+  const [poolPage, setPoolPage]     = useState(1);
+  const [poolPerPage]               = useState(15);
+  const [poolSearch, setPoolSearch] = useState('');
+  const [poolSearchInput, setPoolSearchInput] = useState('');
+  const [poolRoleFilter, setPoolRoleFilter]   = useState('');
+  const [poolLoading, setPoolLoading]         = useState(false);
   const [loading, setLoading]       = useState(true);
   const [showPool, setShowPool]     = useState(false);
-  const [poolSearch, setPoolSearch] = useState('');
   const [showModal, setShowModal]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -212,6 +218,37 @@ export default function Users() {
       fetchAll();
     } catch { flash('Failed to update roles.'); }
     finally { setSavingRoles(false); }
+  };
+
+  // ── Reassign DL modal (admin) ────────────────────────────────────────────
+  const [reassignFor,    setReassignFor]   = useState<User | null>(null);
+  const [reassignFrom,   setReassignFrom]  = useState('');  // old DL id (string for select)
+  const [reassignTo,     setReassignTo]    = useState('');  // new DL id
+  const [dlList,         setDlList]        = useState<{id:number;name:string}[]>([]);
+  const [reassignSaving, setReassignSaving] = useState(false);
+
+  const openReassign = (u: User) => {
+    setReassignFor(u);
+    setReassignFrom(u.pod_lead_id ? String(u.pod_lead_id) : '');
+    setReassignTo('');
+    if (dlList.length === 0) {
+      api.get<{id:number;name:string}[]>('/users/delivery-leads').then(r => setDlList(r.data)).catch(() => {});
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!reassignFor || !reassignTo) return;
+    setReassignSaving(true);
+    try {
+      await api.post(`/users/${reassignFor.id}/reassign-pod`, {
+        to_dl_id:   Number(reassignTo),
+        from_dl_id: reassignFrom ? Number(reassignFrom) : null,
+      });
+      flash(`${reassignFor.name} reassigned.`);
+      setReassignFor(null);
+      fetchAll();
+    } catch { flash('Reassign failed.'); }
+    finally { setReassignSaving(false); }
   };
 
   // ── Edit user modal (admin) ───────────────────────────────────────────────
@@ -314,20 +351,40 @@ export default function Users() {
     Promise.all([p1, p2, p3]).finally(() => setLoading(false));
   }, [isDeliveryLead, userPage, userPerPage, userSearch]);
 
-  const fetchAvailable = () => {
-    api.get<User[]>('/users', { params: { available: true } })
-      .then((r) => setAvailable(r.data)).catch(() => {});
-  };
+  const fetchAvailable = useCallback(() => {
+    setPoolLoading(true);
+    const params: Record<string, string | number | boolean> = {
+      available: true,
+      skip:  (poolPage - 1) * poolPerPage,
+      limit: poolPerPage,
+    };
+    if (poolSearch)     params.search = poolSearch;
+    if (poolRoleFilter) params.role   = poolRoleFilter;
+    api.get<{ items: User[]; total: number } | User[]>('/users', { params })
+      .then(r => {
+        const resp = r.data;
+        if (Array.isArray(resp)) {
+          setAvailable(resp); setPoolTotal(resp.length);
+        } else {
+          setAvailable(resp.items); setPoolTotal(resp.total);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPoolLoading(false));
+  }, [poolPage, poolPerPage, poolSearch, poolRoleFilter]);
 
   useEffect(() => { fetchAll(); fetchAms(); }, [fetchAll]);
   useEffect(() => { setUserPage(1); }, [userSearch]);
+  useEffect(() => { if (showPool) fetchAvailable(); }, [fetchAvailable, showPool]);
+  useEffect(() => { setPoolPage(1); }, [poolSearch, poolRoleFilter]);
 
   const handleAddToTeam = async (userId: number) => {
     setActioningId(userId);
     try {
       await api.post(`/users/${userId}/assign-pod`, { recruiter_type: 'both' });
       flash('Added to team.');
-      fetchAll(); fetchAvailable();
+      fetchAll();
+      fetchAvailable();
     } catch { flash('Failed to add.'); }
     finally { setActioningId(null); }
   };
@@ -375,10 +432,6 @@ export default function Users() {
   };
 
   const maxLoad = Math.max(...recruiters.map((r) => r.load), 1);
-  const filteredPool = available.filter((u) =>
-    u.name.toLowerCase().includes(poolSearch.toLowerCase()) ||
-    u.email.toLowerCase().includes(poolSearch.toLowerCase())
-  );
 
   // ── Delivery Lead view ────────────────────────────────────────────────────
   if (isDeliveryLead) {
@@ -417,80 +470,142 @@ export default function Users() {
         {/* Available pool panel */}
         {showPool && (
           <div className="mb-5 bg-white border border-blue-100 rounded-2xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-blue-50">
-              <p className="text-sm font-bold text-blue-800">Available Recruiters</p>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-blue-50">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-blue-800">Add Members</p>
+                {poolTotal > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-semibold">{poolTotal} available</span>
+                )}
+              </div>
               <button onClick={() => setShowPool(false)} className="p-1 rounded-lg text-blue-400 hover:text-blue-600 hover:bg-blue-100">
                 <X size={16} />
               </button>
             </div>
-            <div className="px-5 py-3 border-b border-slate-100">
-              <div className="relative">
+
+            {/* Search + role filters */}
+            <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-2 items-center">
+              <div className="relative flex-1 min-w-40">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search by name or email…"
-                  value={poolSearch}
-                  onChange={(e) => setPoolSearch(e.target.value)}
+                  value={poolSearchInput}
+                  onChange={e => setPoolSearchInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') setPoolSearch(poolSearchInput); }}
+                  onBlur={() => setPoolSearch(poolSearchInput)}
                   className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                 />
               </div>
+              {/* Role filter pills */}
+              <div className="flex gap-1.5 flex-wrap">
+                {[
+                  { label: 'All', value: '' },
+                  { label: 'Recruiter', value: 'recruiter' },
+                  { label: 'DL', value: 'delivery_lead' },
+                  { label: 'KAM', value: 'kam' },
+                  { label: 'Admin', value: 'admin' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setPoolRoleFilter(opt.value)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      poolRoleFilter === opt.value
+                        ? 'text-white shadow-sm'
+                        : 'text-slate-500 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                    style={poolRoleFilter === opt.value ? { backgroundColor: '#2563EB' } : {}}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            {filteredPool.length === 0 ? (
+
+            {/* List */}
+            {poolLoading ? (
+              <div className="p-4 space-y-2 animate-pulse">
+                {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-100 rounded-xl" />)}
+              </div>
+            ) : available.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-8">
-                {available.length === 0 ? 'No unassigned recruiters available.' : 'No matches.'}
+                {poolTotal === 0 ? 'No available members match the filter.' : 'No results.'}
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-100">
-                    <tr>
-                      <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
-                      <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</th>
-                      <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
-                      <th className="py-3 px-5 w-20" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPool.map((u) => (
-                      <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50/40">
-                        <td className="py-3 px-5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                              style={{ backgroundColor: '#3b82f6' }}>
-                              {getInitials(u.name)}
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
+                        <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider hidden sm:table-cell">Email</th>
+                        <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
+                        <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider hidden md:table-cell">Teams</th>
+                        <th className="py-3 px-5 w-20" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {available.map((u) => (
+                        <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50/40">
+                          <td className="py-3 px-5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                                style={{ backgroundColor: '#3b82f6' }}>
+                                {getInitials(u.name)}
+                              </div>
+                              <span className="font-semibold text-slate-800">{u.name}</span>
                             </div>
-                            <span className="font-semibold text-slate-800">{u.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-5 text-slate-500">{u.email}</td>
-                        <td className="py-3 px-5">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleColors[u.role] ?? 'bg-slate-100 text-slate-600'}`}>
-                              {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
-                            </span>
-                            {u.secondary_role && (
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full opacity-75 ${roleColors[u.secondary_role] ?? 'bg-slate-100 text-slate-600'}`}>
-                                +{ROLES.find((r) => r.value === u.secondary_role)?.label ?? u.secondary_role}
+                          </td>
+                          <td className="py-3 px-5 text-slate-500 hidden sm:table-cell">{u.email}</td>
+                          <td className="py-3 px-5">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleColors[u.role] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {ROLES.find(r => r.value === u.role)?.label ?? u.role}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-5">
-                          <div className="flex justify-end">
+                              {u.secondary_role && (
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full opacity-75 ${roleColors[u.secondary_role] ?? 'bg-slate-100 text-slate-600'}`}>
+                                  +{ROLES.find(r => r.value === u.secondary_role)?.label ?? u.secondary_role}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-5 hidden md:table-cell">
+                            {(u.pod_lead_names?.length ?? 0) > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {u.pod_lead_names.map(n => (
+                                  <span key={n} className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-semibold">{n}</span>
+                                ))}
+                              </div>
+                            ) : <span className="text-xs text-slate-300">—</span>}
+                          </td>
+                          <td className="py-3 px-5">
+                            <div className="flex justify-end">
                               <button
                                 onClick={() => handleAddToTeam(u.id)}
                                 disabled={actioningId === u.id}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold hover:bg-blue-100 disabled:opacity-60 transition-colors"
                               >
-                                <UserPlus size={12} /> Add to Team
+                                <UserPlus size={12} /> Add
                               </button>
                             </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {poolTotal > poolPerPage && (
+                  <div className="px-5 border-t border-slate-100">
+                    <PaginationBar
+                      page={poolPage}
+                      total={poolTotal}
+                      perPage={poolPerPage}
+                      onPageChange={setPoolPage}
+                      loading={poolLoading}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -900,6 +1015,16 @@ export default function Users() {
                           >
                             <Pencil size={15} />
                           </button>
+                          {/* Reassign DL — shown for users that have or could have a DL */}
+                          {['recruiter', 'delivery_lead'].includes(u.role) && (
+                            <button
+                              onClick={() => openReassign(u)}
+                              title="Reassign to another DL's team"
+                              className="p-2 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+                            >
+                              <RefreshCw size={15} />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleResetPassword(u.id, u.name)}
                             title="Reset password to joules@123"

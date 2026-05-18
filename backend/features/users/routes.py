@@ -46,9 +46,12 @@ def list_users(
     """admin: all users (paginated). delivery_lead: their team or ?available=true for unassigned."""
     is_dl = current_user.role.value == "delivery_lead"
     if available and is_dl:
-        # Small list — no pagination needed for pool selector
-        users = service.list_available_team(db, dl_id=current_user.id)
-        return [_out(u, db) for u in users]
+        items, total = service.list_available_team(
+            db, dl_id=current_user.id,
+            role=role, search=search,
+            skip=skip, limit=limit if limit > 0 else 20,
+        )
+        return {"items": [_out(u, db) for u in items], "total": total, "skip": skip, "limit": limit}
     elif is_dl:
         users, total = service.list_users(db, role=role, pod_lead_id=current_user.id, search=search, skip=skip, limit=limit)
     else:
@@ -94,6 +97,24 @@ def update_user(
         allowed_keys = {"pod_lead_id"}
         data = {k: v for k, v in data.items() if k in allowed_keys}
     user = service.update_user(db, user_id, data)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _out(user, db)
+
+
+class ReassignPodBody(BaseModel):
+    to_dl_id:   int
+    from_dl_id: int | None = None   # if None, just adds without removing another team
+
+
+@router.post("/{user_id}/reassign-pod")
+def reassign_pod(
+    user_id: int,
+    body: ReassignPodBody,
+    db: Session  = Depends(get_db),
+    _            = Depends(require_roles("admin")),
+):
+    user = service.reassign_pod(db, user_id, body.from_dl_id, body.to_dl_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return _out(user, db)
