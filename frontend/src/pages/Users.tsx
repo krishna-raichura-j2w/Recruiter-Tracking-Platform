@@ -6,6 +6,7 @@ import {
   Activity, Mail, FileText, Bell, Users as UsersIcon,
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import PaginationBar from '../components/PaginationBar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { User, TeamLoads, TeamMemberLoad } from '../types';
@@ -106,6 +107,11 @@ export default function Users() {
   const isAdmin = currentUser?.role === 'admin';
 
   const [users, setUsers]           = useState<User[]>([]);
+  const [userTotal, setUserTotal]   = useState(0);
+  const [userPage, setUserPage]     = useState(1);
+  const [userPerPage, setUserPerPage] = useState(20);
+  const [userSearch, setUserSearch] = useState('');
+  const [userSearchInput, setUserSearchInput] = useState('');
   const [recruiters, setRecruiters] = useState<TeamMemberLoad[]>([]);
   const [available, setAvailable]   = useState<User[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -282,7 +288,21 @@ export default function Users() {
 
   const fetchAll = useCallback(() => {
     setLoading(true);
-    const p1 = api.get<User[]>('/users').then((r) => setUsers(r.data)).catch(() => {});
+    const params: Record<string, string | number> = {
+      skip:  (userPage - 1) * userPerPage,
+      limit: userPerPage,
+    };
+    if (userSearch) params.search = userSearch;
+    const p1 = api.get<{ items: User[]; total: number } | User[]>('/users', { params }).then((r) => {
+      const resp = r.data;
+      if (Array.isArray(resp)) {
+        setUsers(resp);
+        setUserTotal(resp.length);
+      } else {
+        setUsers(resp.items);
+        setUserTotal(resp.total);
+      }
+    }).catch(() => {});
     const p2 = isDeliveryLead
       ? api.get<TeamLoads>('/users/team-loads').then((r) => {
           setRecruiters((r.data.callers ?? []) as TeamMemberLoad[]);
@@ -292,7 +312,7 @@ export default function Users() {
       ? api.get<TeamAssignment[]>('/users/team-assignments').then((r) => setTeamAssignments(r.data)).catch(() => {})
       : Promise.resolve();
     Promise.all([p1, p2, p3]).finally(() => setLoading(false));
-  }, [isDeliveryLead]);
+  }, [isDeliveryLead, userPage, userPerPage, userSearch]);
 
   const fetchAvailable = () => {
     api.get<User[]>('/users', { params: { available: true } })
@@ -300,6 +320,7 @@ export default function Users() {
   };
 
   useEffect(() => { fetchAll(); fetchAms(); }, [fetchAll]);
+  useEffect(() => { setUserPage(1); }, [userSearch]);
 
   const handleAddToTeam = async (userId: number) => {
     setActioningId(userId);
@@ -367,16 +388,16 @@ export default function Users() {
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
-            <p className="text-sm font-semibold text-slate-700">{recruiters.length} Recruiters</p>
-            <p className="text-xs text-slate-400 mt-0.5">JD Sourcing = assigned open JDs · Calling = active candidates</p>
+            <p className="text-sm font-semibold text-slate-700">{recruiters.length} Recruiter{recruiters.length !== 1 ? 's' : ''} in your team</p>
+            <p className="text-xs text-slate-400 mt-0.5">JDs = open demands assigned · Candidates = active to screen</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => { setShowPool(!showPool); if (!showPool) { setPoolSearch(''); fetchAvailable(); } }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
-              style={{ backgroundColor: '#3b82f6' }}
+              style={{ backgroundColor: '#2563EB' }}
             >
               <UserPlus size={15} /> Add Recruiter
             </button>
@@ -601,16 +622,13 @@ export default function Users() {
                       const pct = j.target ? Math.min(100, Math.round((j.actual / j.target) * 100)) : null;
                       return (
                         <div key={idx} className="bg-slate-50 rounded-xl px-4 py-2.5">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 bg-blue-100 text-blue-700">
-                                RECRUITER
-                              </span>
+                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
                               <span className="text-xs font-semibold text-slate-700 truncate">{j.role_title}</span>
-                              <span className="text-xs text-slate-400 flex-shrink-0">· {j.client_name}</span>
+                              <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">· {j.client_name}</span>
                             </div>
-                            <span className="text-xs font-bold text-slate-700 flex-shrink-0 ml-3">
-                              {j.actual}{j.target ? ` / ${j.target}` : ''} {pct != null ? `(${pct}%)` : ''}
+                            <span className="text-xs font-bold text-slate-700 flex-shrink-0 tabular-nums">
+                              {j.actual}{j.target ? ` / ${j.target}` : ''}{pct != null ? ` (${pct}%)` : ''}
                             </span>
                           </div>
                           {j.target != null && (
@@ -770,8 +788,22 @@ export default function Users() {
         <div className="mb-4 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-700 font-medium">{message}</div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-sm text-slate-500">{users.length} users</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search users…"
+              value={userSearchInput}
+              onChange={e => setUserSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') setUserSearch(userSearchInput); }}
+              onBlur={() => setUserSearch(userSearchInput)}
+              className="pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 bg-white w-48"
+            />
+          </div>
+          <p className="text-sm text-slate-500"><span className="font-semibold text-slate-700">{userTotal}</span> users</p>
+        </div>
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
@@ -889,6 +921,17 @@ export default function Users() {
           </div>
         )}
       </div>
+
+      {userTotal > userPerPage && (
+        <PaginationBar
+          page={userPage}
+          total={userTotal}
+          perPage={userPerPage}
+          onPageChange={setUserPage}
+          onPerPageChange={p => { setUserPerPage(p); setUserPage(1); }}
+          loading={loading}
+        />
+      )}
 
       {/* ── Account Managers section ── */}
       <div className="mt-8">

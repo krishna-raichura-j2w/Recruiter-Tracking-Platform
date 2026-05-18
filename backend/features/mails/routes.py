@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
@@ -19,12 +19,16 @@ def mark_mail_sent(
 
 @router.get("")
 def list_mails(
+    search: str | None = Query(None),
+    skip:   int        = Query(0, ge=0),
+    limit:  int        = Query(50, ge=0, le=500),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     role = current_user.role.value
     sent_by_id = current_user.id if role == "recruiter" else None
-    return service.list_mails(db, sent_by_id)
+    items, total = service.list_mails(db, sent_by_id, search=search, skip=skip, limit=limit)
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 @router.patch("/{mail_id}")

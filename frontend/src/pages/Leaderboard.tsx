@@ -1,101 +1,80 @@
 import { useEffect, useState, useMemo } from 'react';
-import { RefreshCw, Trophy, TrendingUp, Users, Briefcase, ChevronUp, ChevronDown, ChevronsUpDown, Activity } from 'lucide-react';
+import {
+  RefreshCw, Trophy, TrendingUp, Users, Briefcase,
+  ChevronUp, ChevronDown, ChevronsUpDown, Activity,
+  Building2, CheckCircle, Target, AlertCircle, UserCheck,
+} from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
 
-// ── Types (mirrors backend pod-report response) ────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface CandidateRow {
-  sourcing_date: string;
-  full_name: string;
-  status: string;
-  overall_score: string;
-  dl_validated: boolean;
-  submitted_to_client: boolean;
-  current_stage: string;
-  job_client: string;
-  job_title: string;
+  sourcing_date: string; full_name: string; status: string;
+  overall_score: string; dl_validated: boolean; submitted_to_client: boolean;
+  current_stage: string; job_client: string; job_title: string;
 }
 interface JobData {
-  id: number;
-  client_name: string;
-  client_job_id: string;
-  role_title: string;
-  headcount: number;
-  status: string;
-  created_at: string;
-  deadline: string;
-  sourcing_target: number | null;
-  kam_name: string;
-  dl_name: string;
-  bh_name: string;
-  sourcer_names: string[];
-  caller_names: string[];
-  total_sourced: number;
-  validated: number;
-  total_submitted: number;
-  l1_count: number;
-  l2_count: number;
-  selections: number;
-  rejections: number;
-  today_subs: number;
-  d1_subs: number;
-  d2_subs: number;
+  id: number; client_name: string; client_job_id: string; role_title: string;
+  headcount: number; status: string; created_at: string; deadline: string;
+  sourcing_target: number | null; kam_name: string; dl_name: string; bh_name: string;
+  sourcer_names: string[]; caller_names: string[];
+  total_sourced: number; validated: number; total_submitted: number;
+  l1_count: number; l2_count: number; selections: number; rejections: number;
+  today_subs: number; d1_subs: number; d2_subs: number;
 }
 interface RecruiterData {
-  id: number;
-  name: string;
-  recruiter_type: string;
-  dl_name: string;
-  sourcing_load: number;
-  calling_load: number;
-  assigned_jobs: JobData[];
-  candidates: CandidateRow[];
+  id: number; name: string; recruiter_type: string; dl_name: string;
+  sourcing_load: number; calling_load: number;
+  assigned_jobs: JobData[]; candidates: CandidateRow[];
 }
 interface DLTeam { dl_name: string; recruiters: string[]; demands: JobData[]; }
 interface KAMData { kam_name: string; demands: JobData[]; }
 interface PodReport {
-  jobs: JobData[];
-  recruiters: RecruiterData[];
-  dl_teams: DLTeam[];
-  kam_data: KAMData[];
+  jobs: JobData[]; recruiters: RecruiterData[]; dl_teams: DLTeam[]; kam_data: KAMData[];
   pod_stats: {
     report_date: string; total_demands: number; total_sourced: number;
     total_validated: number; total_submitted: number; total_l1: number;
     total_l2: number; total_selections: number; today_subs: number; recruiters_count: number;
   };
 }
-
 interface UserActivity {
-  id: number;
-  name: string;
-  role: string;
-  secondary_role: string | null;
+  id: number; name: string; role: string; secondary_role: string | null;
   last_login_at: string | null;
-  last_action: {
-    action: string;
-    description: string;
-    entity_type: string | null;
-    entity_id: number | null;
-    at: string;
-  } | null;
+  last_action: { action: string; description: string; entity_type: string | null; entity_id: number | null; at: string; } | null;
 }
 
-const ACTION_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  login:              { label: 'Logged in',          color: '#64748b', bg: '#f1f5f9' },
-  sourced_candidate:  { label: 'Sourced candidate',  color: '#0284c7', bg: '#e0f2fe' },
-  saved_assessment:   { label: 'Saved assessment',   color: '#7c3aed', bg: '#ede9fe' },
-  validated_candidate:{ label: 'Validated',          color: '#059669', bg: '#dcfce7' },
-  submitted_to_client:{ label: 'Submitted to client',color: '#1d4ed8', bg: '#dbeafe' },
-  updated_stage:      { label: 'Updated stage',      color: '#d97706', bg: '#fef3c7' },
-  created_job:        { label: 'Created JD',         color: '#dc2626', bg: '#fee2e2' },
-  confirmed_jd:       { label: 'Confirmed JD',       color: '#0f766e', bg: '#ccfbf1' },
-};
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+const MEDALS = ['🥇', '🥈', '🥉'];
 
-function timeAgo(isoStr: string | null): string {
+type Period = 'today' | 'yesterday' | 'week' | 'month' | 'all';
+const PERIOD_LABELS: Record<Period, string> = {
+  today: 'Today', yesterday: 'Yesterday', week: 'This Week', month: 'This Month', all: 'All Time',
+};
+function periodRange(period: Period) {
+  const now = new Date();
+  const sod = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (period === 'all')       return { from: null as Date | null, to: null as Date | null };
+  if (period === 'today')     { const d = sod(now); return { from: d, to: now }; }
+  if (period === 'yesterday') { const s = sod(now); s.setDate(s.getDate()-1); return { from: s, to: sod(now) }; }
+  if (period === 'week')      { const s = sod(now); s.setDate(s.getDate()-s.getDay()); return { from: s, to: now }; }
+  const s = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from: s, to: now };
+}
+function inRange(dateStr: string, from: Date | null, to: Date | null) {
+  if (!from && !to) return true;
+  if (!dateStr || dateStr === '—') return false;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return false;
+  if (from && d < from) return false;
+  if (to   && d > to)   return false;
+  return true;
+}
+function timeAgo(isoStr: string | null) {
   if (!isoStr) return 'Never';
   const diff = Date.now() - new Date(isoStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
+  if (mins < 1)  return 'Just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
@@ -104,51 +83,7 @@ function timeAgo(isoStr: string | null): string {
   return new Date(isoStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
-function ActionBadge({ action }: { action: string }) {
-  const meta = ACTION_LABELS[action] ?? { label: action.replace(/_/g, ' '), color: '#475569', bg: '#f1f5f9' };
-  return (
-    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
-      style={{ background: meta.bg, color: meta.color }}>
-      {meta.label}
-    </span>
-  );
-}
-
-// ── Date filter helpers ────────────────────────────────────────────────────────
-type Period = 'today' | 'yesterday' | 'week' | 'month' | 'all';
-const PERIOD_LABELS: Record<Period, string> = {
-  today: 'Today', yesterday: 'Yesterday', week: 'This Week', month: 'This Month', all: 'All Time',
-};
-
-function periodRange(period: Period): { from: Date | null; to: Date | null } {
-  const now = new Date();
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  if (period === 'all') return { from: null, to: null };
-  if (period === 'today') { const d = startOfDay(now); return { from: d, to: now }; }
-  if (period === 'yesterday') {
-    const d = startOfDay(now); d.setDate(d.getDate() - 1);
-    const e = startOfDay(now); return { from: d, to: e };
-  }
-  if (period === 'week') {
-    const d = startOfDay(now); d.setDate(d.getDate() - d.getDay()); return { from: d, to: now };
-  }
-  if (period === 'month') {
-    const d = new Date(now.getFullYear(), now.getMonth(), 1); return { from: d, to: now };
-  }
-  return { from: null, to: null };
-}
-
-function inRange(dateStr: string, from: Date | null, to: Date | null): boolean {
-  if (!from && !to) return true;
-  if (!dateStr || dateStr === '—') return false;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return false;
-  if (from && d < from) return false;
-  if (to && d > to) return false;
-  return true;
-}
-
-// ── Sorting helpers ────────────────────────────────────────────────────────────
+// ── Sort ──────────────────────────────────────────────────────────────────────
 type SortDir = 'asc' | 'desc' | null;
 function useSortState(defaultCol: string, defaultDir: SortDir = 'desc') {
   const [col, setCol] = useState(defaultCol);
@@ -160,468 +95,482 @@ function useSortState(defaultCol: string, defaultDir: SortDir = 'desc') {
   return { col, dir, toggle };
 }
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
-  if (!active || dir === null) return <ChevronsUpDown size={12} className="opacity-30 ml-1 inline" />;
+  if (!active || !dir) return <ChevronsUpDown size={11} className="opacity-30 ml-0.5 inline" />;
   return dir === 'asc'
-    ? <ChevronUp size={12} className="text-blue-300 ml-1 inline" />
-    : <ChevronDown size={12} className="text-blue-300 ml-1 inline" />;
+    ? <ChevronUp   size={11} className="text-blue-300 ml-0.5 inline" />
+    : <ChevronDown size={11} className="text-blue-300 ml-0.5 inline" />;
 }
-
 function sortRows<T>(rows: T[], col: string, dir: SortDir): T[] {
   if (!dir || !col) return rows;
   return [...rows].sort((a, b) => {
     const av = (a as Record<string, unknown>)[col];
     const bv = (b as Record<string, unknown>)[col];
-    const an = typeof av === 'number' ? av : parseFloat(String(av ?? 0));
-    const bn = typeof bv === 'number' ? bv : parseFloat(String(bv ?? 0));
+    const an = parseFloat(String(av ?? 0));
+    const bn = parseFloat(String(bv ?? 0));
     if (!isNaN(an) && !isNaN(bn)) return dir === 'asc' ? an - bn : bn - an;
-    return dir === 'asc'
-      ? String(av ?? '').localeCompare(String(bv ?? ''))
-      : String(bv ?? '').localeCompare(String(av ?? ''));
+    return dir === 'asc' ? String(av ?? '').localeCompare(String(bv ?? '')) : String(bv ?? '').localeCompare(String(av ?? ''));
   });
 }
 
-// ── Styling helpers ────────────────────────────────────────────────────────────
-const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-const scoreBg = (v: string | number) => {
-  const n = Number(v); if (isNaN(n)) return '#f1f5f9';
-  return n >= 4 ? '#dcfce7' : n >= 3.25 ? '#fef9c3' : '#fee2e2';
-};
-const pctBg = (p: number) => p >= 60 ? '#dcfce7' : p >= 30 ? '#fef9c3' : p > 0 ? '#fee2e2' : '#f1f5f9';
+// ── Status badge (On Target / On Pace / Behind / Not Started) ─────────────────
+function StatusBadge({ done, target }: { done: number; target: number }) {
+  if (target === 0) return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-400">—</span>;
+  if (done === 0)   return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-500">Not started</span>;
+  const p = pct(done, target);
+  if (p >= 100) return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700">✓ On target</span>;
+  if (p >= 70)  return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700">~ On pace</span>;
+  return <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-600 flex items-center gap-1 w-fit"><AlertCircle size={10} /> Behind</span>;
+}
 
-const MEDALS = ['🥇', '🥈', '🥉'];
-const RANK_COLORS = ['#fde68a', '#e2e8f0', '#fed7aa'];
-
-// ── Shared table header ────────────────────────────────────────────────────────
-function TH({
-  children, onClick, sortKey, sortState, right = false, center = false,
-}: {
+// ── Table primitives ──────────────────────────────────────────────────────────
+function TH({ children, onClick, sortKey, sortState, right, center }: {
   children: React.ReactNode; onClick?: () => void; sortKey?: string;
   sortState?: ReturnType<typeof useSortState>; right?: boolean; center?: boolean;
 }) {
   const active = sortState && sortKey ? sortState.col === sortKey : false;
-  const dir = active ? sortState!.dir : null;
   return (
-    <th
-      onClick={onClick}
-      style={{
-        padding: '9px 12px', background: '#1e293b', color: '#94a3b8', fontSize: '11px',
-        fontWeight: 700, border: '1px solid #334155', whiteSpace: 'nowrap', letterSpacing: '0.4px',
-        textAlign: right ? 'right' : center ? 'center' : 'left',
-        cursor: onClick ? 'pointer' : 'default', userSelect: 'none',
-      }}
-      className={onClick ? 'hover:bg-slate-700 transition-colors' : ''}
-    >
+    <th onClick={onClick} style={{
+      padding: '8px 12px', background: '#1e293b', color: '#94a3b8', fontSize: '11px',
+      fontWeight: 700, borderBottom: '1px solid #334155', whiteSpace: 'nowrap',
+      textAlign: right ? 'right' : center ? 'center' : 'left',
+      cursor: onClick ? 'pointer' : 'default', letterSpacing: '0.3px',
+    }} className={onClick ? 'hover:bg-slate-700 transition-colors' : ''}>
       {children}
-      {sortKey && sortState && <SortIcon active={active} dir={dir} />}
+      {sortKey && sortState && <SortIcon active={active} dir={active ? sortState.dir : null} />}
     </th>
   );
 }
-function TD({ children, bg, bold, right, center, mono }: {
-  children: React.ReactNode; bg?: string; bold?: boolean; right?: boolean; center?: boolean; mono?: boolean;
+function TD({ children, bg, bold, right, center, mono, color }: {
+  children: React.ReactNode; bg?: string; bold?: boolean; right?: boolean;
+  center?: boolean; mono?: boolean; color?: string;
 }) {
   return (
     <td style={{
-      padding: '8px 12px', border: '1px solid #e2e8f0', backgroundColor: bg ?? '#ffffff',
-      fontWeight: bold ? 700 : 400, fontSize: '13px', textAlign: right ? 'right' : center ? 'center' : 'left',
-      whiteSpace: 'nowrap', fontFamily: mono ? 'monospace' : undefined,
-    }}>
-      {children ?? '—'}
-    </td>
+      padding: '8px 12px', borderBottom: '1px solid #f1f5f9', backgroundColor: bg ?? '#fff',
+      fontWeight: bold ? 700 : 400, fontSize: '13px', color: color,
+      textAlign: right ? 'right' : center ? 'center' : 'left',
+      whiteSpace: 'nowrap', fontFamily: mono ? 'JetBrains Mono, monospace' : undefined,
+    }}>{children ?? '—'}</td>
   );
 }
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
-function KPI({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col gap-1">
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
-      <p className="text-3xl font-bold" style={{ color }}>{value}</p>
-      {sub && <p className="text-xs text-slate-400">{sub}</p>}
-    </div>
-  );
-}
-
-// ── Funnel bar ────────────────────────────────────────────────────────────────
-function FunnelBar({ sourced, validated, submitted, l1, l2, sel }: {
-  sourced: number; validated: number; submitted: number; l1: number; l2: number; sel: number;
+function KPI({ label, value, sub, color, icon }: {
+  label: string; value: string | number; sub?: string; color: string; icon?: React.ReactNode;
 }) {
-  const steps = [
-    { label: 'Sourced', val: sourced, color: '#60a5fa' },
-    { label: 'Validated', val: validated, color: '#34d399' },
-    { label: 'Submitted', val: submitted, color: '#818cf8' },
-    { label: 'L1', val: l1, color: '#fb923c' },
-    { label: 'L2', val: l2, color: '#f59e0b' },
-    { label: 'Selections', val: sel, color: '#22c55e' },
-  ];
-  const max = Math.max(...steps.map(s => s.val), 1);
   return (
-    <div className="flex items-end gap-1.5 h-10">
-      {steps.map(s => (
-        <div key={s.label} className="flex flex-col items-center gap-0.5" title={`${s.label}: ${s.val}`}>
-          <div style={{ width: 20, height: Math.max(4, (s.val / max) * 36), background: s.color, borderRadius: 3 }} />
-        </div>
-      ))}
+    <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-2">
+        {icon && <span style={{ color }}>{icon}</span>}
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
+      </div>
+      <p className="text-2xl font-black tabular-nums" style={{ color }}>{value}</p>
+      {sub && <p className="text-[10px] text-slate-400 mt-1">{sub}</p>}
     </div>
   );
 }
 
-// ── Recruiter Leaderboard tab ─────────────────────────────────────────────────
-function RecruiterTab({ data, range, activities }: { data: PodReport; range: { from: Date | null; to: Date | null }; activities: UserActivity[] }) {
-  const sort = useSortState('sourced');
-
-  const activityMap = useMemo(() => {
-    const m: Record<number, UserActivity> = {};
-    activities.forEach(a => { m[a.id] = a; });
-    return m;
-  }, [activities]);
-
-  const rows = useMemo(() => {
-    return data.recruiters.map(r => {
-      const filtered = r.candidates.filter(c => inRange(c.sourcing_date, range.from, range.to));
-      const sourced   = filtered.length;
-      const validated = filtered.filter(c => c.dl_validated).length;
-      const submitted = filtered.filter(c => c.submitted_to_client).length;
-      const l1 = filtered.filter(c => ['l1_scheduled','l1_feedback_pending','l1_cleared','l2_scheduled','l2_feedback_pending','l2_cleared','final_scheduled','final_cleared'].some(s => c.current_stage.toLowerCase().includes(s.split('_')[0]))).length;
-      const sel = filtered.filter(c => ['joined','offer_accepted','final_cleared'].some(s => c.current_stage.toLowerCase().includes(s))).length;
-      const scores = filtered.map(c => parseFloat(c.overall_score)).filter(n => !isNaN(n));
-      const avgScore = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
-      const act = activityMap[r.id];
-      const lastSeen = act?.last_action?.at ?? act?.last_login_at ?? null;
-      const isOnline = lastSeen ? Date.now() - new Date(lastSeen).getTime() < 30 * 60 * 1000 : false;
-      return {
-        id: r.id, name: r.name, dl: r.dl_name,
-        type: r.recruiter_type === 'sourcer' ? 'S' : r.recruiter_type === 'caller' ? 'C' : 'S+C',
-        demands: r.assigned_jobs.length,
-        sourced, validated, submitted, l1, sel,
-        avgScore: avgScore !== null ? avgScore.toFixed(2) : '—',
-        convPct: pct(submitted, sourced),
-        selPct: pct(sel, submitted),
-        lastAction: act?.last_action ?? null,
-        lastSeen,
-        isOnline,
-      };
-    });
-  }, [data, range, activityMap]);
-
-  const sorted = useMemo(() => sortRows(rows, sort.col, sort.dir), [rows, sort.col, sort.dir]);
-
-  const th = (key: string, label: string, right = true) => (
-    <TH sortKey={key} sortState={sort} onClick={() => sort.toggle(key)} right={right}>{label}</TH>
-  );
-
+// ── Section header ────────────────────────────────────────────────────────────
+function SectionHeader({ icon, title, sub }: { icon: React.ReactNode; title: string; sub?: string }) {
   return (
-    <div className="overflow-auto rounded-xl border border-slate-200" style={{ maxHeight: 'calc(100vh - 340px)' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr>
-          <TH>Rank</TH>
-          <TH sortKey="name" sortState={sort} onClick={() => sort.toggle('name')}>Recruiter</TH>
-          <TH>Type</TH>
-          <TH sortKey="dl" sortState={sort} onClick={() => sort.toggle('dl')}>Pod (DL)</TH>
-          {th('demands', 'Demands')}
-          {th('sourced', 'Sourced')}
-          {th('validated', 'Validated')}
-          {th('submitted', 'Submitted')}
-          {th('l1', 'In L1/L2')}
-          {th('sel', 'Selections')}
-          {th('avgScore', 'Avg Score')}
-          {th('convPct', 'Conv %')}
-          {th('selPct', 'Sel %')}
-          <TH center>Funnel</TH>
-          <TH sortKey="lastSeen" sortState={sort} onClick={() => sort.toggle('lastSeen')} center>Last Seen</TH>
-          <TH>Last Action</TH>
-        </tr></thead>
-        <tbody>
-          {sorted.length === 0 && (
-            <tr><td colSpan={14} style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 14 }}>No data for this period</td></tr>
-          )}
-          {sorted.map((r, i) => {
-            const rank = i + 1;
-            const rowBg = rank <= 3 ? RANK_COLORS[rank - 1] + '55' : i % 2 === 0 ? '#fff' : '#f8fafc';
-            return (
-              <tr key={r.id} style={{ background: rowBg }}>
-                <TD bg={rowBg} center bold={rank <= 3}>
-                  {rank <= 3 ? MEDALS[rank - 1] : rank}
-                </TD>
-                <TD bg={rowBg} bold={rank <= 3}>{r.name}</TD>
-                <TD bg={rowBg} center>
-                  <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>{r.type}</span>
-                </TD>
-                <TD bg={rowBg}>{r.dl || '—'}</TD>
-                <TD bg={rowBg} center>{r.demands}</TD>
-                <TD bg={r.sourced > 0 ? '#dbeafe' : rowBg} center bold>{r.sourced}</TD>
-                <TD bg={r.validated > 0 ? '#dcfce7' : rowBg} center>{r.validated}</TD>
-                <TD bg={r.submitted > 0 ? '#ede9fe' : rowBg} center>{r.submitted}</TD>
-                <TD bg={r.l1 > 0 ? '#fef3c7' : rowBg} center>{r.l1}</TD>
-                <TD bg={r.sel > 0 ? '#bbf7d0' : rowBg} center bold={r.sel > 0}>{r.sel}</TD>
-                <TD bg={r.avgScore !== '—' ? scoreBg(r.avgScore) : rowBg} center mono>{r.avgScore}</TD>
-                <TD bg={pctBg(r.convPct)} center>{r.convPct}%</TD>
-                <TD bg={pctBg(r.selPct)} center>{r.selPct}%</TD>
-                <td style={{ padding: '4px 12px', border: '1px solid #e2e8f0', background: rowBg }}>
-                  <FunnelBar sourced={r.sourced} validated={r.validated} submitted={r.submitted} l1={r.l1} l2={0} sel={r.sel} />
-                </td>
-                <td style={{ padding: '8px 12px', border: '1px solid #e2e8f0', background: rowBg, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  <div className="flex flex-col items-center gap-0.5">
-                    <span className="flex items-center gap-1 text-xs font-semibold"
-                      style={{ color: r.isOnline ? '#059669' : '#64748b' }}>
-                      <span className="w-1.5 h-1.5 rounded-full inline-block"
-                        style={{ background: r.isOnline ? '#22c55e' : '#cbd5e1' }} />
-                      {timeAgo(r.lastSeen)}
-                    </span>
-                    {r.lastSeen && (
-                      <span className="text-[10px] text-slate-400">
-                        {new Date(r.lastSeen).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td style={{ padding: '8px 12px', border: '1px solid #e2e8f0', background: rowBg, maxWidth: 200 }}>
-                  {r.lastAction ? (
-                    <div className="flex flex-col gap-0.5">
-                      <ActionBadge action={r.lastAction.action} />
-                      <p className="text-[10px] text-slate-400 truncate mt-0.5" title={r.lastAction.description}>
-                        {r.lastAction.description}
-                      </p>
-                    </div>
-                  ) : <span className="text-xs text-slate-300">No activity yet</span>}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// ── Delivery Lead tab ─────────────────────────────────────────────────────────
-function DLTab({ data, range }: { data: PodReport; range: { from: Date | null; to: Date | null } }) {
-  const sort = useSortState('totalSourced');
-
-  const rows = useMemo(() => {
-    return data.dl_teams.map(dl => {
-      const periodDemands = range.from === null
-        ? dl.demands
-        : dl.demands; // demands don't have per-period filter, use full
-
-      // Get recruiter candidates in period
-      const teamRecruiters = data.recruiters.filter(r => r.dl_name === dl.dl_name);
-      const periodCands = teamRecruiters.flatMap(r =>
-        r.candidates.filter(c => inRange(c.sourcing_date, range.from, range.to))
-      );
-
-      const totalSourced  = periodCands.length;
-      const totalValidated = periodCands.filter(c => c.dl_validated).length;
-      const totalSubmitted = periodCands.filter(c => c.submitted_to_client).length;
-      const totalL1 = periodDemands.reduce((s, d) => s + d.l1_count, 0);
-      const totalL2 = periodDemands.reduce((s, d) => s + d.l2_count, 0);
-      const totalSel = periodDemands.reduce((s, d) => s + d.selections, 0);
-      const todaySubs = periodDemands.reduce((s, d) => s + d.today_subs, 0);
-      const target = periodDemands.reduce((s, d) => s + (d.sourcing_target ?? 0), 0);
-
-      return {
-        dlName: dl.dl_name,
-        teamSize: dl.recruiters.length,
-        demands: periodDemands.length,
-        target,
-        totalSourced,
-        totalValidated,
-        totalSubmitted,
-        totalL1, totalL2, totalSel,
-        todaySubs,
-        targetPct: pct(totalSourced, target),
-        convPct: pct(totalSubmitted, totalSourced),
-      };
-    });
-  }, [data, range]);
-
-  const sorted = useMemo(() => sortRows(rows, sort.col, sort.dir), [rows, sort.col, sort.dir]);
-
-  const th = (key: string, label: string) => (
-    <TH sortKey={key} sortState={sort} onClick={() => sort.toggle(key)} center>{label}</TH>
-  );
-
-  return (
-    <div className="overflow-auto rounded-xl border border-slate-200" style={{ maxHeight: 'calc(100vh - 340px)' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr>
-          <TH sortKey="dlName" sortState={sort} onClick={() => sort.toggle('dlName')}>Delivery Lead</TH>
-          {th('teamSize', 'Team Size')}
-          {th('demands', 'Demands')}
-          {th('target', 'Target')}
-          {th('totalSourced', 'Sourced')}
-          {th('targetPct', 'vs Target')}
-          {th('totalValidated', 'Validated')}
-          {th('totalSubmitted', 'Submitted')}
-          {th('totalL1', 'L1')}
-          {th('totalL2', 'L2')}
-          {th('totalSel', 'Selections')}
-          {th('todaySubs', "Today's Subs")}
-          {th('convPct', 'Conv %')}
-        </tr></thead>
-        <tbody>
-          {sorted.map((dl, i) => {
-            const rowBg = i % 2 === 0 ? '#fff' : '#f8fafc';
-            return (
-              <tr key={dl.dlName}>
-                <TD bg={rowBg} bold>{dl.dlName}</TD>
-                <TD bg={rowBg} center>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
-                    <Users size={11} />{dl.teamSize}
-                  </span>
-                </TD>
-                <TD bg={rowBg} center>{dl.demands}</TD>
-                <TD bg={rowBg} center>{dl.target > 0 ? dl.target : '—'}</TD>
-                <TD bg={dl.totalSourced > 0 ? '#dbeafe' : rowBg} center bold>{dl.totalSourced}</TD>
-                <TD bg={dl.target > 0 ? pctBg(dl.targetPct) : rowBg} center>
-                  {dl.target > 0 ? `${dl.targetPct}%` : '—'}
-                </TD>
-                <TD bg={dl.totalValidated > 0 ? '#dcfce7' : rowBg} center>{dl.totalValidated}</TD>
-                <TD bg={dl.totalSubmitted > 0 ? '#ede9fe' : rowBg} center>{dl.totalSubmitted}</TD>
-                <TD bg={dl.totalL1 > 0 ? '#fef9c3' : rowBg} center>{dl.totalL1}</TD>
-                <TD bg={dl.totalL2 > 0 ? '#fde68a' : rowBg} center>{dl.totalL2}</TD>
-                <TD bg={dl.totalSel > 0 ? '#bbf7d0' : rowBg} center bold={dl.totalSel > 0}>{dl.totalSel}</TD>
-                <TD bg={dl.todaySubs > 0 ? '#dcfce7' : rowBg} center bold={dl.todaySubs > 0}>{dl.todaySubs}</TD>
-                <TD bg={pctBg(dl.convPct)} center>{dl.convPct}%</TD>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      {/* DL detail cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4 border-t border-slate-100 bg-slate-50">
-        {data.dl_teams.map(dl => (
-          <div key={dl.dl_name} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-            <p className="text-sm font-bold text-slate-800 mb-2">{dl.dl_name}</p>
-            <p className="text-xs text-slate-500 mb-3">Team: {dl.recruiters.join(', ') || 'No members'}</p>
-            <div className="grid grid-cols-3 gap-2">
-              {dl.demands.map(d => (
-                <div key={d.id} className="rounded-lg p-2 border border-slate-100 bg-slate-50 text-center">
-                  <p className="text-[10px] font-semibold text-slate-500 truncate">{d.client_name}</p>
-                  <p className="text-[9px] text-slate-400 truncate mb-1">{d.role_title}</p>
-                  <div className="flex justify-center gap-2 text-xs">
-                    <span className="text-blue-600 font-bold">{d.total_sourced}S</span>
-                    <span className="text-purple-600 font-bold">{d.total_submitted}Sub</span>
-                    <span className="text-green-600 font-bold">{d.selections}Sel</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+    <div className="flex items-center gap-3 mb-3">
+      <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500">
+        {icon}
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-800">{title}</p>
+        {sub && <p className="text-xs text-slate-400">{sub}</p>}
       </div>
     </div>
   );
 }
 
-// ── KAM tab ───────────────────────────────────────────────────────────────────
-function KAMTab({ data }: { data: PodReport }) {
-  const sort = useSortState('totalSourced');
+// ── TODAY'S FOCUS TAB ─────────────────────────────────────────────────────────
+function TodayTab({ data }: { data: PodReport }) {
+  const today = useMemo(() => periodRange('today'), []);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  const rows = useMemo(() => {
-    return data.kam_data.map(k => {
-      const demands      = k.demands;
-      const totalSourced  = demands.reduce((s, d) => s + d.total_sourced, 0);
-      const totalValidated = demands.reduce((s, d) => s + d.validated, 0);
-      const totalSubmitted = demands.reduce((s, d) => s + d.total_submitted, 0);
-      const totalL1 = demands.reduce((s, d) => s + d.l1_count, 0);
-      const totalL2 = demands.reduce((s, d) => s + d.l2_count, 0);
-      const totalSel = demands.reduce((s, d) => s + d.selections, 0);
-      const todaySubs = demands.reduce((s, d) => s + d.today_subs, 0);
-      const totalHC = demands.reduce((s, d) => s + d.headcount, 0);
-      const fillPct = pct(totalSel, totalHC);
+  // ── Recruiter rows ──
+  const recruiterRows = useMemo(() => {
+    return data.recruiters.map(r => {
+      const todayCands   = r.candidates.filter(c => inRange(c.sourcing_date, today.from, today.to));
+      const sourced      = todayCands.length;
+      const dlVerified   = todayCands.filter(c => c.dl_validated).length;
+      // Today's submissions = sum of today_subs from assigned jobs
+      const todaySubs    = r.assigned_jobs.reduce((s, j) => s + j.today_subs, 0);
+      // Day target: sourcing_target / 30 as a rough daily rate, times assigned jobs
+      const totalTarget  = r.assigned_jobs.reduce((s, j) => s + (j.sourcing_target ?? 0), 0);
+      const dayTarget    = totalTarget > 0 ? Math.max(1, Math.round(totalTarget / 30)) : 0;
       return {
-        kamName: k.kam_name, demandCount: demands.length, totalHC,
-        totalSourced, totalValidated, totalSubmitted, totalL1, totalL2, totalSel, todaySubs, fillPct,
-        convPct: pct(totalSubmitted, totalSourced),
+        id: r.id, name: r.name, dl: r.dl_name,
+        jds: r.assigned_jobs.length, sourced, dlVerified, todaySubs, dayTarget,
+        pctDone: pct(todaySubs, dayTarget),
+      };
+    }).sort((a, b) => b.todaySubs - a.todaySubs);
+  }, [data, today]);
+
+  // ── DL rows ──
+  const dlRows = useMemo(() => {
+    return data.dl_teams.map(dl => {
+      const demands   = dl.demands;
+      const todaySubs = demands.reduce((s, d) => s + d.today_subs, 0);
+      // DL verified today = candidates validated today (approx: dl_validated cands sourced today)
+      const teamRecruiters = data.recruiters.filter(r => r.dl_name === dl.dl_name);
+      const dlVerifiedToday = teamRecruiters.flatMap(r =>
+        r.candidates.filter(c => inRange(c.sourcing_date, today.from, today.to) && c.dl_validated)
+      ).length;
+      const totalDemands = demands.length;
+      const sentToCustomer = todaySubs;
+      return {
+        dlName: dl.dl_name, teamSize: dl.recruiters.length,
+        demands: totalDemands, dlVerifiedToday, sentToCustomer, todaySubs,
+        pctVerified: pct(dlVerifiedToday, todaySubs),
+      };
+    }).sort((a, b) => b.todaySubs - a.todaySubs);
+  }, [data, today]);
+
+  // ── KAM rows ──
+  const kamRows = useMemo(() => {
+    return data.kam_data.map(k => {
+      const demands        = k.demands;
+      const openDemands    = demands.filter(d => d.status === 'open').length;
+      const awaitingFdbk   = demands.reduce((s, d) => s + d.l1_count, 0); // subs awaiting L1 feedback
+      const todayL1        = 0; // would need daily L1 tracking — not in current data
+      const todayL2        = 0;
+      const todaySel       = demands.reduce((s, d) => s + d.selections, 0);
+      const todaySubs      = demands.reduce((s, d) => s + d.today_subs, 0);
+      return {
+        kamName: k.kam_name, openDemands, awaitingFdbk, todayL1, todayL2, todaySel, todaySubs,
+        totalHC: demands.reduce((s, d) => s + d.headcount, 0),
+      };
+    }).sort((a, b) => b.todaySubs - a.todaySubs);
+  }, [data]);
+
+  const ps = data.pod_stats;
+
+  return (
+    <div className="space-y-8">
+      {/* Pod-level today headline */}
+      <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #0B1437 0%, #1E3A5F 100%)' }}>
+        <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-3">
+          Pod total — today's submissions
+        </p>
+        <div className="flex items-end gap-4">
+          <div>
+            <p className="text-5xl font-black text-white tabular-nums">{ps.today_subs}</p>
+            <p className="text-white/50 text-xs mt-1">submissions sent to clients today</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 ml-8">
+            <div className="bg-white/10 rounded-xl px-4 py-2 text-center">
+              <p className="text-white text-lg font-black">{ps.total_demands}</p>
+              <p className="text-white/50 text-[10px] font-semibold uppercase tracking-wide">Open JDs</p>
+            </div>
+            <div className="bg-white/10 rounded-xl px-4 py-2 text-center">
+              <p className="text-white text-lg font-black">{ps.total_validated}</p>
+              <p className="text-white/50 text-[10px] font-semibold uppercase tracking-wide">DL Verified</p>
+            </div>
+            <div className="bg-white/10 rounded-xl px-4 py-2 text-center">
+              <p className="text-white text-lg font-black">{ps.total_selections}</p>
+              <p className="text-white/50 text-[10px] font-semibold uppercase tracking-wide">Selections</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recruiter section */}
+      <div>
+        <SectionHeader icon={<Users size={16} />} title="Recruiter Leaderboard" sub="Today's submissions · DL-verified · vs daily target" />
+        <div className="overflow-auto rounded-xl border border-slate-100" style={{ background: '#fff' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr style={{ background: '#1e293b' }}>
+              <TH>Rank</TH>
+              <TH>Recruiter</TH>
+              <TH>Pod (DL)</TH>
+              <TH center>JDs Assigned</TH>
+              <TH center>Sourced Today</TH>
+              <TH center>DL Verified</TH>
+              <TH center>Submitted Today</TH>
+              <TH center>Day Target</TH>
+              <TH center>% Done</TH>
+              <TH center>Status</TH>
+            </tr></thead>
+            <tbody>
+              {recruiterRows.length === 0 && (
+                <tr><td colSpan={10} className="text-center py-10 text-slate-400 text-sm">No recruiters found</td></tr>
+              )}
+              {recruiterRows.map((r, i) => {
+                const rank = i + 1;
+                const pctDone = r.pctDone;
+                const doneBg  = pctDone >= 100 ? '#f0fdf4' : pctDone >= 70 ? '#fffbeb' : pctDone > 0 ? '#fef2f2' : '#fff';
+                return (
+                  <tr key={r.id} style={{ background: rank <= 3 ? ['#fefce8','#f8fafc','#fff7ed'][rank-1] : i%2===0 ? '#fff' : '#fafafa' }}>
+                    <TD center bold={rank<=3}>{rank <= 3 ? MEDALS[rank-1] : rank}</TD>
+                    <TD bold>{r.name}</TD>
+                    <TD>{r.dl || '—'}</TD>
+                    <TD center>{r.jds}</TD>
+                    <TD bg={r.sourced > 0 ? '#eff6ff' : undefined} center bold>{r.sourced}</TD>
+                    <TD bg={r.dlVerified > 0 ? '#f0fdf4' : undefined} center>{r.dlVerified}</TD>
+                    <TD bg={r.todaySubs > 0 ? '#f5f3ff' : undefined} center bold>{r.todaySubs}</TD>
+                    <TD center color="#64748b">{r.dayTarget > 0 ? r.dayTarget : '—'}</TD>
+                    <TD bg={r.dayTarget > 0 ? doneBg : undefined} center bold={r.pctDone > 0}>
+                      {r.dayTarget > 0 ? `${r.pctDone}%` : '—'}
+                    </TD>
+                    <td style={{ padding: '6px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                      <StatusBadge done={r.todaySubs} target={r.dayTarget} />
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* Pod total row */}
+              <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
+                <TD bold center colSpan={4}>POD TOTAL</TD>
+                <TD bold center>{recruiterRows.reduce((s,r)=>s+r.sourced,0)}</TD>
+                <TD bold center>{recruiterRows.reduce((s,r)=>s+r.dlVerified,0)}</TD>
+                <TD bold center>{ps.today_subs}</TD>
+                <TD bold center color="#64748b">{recruiterRows.reduce((s,r)=>s+r.dayTarget,0)}</TD>
+                <TD bold center>{pct(ps.today_subs, recruiterRows.reduce((s,r)=>s+r.dayTarget,0))}%</TD>
+                <td style={{ padding: '6px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                  <StatusBadge done={ps.today_subs} target={recruiterRows.reduce((s,r)=>s+r.dayTarget,0)} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* DL section */}
+      <div>
+        <SectionHeader icon={<UserCheck size={16} />} title="Delivery Lead Leaderboard" sub="Demands owned · Verifications · Sent to customer today" />
+        <div className="overflow-auto rounded-xl border border-slate-100">
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr style={{ background: '#1e293b' }}>
+              <TH>Delivery Lead</TH>
+              <TH center>Team Size</TH>
+              <TH center>Demands Owned</TH>
+              <TH center>DL Verified Today</TH>
+              <TH center>Sent to Customer</TH>
+              <TH center>% Verified</TH>
+              <TH center>Status</TH>
+            </tr></thead>
+            <tbody>
+              {dlRows.map((dl, i) => (
+                <tr key={dl.dlName} style={{ background: i%2===0 ? '#fff' : '#fafafa' }}>
+                  <TD bold>{dl.dlName}</TD>
+                  <TD center>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{dl.teamSize} recruiters</span>
+                  </TD>
+                  <TD center>{dl.demands}</TD>
+                  <TD bg={dl.dlVerifiedToday > 0 ? '#f0fdf4' : undefined} center bold>{dl.dlVerifiedToday}</TD>
+                  <TD bg={dl.sentToCustomer > 0 ? '#f5f3ff' : undefined} center bold>{dl.sentToCustomer}</TD>
+                  <TD bg={dl.pctVerified > 0 ? (dl.pctVerified >= 80 ? '#f0fdf4' : '#fffbeb') : undefined} center>
+                    {dl.todaySubs > 0 ? `${dl.pctVerified}%` : '—'}
+                  </TD>
+                  <td style={{ padding: '6px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                    <StatusBadge done={dl.sentToCustomer} target={Math.max(1, Math.round(dl.demands * 0.5))} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* KAM section */}
+      <div>
+        <SectionHeader icon={<Briefcase size={16} />} title="KAM Leaderboard" sub="Open demands · Subs awaiting feedback · Today's activity" />
+        <div className="overflow-auto rounded-xl border border-slate-100">
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr style={{ background: '#1e293b' }}>
+              <TH>KAM</TH>
+              <TH center>Open Demands</TH>
+              <TH center>Total HC</TH>
+              <TH center>Subs Awaiting L1 Fdbk</TH>
+              <TH center>Selections (All Time)</TH>
+              <TH center>Today's Subs</TH>
+              <TH center>Submitted (Total)</TH>
+            </tr></thead>
+            <tbody>
+              {kamRows.map((k, i) => (
+                <tr key={k.kamName} style={{ background: i%2===0 ? '#fff' : '#fafafa' }}>
+                  <TD bold>{k.kamName}</TD>
+                  <TD center>{k.openDemands}</TD>
+                  <TD center>{k.totalHC}</TD>
+                  <TD bg={k.awaitingFdbk > 0 ? '#fffbeb' : undefined} center bold>{k.awaitingFdbk}</TD>
+                  <TD bg={k.todaySel > 0 ? '#bbf7d0' : undefined} center bold={k.todaySel > 0}>{k.todaySel}</TD>
+                  <TD bg={k.todaySubs > 0 ? '#f0fdf4' : undefined} center bold={k.todaySubs > 0}>{k.todaySubs}</TD>
+                  <TD bg={k.todaySubs > 0 ? '#f5f3ff' : undefined} center>{data.jobs.filter(j=>j.kam_name===k.kamName).reduce((s,j)=>s+j.total_submitted,0)}</TD>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── BY CLIENT (BH-WISE) TAB ───────────────────────────────────────────────────
+function ClientTab({ data }: { data: PodReport }) {
+  const sort = useSortState('totalSubmitted');
+
+  // Group jobs by bh_name (business head = client account)
+  const groups = useMemo(() => {
+    const map: Record<string, JobData[]> = {};
+    for (const j of data.jobs) {
+      const key = j.bh_name || 'Unassigned';
+      if (!map[key]) map[key] = [];
+      map[key].push(j);
+    }
+    return Object.entries(map).map(([bh, jobs]) => {
+      // Also group by client_name within BH
+      const clients: Record<string, JobData[]> = {};
+      for (const j of jobs) {
+        if (!clients[j.client_name]) clients[j.client_name] = [];
+        clients[j.client_name].push(j);
+      }
+      return {
+        bh,
+        totalDemands:    jobs.length,
+        totalHC:         jobs.reduce((s, j) => s + j.headcount, 0),
+        totalSourced:    jobs.reduce((s, j) => s + j.total_sourced, 0),
+        totalValidated:  jobs.reduce((s, j) => s + j.validated, 0),
+        totalSubmitted:  jobs.reduce((s, j) => s + j.total_submitted, 0),
+        totalL1:         jobs.reduce((s, j) => s + j.l1_count, 0),
+        totalL2:         jobs.reduce((s, j) => s + j.l2_count, 0),
+        totalSel:        jobs.reduce((s, j) => s + j.selections, 0),
+        todaySubs:       jobs.reduce((s, j) => s + j.today_subs, 0),
+        clients: Object.entries(clients).map(([client, cjobs]) => ({
+          client,
+          demands:   cjobs.length,
+          hc:        cjobs.reduce((s,j)=>s+j.headcount,0),
+          sourced:   cjobs.reduce((s,j)=>s+j.total_sourced,0),
+          validated: cjobs.reduce((s,j)=>s+j.validated,0),
+          submitted: cjobs.reduce((s,j)=>s+j.total_submitted,0),
+          l1:        cjobs.reduce((s,j)=>s+j.l1_count,0),
+          l2:        cjobs.reduce((s,j)=>s+j.l2_count,0),
+          sel:       cjobs.reduce((s,j)=>s+j.selections,0),
+          today:     cjobs.reduce((s,j)=>s+j.today_subs,0),
+          dls:       [...new Set(cjobs.map(j=>j.dl_name).filter(Boolean))],
+          kams:      [...new Set(cjobs.map(j=>j.kam_name).filter(Boolean))],
+        })),
       };
     });
   }, [data]);
 
-  const sorted = useMemo(() => sortRows(rows, sort.col, sort.dir), [rows, sort.col, sort.dir]);
+  const sorted = useMemo(() => sortRows(groups, sort.col, sort.dir), [groups, sort.col, sort.dir]);
 
-  const th = (key: string, label: string) => (
-    <TH sortKey={key} sortState={sort} onClick={() => sort.toggle(key)} center>{label}</TH>
-  );
+  const PS_COLORS = ['#2563EB','#0891B2','#7C3AED','#F59E0B','#EF4444','#10B981','#EC4899'];
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-auto rounded-xl border border-slate-200" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+    <div className="space-y-5">
+      {/* Summary table */}
+      <div className="overflow-auto rounded-xl border border-slate-100">
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr>
-            <TH sortKey="kamName" sortState={sort} onClick={() => sort.toggle('kamName')}>KAM</TH>
-            {th('demandCount', 'Demands')}
-            {th('totalHC', 'Headcount')}
-            {th('totalSourced', 'Sourced')}
-            {th('totalValidated', 'Validated')}
-            {th('totalSubmitted', 'Submitted')}
-            {th('totalL1', 'L1')}
-            {th('totalL2', 'L2')}
-            {th('totalSel', 'Selections')}
-            {th('fillPct', 'Fill Rate')}
-            {th('todaySubs', "Today's Subs")}
-            {th('convPct', 'Conv %')}
+          <thead><tr style={{ background: '#1e293b' }}>
+            <TH sortKey="bh" sortState={sort} onClick={() => sort.toggle('bh')}>Business Head</TH>
+            <TH sortKey="totalDemands" sortState={sort} onClick={() => sort.toggle('totalDemands')} center>Demands</TH>
+            <TH sortKey="totalHC" sortState={sort} onClick={() => sort.toggle('totalHC')} center>Headcount</TH>
+            <TH sortKey="totalSourced" sortState={sort} onClick={() => sort.toggle('totalSourced')} center>Sourced</TH>
+            <TH sortKey="totalValidated" sortState={sort} onClick={() => sort.toggle('totalValidated')} center>DL Verified</TH>
+            <TH sortKey="totalSubmitted" sortState={sort} onClick={() => sort.toggle('totalSubmitted')} center>Submitted</TH>
+            <TH sortKey="totalL1" sortState={sort} onClick={() => sort.toggle('totalL1')} center>L1</TH>
+            <TH sortKey="totalL2" sortState={sort} onClick={() => sort.toggle('totalL2')} center>L2</TH>
+            <TH sortKey="totalSel" sortState={sort} onClick={() => sort.toggle('totalSel')} center>Selections</TH>
+            <TH sortKey="todaySubs" sortState={sort} onClick={() => sort.toggle('todaySubs')} center>Today's Subs</TH>
+            <TH center>Fill Rate</TH>
           </tr></thead>
           <tbody>
-            {sorted.map((k, i) => {
-              const rowBg = i % 2 === 0 ? '#fff' : '#f8fafc';
-              return (
-                <tr key={k.kamName}>
-                  <TD bg={rowBg} bold>{k.kamName}</TD>
-                  <TD bg={rowBg} center>{k.demandCount}</TD>
-                  <TD bg={rowBg} center>{k.totalHC}</TD>
-                  <TD bg={k.totalSourced > 0 ? '#dbeafe' : rowBg} center bold>{k.totalSourced}</TD>
-                  <TD bg={k.totalValidated > 0 ? '#dcfce7' : rowBg} center>{k.totalValidated}</TD>
-                  <TD bg={k.totalSubmitted > 0 ? '#ede9fe' : rowBg} center>{k.totalSubmitted}</TD>
-                  <TD bg={k.totalL1 > 0 ? '#fef9c3' : rowBg} center>{k.totalL1}</TD>
-                  <TD bg={k.totalL2 > 0 ? '#fde68a' : rowBg} center>{k.totalL2}</TD>
-                  <TD bg={k.totalSel > 0 ? '#bbf7d0' : rowBg} center bold={k.totalSel > 0}>{k.totalSel}</TD>
-                  <TD bg={pctBg(k.fillPct)} center bold>{k.fillPct}%</TD>
-                  <TD bg={k.todaySubs > 0 ? '#dcfce7' : rowBg} center bold={k.todaySubs > 0}>{k.todaySubs}</TD>
-                  <TD bg={pctBg(k.convPct)} center>{k.convPct}%</TD>
-                </tr>
-              );
-            })}
+            {sorted.map((g, i) => (
+              <tr key={g.bh} style={{ background: i%2===0 ? '#fff' : '#fafafa' }}>
+                <td style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, fontSize: 13 }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white text-[10px] font-black flex-shrink-0"
+                      style={{ background: PS_COLORS[i % PS_COLORS.length] }}>
+                      {g.bh.slice(0,2).toUpperCase()}
+                    </div>
+                    {g.bh}
+                  </div>
+                </td>
+                <TD center>{g.totalDemands}</TD>
+                <TD center>{g.totalHC}</TD>
+                <TD bg={g.totalSourced > 0 ? '#eff6ff' : undefined} center bold>{g.totalSourced}</TD>
+                <TD bg={g.totalValidated > 0 ? '#f0fdf4' : undefined} center>{g.totalValidated}</TD>
+                <TD bg={g.totalSubmitted > 0 ? '#f5f3ff' : undefined} center bold>{g.totalSubmitted}</TD>
+                <TD bg={g.totalL1 > 0 ? '#fffbeb' : undefined} center>{g.totalL1}</TD>
+                <TD bg={g.totalL2 > 0 ? '#fefce8' : undefined} center>{g.totalL2}</TD>
+                <TD bg={g.totalSel > 0 ? '#f0fdf4' : undefined} center bold={g.totalSel > 0}>{g.totalSel}</TD>
+                <TD bg={g.todaySubs > 0 ? '#f0fdf4' : undefined} center bold={g.todaySubs > 0}>{g.todaySubs}</TD>
+                <td style={{ padding: '8px 12px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                    style={{ background: pct(g.totalSel, g.totalHC) > 50 ? '#dcfce7' : pct(g.totalSel, g.totalHC) > 20 ? '#fef9c3' : '#f1f5f9',
+                             color:      pct(g.totalSel, g.totalHC) > 50 ? '#15803d' : pct(g.totalSel, g.totalHC) > 20 ? '#92400e' : '#64748b' }}>
+                    {pct(g.totalSel, g.totalHC)}%
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Per-KAM demand breakdown */}
-      <div className="space-y-3">
-        {data.kam_data.map(k => (
-          <details key={k.kam_name} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <summary className="px-5 py-3 cursor-pointer font-semibold text-sm text-slate-700 flex items-center justify-between"
-              style={{ listStyle: 'none' }}>
-              <span>📋 {k.kam_name} — {k.demands.length} demands</span>
-              <span className="text-xs text-slate-400">click to expand</span>
+      {/* Per-BH client breakdown cards */}
+      <div className="space-y-4">
+        {sorted.map((g, gi) => (
+          <details key={g.bh} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm" open={gi === 0}>
+            <summary className="px-5 py-4 cursor-pointer flex items-center justify-between" style={{ listStyle: 'none' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-black"
+                  style={{ background: PS_COLORS[gi % PS_COLORS.length] }}>
+                  {g.bh.slice(0,2).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{g.bh}</p>
+                  <p className="text-xs text-slate-400">{g.totalDemands} demands · {g.clients.length} clients · HC {g.totalHC}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-xs">
+                <span className="text-blue-700 font-bold">{g.totalSourced} sourced</span>
+                <span className="text-violet-700 font-bold">{g.totalSubmitted} submitted</span>
+                <span className="text-emerald-700 font-bold">{g.totalSel} sel</span>
+              </div>
             </summary>
-            <div className="overflow-auto">
-              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px' }}>
-                <thead><tr style={{ background: '#f8fafc' }}>
-                  {['Demand ID','Client','Role','HC','Sourced','Validated','Submitted','L1','L2','Sel','Today Subs','DL','Sourcers'].map(h => (
-                    <th key={h} style={{ padding: '7px 10px', border: '1px solid #e2e8f0', fontWeight: 600, whiteSpace: 'nowrap', color: '#475569', textAlign: 'left' }}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {k.demands.map((d, i) => (
-                    <tr key={d.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', fontFamily: 'monospace', fontSize: '11px' }}>{d.client_job_id || d.id}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', fontWeight: 600 }}>{d.client_name}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0' }}>{d.role_title}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>{d.headcount}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', background: d.total_sourced > 0 ? '#dbeafe' : undefined }}>{d.total_sourced}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', background: d.validated > 0 ? '#dcfce7' : undefined }}>{d.validated}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', background: d.total_submitted > 0 ? '#ede9fe' : undefined }}>{d.total_submitted}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', background: d.l1_count > 0 ? '#fef9c3' : undefined }}>{d.l1_count}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', background: d.l2_count > 0 ? '#fde68a' : undefined }}>{d.l2_count}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: d.selections > 0 ? 700 : 400, background: d.selections > 0 ? '#bbf7d0' : undefined }}>{d.selections}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: d.today_subs > 0 ? 700 : 400, background: d.today_subs > 0 ? '#dcfce7' : undefined }}>{d.today_subs}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0' }}>{d.dl_name || '—'}</td>
-                      <td style={{ padding: '6px 10px', border: '1px solid #e2e8f0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{[...new Set([...(d.sourcer_names??[]),...(d.caller_names??[])])].join(', ') || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="px-5 pb-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {g.clients.map(c => (
+                  <div key={c.client} className="rounded-xl border border-slate-100 p-4 bg-slate-50/50">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{c.client}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {c.demands} JD{c.demands!==1?'s':''} · HC {c.hc}
+                          {c.kams.length > 0 && ` · KAM: ${c.kams[0]}`}
+                        </p>
+                      </div>
+                      {c.today > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                          +{c.today} today
+                        </span>
+                      )}
+                    </div>
+                    {/* Pipeline mini-funnel */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Sourced',   val: c.sourced,   color: '#2563EB', bg: '#eff6ff' },
+                        { label: 'Submitted', val: c.submitted, color: '#7C3AED', bg: '#f5f3ff' },
+                        { label: 'Selected',  val: c.sel,       color: '#059669', bg: '#f0fdf4' },
+                      ].map(s => (
+                        <div key={s.label} className="rounded-lg p-2 text-center" style={{ background: s.bg }}>
+                          <p className="text-lg font-black tabular-nums" style={{ color: s.color }}>{s.val}</p>
+                          <p className="text-[9px] font-semibold" style={{ color: s.color }}>{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {c.dls.length > 0 && (
+                      <p className="text-[10px] text-slate-400 mt-2">DL: {c.dls.join(', ')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </details>
         ))}
@@ -630,102 +579,201 @@ function KAMTab({ data }: { data: PodReport }) {
   );
 }
 
-// ── Demand Health tab ─────────────────────────────────────────────────────────
-function DemandTab({ data }: { data: PodReport }) {
-  const sort = useSortState('total_sourced');
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+// ── RECRUITER RANKINGS TAB ────────────────────────────────────────────────────
+function RecruiterTab({ data, range, activities }: {
+  data: PodReport; range: { from: Date | null; to: Date | null }; activities: UserActivity[];
+}) {
+  const sort = useSortState('submitted');
+  const actMap = useMemo(() => {
+    const m: Record<number, UserActivity> = {};
+    activities.forEach(a => { m[a.id] = a; });
+    return m;
+  }, [activities]);
 
-  const statuses = useMemo(() => [...new Set(data.jobs.map(j => j.status))], [data]);
-
-  const rows = useMemo(() => {
-    let jobs = data.jobs;
-    if (search) {
-      const q = search.toLowerCase();
-      jobs = jobs.filter(j => j.client_name.toLowerCase().includes(q) || j.role_title.toLowerCase().includes(q) || (j.client_job_id || '').toLowerCase().includes(q));
-    }
-    if (statusFilter) jobs = jobs.filter(j => j.status === statusFilter);
-    return jobs.map(j => {
-      const flag = j.selections > 0 ? '✓ Selections logged'
-        : j.l2_count > 0 ? '~ In L2'
-        : j.l1_count > 0 ? '⚠ L1 feedback pending'
-        : j.total_submitted > 0 ? '⚠ Sub→L1 breach'
-        : j.total_sourced === 0 ? '🔴 No sourcing yet'
-        : '○ Sourced, not submitted';
-      const flagBg = flag.startsWith('✓') ? '#dcfce7' : flag.startsWith('⚠') ? '#fee2e2' : flag.startsWith('~') ? '#fef9c3' : flag.startsWith('🔴') ? '#fecaca' : '#f8fafc';
-      const today = new Date(); const opened = j.created_at ? new Date(j.created_at) : null;
-      const daysOpen = opened ? Math.floor((today.getTime() - opened.getTime()) / 86400000) : null;
-      return { ...j, flag, flagBg, daysOpen };
-    });
-  }, [data, search, statusFilter]);
+  const rows = useMemo(() => data.recruiters.map(r => {
+    const fc = r.candidates.filter(c => inRange(c.sourcing_date, range.from, range.to));
+    const sourced    = fc.length;
+    const validated  = fc.filter(c => c.dl_validated).length;
+    const submitted  = fc.filter(c => c.submitted_to_client).length;
+    const scores     = fc.map(c => parseFloat(c.overall_score)).filter(n => !isNaN(n));
+    const avgScore   = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
+    const act        = actMap[r.id];
+    const lastSeen   = act?.last_action?.at ?? act?.last_login_at ?? null;
+    const isOnline   = lastSeen ? Date.now() - new Date(lastSeen).getTime() < 30*60*1000 : false;
+    const l1 = r.assigned_jobs.reduce((s,j)=>s+j.l1_count,0);
+    const sel= r.assigned_jobs.reduce((s,j)=>s+j.selections,0);
+    return {
+      id: r.id, name: r.name, dl: r.dl_name,
+      type: r.recruiter_type === 'sourcer' ? 'S' : r.recruiter_type === 'caller' ? 'C' : 'S+C',
+      demands: r.assigned_jobs.length, sourced, validated, submitted, l1, sel,
+      avgScore: avgScore !== null ? avgScore.toFixed(2) : '—',
+      convPct: pct(submitted, sourced), selPct: pct(sel, submitted),
+      lastSeen, isOnline, lastAction: act?.last_action ?? null,
+    };
+  }), [data, range, actMap]);
 
   const sorted = useMemo(() => sortRows(rows, sort.col, sort.dir), [rows, sort.col, sort.dir]);
 
-  const th = (key: string, label: string, c = true) => (
-    <TH sortKey={key} sortState={sort} onClick={() => sort.toggle(key)} center={c}>{label}</TH>
+  const ACTION_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+    sourced_candidate:  { label: 'Sourced',      color: '#0284c7', bg: '#e0f2fe' },
+    saved_assessment:   { label: 'Assessment',   color: '#7c3aed', bg: '#ede9fe' },
+    validated_candidate:{ label: 'Validated',    color: '#059669', bg: '#dcfce7' },
+    submitted_to_client:{ label: 'Submitted',    color: '#1d4ed8', bg: '#dbeafe' },
+    login:              { label: 'Logged in',    color: '#64748b', bg: '#f1f5f9' },
+  };
+
+  return (
+    <div className="overflow-auto rounded-xl border border-slate-100">
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead><tr style={{ background: '#1e293b' }}>
+          <TH>Rank</TH>
+          <TH sortKey="name" sortState={sort} onClick={()=>sort.toggle('name')}>Recruiter</TH>
+          <TH sortKey="dl" sortState={sort} onClick={()=>sort.toggle('dl')}>Pod (DL)</TH>
+          <TH center>Type</TH>
+          <TH sortKey="demands" sortState={sort} onClick={()=>sort.toggle('demands')} center>JDs</TH>
+          <TH sortKey="sourced"   sortState={sort} onClick={()=>sort.toggle('sourced')}   center>Sourced</TH>
+          <TH sortKey="validated" sortState={sort} onClick={()=>sort.toggle('validated')} center>DL Verified</TH>
+          <TH sortKey="submitted" sortState={sort} onClick={()=>sort.toggle('submitted')} center>Submitted</TH>
+          <TH sortKey="l1"        sortState={sort} onClick={()=>sort.toggle('l1')}        center>In L1/L2</TH>
+          <TH sortKey="sel"       sortState={sort} onClick={()=>sort.toggle('sel')}       center>Selections</TH>
+          <TH sortKey="convPct"   sortState={sort} onClick={()=>sort.toggle('convPct')}   center>Conv %</TH>
+          <TH center>Online</TH>
+          <TH>Last Action</TH>
+        </tr></thead>
+        <tbody>
+          {sorted.length === 0 && <tr><td colSpan={13} className="text-center py-10 text-slate-400 text-sm">No data for this period</td></tr>}
+          {sorted.map((r, i) => {
+            const rank = i+1;
+            const rb = rank<=3 ? ['#fefce855','#f8fafc','#fff7ed'][rank-1] : i%2===0?'#fff':'#fafafa';
+            const meta = r.lastAction ? (ACTION_LABELS[r.lastAction.action] ?? { label: r.lastAction.action.replace(/_/g,' '), color:'#475569', bg:'#f1f5f9' }) : null;
+            return (
+              <tr key={r.id} style={{ background: rb }}>
+                <TD center bold={rank<=3}>{rank<=3 ? MEDALS[rank-1] : rank}</TD>
+                <TD bold={rank<=3}>{r.name}</TD>
+                <TD>{r.dl||'—'}</TD>
+                <TD center>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background:'#e0e7ff', color:'#3730a3' }}>{r.type}</span>
+                </TD>
+                <TD center>{r.demands}</TD>
+                <TD bg={r.sourced>0?'#eff6ff':rb} center bold>{r.sourced}</TD>
+                <TD bg={r.validated>0?'#f0fdf4':rb} center>{r.validated}</TD>
+                <TD bg={r.submitted>0?'#f5f3ff':rb} center bold={r.submitted>0}>{r.submitted}</TD>
+                <TD bg={r.l1>0?'#fffbeb':rb} center>{r.l1}</TD>
+                <TD bg={r.sel>0?'#dcfce7':rb} center bold={r.sel>0}>{r.sel}</TD>
+                <TD bg={r.convPct>0?(r.convPct>=60?'#f0fdf4':r.convPct>=30?'#fffbeb':'#fef2f2'):rb} center>{r.convPct}%</TD>
+                <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', textAlign:'center' }}>
+                  <span className="flex items-center gap-1 text-xs justify-center" style={{ color: r.isOnline?'#059669':'#94a3b8' }}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: r.isOnline?'#22c55e':'#cbd5e1' }} />
+                    {timeAgo(r.lastSeen)}
+                  </span>
+                </td>
+                <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9' }}>
+                  {meta ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
+                  ) : <span className="text-xs text-slate-300">—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
+}
+
+// ── DEMAND HEALTH TAB (unchanged core) ───────────────────────────────────────
+function DemandTab({ data }: { data: PodReport }) {
+  const sort = useSortState('total_sourced');
+  const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [bhFilter, setBhFilter] = useState('');
+
+  const clients = useMemo(() => [...new Set(data.jobs.map(j => j.client_name))].sort(), [data]);
+  const bhs = useMemo(() => [...new Set(data.jobs.map(j => j.bh_name || 'Unassigned'))].sort(), [data]);
+
+  const rows = useMemo(() => {
+    let jobs = data.jobs;
+    if (search)       jobs = jobs.filter(j => `${j.client_name} ${j.role_title} ${j.client_job_id}`.toLowerCase().includes(search.toLowerCase()));
+    if (clientFilter) jobs = jobs.filter(j => j.client_name === clientFilter);
+    if (bhFilter)     jobs = jobs.filter(j => (j.bh_name || 'Unassigned') === bhFilter);
+    const today = new Date();
+    return jobs.map(j => {
+      const opened = j.created_at ? new Date(j.created_at) : null;
+      const daysOpen = opened ? Math.floor((today.getTime() - opened.getTime()) / 86400000) : null;
+      const health = j.selections > 0 ? { label: '✓ Has selections',   bg: '#dcfce7' }
+        : j.l2_count > 0              ? { label: '~ In L2',            bg: '#fef9c3' }
+        : j.l1_count > 0              ? { label: '~ L1 pending fdbk',  bg: '#fef3c7' }
+        : j.total_submitted > 0       ? { label: '⚠ Sub → L1 gap',     bg: '#fee2e2' }
+        : j.total_sourced === 0       ? { label: '🔴 No sourcing',      bg: '#fecaca' }
+        :                               { label: '○ In progress',       bg: '#f1f5f9' };
+      return { ...j, daysOpen, health };
+    });
+  }, [data, search, clientFilter, bhFilter]);
+
+  const sorted = useMemo(() => sortRows(rows, sort.col, sort.dir), [rows, sort.col, sort.dir]);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search client / role / demand ID…"
-          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 w-72" />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400">
-          <option value="">All Statuses</option>
-          {statuses.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search client / role / ID…"
+            className="pl-3 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 w-64" />
+        </div>
+        <select value={bhFilter} onChange={e => setBhFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All Business Heads</option>
+          {bhs.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <span className="text-sm text-slate-400">{sorted.length} demands</span>
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All Clients</option>
+          {clients.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <span className="text-xs text-slate-400 font-medium">{sorted.length} demands</span>
       </div>
-      <div className="overflow-auto rounded-xl border border-slate-200" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+      <div className="overflow-auto rounded-xl border border-slate-100" style={{ maxHeight: 'calc(100vh - 400px)' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr>
-            <TH sortKey="client_job_id" sortState={sort} onClick={() => sort.toggle('client_job_id')}>Demand ID</TH>
-            <TH sortKey="client_name" sortState={sort} onClick={() => sort.toggle('client_name')}>Client</TH>
-            <TH sortKey="role_title" sortState={sort} onClick={() => sort.toggle('role_title')}>Role</TH>
-            {th('headcount', 'HC')}
-            {th('daysOpen', 'Days Open')}
-            <TH>Status</TH>
-            <TH>KAM</TH>
-            <TH>DL</TH>
-            {th('total_sourced', 'Sourced')}
-            {th('validated', 'Validated')}
-            {th('total_submitted', 'Submitted')}
-            {th('l1_count', 'L1')}
-            {th('l2_count', 'L2')}
-            {th('selections', 'Sel')}
-            {th('today_subs', 'Today')}
-            {th('d1_subs', 'Yest.')}
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr style={{ background: '#1e293b' }}>
+            <TH sortKey="client_job_id" sortState={sort} onClick={()=>sort.toggle('client_job_id')}>ID</TH>
+            <TH sortKey="bh_name"       sortState={sort} onClick={()=>sort.toggle('bh_name')}>BH</TH>
+            <TH sortKey="client_name"   sortState={sort} onClick={()=>sort.toggle('client_name')}>Client</TH>
+            <TH sortKey="role_title"    sortState={sort} onClick={()=>sort.toggle('role_title')}>Role</TH>
+            <TH sortKey="daysOpen"      sortState={sort} onClick={()=>sort.toggle('daysOpen')} center>Days Open</TH>
+            <TH>KAM</TH><TH>DL</TH>
+            <TH sortKey="total_sourced"   sortState={sort} onClick={()=>sort.toggle('total_sourced')}   center>Sourced</TH>
+            <TH sortKey="validated"       sortState={sort} onClick={()=>sort.toggle('validated')}       center>Verified</TH>
+            <TH sortKey="total_submitted" sortState={sort} onClick={()=>sort.toggle('total_submitted')} center>Submitted</TH>
+            <TH sortKey="l1_count"        sortState={sort} onClick={()=>sort.toggle('l1_count')}        center>L1</TH>
+            <TH sortKey="l2_count"        sortState={sort} onClick={()=>sort.toggle('l2_count')}        center>L2</TH>
+            <TH sortKey="selections"      sortState={sort} onClick={()=>sort.toggle('selections')}      center>Sel</TH>
+            <TH sortKey="today_subs"      sortState={sort} onClick={()=>sort.toggle('today_subs')}      center>Today</TH>
             <TH>Health</TH>
           </tr></thead>
           <tbody>
             {sorted.map((j, i) => {
-              const rowBg = i % 2 === 0 ? '#fff' : '#f8fafc';
-              const daysColor = j.daysOpen !== null && j.daysOpen > 30 ? '#fee2e2' : j.daysOpen !== null && j.daysOpen > 14 ? '#fef9c3' : rowBg;
+              const rb = i%2===0 ? '#fff' : '#fafafa';
+              const dc = j.daysOpen != null && j.daysOpen > 30 ? '#fee2e2' : j.daysOpen != null && j.daysOpen > 14 ? '#fffbeb' : undefined;
               return (
                 <tr key={j.id}>
-                  <TD bg={rowBg} mono>{j.client_job_id || j.id}</TD>
-                  <TD bg={rowBg} bold>{j.client_name}</TD>
-                  <TD bg={rowBg}>{j.role_title}</TD>
-                  <TD bg={rowBg} center>{j.headcount}</TD>
-                  <TD bg={daysColor} center>{j.daysOpen ?? '—'}</TD>
-                  <TD bg={rowBg}>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#e2e8f0', color: '#475569' }}>
-                      {j.status.replace(/_/g, ' ')}
-                    </span>
-                  </TD>
-                  <TD bg={rowBg}>{j.kam_name || '—'}</TD>
-                  <TD bg={rowBg}>{j.dl_name || '—'}</TD>
-                  <TD bg={j.total_sourced > 0 ? '#dbeafe' : rowBg} center bold>{j.total_sourced}</TD>
-                  <TD bg={j.validated > 0 ? '#dcfce7' : rowBg} center>{j.validated}</TD>
-                  <TD bg={j.total_submitted > 0 ? '#ede9fe' : rowBg} center>{j.total_submitted}</TD>
-                  <TD bg={j.l1_count > 0 ? '#fef9c3' : rowBg} center>{j.l1_count}</TD>
-                  <TD bg={j.l2_count > 0 ? '#fde68a' : rowBg} center>{j.l2_count}</TD>
-                  <TD bg={j.selections > 0 ? '#bbf7d0' : rowBg} center bold={j.selections > 0}>{j.selections}</TD>
-                  <TD bg={j.today_subs > 0 ? '#dcfce7' : rowBg} center bold={j.today_subs > 0}>{j.today_subs}</TD>
-                  <TD bg={j.d1_subs > 0 ? '#f0fdf4' : rowBg} center>{j.d1_subs}</TD>
-                  <td style={{ padding: '6px 12px', border: '1px solid #e2e8f0', background: j.flagBg, fontSize: '11px', fontWeight: 500, whiteSpace: 'nowrap' }}>{j.flag}</td>
+                  <TD mono>{j.client_job_id || String(j.id)}</TD>
+                  <TD bold>{j.bh_name || '—'}</TD>
+                  <TD bold>{j.client_name}</TD>
+                  <TD>{j.role_title}</TD>
+                  <TD bg={dc} center>{j.daysOpen ?? '—'}</TD>
+                  <TD>{j.kam_name || '—'}</TD>
+                  <TD>{j.dl_name || '—'}</TD>
+                  <TD bg={j.total_sourced>0?'#eff6ff':rb} center bold>{j.total_sourced}</TD>
+                  <TD bg={j.validated>0?'#f0fdf4':rb} center>{j.validated}</TD>
+                  <TD bg={j.total_submitted>0?'#f5f3ff':rb} center bold>{j.total_submitted}</TD>
+                  <TD bg={j.l1_count>0?'#fffbeb':rb} center>{j.l1_count}</TD>
+                  <TD bg={j.l2_count>0?'#fefce8':rb} center>{j.l2_count}</TD>
+                  <TD bg={j.selections>0?'#dcfce7':rb} center bold={j.selections>0}>{j.selections}</TD>
+                  <TD bg={j.today_subs>0?'#f0fdf4':rb} center bold={j.today_subs>0}>{j.today_subs}</TD>
+                  <td style={{ padding:'6px 12px', borderBottom:'1px solid #f1f5f9', background: j.health.bg, fontSize:11, fontWeight:500, whiteSpace:'nowrap' }}>
+                    {j.health.label}
+                  </td>
                 </tr>
               );
             })}
@@ -736,135 +784,105 @@ function DemandTab({ data }: { data: PodReport }) {
   );
 }
 
-// ── Activity Feed tab ─────────────────────────────────────────────────────────
+// ── ACTIVITY TAB ──────────────────────────────────────────────────────────────
 function ActivityTab({ activities }: { activities: UserActivity[] }) {
-  const sort = useSortState('last_seen', 'desc');
-  const [roleFilter, setRoleFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
 
-  const rows = useMemo(() => {
-    return activities
-      .filter(u => !roleFilter || u.role === roleFilter || u.secondary_role === roleFilter)
-      .filter(u => !search || u.name.toLowerCase().includes(search.toLowerCase()))
-      .map(u => {
-        const lastSeen = u.last_action?.at ?? u.last_login_at;
-        const lastSeenMs = lastSeen ? new Date(lastSeen).getTime() : 0;
-        const loginMs = u.last_login_at ? new Date(u.last_login_at).getTime() : 0;
-        const isOnline = lastSeenMs > Date.now() - 30 * 60 * 1000; // active in last 30 min
-        return { ...u, lastSeen, lastSeenMs, loginMs, isOnline };
-      });
-  }, [activities, roleFilter, search]);
+  const ACTION_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+    login:              { label: 'Logged in',    color: '#64748b', bg: '#f1f5f9' },
+    sourced_candidate:  { label: 'Sourced',      color: '#0284c7', bg: '#e0f2fe' },
+    saved_assessment:   { label: 'Assessment',   color: '#7c3aed', bg: '#ede9fe' },
+    validated_candidate:{ label: 'Validated',    color: '#059669', bg: '#dcfce7' },
+    submitted_to_client:{ label: 'Submitted',    color: '#1d4ed8', bg: '#dbeafe' },
+    updated_stage:      { label: 'Stage update', color: '#d97706', bg: '#fef3c7' },
+    created_job:        { label: 'Created JD',   color: '#dc2626', bg: '#fee2e2' },
+    confirmed_jd:       { label: 'Confirmed JD', color: '#0f766e', bg: '#ccfbf1' },
+  };
 
-  const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      if (sort.col === 'last_seen') return sort.dir === 'asc' ? a.lastSeenMs - b.lastSeenMs : b.lastSeenMs - a.lastSeenMs;
-      if (sort.col === 'name') return sort.dir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      return 0;
-    });
-  }, [rows, sort.col, sort.dir]);
+  const rows = useMemo(() => activities
+    .filter(u => !roleFilter || u.role === roleFilter || u.secondary_role === roleFilter)
+    .filter(u => !search || u.name.toLowerCase().includes(search.toLowerCase()))
+    .map(u => {
+      const lastSeen  = u.last_action?.at ?? u.last_login_at;
+      const lastSeenMs = lastSeen ? new Date(lastSeen).getTime() : 0;
+      return { ...u, lastSeen, lastSeenMs, isOnline: lastSeenMs > Date.now() - 30*60*1000 };
+    })
+    .sort((a,b) => b.lastSeenMs - a.lastSeenMs),
+  [activities, roleFilter, search]);
 
-  const roles = ['admin', 'kam', 'delivery_lead', 'recruiter'];
+  const roles = ['admin','kam','delivery_lead','recruiter'];
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
-        <input value={search} onChange={e => setSearch(e.target.value)}
+        <input value={search} onChange={e=>setSearch(e.target.value)}
           placeholder="Search user…"
-          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 w-56" />
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none w-52" />
         <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 p-1">
-          <button onClick={() => setRoleFilter('')}
+          <button onClick={()=>setRoleFilter('')}
             className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
-            style={roleFilter === '' ? { background: '#3b82f6', color: '#fff' } : { color: '#64748b' }}>
-            All
-          </button>
+            style={roleFilter===''?{background:'#2563EB',color:'#fff'}:{color:'#64748b'}}>All</button>
           {roles.map(r => (
-            <button key={r} onClick={() => setRoleFilter(r === roleFilter ? '' : r)}
+            <button key={r} onClick={()=>setRoleFilter(r===roleFilter?'':r)}
               className="px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize"
-              style={roleFilter === r ? { background: '#3b82f6', color: '#fff' } : { color: '#64748b' }}>
-              {r.replace(/_/g, ' ')}
+              style={roleFilter===r?{background:'#2563EB',color:'#fff'}:{color:'#64748b'}}>
+              {r.replace(/_/g,' ')}
             </button>
           ))}
         </div>
-        <span className="text-xs text-slate-400">{sorted.length} users</span>
-        <span className="text-xs text-green-600 font-semibold">● {sorted.filter(u => u.isOnline).length} online in last 30m</span>
+        <span className="text-xs text-slate-400">{rows.length} users</span>
+        <span className="text-xs font-semibold" style={{ color:'#059669' }}>
+          ● {rows.filter(u=>u.isOnline).length} online now
+        </span>
       </div>
-
-      {/* Table */}
-      <div className="overflow-auto rounded-xl border border-slate-200" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+      <div className="overflow-auto rounded-xl border border-slate-100" style={{ maxHeight: 'calc(100vh - 400px)' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr>
-            <TH sortKey="name" sortState={sort} onClick={() => sort.toggle('name')}>User</TH>
-            <TH>Role</TH>
-            <TH sortKey="last_seen" sortState={sort} onClick={() => sort.toggle('last_seen')} center>Last Seen</TH>
-            <TH center>Last Login</TH>
-            <TH>Last Action</TH>
-            <TH>Details</TH>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr style={{ background: '#1e293b' }}>
+            <TH>User</TH><TH>Role</TH>
             <TH center>Status</TH>
+            <TH center>Last Seen</TH>
+            <TH>Last Action</TH>
+            <TH>Description</TH>
           </tr></thead>
           <tbody>
-            {sorted.map((u, i) => {
-              const rowBg = i % 2 === 0 ? '#fff' : '#f8fafc';
+            {rows.map((u, i) => {
+              const rb = i%2===0 ? '#fff' : '#fafafa';
               const act = u.last_action;
+              const meta = act ? (ACTION_LABELS[act.action] ?? { label: act.action.replace(/_/g,' '), color:'#475569', bg:'#f1f5f9' }) : null;
               return (
-                <tr key={u.id} style={{ background: rowBg }}>
-                  <TD bg={rowBg} bold>{u.name}</TD>
-                  <TD bg={rowBg}>
+                <tr key={u.id} style={{ background: rb }}>
+                  <TD bold>{u.name}</TD>
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9' }}>
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold capitalize inline-block"
-                        style={{ background: '#e0e7ff', color: '#3730a3', width: 'fit-content' }}>
-                        {u.role.replace(/_/g, ' ')}
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold capitalize inline-block w-fit" style={{ background:'#e0e7ff', color:'#3730a3' }}>
+                        {u.role.replace(/_/g,' ')}
                       </span>
                       {u.secondary_role && (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold capitalize inline-block"
-                          style={{ background: '#fef9c3', color: '#92400e', width: 'fit-content' }}>
-                          +{u.secondary_role.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                    </div>
-                  </TD>
-                  <td style={{ padding: '8px 12px', border: '1px solid #e2e8f0', background: rowBg, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm font-semibold" style={{ color: u.isOnline ? '#059669' : '#64748b' }}>
-                        {timeAgo(u.lastSeen ?? null)}
-                      </span>
-                      {u.lastSeen && (
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(u.lastSeen).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold capitalize inline-block w-fit" style={{ background:'#fef9c3', color:'#92400e' }}>
+                          +{u.secondary_role.replace(/_/g,' ')}
                         </span>
                       )}
                     </div>
                   </td>
-                  <td style={{ padding: '8px 12px', border: '1px solid #e2e8f0', background: rowBg, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                    {u.last_login_at ? (
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-sm text-slate-600">{timeAgo(u.last_login_at)}</span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(u.last_login_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    ) : <span className="text-xs text-slate-400">Never</span>}
-                  </td>
-                  <TD bg={rowBg}>
-                    {act ? <ActionBadge action={act.action} /> : <span className="text-xs text-slate-300">No activity</span>}
-                  </TD>
-                  <td style={{ padding: '8px 12px', border: '1px solid #e2e8f0', background: rowBg, maxWidth: 320, overflow: 'hidden' }}>
-                    <p className="text-xs text-slate-600 truncate" title={act?.description}>
-                      {act?.description ?? '—'}
-                    </p>
-                    {act?.at && (
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(act.at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    )}
-                  </td>
-                  <td style={{ padding: '8px 12px', border: '1px solid #e2e8f0', background: rowBg, textAlign: 'center' }}>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold"
-                      style={{ color: u.isOnline ? '#059669' : '#94a3b8' }}>
-                      <span className="w-2 h-2 rounded-full inline-block"
-                        style={{ background: u.isOnline ? '#22c55e' : '#cbd5e1' }} />
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', textAlign:'center' }}>
+                    <span className="flex items-center gap-1 text-xs justify-center font-semibold" style={{ color: u.isOnline?'#059669':'#94a3b8' }}>
+                      <span className="w-2 h-2 rounded-full" style={{ background: u.isOnline?'#22c55e':'#e2e8f0' }} />
                       {u.isOnline ? 'Online' : 'Offline'}
                     </span>
+                  </td>
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', textAlign:'center', whiteSpace:'nowrap' }}>
+                    <p className="text-xs font-semibold" style={{ color: u.isOnline?'#059669':'#475569' }}>{timeAgo(u.lastSeen??null)}</p>
+                    {u.lastSeen && <p className="text-[10px] text-slate-400">{new Date(u.lastSeen).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</p>}
+                  </td>
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9' }}>
+                    {meta
+                      ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background:meta.bg, color:meta.color }}>{meta.label}</span>
+                      : <span className="text-xs text-slate-300">No activity</span>}
+                  </td>
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', maxWidth:280, overflow:'hidden' }}>
+                    <p className="text-xs text-slate-600 truncate">{act?.description ?? '—'}</p>
+                    {act?.at && <p className="text-[10px] text-slate-400 mt-0.5">{new Date(act.at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</p>}
                   </td>
                 </tr>
               );
@@ -872,41 +890,28 @@ function ActivityTab({ activities }: { activities: UserActivity[] }) {
           </tbody>
         </table>
       </div>
-
-      {/* Activity log legend */}
-      <div className="bg-white rounded-xl border border-slate-100 p-4">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Action Types</p>
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(ACTION_LABELS).map(([key, meta]) => (
-            <span key={key} className="px-2.5 py-1 rounded-full text-xs font-medium"
-              style={{ background: meta.bg, color: meta.color }}>
-              {meta.label}
-            </span>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
 
-// ── Main Leaderboard page ──────────────────────────────────────────────────────
-type Tab = 'recruiters' | 'dl' | 'kam' | 'demands' | 'activity';
+// ── MAIN ──────────────────────────────────────────────────────────────────────
+type Tab = 'today' | 'client' | 'recruiters' | 'demands' | 'activity';
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'recruiters', label: 'Recruiter Rankings', icon: <Trophy size={15} /> },
-  { id: 'dl',         label: 'Delivery Leads',     icon: <Users size={15} /> },
-  { id: 'kam',        label: 'KAM Accountability', icon: <Briefcase size={15} /> },
-  { id: 'demands',    label: 'Demand Health',       icon: <TrendingUp size={15} /> },
-  { id: 'activity',   label: 'User Activity',       icon: <Activity size={15} /> },
+  { id: 'today',      label: "Today's Focus",       icon: <Target    size={14} /> },
+  { id: 'client',     label: 'By Client (BH-wise)',  icon: <Building2 size={14} /> },
+  { id: 'recruiters', label: 'Recruiter Rankings',  icon: <Trophy    size={14} /> },
+  { id: 'demands',    label: 'Demand Health',        icon: <TrendingUp size={14} /> },
+  { id: 'activity',   label: 'User Activity',        icon: <Activity  size={14} /> },
 ];
 
 export default function Leaderboard() {
-  const [data, setData] = useState<PodReport | null>(null);
+  const [data,       setData]       = useState<PodReport | null>(null);
   const [activities, setActivities] = useState<UserActivity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('recruiters');
-  const [period, setPeriod] = useState<Period>('all');
-  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState('');
+  const [tab,        setTab]        = useState<Tab>('today');
+  const [period,     setPeriod]     = useState<Period>('all');
+  const [lastFetched,setLastFetched]= useState<Date | null>(null);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -919,7 +924,7 @@ export default function Leaderboard() {
       setActivities(actRes.data);
       setLastFetched(new Date());
     } catch {
-      setError('Failed to load leaderboard data. Please try again.');
+      setError('Failed to load leaderboard data.');
     } finally {
       setLoading(false);
     }
@@ -928,161 +933,108 @@ export default function Leaderboard() {
   useEffect(() => { load(); }, []);
 
   const range = useMemo(() => periodRange(period), [period]);
-
-  // Period-filtered KPIs
-  const kpis = useMemo(() => {
-    if (!data) return null;
-    const ps = data.pod_stats;
-    if (period === 'all') {
-      return {
-        demands: ps.total_demands, sourced: ps.total_sourced,
-        submitted: ps.total_submitted, selections: ps.total_selections,
-        todaySubs: ps.today_subs, recruiterCount: ps.recruiters_count,
-      };
-    }
-    const periodCands = data.recruiters.flatMap(r =>
-      r.candidates.filter(c => inRange(c.sourcing_date, range.from, range.to))
-    );
-    return {
-      demands: ps.total_demands,
-      sourced: periodCands.length,
-      submitted: periodCands.filter(c => c.submitted_to_client).length,
-      selections: data.jobs.reduce((s, j) => s + j.selections, 0),
-      todaySubs: ps.today_subs,
-      recruiterCount: ps.recruiters_count,
-    };
-  }, [data, period, range]);
+  const ps    = data?.pod_stats;
 
   return (
-    <Layout title="Performance Leaderboard">
+    <Layout title="Leaderboard" subtitle={ps ? `${new Date(ps.report_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}` : undefined}>
       <div className="space-y-5">
 
-        {/* Header controls */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 p-1 shadow-sm">
+        {/* Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-1 p-1 rounded-xl overflow-x-auto" style={{ background: '#E8EDF3' }}>
             {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
-                style={period === p
-                  ? { background: '#3b82f6', color: '#fff' }
-                  : { color: '#64748b' }
-                }
-              >
+              <button key={p} onClick={() => setPeriod(p)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap"
+                style={period === p ? { background:'#fff', color:'#0F172A', boxShadow:'0 1px 4px rgba(0,0,0,0.08)' } : { color:'#64748B' }}>
                 {PERIOD_LABELS[p]}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-3">
             {lastFetched && (
-              <span className="text-xs text-slate-400">
-                Updated {lastFetched.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              <span className="text-[10px] text-slate-400 font-medium">
+                Updated {lastFetched.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}
               </span>
             )}
-            <button
-              onClick={load}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Refresh
+            <button onClick={load} disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50">
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
           </div>
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
-        )}
+        {error && <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm">{error}</div>}
 
-        {/* Loading skeleton */}
         {loading && !data && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-pulse">
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-24 rounded-2xl bg-slate-100 animate-pulse" />
-              ))}
+              {[...Array(6)].map((_,i) => <div key={i} className="h-24 rounded-2xl bg-slate-100" />)}
             </div>
-            <div className="h-96 rounded-2xl bg-slate-100 animate-pulse" />
+            <div className="h-80 rounded-2xl bg-slate-100" />
           </div>
         )}
 
-        {/* Main content */}
-        {data && kpis && (
+        {data && ps && (
           <>
             {/* KPI row */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-              <KPI label="Active Demands"  value={kpis.demands}       color="#1d4ed8" sub={`${kpis.recruiterCount} recruiters`} />
-              <KPI label={`Sourced${period !== 'all' ? ` (${PERIOD_LABELS[period]})` : ''}`} value={kpis.sourced} color="#0284c7" />
-              <KPI label={`Submitted${period !== 'all' ? ` (${PERIOD_LABELS[period]})` : ''}`} value={kpis.submitted} color="#7c3aed" />
-              <KPI label="Today's Subs"   value={kpis.todaySubs}      color="#059669" sub="submissions today" />
-              <KPI label="Selections"      value={kpis.selections}     color="#15803d" sub="all time" />
-              <KPI label="Fill Rate"       value={`${pct(kpis.selections, data.jobs.reduce((s,j)=>s+j.headcount,0))}%`} color="#b45309" sub="sel / headcount" />
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+              <KPI label="Active Demands"  value={ps.total_demands}   color="#2563EB" icon={<Briefcase size={14}/>}   sub={`${ps.recruiters_count} recruiters`} />
+              <KPI label="Sourced"         value={ps.total_sourced}   color="#0891B2" icon={<Users size={14}/>}       sub="all time" />
+              <KPI label="DL Verified"     value={ps.total_validated} color="#7C3AED" icon={<CheckCircle size={14}/>} sub="ready to submit" />
+              <KPI label="Submitted"        value={ps.total_submitted} color="#7C3AED" icon={<TrendingUp size={14}/>} sub="to clients" />
+              <KPI label="Today's Subs"    value={ps.today_subs}      color="#059669" icon={<Target size={14}/>}     sub="sent today" />
+              <KPI label="Selections"       value={ps.total_selections}color="#15803d" icon={<Trophy size={14}/>}    sub="all time" />
             </div>
 
-            {/* Pod summary bar */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Pipeline Overview — All Demands</p>
-              <div className="flex items-center gap-0 overflow-x-auto">
+            {/* Pipeline flow bar */}
+            <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm overflow-x-auto">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Pipeline — {PERIOD_LABELS[period]}</p>
+              <div className="flex items-stretch gap-0">
                 {[
-                  { label: 'Sourced', val: data.pod_stats.total_sourced, color: '#3b82f6', bg: '#dbeafe' },
-                  { label: 'Validated', val: data.pod_stats.total_validated, color: '#10b981', bg: '#dcfce7' },
-                  { label: 'Submitted', val: data.pod_stats.total_submitted, color: '#8b5cf6', bg: '#ede9fe' },
-                  { label: 'L1', val: data.pod_stats.total_l1, color: '#f59e0b', bg: '#fef3c7' },
-                  { label: 'L2', val: data.pod_stats.total_l2, color: '#f97316', bg: '#ffedd5' },
-                  { label: 'Selections', val: data.pod_stats.total_selections, color: '#22c55e', bg: '#bbf7d0' },
-                ].map((step, i, arr) => (
-                  <div key={step.label} className="flex items-center">
-                    <div className="flex flex-col items-center px-5 py-2 rounded-xl min-w-[90px]" style={{ background: step.bg }}>
-                      <span className="text-2xl font-black" style={{ color: step.color }}>{step.val}</span>
-                      <span className="text-xs font-semibold" style={{ color: step.color }}>{step.label}</span>
-                      {i > 0 && (
-                        <span className="text-[10px] text-slate-400 mt-0.5">
-                          {pct(step.val, arr[i-1].val)}% of prev
-                        </span>
-                      )}
+                  { label:'Sourced',   val: ps.total_sourced,    color:'#2563EB', bg:'#eff6ff' },
+                  { label:'Verified',  val: ps.total_validated,  color:'#0891B2', bg:'#e0f2fe' },
+                  { label:'Submitted', val: ps.total_submitted,  color:'#7C3AED', bg:'#f5f3ff' },
+                  { label:'L1',        val: ps.total_l1,         color:'#D97706', bg:'#fffbeb' },
+                  { label:'L2',        val: ps.total_l2,         color:'#EA580C', bg:'#fff7ed' },
+                  { label:'Selected',  val: ps.total_selections, color:'#059669', bg:'#f0fdf4' },
+                ].map((s, i, arr) => (
+                  <div key={s.label} className="flex items-center flex-shrink-0">
+                    <div className="flex flex-col items-center px-5 py-3 rounded-xl" style={{ background: s.bg, minWidth: 80 }}>
+                      <span className="text-2xl font-black tabular-nums" style={{ color: s.color }}>{s.val}</span>
+                      <span className="text-[10px] font-bold mt-0.5" style={{ color: s.color }}>{s.label}</span>
+                      {i > 0 && <span className="text-[9px] text-slate-400 mt-0.5">{pct(s.val, arr[i-1].val)}% of prev</span>}
                     </div>
-                    {i < arr.length - 1 && (
-                      <div className="flex-shrink-0 text-slate-300 mx-1 text-lg font-light">›</div>
-                    )}
+                    {i < arr.length - 1 && <span className="text-slate-300 mx-1 text-lg">›</span>}
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Tabs */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {/* Tab bar */}
-              <div className="flex border-b border-slate-200 bg-slate-50">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex border-b border-slate-100 overflow-x-auto" style={{ background: '#FAFAFA' }}>
                 {TABS.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTab(t.id)}
-                    className="flex items-center gap-2 px-5 py-3.5 text-sm font-semibold transition-all border-b-2"
+                  <button key={t.id} onClick={() => setTab(t.id)}
+                    className="flex items-center gap-2 px-5 py-3.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap"
                     style={tab === t.id
-                      ? { color: '#3b82f6', borderColor: '#3b82f6', background: '#fff' }
-                      : { color: '#64748b', borderColor: 'transparent' }
-                    }
-                  >
+                      ? { color:'#2563EB', borderColor:'#2563EB', background:'#fff' }
+                      : { color:'#64748B', borderColor:'transparent' }
+                    }>
                     {t.icon}{t.label}
                   </button>
                 ))}
               </div>
-
-              {/* Tab content */}
               <div className="p-5">
-                {tab === 'recruiters' && <RecruiterTab data={data} range={range} activities={activities} />}
-                {tab === 'dl'         && <DLTab data={data} range={range} />}
-                {tab === 'kam'        && <KAMTab data={data} />}
-                {tab === 'demands'    && <DemandTab data={data} />}
-                {tab === 'activity'   && <ActivityTab activities={activities} />}
+                {tab === 'today'      && <TodayTab      data={data} />}
+                {tab === 'client'     && <ClientTab     data={data} />}
+                {tab === 'recruiters' && <RecruiterTab  data={data} range={range} activities={activities} />}
+                {tab === 'demands'    && <DemandTab     data={data} />}
+                {tab === 'activity'   && <ActivityTab   activities={activities} />}
               </div>
             </div>
 
-            {/* Footer note */}
-            <p className="text-xs text-slate-400 text-center">
-              Data as of {data.pod_stats.report_date} · Sourced/Validated counts reflect selected period filter · Submissions, L1/L2, Selections are all-time figures
+            <p className="text-[10px] text-slate-400 text-center">
+              Report date: {ps.report_date} · Period filter applies to sourcing/validation counts only
             </p>
           </>
         )}

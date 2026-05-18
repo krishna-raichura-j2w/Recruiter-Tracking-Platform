@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSignal } from '../context/RealtimeContext';
 import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
+import PaginationBar from '../components/PaginationBar';
 import api from '../api/client';
 import type { Candidate, Assessment } from '../types';
 
@@ -15,6 +16,9 @@ interface QueueItem {
 export default function ValidationQueue() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page,    setPage]    = useState(1);
+  const [perPage, setPerPage] = useState(50);
+  const [total,   setTotal]   = useState(0);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [fullCandidate, setFullCandidate] = useState<Candidate | null>(null);
   const [comment, setComment] = useState('');
@@ -24,17 +28,22 @@ export default function ValidationQueue() {
   const [rejectReason, setRejectReason]   = useState('');
   const [resumeOpen, setResumeOpen] = useState(false);
 
-  const fetchQueue = () => {
+  const fetchQueue = useCallback(() => {
     setLoading(true);
     api
-      .get<QueueItem[]>('/validation/queue')
-      .then((res) => setQueue(res.data))
+      .get<{ items: QueueItem[]; total: number } | QueueItem[]>('/validation/queue', {
+        params: { skip: (page - 1) * perPage, limit: perPage },
+      })
+      .then((res) => {
+        if (Array.isArray(res.data)) { setQueue(res.data); setTotal(res.data.length); }
+        else { setQueue(res.data.items ?? []); setTotal(res.data.total ?? 0); }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [page, perPage]);
 
   const validationSignal = useSignal('validation');
-  useEffect(() => { fetchQueue(); }, [validationSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchQueue(); }, [fetchQueue, validationSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // map frontend action labels → backend ValidationStatus values
   const ACTION_STATUS: Record<string, string> = {
@@ -128,7 +137,7 @@ export default function ValidationQueue() {
                   >
                     <td className="py-3.5 px-5 font-semibold text-slate-800">{item.candidate.full_name}</td>
                     <td className="py-3.5 px-5">
-                      <p className="text-slate-700 truncate max-w-36">{item.candidate.job_title ?? '—'}</p>
+                      <p className="text-slate-700 truncate max-w-xs">{item.candidate.job_title ?? '—'}</p>
                       <p className="text-xs text-slate-400">{item.candidate.client_name ?? '—'}</p>
                     </td>
                     <td className="py-3.5 px-5 text-center">
@@ -171,12 +180,20 @@ export default function ValidationQueue() {
             </table>
           </div>
         )}
+
+        {/* Pagination */}
+        {total > perPage && (
+          <div className="bg-white rounded-2xl border border-slate-100 mt-3 px-4 shadow-sm">
+            <PaginationBar page={page} total={total} perPage={perPage}
+              onPageChange={setPage} onPerPageChange={setPerPage} loading={loading} />
+          </div>
+        )}
       </div>
 
       {/* Review overlay — centered modal */}
       {selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '960px', maxWidth: '96vw', maxHeight: '92vh' }}>
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col w-full" style={{ maxWidth: 'min(960px, 96vw)', maxHeight: '92vh' }}>
 
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
@@ -209,7 +226,7 @@ export default function ValidationQueue() {
                   {[1,2,3].map(i => <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />)}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                   {/* ── LEFT COLUMN ── */}
                   <div className="space-y-5">
@@ -460,7 +477,7 @@ export default function ValidationQueue() {
                 onChange={(e) => setComment(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 resize-none"
               />
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <button onClick={() => handleAction('validate')} disabled={actionLoading}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 disabled:opacity-60 transition-colors">
                   <CheckCircle size={15} />Validate

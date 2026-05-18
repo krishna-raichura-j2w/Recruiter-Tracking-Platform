@@ -116,7 +116,10 @@ def list_validated_candidates(
     db: Session,
     kam_id: int | None = None,
     dl_id: int | None = None,
-) -> list:
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 0,
+) -> tuple[list, int]:
     """Candidates validated, not yet submitted. KAM/DL each see only their own JDs."""
     q = db.query(Candidate).options(
         joinedload(Candidate.job),
@@ -127,6 +130,7 @@ def list_validated_candidates(
 
     candidates = q.all()
     result = []
+    sq = search.lower() if search else None
     for c in candidates:
         if c.submission:
             continue
@@ -134,6 +138,14 @@ def list_validated_candidates(
             continue
         if dl_id and c.job and c.job.delivery_lead_id != dl_id:
             continue
+        if sq:
+            haystack = ' '.join(filter(None, [
+                c.full_name,
+                c.job.client_name if c.job else None,
+                c.job.role_title if c.job else None,
+            ])).lower()
+            if sq not in haystack:
+                continue
         item = {col.name: getattr(c, col.name) for col in c.__table__.columns}
         isofy_datetimes(item)
         item["job_title"]        = c.job.role_title if c.job else None
@@ -150,7 +162,10 @@ def list_validated_candidates(
             item["total_exp"]           = c.assessment.total_exp
             item["relevant_exp"]        = c.assessment.relevant_exp
         result.append(item)
-    return result
+    total = len(result)
+    if limit > 0:
+        result = result[skip:skip + limit]
+    return result, total
 
 
 def list_submissions(
@@ -158,19 +173,29 @@ def list_submissions(
     kam_id: int | None = None,
     dl_id: int | None = None,
     closed: bool = False,
-) -> list:
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 0,
+) -> tuple[list, int]:
     subs = _load(db).order_by(Submission.updated_at.desc()).all()
     if kam_id:
-        subs = [s for s in subs if s.candidate and s.candidate.job and
-                s.candidate.job.created_by_id == kam_id]
+        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.created_by_id == kam_id]
     if dl_id:
-        subs = [s for s in subs if s.candidate and s.candidate.job and
-                s.candidate.job.delivery_lead_id == dl_id]
+        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.delivery_lead_id == dl_id]
     if closed:
         subs = [s for s in subs if s.current_stage in TERMINAL_STAGES]
     else:
         subs = [s for s in subs if s.current_stage not in TERMINAL_STAGES]
-    return [_enrich(s) for s in subs]
+    if search:
+        q = search.lower()
+        subs = [s for s in subs if
+                q in (s.candidate.full_name or '').lower() or
+                q in (s.candidate.job.client_name if s.candidate and s.candidate.job else '').lower() or
+                q in (s.candidate.job.role_title if s.candidate and s.candidate.job else '').lower()]
+    total = len(subs)
+    if limit > 0:
+        subs = subs[skip:skip + limit]
+    return [_enrich(s) for s in subs], total
 
 
 def submit_to_client(db: Session, candidate_id: int, notes: str | None,

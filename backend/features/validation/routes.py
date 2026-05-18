@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
@@ -31,17 +31,18 @@ def _serialize_candidate(c) -> dict:
 
 @router.get("/queue")
 def pending_queue(
+    skip:  int   = Query(0, ge=0),
+    limit: int   = Query(50, ge=0, le=500),
     db: Session  = Depends(get_db),
     current_user = Depends(require_roles(*VALIDATORS)),
 ):
     role = current_user.role.value
     if role == "delivery_lead":
-        # Each DL only sees candidates explicitly assigned to them as validator
-        candidates = service.list_pending_for_validator(db, current_user.id)
+        candidates, total = service.list_pending_for_validator(db, current_user.id, skip=skip, limit=limit)
     else:
-        candidates = service.list_pending(db)
+        candidates, total = service.list_pending(db, skip=skip, limit=limit)
 
-    return [_serialize_candidate(c) for c in candidates]
+    return {"items": [_serialize_candidate(c) for c in candidates], "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("/action")

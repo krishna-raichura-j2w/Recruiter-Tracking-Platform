@@ -13,25 +13,33 @@ ALLOWED = ("delivery_lead", "admin", "kam")
 
 @router.get("/ready")
 def ready_to_submit(
+    search: str | None = Query(None),
+    skip:   int        = Query(0, ge=0),
+    limit:  int        = Query(50, ge=0, le=500),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*ALLOWED)),
 ):
-    role = current_user.role.value
+    role   = current_user.role.value
     kam_id = current_user.id if role == "kam" else None
     dl_id  = current_user.id if role == "delivery_lead" else None
-    return service.list_validated_candidates(db, kam_id=kam_id, dl_id=dl_id)
+    items, total = service.list_validated_candidates(db, kam_id=kam_id, dl_id=dl_id, search=search, skip=skip, limit=limit)
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 @router.get("")
 def list_submissions(
-    closed: bool = Query(False),
+    closed: bool       = Query(False),
+    search: str | None = Query(None),
+    skip:   int        = Query(0, ge=0),
+    limit:  int        = Query(50, ge=0, le=500),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*ALLOWED, "recruiter")),
 ):
     role   = current_user.role.value
     kam_id = current_user.id if role == "kam" else None
     dl_id  = current_user.id if role == "delivery_lead" else None
-    return service.list_submissions(db, kam_id=kam_id, dl_id=dl_id, closed=closed)
+    items, total = service.list_submissions(db, kam_id=kam_id, dl_id=dl_id, closed=closed, search=search, skip=skip, limit=limit)
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("")

@@ -10,13 +10,22 @@ from infra.models import (
 from core.security import hash_password
 
 
-def list_users(db: Session, role: str | None = None, pod_lead_id: int | None = None) -> list[User]:
+def list_users(db: Session, role: str | None = None, pod_lead_id: int | None = None, search: str | None = None, skip: int = 0, limit: int = 0):
+    from sqlalchemy import func
     q = db.query(User)
     if role:
         q = q.filter(User.role == role)
     if pod_lead_id is not None:
         q = q.filter(User.pod_lead_id == pod_lead_id)
-    return q.order_by(User.name).all()
+    if search:
+        s = f"%{search.lower()}%"
+        q = q.filter(func.lower(User.name).like(s) | func.lower(User.email).like(s))
+    q = q.order_by(User.name)
+    if limit > 0:
+        total = q.count()
+        return q.offset(skip).limit(limit).all(), total
+    items = q.all()
+    return items, len(items)
 
 
 def list_available_team(db: Session, dl_id: int, role: str | None = None) -> list[User]:

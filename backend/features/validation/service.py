@@ -5,27 +5,35 @@ from infra.models import (
 from features.notifications.service import push, push_to_role
 
 
-def list_pending(db: Session) -> list[Candidate]:
-    return db.query(Candidate).options(
+def _pending_query(db: Session, validator_id: int | None = None):
+    q = db.query(Candidate).options(
         joinedload(Candidate.assessment),
         joinedload(Candidate.assigned_to),
         joinedload(Candidate.assigned_validator),
         joinedload(Candidate.job),
-    ).filter(
-        Candidate.status == CandidateStatus.ready_for_validation
-    ).order_by(Candidate.updated_at.desc()).all()
+    ).filter(Candidate.status == CandidateStatus.ready_for_validation)
+    if validator_id:
+        q = q.filter(Candidate.assigned_validator_id == validator_id)
+    return q.order_by(Candidate.updated_at.desc())
 
 
-def list_pending_for_validator(db: Session, validator_id: int) -> list[Candidate]:
-    return db.query(Candidate).options(
-        joinedload(Candidate.assessment),
-        joinedload(Candidate.assigned_to),
-        joinedload(Candidate.assigned_validator),
-        joinedload(Candidate.job),
-    ).filter(
+def list_pending(db: Session, skip: int = 0, limit: int = 0):
+    q = _pending_query(db)
+    total = db.query(Candidate.id).filter(Candidate.status == CandidateStatus.ready_for_validation).count()
+    if limit > 0:
+        return q.offset(skip).limit(limit).all(), total
+    return q.all(), total
+
+
+def list_pending_for_validator(db: Session, validator_id: int, skip: int = 0, limit: int = 0):
+    q = _pending_query(db, validator_id)
+    total = db.query(Candidate.id).filter(
         Candidate.assigned_validator_id == validator_id,
         Candidate.status == CandidateStatus.ready_for_validation,
-    ).order_by(Candidate.updated_at.desc()).all()
+    ).count()
+    if limit > 0:
+        return q.offset(skip).limit(limit).all(), total
+    return q.all(), total
 
 
 def list_all_for_validator(db: Session) -> list:

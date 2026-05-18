@@ -15,23 +15,28 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("")
 def list_jobs(
     status: str | None = Query(None),
+    search: str | None = Query(None),
+    skip:   int        = Query(0, ge=0),
+    limit:  int        = Query(100, ge=0, le=500),
     db: Session        = Depends(get_db),
     current_user       = Depends(get_current_user),
 ):
     is_kam = user_has_role(current_user, "kam")
     is_dl  = user_has_role(current_user, "delivery_lead")
+    kwargs = dict(search=search, skip=skip, limit=limit)
 
     if is_kam and is_dl:
-        # Dual-role: show jobs where they're KAM OR DL
-        return service.list_jobs(db, status, dual_user_id=current_user.id)
+        items, total = service.list_jobs(db, status, dual_user_id=current_user.id, **kwargs)
     elif is_kam:
-        return service.list_jobs(db, status, created_by_id=current_user.id)
+        items, total = service.list_jobs(db, status, created_by_id=current_user.id, **kwargs)
     elif is_dl:
-        return service.list_jobs(db, status, delivery_lead_id=current_user.id)
+        items, total = service.list_jobs(db, status, delivery_lead_id=current_user.id, **kwargs)
     elif current_user.role.value == "recruiter":
-        return service.list_jobs(db, status, assigned_sourcer_id=current_user.id)
+        items, total = service.list_jobs(db, status, assigned_sourcer_id=current_user.id, **kwargs)
     else:
-        return service.list_jobs(db, status)
+        items, total = service.list_jobs(db, status, **kwargs)
+
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 @router.get("/{job_id}")

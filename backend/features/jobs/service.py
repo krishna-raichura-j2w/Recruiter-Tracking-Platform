@@ -53,8 +53,13 @@ def list_jobs(
     created_by_id: int | None = None,
     delivery_lead_id: int | None = None,
     assigned_sourcer_id: int | None = None,
-    dual_user_id: int | None = None,   # user is both KAM and DL — show either
-) -> list:
+    dual_user_id: int | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 0,
+) -> tuple[list, int]:
+    """Returns (items, total). limit=0 means no pagination (return all)."""
+    from sqlalchemy import func
     q = db.query(Job)
     if status:
         q = q.filter(Job.status == status)
@@ -65,26 +70,35 @@ def list_jobs(
             q = q.filter(Job.created_by_id == created_by_id)
         if delivery_lead_id is not None:
             q = q.filter(Job.delivery_lead_id == delivery_lead_id)
-    jobs = q.order_by(Job.created_at.desc()).all()
+    if search:
+        s = f"%{search.lower()}%"
+        q = q.filter(or_(
+            func.lower(Job.role_title).like(s),
+            func.lower(Job.client_name).like(s),
+            func.lower(Job.client_job_id).like(s),
+        ))
 
+    q = q.order_by(Job.created_at.desc())
+
+    # For recruiter: must do in-Python filter on JSON arrays (DB-agnostic)
     if assigned_sourcer_id is not None:
-        # A recruiter sees the JD if they appear in sourcer_ids OR caller_ids
-        # (both are JSON arrays) OR as the primary assigned_sourcer/caller.
+        all_jobs = q.all()
         uid = assigned_sourcer_id
         filtered = []
-        for job in jobs:
+        for job in all_jobs:
             sourcer_ids = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
             caller_ids  = json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
-            if (
-                uid in sourcer_ids
-                or uid in caller_ids
-                or job.assigned_sourcer_id == uid
-                or job.assigned_caller_id  == uid
-            ):
+            if uid in sourcer_ids or uid in caller_ids or job.assigned_sourcer_id == uid or job.assigned_caller_id == uid:
                 filtered.append(job)
-        jobs = filtered
+        total = len(filtered)
+        if limit > 0:
+            filtered = filtered[skip:skip + limit]
+        return [_job_dict(db, j) for j in filtered], total
 
-    return [_job_dict(db, j) for j in jobs]
+    total = q.count()
+    if limit > 0:
+        q = q.offset(skip).limit(limit)
+    return [_job_dict(db, j) for j in q.all()], total
 
 
 def get_job(db: Session, job_id: int) -> Job | None:

@@ -39,6 +39,9 @@ def list_candidates(
     job_id:      int | None = Query(None),
     status:      str | None = Query(None),
     assigned_to: int | None = Query(None),
+    search:      str | None = Query(None),
+    skip:        int        = Query(0, ge=0),
+    limit:       int        = Query(50, ge=0, le=500),
     db:          Session    = Depends(get_db),
     current_user            = Depends(get_current_user),
 ):
@@ -49,24 +52,18 @@ def list_candidates(
     _recruiter_id: int | None  = None
 
     if role == "recruiter":
-        # Show everything they sourced OR are assigned to call
         _recruiter_id = current_user.id
-
     elif role == "delivery_lead":
-        # DL sees all candidates for jobs they oversee
-        # pod_lead_id on DL points to... nothing (DL is the manager)
-        # DL team members have pod_lead_id = DL's id
-        # Jobs are created by pod_lead → DL confirmed them (delivery_lead_id = DL.id)
-        # Show all candidates from jobs DL has confirmed
         dl_job_ids = [j.id for j in db.query(Job).filter(Job.delivery_lead_id == current_user.id).all()]
-        # Also show all pending jobs' candidates where DL is in the org
         _job_ids = dl_job_ids if dl_job_ids else []
-
     elif role == "kam":
-        _job_ids = []  # KAM doesn't see candidates directly
+        _job_ids = []
 
-    candidates = service.list_candidates(db, job_id, status, _assigned_to, _sourced_by, _job_ids, _recruiter_id)
-    return [_serialize(c) for c in candidates]
+    items, total = service.list_candidates(
+        db, job_id, status, _assigned_to, _sourced_by, _job_ids, _recruiter_id,
+        search=search, skip=skip, limit=limit,
+    )
+    return {"items": [_serialize(c) for c in items], "total": total, "skip": skip, "limit": limit}
 
 
 @router.get("/{candidate_id}")

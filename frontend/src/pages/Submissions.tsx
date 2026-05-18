@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSignal } from '../context/RealtimeContext';
 import {
   Send, Phone, Mail, MapPin, Briefcase,
   TrendingUp, Clock, User, ArrowRight, XCircle, X,
-  Eye, FileText, ExternalLink,
+  Eye, FileText, ExternalLink, Search,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
+import PaginationBar from '../components/PaginationBar';
 import api from '../api/client';
 import type { Candidate } from '../types';
 
@@ -347,6 +348,13 @@ export default function Submissions() {
   const [rejectReason, setRejectReason]   = useState('');
   const [rejecting, setRejecting]         = useState(false);
 
+  // Pagination + search
+  const [page, setPage]       = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [total, setTotal]     = useState(0);
+  const [search, setSearch]   = useState('');
+  const [searchInput, setSearchInput] = useState('');
+
   // Full details modal
   const [detailCandidate, setDetailCandidate] = useState<Candidate | null>(null);
   const [detailLoading, setDetailLoading]     = useState<number | null>(null);
@@ -356,18 +364,33 @@ export default function Submissions() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/submissions/ready').catch(() => ({ data: [] }));
-      setReady(data as ReadyCandidate[]);
+      const params: Record<string, string | number> = {
+        skip:  (page - 1) * perPage,
+        limit: perPage,
+      };
+      if (search) params.search = search;
+      const { data } = await api.get('/submissions/ready', { params }).catch(() => ({ data: { items: [], total: 0 } }));
+      const resp = data as { items: ReadyCandidate[]; total: number } | ReadyCandidate[];
+      if (Array.isArray(resp)) {
+        setReady(resp);
+        setTotal(resp.length);
+      } else {
+        setReady(resp.items);
+        setTotal(resp.total);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, perPage, search]);
 
   const submissionsSignal = useSignal('submissions');
-  useEffect(() => { fetchData(); }, [submissionsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchData(); }, [fetchData, submissionsSignal]);
+
+  // Reset page when search changes
+  useEffect(() => { setPage(1); }, [search]);
 
   const openDetails = async (id: number) => {
     setDetailLoading(id);
@@ -426,6 +449,27 @@ export default function Submissions() {
           {toast}
         </div>
       )}
+
+      {/* Search bar */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search by name, role, client…"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') setSearch(searchInput); }}
+            onBlur={() => setSearch(searchInput)}
+            className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 bg-white"
+          />
+        </div>
+        {total > 0 && (
+          <p className="text-sm text-slate-500 flex-shrink-0">
+            <span className="font-semibold text-slate-700">{total}</span> candidate{total !== 1 ? 's' : ''} ready
+          </p>
+        )}
+      </div>
 
       {/* Candidate list */}
       <div className="space-y-4">
@@ -568,6 +612,18 @@ export default function Submissions() {
           ))
         )}
       </div>
+
+      {/* Pagination */}
+      {total > perPage && (
+        <PaginationBar
+          page={page}
+          total={total}
+          perPage={perPage}
+          onPageChange={setPage}
+          onPerPageChange={p => { setPerPage(p); setPage(1); }}
+          loading={loading}
+        />
+      )}
 
       {/* Full Details Modal */}
       {detailCandidate && (

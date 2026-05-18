@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
-import { Mail, CheckCircle2, ShieldCheck, X, Calendar, Upload, FileText, Image, ExternalLink } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Mail, CheckCircle2, ShieldCheck, X, Calendar, Upload, FileText, Image, ExternalLink, Search } from 'lucide-react';
+import PaginationBar from '../components/PaginationBar';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
@@ -63,13 +64,20 @@ export default function MailTracker() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MailRecord | null>(null);
   const [exitDate, setExitDate] = useState('');
-  const [exitProof, setExitProof]   = useState<string | null>(null);  // presigned URL for display
-  const [exitProofKey, setExitProofKey] = useState<string | null>(null);  // S3 key to save
+  const [exitProof, setExitProof]   = useState<string | null>(null);
+  const [exitProofKey, setExitProofKey] = useState<string | null>(null);
   const [proofName, setProofName]   = useState('');
   const [uploading, setUploading]   = useState(false);
   const [updating, setUpdating] = useState(false);
   const [toast, setToast] = useState('');
   const proofInputRef = useRef<HTMLInputElement>(null);
+
+  // Pagination + search
+  const [page, setPage]           = useState(1);
+  const [perPage, setPerPage]     = useState(20);
+  const [total, setTotal]         = useState(0);
+  const [search, setSearch]       = useState('');
+  const [searchInput, setSearchInput] = useState('');
 
   const isDeliveryLead = user?.role === 'delivery_lead' || user?.role === 'admin' || user?.secondary_role === 'delivery_lead';
 
@@ -78,18 +86,31 @@ export default function MailTracker() {
     setTimeout(() => setToast(''), 3500);
   };
 
-  const fetchMails = () => {
+  const fetchMails = useCallback(() => {
     setLoading(true);
+    const params: Record<string, string | number> = {
+      skip:  (page - 1) * perPage,
+      limit: perPage,
+    };
+    if (search) params.search = search;
     api
-      .get<MailRecord[]>('/mails')
-      .then((res) => setMails(res.data))
+      .get<{ items: MailRecord[]; total: number } | MailRecord[]>('/mails', { params })
+      .then((res) => {
+        const resp = res.data;
+        if (Array.isArray(resp)) {
+          setMails(resp);
+          setTotal(resp.length);
+        } else {
+          setMails(resp.items);
+          setTotal(resp.total);
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [page, perPage, search]);
 
-  useEffect(() => {
-    fetchMails();
-  }, []);
+  useEffect(() => { fetchMails(); }, [fetchMails]);
+  useEffect(() => { setPage(1); }, [search]);
 
   const openDetail = (m: MailRecord) => {
     setSelected(m);
@@ -154,12 +175,24 @@ export default function MailTracker() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-xl font-black text-slate-800">Mail Tracker</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {mails.length} consultant email{mails.length !== 1 ? 's' : ''} tracked
+            {total} consultant email{total !== 1 ? 's' : ''} tracked
           </p>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search by name, client, role…"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') setSearch(searchInput); }}
+            onBlur={() => setSearch(searchInput)}
+            className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 bg-white"
+          />
         </div>
       </div>
 
@@ -176,6 +209,7 @@ export default function MailTracker() {
           <p className="text-sm mt-1">Use "Generate Email" from a candidate profile to log a sent mail.</p>
         </div>
       ) : (
+        <>
         <div className="space-y-3">
           {mails.map((m) => (
             <div
@@ -214,6 +248,17 @@ export default function MailTracker() {
             </div>
           ))}
         </div>
+        {total > perPage && (
+          <PaginationBar
+            page={page}
+            total={total}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={p => { setPerPage(p); setPage(1); }}
+            loading={loading}
+          />
+        )}
+        </>
       )}
 
       {/* Detail overlay */}

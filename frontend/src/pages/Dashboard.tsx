@@ -113,7 +113,7 @@ export default function Dashboard() {
             <SkeletonCard />
           </>
         ) : error ? (
-          <div className="col-span-4 text-center py-12 text-red-500">{error}</div>
+          <div className="col-span-1 sm:col-span-2 xl:col-span-4 text-center py-12 text-red-500">{error}</div>
         ) : data ? (
           <>
             <StatCard
@@ -166,7 +166,7 @@ export default function Dashboard() {
             <BarChart
               data={pipelineData}
               layout="vertical"
-              margin={{ top: 0, right: 40, bottom: 0, left: 100 }}
+              margin={{ top: 0, right: 20, bottom: 0, left: 110 }}
             >
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
               <XAxis

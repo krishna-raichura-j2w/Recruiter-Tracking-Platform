@@ -3,29 +3,15 @@ from sqlalchemy import or_
 from infra.models import Candidate, CandidateStatus
 
 
-def list_candidates(
-    db: Session,
-    job_id: int | None,
-    status: str | None,
-    assigned_to: int | None,
-    sourced_by: int | None = None,
-    job_ids: list[int] | None = None,
-    recruiter_id: int | None = None,  # OR: sourced_by OR assigned_to
-) -> list[Candidate]:
-    q = db.query(Candidate).options(
-        joinedload(Candidate.assigned_to),
-        joinedload(Candidate.sourced_by),
-        joinedload(Candidate.assigned_validator),
-        joinedload(Candidate.assessment),
-        joinedload(Candidate.validation),
-        joinedload(Candidate.submission),
-        joinedload(Candidate.job),
-    )
+def _apply_candidate_filters(q, job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search):
+    """Apply all candidate filters to a query object. Used for both count and data queries."""
+    from sqlalchemy import or_, func
+    from infra.models import Candidate
     if job_ids is not None:
         if job_ids:
             q = q.filter(Candidate.job_id.in_(job_ids))
         else:
-            return []
+            return None  # empty result
     if job_id:
         q = q.filter(Candidate.job_id == job_id)
     if status:
@@ -40,7 +26,58 @@ def list_candidates(
             q = q.filter(Candidate.assigned_to_id == assigned_to)
         if sourced_by:
             q = q.filter(Candidate.sourced_by_id == sourced_by)
-    return q.order_by(Candidate.updated_at.desc()).all()
+    if search:
+        s = f"%{search.lower()}%"
+        q = q.filter(or_(
+            func.lower(Candidate.full_name).like(s),
+            func.lower(Candidate.email).like(s),
+            func.lower(Candidate.mobile).like(s),
+            func.lower(Candidate.skills).like(s),
+        ))
+    return q
+
+
+def list_candidates(
+    db: Session,
+    job_id: int | None,
+    status: str | None,
+    assigned_to: int | None,
+    sourced_by: int | None = None,
+    job_ids: list[int] | None = None,
+    recruiter_id: int | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 0,
+) -> tuple[list[Candidate], int]:
+    """Returns (items, total). limit=0 means no pagination (return all)."""
+    # Count query — lightweight, no joins
+    count_q = _apply_candidate_filters(
+        db.query(Candidate.id), job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search
+    )
+    if count_q is None:
+        return [], 0
+    total = count_q.count()
+
+    # Data query — with all joins
+    data_q = _apply_candidate_filters(
+        db.query(Candidate).options(
+            joinedload(Candidate.assigned_to),
+            joinedload(Candidate.sourced_by),
+            joinedload(Candidate.assigned_validator),
+            joinedload(Candidate.assessment),
+            joinedload(Candidate.validation),
+            joinedload(Candidate.submission),
+            joinedload(Candidate.job),
+        ),
+        job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search,
+    )
+    if data_q is None:
+        return [], 0
+
+    q = data_q.order_by(Candidate.updated_at.desc())
+    if limit > 0:
+        q = q.offset(skip).limit(limit)
+    return q.all(), total
 
 
 def get_candidate(db: Session, candidate_id: int) -> Candidate | None:

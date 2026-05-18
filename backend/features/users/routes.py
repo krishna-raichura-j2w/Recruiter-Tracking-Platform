@@ -35,23 +35,30 @@ def _out(user, db=None) -> dict:
 
 @router.get("")
 def list_users(
-    role: str | None = Query(None),
-    available: bool  = Query(False),
-    db: Session      = Depends(get_db),
-    current_user     = Depends(require_roles("admin", "delivery_lead")),
+    role:      str | None = Query(None),
+    available: bool       = Query(False),
+    search:    str | None = Query(None),
+    skip:      int        = Query(0, ge=0),
+    limit:     int        = Query(0, ge=0, le=500),
+    db: Session           = Depends(get_db),
+    current_user          = Depends(require_roles("admin", "delivery_lead")),
 ):
-    """
-    admin: all users
-    delivery_lead: their team; ?available=true returns unassigned callers/sourcing_partners
-    """
+    """admin: all users (paginated). delivery_lead: their team or ?available=true for unassigned."""
     is_dl = current_user.role.value == "delivery_lead"
     if available and is_dl:
+        # Small list — no pagination needed for pool selector
         users = service.list_available_team(db, dl_id=current_user.id)
+        return [_out(u, db) for u in users]
     elif is_dl:
-        users = service.list_users(db, role=role, pod_lead_id=current_user.id)
+        users, total = service.list_users(db, role=role, pod_lead_id=current_user.id, search=search, skip=skip, limit=limit)
     else:
-        users = service.list_users(db, role=role)
-    return [_out(u, db) for u in users]
+        users, total = service.list_users(db, role=role, search=search, skip=skip, limit=limit)
+
+    items = [_out(u, db) for u in users]
+    # If no limit requested (old callers like team-loads dropdown), return plain array for compat
+    if limit == 0:
+        return items
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("")

@@ -4,6 +4,7 @@ import { useSignal } from '../context/RealtimeContext';
 import { useForm } from 'react-hook-form';
 import { Plus, X, Search, Eye, UserPlus, Sparkles, AlignLeft, Image, FileText, Loader2, ChevronRight, Users } from 'lucide-react';
 import Layout from '../components/Layout';
+import PaginationBar from '../components/PaginationBar';
 import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
@@ -49,6 +50,10 @@ export default function Candidates() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
+  // Pagination
+  const [page,    setPage]    = useState(1);
+  const [perPage, setPerPage] = useState(50);
+  const [total,   setTotal]   = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
@@ -84,27 +89,41 @@ export default function Candidates() {
 
   const fetchCandidates = useCallback(() => {
     setLoading(true);
-    const params: Record<string, string> = {};
-    if (jobIdFilter) params.job_id = jobIdFilter;
+    const params: Record<string, string | number> = {
+      skip: (page - 1) * perPage,
+      limit: perPage,
+    };
+    if (jobIdFilter)  params.job_id = jobIdFilter;
     if (statusFilter) params.status = statusFilter;
+    if (search)       params.search = search;
     api
-      .get<Candidate[]>('/candidates', { params })
-      .then((res) => setCandidates(res.data))
+      .get<{ items: Candidate[]; total: number }>('/candidates', { params })
+      .then((res) => {
+        setCandidates(res.data.items ?? (res.data as unknown as Candidate[]));
+        setTotal(res.data.total ?? 0);
+      })
       .catch(() => { })
       .finally(() => setLoading(false));
-  }, [jobIdFilter, statusFilter]);
+  }, [page, perPage, jobIdFilter, statusFilter, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchCandidates(); }, [fetchCandidates]);
 
-  // Live refresh on realtime signal
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [jobIdFilter, statusFilter, search]);
+
+  // Live refresh on realtime signal (only if on page 1 to avoid confusion)
   const candidatesSignal = useSignal('candidates');
-  useEffect(() => { if (candidatesSignal > 0) fetchCandidates(); }, [candidatesSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (candidatesSignal > 0 && page === 1) fetchCandidates(); }, [candidatesSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get<Job[]>('/jobs').then((res) => setJobs(res.data)).catch(() => { });
+    api.get<{ items: Job[] } | Job[]>('/jobs', { params: { limit: 0 } })
+      .then((res) => {
+        const items = Array.isArray(res.data) ? res.data : (res.data as { items: Job[] }).items ?? [];
+        setJobs(items);
+      }).catch(() => { });
     if (canAssign) {
       api.get<User[]>('/users', { params: { role: 'recruiter' } })
-        .then((res) => setCallers(res.data))
+        .then((res) => setCallers(Array.isArray(res.data) ? res.data : []))
         .catch(() => { });
     }
   }, [canAssign]);
@@ -228,10 +247,10 @@ export default function Candidates() {
     candidates.filter(c => c.assigned_to_id).map(c => [c.assigned_to_id, c.assigned_to_name])
   ).entries()].map(([id, name]) => ({ id: id as number, name: name as string }));
 
+  // Name search goes server-side now; sourcer/caller/date still client-side (small post-filter)
   const filtered = candidates.filter((c) => {
-    if (!c.full_name.toLowerCase().includes(search.toLowerCase())) return false;
     if (sourcerFilter && String(c.sourced_by_id) !== sourcerFilter) return false;
-    if (callerFilter && String(c.assigned_to_id) !== callerFilter) return false;
+    if (callerFilter  && String(c.assigned_to_id) !== callerFilter) return false;
     if (dateFilter !== 'all' && c.sourcing_date) {
       const days = dateFilter === '7d' ? 7 : 30;
       const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
@@ -499,6 +518,20 @@ export default function Candidates() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {total > perPage && (
+          <div className="bg-white rounded-2xl border border-slate-100 mt-3 px-4 shadow-sm">
+            <PaginationBar
+              page={page}
+              total={total}
+              perPage={perPage}
+              onPageChange={setPage}
+              onPerPageChange={setPerPage}
+              loading={loading}
+            />
           </div>
         )}
       </div>

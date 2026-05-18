@@ -63,11 +63,17 @@ def mark_sent(db: Session, candidate_id: int, sent_by_id: int) -> dict:
     return _enrich(_load(db).filter(ConsultantMail.candidate_id == candidate_id).first())
 
 
-def list_mails(db: Session, sent_by_id: int | None = None) -> list:
+def list_mails(db: Session, sent_by_id: int | None = None, search: str | None = None, skip: int = 0, limit: int = 0) -> tuple[list, int]:
     mails = _load(db).order_by(ConsultantMail.sent_at.desc()).all()
     if sent_by_id:
         mails = [m for m in mails if m.sent_by_id == sent_by_id]
-    return [_enrich(m) for m in mails]
+    if search:
+        q = search.lower()
+        mails = [m for m in mails if q in (m.candidate_name or '').lower() or q in (m.client_name or '').lower() or q in (m.job_title or '').lower()]
+    total = len(mails)
+    if limit > 0:
+        mails = mails[skip:skip + limit]
+    return [_enrich(m) for m in mails], total
 
 
 def update_mail(db: Session, mail_id: int, data: dict, updated_by_role: str) -> dict | None:

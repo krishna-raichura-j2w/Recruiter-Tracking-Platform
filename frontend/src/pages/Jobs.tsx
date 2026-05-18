@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSignal } from '../context/RealtimeContext';
 import { useForm } from 'react-hook-form';
@@ -10,6 +10,7 @@ import {
   UserCheck, Trash2,
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import PaginationBar from '../components/PaginationBar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { Job, ParsedJD, SkillEntry } from '../types';
@@ -143,18 +144,37 @@ export default function Jobs() {
   const isRecruiter    = user?.role === 'recruiter'     || user?.secondary_role === 'recruiter';
   const canCreate      = isAdmin || isKam || isDeliveryLead;
 
+  // Pagination state
+  const [jobPage,    setJobPage]    = useState(1);
+  const [jobPerPage, setJobPerPage] = useState(50);
+  const [jobTotal,   setJobTotal]   = useState(0);
+
   const { register, handleSubmit, reset, setValue, formState: { errors } } =
     useForm<JobForm>({ defaultValues: { headcount: 1 } });
 
-  const fetchJobs = () => {
+  const fetchJobs = useCallback(() => {
     setLoading(true);
-    api.get<Job[]>('/jobs')
-      .then((r) => setJobs(r.data))
+    const params: Record<string, string | number> = {
+      skip: (jobPage - 1) * jobPerPage,
+      limit: jobPerPage,
+    };
+    if (activeTab !== 'all') params.status = activeTab;
+    if (searchText)           params.search = searchText;
+    if (clientFilter)         params.client = clientFilter; // handled client-side still
+    api.get<{ items: Job[]; total: number }>('/jobs', { params })
+      .then((r) => {
+        setJobs(r.data.items ?? (r.data as unknown as Job[]));
+        setJobTotal(r.data.total ?? 0);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [jobPage, jobPerPage, activeTab, searchText]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const jobsSignal = useSignal('jobs');
-  useEffect(() => { fetchJobs(); }, [jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchJobs(); }, [fetchJobs, jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter]);
 
   const fetchDlTeam = async () => {
     const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads');
@@ -238,11 +258,8 @@ export default function Jobs() {
     }
   };
 
-  // All active filters applied
-  const filteredJobs = jobs
-    .filter((j) => activeTab === 'all' || j.status === activeTab)
-    .filter((j) => !clientFilter || j.client_name === clientFilter)
-    .filter((j) => !searchText || `${j.role_title} ${j.client_name}`.toLowerCase().includes(searchText.toLowerCase()));
+  // Status + search filtered server-side; client chip is client-side only
+  const filteredJobs = jobs.filter((j) => !clientFilter || j.client_name === clientFilter);
 
   // Unique clients from loaded jobs
   const clientList = [...new Set(jobs.map((j) => j.client_name))].sort();
@@ -457,7 +474,7 @@ export default function Jobs() {
                       ? 'border-blue-400 bg-blue-50 shadow-sm'
                       : 'border-slate-100 bg-white hover:border-slate-300 hover:shadow-sm'
                   }`}
-                  style={{ minWidth: 180 }}
+                  style={{ minWidth: 'clamp(150px, 18vw, 200px)' }}
                 >
                   {/* Avatar */}
                   <div
@@ -497,9 +514,9 @@ export default function Jobs() {
       )}
 
       {/* ── Toolbar: tabs + search + new job ────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        {/* Status tabs */}
-        <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#E8EDF3' }}>
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 mb-5">
+        {/* Status tabs — scrollable on mobile */}
+        <div className="flex gap-1 p-1 rounded-xl overflow-x-auto flex-shrink-0" style={{ background: '#E8EDF3' }}>
           {tabs.map(t => {
             const count = t.key === 'all' ? jobs.length : jobs.filter(j => j.status === t.key).length;
             const active = activeTab === t.key;
@@ -528,17 +545,17 @@ export default function Jobs() {
           })}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {/* Search */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search role or company…"
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
-              className="pl-8 pr-4 py-2 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
-              style={{ border: '1px solid #E2E8F0', width: 220, focusBorderColor: '#2563EB' }}
+              className="pl-8 pr-4 py-2 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 w-full sm:w-52"
+              style={{ border: '1px solid #E2E8F0' }}
             />
           </div>
           {(searchText || clientFilter) && (
@@ -601,6 +618,20 @@ export default function Jobs() {
               toggling={togglingJobId === job.id}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {jobTotal > jobPerPage && (
+        <div className="bg-white rounded-2xl border border-slate-100 px-4 shadow-sm">
+          <PaginationBar
+            page={jobPage}
+            total={jobTotal}
+            perPage={jobPerPage}
+            onPageChange={setJobPage}
+            onPerPageChange={setJobPerPage}
+            loading={loading}
+          />
         </div>
       )}
 

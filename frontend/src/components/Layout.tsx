@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Bell, X, CheckCheck, Zap } from 'lucide-react';
 import { useState } from 'react';
-import Sidebar from './Sidebar';
+import Sidebar, { MobileMenuButton, MobileDrawer } from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useRealtime } from '../context/RealtimeContext';
 
@@ -33,28 +33,31 @@ export default function Layout({ title, subtitle, children }: LayoutProps) {
   const { user } = useAuth();
   const { notifications, unread, toasts, dismissToast, markAllRead, markOneRead } = useRealtime();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#F1F5F9' }}>
-      <div className="flex-shrink-0">
-        <Sidebar />
-      </div>
+      <Sidebar />
+      <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         {/* ── Top bar ─────────────────────────────────────────────── */}
         <header
-          className="flex-shrink-0 px-6 py-0 flex items-center justify-between border-b"
+          className="flex-shrink-0 px-4 lg:px-6 py-0 flex items-center justify-between border-b gap-3"
           style={{ height: 60, background: '#FFFFFF', borderColor: '#E8EDF3' }}
         >
           {/* Page title */}
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-base font-bold text-slate-800 leading-none">{title}</h1>
-            {subtitle && (
-              <span className="text-xs text-slate-400 font-medium leading-none">{subtitle}</span>
-            )}
+          <div className="flex items-center gap-3 min-w-0">
+            <MobileMenuButton onClick={() => setMobileOpen(true)} />
+            <div className="flex items-baseline gap-2 min-w-0">
+              <h1 className="text-sm lg:text-base font-bold text-slate-800 leading-none truncate">{title}</h1>
+              {subtitle && (
+                <span className="text-xs text-slate-400 font-medium leading-none hidden sm:inline">{subtitle}</span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {/* Bell */}
             <div className="relative">
               <button
@@ -79,7 +82,7 @@ export default function Layout({ title, subtitle, children }: LayoutProps) {
               {showNotifs && (
                 <div
                   className="absolute right-0 mt-2 bg-white rounded-2xl shadow-2xl border z-50 overflow-hidden"
-                  style={{ width: 380, borderColor: '#E8EDF3', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}
+                  style={{ width: 'min(380px, calc(100vw - 32px))', borderColor: '#E8EDF3', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}
                 >
                   <div className="px-5 py-3.5 border-b flex items-center justify-between" style={{ borderColor: '#F1F5F9' }}>
                     <div className="flex items-center gap-2">
