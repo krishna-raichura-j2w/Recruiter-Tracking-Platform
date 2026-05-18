@@ -68,7 +68,7 @@ def ensure_schema():
             # ── Probing sheet ────────────────────────────────────────────────
             """CREATE TABLE IF NOT EXISTS probing_data (
                 id                          SERIAL PRIMARY KEY,
-                job_id                      VARCHAR(100),
+                job_id                      INTEGER,
                 reporting_manager_location  TEXT,
                 onsite_opportunities        TEXT,
                 project_size                TEXT,
@@ -87,8 +87,11 @@ def ensure_schema():
                 created_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             )""",
-            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_id VARCHAR(100)",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_id INTEGER",
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS probing_id INTEGER REFERENCES probing_data(id)",
+            # If a prior deploy created job_id as VARCHAR, convert to INTEGER (idempotent)
+            "ALTER TABLE jobs         ALTER COLUMN job_id TYPE INTEGER USING NULLIF(job_id::text, '')::INTEGER",
+            "ALTER TABLE probing_data ALTER COLUMN job_id TYPE INTEGER USING NULLIF(job_id::text, '')::INTEGER",
         ]
         for sql in stmts:
             try:

@@ -9,7 +9,7 @@ router = APIRouter(prefix="/probing", tags=["probing"])
 
 
 class ProbingCreate(BaseModel):
-    job_id: str | None = None
+    job_id: int | None = None
     reporting_manager_location: str | None = None
     onsite_opportunities: str | None = None
     project_size: str | None = None

@@ -44,7 +44,7 @@ type ExtractTab = 'text' | 'image' | 'pdf';
 
 interface JobForm {
   client_name:        string;
-  job_id:             string;
+  job_id:             string;   // text input; converted to number on submit
   client_job_id:      string;
   demand_source:      string;
   demand_type:        string;
@@ -329,7 +329,7 @@ export default function Jobs() {
     setProbingForm(emptyProbing());
     reset({
       client_name:        job.client_name,
-      job_id:             job.job_id             ?? '',
+      job_id:             job.job_id != null ? String(job.job_id) : '',
       client_job_id:      job.client_job_id      ?? '',
       demand_source:      job.demand_source      ?? '',
       demand_type:        job.demand_type        ?? '',
@@ -399,7 +399,7 @@ export default function Jobs() {
 
   const buildPayload = (data: JobForm) => ({
     ...data,
-    job_id:             data.job_id             || null,
+    job_id:             data.job_id && data.job_id.trim() ? Number(data.job_id.trim()) : null,
     probing_id:         probingId,
     client_job_id:      data.client_job_id      || null,
     demand_source:      data.demand_source      || null,
@@ -469,7 +469,7 @@ export default function Jobs() {
             // so both tables stay populated from a single user input.
             work_mode:     data.work_mode || null,
             work_location: data.location  || null,
-            job_id: data.job_id && data.job_id.trim() ? data.job_id.trim() : null,
+            job_id: data.job_id && data.job_id.trim() ? Number(data.job_id.trim()) : null,
           });
           probingIdForPayload = res.data.id;
           setProbingId(res.data.id);
@@ -1190,11 +1190,14 @@ export default function Jobs() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Job ID <span className="text-slate-400 font-normal">(optional)</span>
+                    Job ID <span className="text-slate-400 font-normal">(optional, numeric)</span>
                   </label>
-                  <input type="text" placeholder="Leave blank if not applicable"
+                  <input type="number" min={0} step={1} placeholder="Leave blank if not applicable"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
-                    {...register('job_id')} />
+                    {...register('job_id', {
+                      pattern: { value: /^\d*$/, message: 'Numbers only' },
+                    })} />
+                  {errors.job_id && <p className="text-red-500 text-xs mt-1">Numbers only</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Demand Source *</label>

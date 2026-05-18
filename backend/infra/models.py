@@ -233,7 +233,7 @@ class Job(Base):
     id           = Column(Integer, primary_key=True, index=True)
     client_name   = Column(String(120), nullable=False)
     role_title    = Column(String(200), nullable=False)
-    job_id             = Column(String(100), nullable=True)  # optional, UI-supplied identifier
+    job_id             = Column(Integer, nullable=True)  # optional, UI-supplied numeric identifier
     probing_id         = Column(Integer, ForeignKey("probing_data.id"), nullable=True)
     client_job_id      = Column(String(100), nullable=True)
     demand_source      = Column(String(80),  nullable=True)   # Customer Tool / Other
@@ -282,7 +282,7 @@ class Job(Base):
 class ProbingData(Base):
     __tablename__ = "probing_data"
     id                          = Column(Integer, primary_key=True, index=True)
-    job_id                      = Column(String(100), nullable=True)  # optional UI job identifier
+    job_id                      = Column(Integer, nullable=True)  # optional UI job identifier (numeric)
     reporting_manager_location  = Column(Text, nullable=True)
     onsite_opportunities        = Column(Text, nullable=True)
     project_size                = Column(Text, nullable=True)
