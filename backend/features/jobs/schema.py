@@ -5,6 +5,8 @@ from infra.models import JobStatus, WorkMode
 class JobCreate(BaseModel):
     client_name: str
     role_title: str
+    job_id: str | None = None
+    probing_id: int | None = None
     client_job_id: str | None = None
     demand_source: str | None = None
     demand_type: str | None = None
@@ -30,6 +32,8 @@ class JobCreate(BaseModel):
 
 class JobUpdate(BaseModel):
     role_title: str | None = None
+    job_id: str | None = None
+    probing_id: int | None = None
     client_job_id: str | None = None
     demand_source: str | None = None
     demand_type: str | None = None

@@ -44,6 +44,7 @@ type ExtractTab = 'text' | 'image' | 'pdf';
 
 interface JobForm {
   client_name:        string;
+  job_id:             string;
   client_job_id:      string;
   demand_source:      string;
   demand_type:        string;
@@ -60,6 +61,46 @@ interface JobForm {
   salary_range:  string;
   deadline:      string;
 }
+
+interface ProbingForm {
+  reporting_manager_location: string;
+  onsite_opportunities:       string;
+  project_size:               string;
+  project_count:              string;
+  work_mode:                  string;
+  candidate_role:             string;
+  feedback_eta:               string;
+  work_location:              string;
+  interview_type:             string;
+  role_clarity:               string;
+  notice_period:              string;
+  interview_rounds_count:     string;
+  urgency_eta:                string;
+  skill_type:                 string;
+}
+
+const PROBING_QUESTIONS: { key: keyof ProbingForm; label: string; placeholder: string }[] = [
+  { key: 'reporting_manager_location', label: 'Is the reporting manager located in India or overseas? (Who are the stakeholders)', placeholder: 'e.g. India' },
+  { key: 'onsite_opportunities',       label: 'Are they onsite opportunities? (travel)',                                            placeholder: 'Yes / No' },
+  { key: 'project_size',               label: 'What is the project size or team size?',                                            placeholder: 'e.g. 8' },
+  { key: 'project_count',              label: 'Will the candidate be handling 1 project or multiple projects?',                    placeholder: 'e.g. 1' },
+  { key: 'work_mode',                  label: 'Work Mode (Hybrid/WFO/WFH)',                                                         placeholder: 'Hybrid' },
+  { key: 'candidate_role',             label: 'Candidate Role in the project (Individual contributor/Lead)',                       placeholder: 'Individual' },
+  { key: 'feedback_eta',               label: 'How soon can we expect feedback (Panel Availability)',                              placeholder: '48 hours' },
+  { key: 'work_location',              label: 'Work Location',                                                                     placeholder: 'e.g. Bangalore' },
+  { key: 'interview_type',             label: 'Will the interview be F1F or Onsite?',                                              placeholder: 'Virtual and F2F' },
+  { key: 'role_clarity',               label: 'Role clarity (technical expertise expected by the candidate)',                      placeholder: 'e.g. Invoice Validation' },
+  { key: 'notice_period',              label: 'Notice Period (Immediate/15days max.)',                                              placeholder: 'Immediate' },
+  { key: 'interview_rounds_count',     label: 'How many rounds for the interview?',                                                 placeholder: '2' },
+  { key: 'urgency_eta',                label: 'How urgent is the requirement – ETA?',                                               placeholder: '24 hours' },
+  { key: 'skill_type',                 label: 'Skill type (generic/Niche)',                                                         placeholder: 'Generic' },
+];
+
+const emptyProbing = (): ProbingForm => ({
+  reporting_manager_location: '', onsite_opportunities: '', project_size: '', project_count: '',
+  work_mode: '', candidate_role: '', feedback_eta: '', work_location: '', interview_type: '',
+  role_clarity: '', notice_period: '', interview_rounds_count: '', urgency_eta: '', skill_type: '',
+});
 
 const MODE_COLORS: Record<string, string> = {
   Remote:           'bg-green-100 text-green-700',
@@ -103,6 +144,13 @@ export default function Jobs() {
   const [submitting, setSubmitting]   = useState(false);
   const [apiError, setApiError]       = useState('');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  // Probing-sheet wizard state — Step 1 (probing) → Step 2 (existing JD form)
+  const [creationStep, setCreationStep]   = useState<'probing' | 'jd'>('probing');
+  const [probingForm, setProbingForm]     = useState<ProbingForm>(emptyProbing);
+  const [probingId, setProbingId]         = useState<number | null>(null);
+  const [savingProbing, setSavingProbing] = useState(false);
+  const [probingError, setProbingError]   = useState('');
 
   // JD extract state
   const [extractTab,  setExtractTab]  = useState<ExtractTab>('text');
@@ -279,8 +327,12 @@ export default function Jobs() {
 
   const openEditModal = (job: Job) => {
     setEditJob(job);
+    setCreationStep('jd');     // editing skips the probing step
+    setProbingId(job.probing_id ?? null);
+    setProbingForm(emptyProbing());
     reset({
       client_name:        job.client_name,
+      job_id:             job.job_id             ?? '',
       client_job_id:      job.client_job_id      ?? '',
       demand_source:      job.demand_source      ?? '',
       demand_type:        job.demand_type        ?? '',
@@ -313,6 +365,10 @@ export default function Jobs() {
   const openCreateModal = () => {
     setEditJob(null);
     setShowModal(true);
+    setCreationStep('probing');           // probing sheet is step 1
+    setProbingForm(emptyProbing());
+    setProbingId(null);
+    setProbingError('');
     setSelectedDeliveryLeadId('');
     setSelectedKamId('');
     setSelectedAssignDlId('');
@@ -340,10 +396,38 @@ export default function Jobs() {
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
     setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedBhId(''); setSelectedAssignDlId('');
+    setCreationStep('probing'); setProbingForm(emptyProbing());
+    setProbingId(null); setProbingError(''); setSavingProbing(false);
+  };
+
+  const probingComplete = PROBING_QUESTIONS.every(q => probingForm[q.key].trim().length > 0);
+
+  const handleProbingNext = async () => {
+    setProbingError('');
+    if (!probingComplete) {
+      setProbingError('Please answer all probing questions before continuing.');
+      return;
+    }
+    setSavingProbing(true);
+    try {
+      const res = await api.post<{ id: number }>('/probing', {
+        ...probingForm,
+        job_id: null,   // job_id is optional; left empty if not supplied in JD step
+      });
+      setProbingId(res.data.id);
+      setCreationStep('jd');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setProbingError(msg || 'Failed to save probing details.');
+    } finally {
+      setSavingProbing(false);
+    }
   };
 
   const buildPayload = (data: JobForm) => ({
     ...data,
+    job_id:             data.job_id             || null,
+    probing_id:         probingId,
     client_job_id:      data.client_job_id      || null,
     demand_source:      data.demand_source      || null,
     demand_type:        data.demand_type        || null,
@@ -390,6 +474,11 @@ export default function Jobs() {
     }
     setSubmitting(true);
     try {
+      // Mirror the (optional) UI Job ID onto the probing record so reports
+      // can join probing → job by string id even before the job is created.
+      if (!editJob && probingId && data.job_id && data.job_id.trim()) {
+        try { await api.patch(`/probing/${probingId}`, { job_id: data.job_id.trim() }); } catch { /* non-fatal */ }
+      }
       if (editJob) {
         await api.patch(`/jobs/${editJob.id}`, buildPayload(data));
       } else {
@@ -701,18 +790,68 @@ export default function Jobs() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white z-10">
               <div>
                 <h3 className="text-base font-bold text-slate-800">
-                  {editJob ? 'Edit Job' : 'Create New Job'}
+                  {editJob
+                    ? 'Edit Job'
+                    : creationStep === 'probing' ? 'Probing Sheet — Step 1 of 2' : 'Job Details — Step 2 of 2'}
                 </h3>
-                {editJob && (
+                {editJob ? (
                   <p className="text-xs text-slate-400 mt-0.5">
                     Posted {fmtDate(editJob.created_at)} · Last updated {timeAgo(editJob.updated_at)}
                   </p>
+                ) : (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className={`w-8 h-1.5 rounded-full ${creationStep === 'probing' ? 'bg-blue-500' : 'bg-emerald-500'}`} />
+                    <span className={`w-8 h-1.5 rounded-full ${creationStep === 'jd' ? 'bg-blue-500' : 'bg-slate-200'}`} />
+                    <span className="text-xs text-slate-400 ml-1">
+                      {creationStep === 'probing' ? 'Answer all probing questions to continue' : 'Probing complete · fill JD details'}
+                    </span>
+                  </div>
                 )}
               </div>
               <button onClick={closeModal} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"><X size={18} /></button>
             </div>
 
-            {/* AI JD Parse panel */}
+            {/* ── Step 1: Probing Sheet (new jobs only) ─────────────────── */}
+            {!editJob && creationStep === 'probing' && (
+              <div className="p-6 space-y-3">
+                <p className="text-xs text-slate-500 mb-2">
+                  These details help recruiters pitch the role accurately. All fields are required.
+                </p>
+                {PROBING_QUESTIONS.map(q => (
+                  <div key={q.key}>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      {q.label} <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      rows={1}
+                      placeholder={q.placeholder}
+                      value={probingForm[q.key]}
+                      onChange={e => setProbingForm(p => ({ ...p, [q.key]: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-y"
+                    />
+                  </div>
+                ))}
+                {probingError && (
+                  <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{probingError}</p>
+                )}
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={closeModal}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleProbingNext} disabled={savingProbing || !probingComplete}
+                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
+                    style={{ backgroundColor: '#2563eb' }}
+                  >
+                    {savingProbing ? 'Saving…' : 'Next →'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* AI JD Parse panel — hidden during probing step */}
+            {(editJob || creationStep === 'jd') && (<>
+
             <div className="px-6 pt-5 pb-4 border-b border-slate-100 bg-gradient-to-br from-blue-50 to-indigo-50">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-1.5 rounded-lg bg-blue-100"><Sparkles size={14} className="text-blue-600" /></div>
@@ -1029,11 +1168,19 @@ export default function Jobs() {
                   {errors.role_title && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job ID *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client Job ID *</label>
                   <input type="text" placeholder="e.g. JD-2026-001"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
                     {...register('client_job_id', { required: true })} />
                   {errors.client_job_id && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Job ID <span className="text-slate-400 font-normal">(optional)</span>
+                  </label>
+                  <input type="text" placeholder="Leave blank if not applicable"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
+                    {...register('job_id')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Demand Source *</label>
@@ -1130,6 +1277,12 @@ export default function Jobs() {
               </div>
               {apiError && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{apiError}</p>}
               <div className="flex gap-3 pt-2">
+                {!editJob && (
+                  <button type="button" onClick={() => setCreationStep('probing')}
+                    className="py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                    ← Back
+                  </button>
+                )}
                 <button type="button" onClick={closeModal} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
@@ -1139,6 +1292,7 @@ export default function Jobs() {
                 </button>
               </div>
             </form>
+            </>)}
           </div>
         </div>
       )}

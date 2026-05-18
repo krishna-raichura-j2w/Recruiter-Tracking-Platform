@@ -58,6 +58,8 @@ export interface Job {
   id: number;
   client_name: string;
   role_title: string;
+  job_id: string | null;
+  probing_id: number | null;
   client_job_id: string | null;
   demand_source: string | null;
   demand_type: string | null;

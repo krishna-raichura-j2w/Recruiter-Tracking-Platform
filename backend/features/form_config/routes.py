@@ -93,6 +93,33 @@ _DEFAULTS: dict[str, dict] = {
             },
         ],
     },
+    "probing_sheet": {
+        "form_name": "probing_sheet",
+        "label":     "Probing Sheet (Pre-JD)",
+        "sections": [
+            {
+                "id": "probing",
+                "label": "Probing Questions",
+                "order": 0,
+                "fields": [
+                    {"id":"reporting_manager_location","label":"Is the reporting manager located in India or overseas? (Who are the stakeholders)","type":"textarea","required":True,"visible":True,"db_column":"reporting_manager_location","options":[],"placeholder":"e.g. India"},
+                    {"id":"onsite_opportunities",      "label":"Are they onsite opportunities? (travel)",                                            "type":"textarea","required":True,"visible":True,"db_column":"onsite_opportunities",      "options":[],"placeholder":"Yes / No"},
+                    {"id":"project_size",              "label":"What is the project size or team size?",                                            "type":"textarea","required":True,"visible":True,"db_column":"project_size",              "options":[],"placeholder":"e.g. 8"},
+                    {"id":"project_count",             "label":"Will the candidate be handling 1 project or multiple projects?",                    "type":"textarea","required":True,"visible":True,"db_column":"project_count",             "options":[],"placeholder":"e.g. 1"},
+                    {"id":"work_mode",                 "label":"Work Mode (Hybrid/WFO/WFH)",                                                         "type":"textarea","required":True,"visible":True,"db_column":"work_mode",                 "options":[],"placeholder":"Hybrid"},
+                    {"id":"candidate_role",            "label":"Candidate Role in the project (Individual contributor/Lead)",                       "type":"textarea","required":True,"visible":True,"db_column":"candidate_role",            "options":[],"placeholder":"Individual"},
+                    {"id":"feedback_eta",              "label":"How soon can we expect feedback (Panel Availability)",                              "type":"textarea","required":True,"visible":True,"db_column":"feedback_eta",              "options":[],"placeholder":"48 hours"},
+                    {"id":"work_location",             "label":"Work Location",                                                                     "type":"textarea","required":True,"visible":True,"db_column":"work_location",             "options":[],"placeholder":"e.g. Bangalore"},
+                    {"id":"interview_type",            "label":"Will the interview be F1F or Onsite?",                                              "type":"textarea","required":True,"visible":True,"db_column":"interview_type",            "options":[],"placeholder":"Virtual and F2F"},
+                    {"id":"role_clarity",              "label":"Role clarity (technical expertise expected by the candidate)",                       "type":"textarea","required":True,"visible":True,"db_column":"role_clarity",              "options":[],"placeholder":"e.g. Invoice Validation"},
+                    {"id":"notice_period",             "label":"Notice Period (Immediate/15days max.)",                                              "type":"textarea","required":True,"visible":True,"db_column":"notice_period",             "options":[],"placeholder":"Immediate"},
+                    {"id":"interview_rounds_count",    "label":"How many rounds for the interview?",                                                 "type":"textarea","required":True,"visible":True,"db_column":"interview_rounds_count",    "options":[],"placeholder":"2"},
+                    {"id":"urgency_eta",               "label":"How urgent is the requirement – ETA?",                                              "type":"textarea","required":True,"visible":True,"db_column":"urgency_eta",               "options":[],"placeholder":"24 hours"},
+                    {"id":"skill_type",                "label":"Skill type (generic/Niche)",                                                         "type":"textarea","required":True,"visible":True,"db_column":"skill_type",                "options":[],"placeholder":"Generic"},
+                ],
+            },
+        ],
+    },
     "jd_upload": {
         "form_name": "jd_upload",
         "label":     "JD Upload (KAM)",

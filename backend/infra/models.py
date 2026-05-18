@@ -233,6 +233,8 @@ class Job(Base):
     id           = Column(Integer, primary_key=True, index=True)
     client_name   = Column(String(120), nullable=False)
     role_title    = Column(String(200), nullable=False)
+    job_id             = Column(String(100), nullable=True)  # optional, UI-supplied identifier
+    probing_id         = Column(Integer, ForeignKey("probing_data.id"), nullable=True)
     client_job_id      = Column(String(100), nullable=True)
     demand_source      = Column(String(80),  nullable=True)   # Customer Tool / Other
     demand_type        = Column(String(50),  nullable=True)   # New / Backfill / Replacement
@@ -274,6 +276,30 @@ class Job(Base):
     assigned_caller  = relationship("User", foreign_keys=[assigned_caller_id])
     delivery_lead    = relationship("User", foreign_keys=[delivery_lead_id])
     business_head    = relationship("BusinessHead")
+    probing          = relationship("ProbingData", foreign_keys=[probing_id])
+
+
+class ProbingData(Base):
+    __tablename__ = "probing_data"
+    id                          = Column(Integer, primary_key=True, index=True)
+    job_id                      = Column(String(100), nullable=True)  # optional UI job identifier
+    reporting_manager_location  = Column(Text, nullable=True)
+    onsite_opportunities        = Column(Text, nullable=True)
+    project_size                = Column(Text, nullable=True)
+    project_count               = Column(Text, nullable=True)
+    work_mode                   = Column(Text, nullable=True)
+    candidate_role              = Column(Text, nullable=True)
+    feedback_eta                = Column(Text, nullable=True)
+    work_location               = Column(Text, nullable=True)
+    interview_type              = Column(Text, nullable=True)
+    role_clarity                = Column(Text, nullable=True)
+    notice_period               = Column(Text, nullable=True)
+    interview_rounds_count      = Column(Text, nullable=True)
+    urgency_eta                 = Column(Text, nullable=True)
+    skill_type                  = Column(Text, nullable=True)
+    created_by_id               = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at                  = Column(DateTime, default=now_utc)
+    updated_at                  = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class Candidate(Base):

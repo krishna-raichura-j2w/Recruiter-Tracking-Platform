@@ -34,6 +34,7 @@ from features.notifications.routes import router as notifications_router
 from features.demand_status.routes import router as demand_status_router
 from features.upload.routes import router as upload_router
 from features.form_config.routes import router as form_config_router, init_form_templates
+from features.probing.routes import router as probing_router
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -64,6 +65,30 @@ def ensure_schema():
             )""",
             "CREATE INDEX IF NOT EXISTS ix_pod_memberships_user_id     ON pod_memberships(user_id)",
             "CREATE INDEX IF NOT EXISTS ix_pod_memberships_pod_lead_id ON pod_memberships(pod_lead_id)",
+            # ── Probing sheet ────────────────────────────────────────────────
+            """CREATE TABLE IF NOT EXISTS probing_data (
+                id                          SERIAL PRIMARY KEY,
+                job_id                      VARCHAR(100),
+                reporting_manager_location  TEXT,
+                onsite_opportunities        TEXT,
+                project_size                TEXT,
+                project_count               TEXT,
+                work_mode                   TEXT,
+                candidate_role              TEXT,
+                feedback_eta                TEXT,
+                work_location               TEXT,
+                interview_type              TEXT,
+                role_clarity                TEXT,
+                notice_period               TEXT,
+                interview_rounds_count      TEXT,
+                urgency_eta                 TEXT,
+                skill_type                  TEXT,
+                created_by_id               INTEGER REFERENCES users(id),
+                created_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )""",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_id VARCHAR(100)",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS probing_id INTEGER REFERENCES probing_data(id)",
         ]
         for sql in stmts:
             try:
@@ -95,6 +120,11 @@ def ensure_schema():
 async def lifespan(app_):
     # Always ensure critical schema additions exist (idempotent, safe for multi-instance).
     ensure_schema()
+    # Always seed missing form templates (only inserts rows that don't exist).
+    try:
+        init_form_templates()
+    except Exception as e:
+        print(f"[lifespan] init_form_templates: {e}")
 
     # Full bootstrap (seed data, all migrations) — only when explicitly enabled.
     if settings.run_startup_bootstrap:
@@ -105,7 +135,6 @@ async def lifespan(app_):
             seed_data(db)
         finally:
             db.close()
-        init_form_templates()
     print("J2W Tracker API is running")
 
     if settings.start_scheduler_on_startup:
@@ -143,6 +172,7 @@ app.include_router(notifications_router,    prefix="/api")
 app.include_router(demand_status_router,    prefix="/api")
 app.include_router(upload_router,           prefix="/api")
 app.include_router(form_config_router,      prefix="/api")
+app.include_router(probing_router,          prefix="/api")
 
 
 def run_migrations(db):
