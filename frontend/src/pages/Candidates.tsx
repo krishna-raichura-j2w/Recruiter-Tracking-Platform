@@ -85,6 +85,9 @@ export default function Candidates() {
   const isKam          = role === 'kam'            || sr === 'kam';
   const canAdd    = role === 'admin' || isDeliveryLead || isRecruiter;
   const canAssign = role === 'admin' || isDeliveryLead;
+  // DLs source/call too — give them the same enhanced add-candidate experience
+  // (AI extract, pool-verify, live-refresh) that recruiters see.
+  const canSourceLikeRecruiter = isRecruiter || isDeliveryLead;
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CandidateForm>();
 
@@ -284,7 +287,7 @@ export default function Candidates() {
   return (
     <Layout title={pageTitle}>
       {/* Live-refresh indicator */}
-      {isRecruiter && (
+      {canSourceLikeRecruiter && (
         <div className="flex items-center gap-2 mb-4 text-xs text-slate-400">
           <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />
           Auto-refreshes every 30 s
@@ -544,7 +547,7 @@ export default function Candidates() {
 
                     <td className="py-3.5 px-5">
                       <div className="flex items-center gap-2 justify-end">
-                        {isRecruiter && c.status === 'sourced' && (
+                        {canSourceLikeRecruiter && c.status === 'sourced' && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handlePoolVerify(c.id); }}
                             className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
@@ -605,8 +608,8 @@ export default function Candidates() {
               </button>
             </div>
 
-            {/* AI Extraction Panel — sourcing_partner only */}
-            {isRecruiter && (
+            {/* AI Extraction Panel — anyone who sources (recruiter or DL) */}
+            {canSourceLikeRecruiter && (
               <div className="px-6 pt-5 pb-4 border-b border-slate-100 bg-gradient-to-br from-violet-50 to-blue-50">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="p-1.5 rounded-lg bg-violet-100">
@@ -710,7 +713,7 @@ export default function Candidates() {
             )}
 
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
-              {isRecruiter && extracted && (
+              {canSourceLikeRecruiter && extracted && (
                 <p className="text-xs text-violet-600 font-medium bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
                   Review all extracted fields below. Edit anything before confirming.
                 </p>
@@ -868,11 +871,11 @@ export default function Candidates() {
                   type="submit"
                   disabled={submitting}
                   className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
-                  style={{ backgroundColor: isRecruiter ? '#7c3aed' : '#3b82f6' }}
+                  style={{ backgroundColor: canSourceLikeRecruiter ? '#7c3aed' : '#3b82f6' }}
                 >
                   {submitting
                     ? 'Adding…'
-                    : isRecruiter
+                    : canSourceLikeRecruiter
                       ? 'Confirm & Add'
                       : 'Add Candidate'}
                 </button>
