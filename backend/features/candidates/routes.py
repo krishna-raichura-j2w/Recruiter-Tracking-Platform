@@ -57,11 +57,14 @@ def list_candidates(
         dl_job_ids = [j.id for j in db.query(Job).filter(Job.delivery_lead_id == current_user.id).all()]
         _job_ids = dl_job_ids if dl_job_ids else []
     elif role == "kam":
-        _job_ids = []
+        # KAM sees candidates for jobs they created/own
+        kam_job_ids = [j.id for j in db.query(Job).filter(Job.created_by_id == current_user.id).all()]
+        _job_ids = kam_job_ids  # empty list = no results if KAM has no jobs
 
     items, total = service.list_candidates(
         db, job_id, status, _assigned_to, _sourced_by, _job_ids, _recruiter_id,
         search=search, skip=skip, limit=limit,
+        kam_order=(role == "kam"),
     )
     return {"items": [_serialize(c) for c in items], "total": total, "skip": skip, "limit": limit}
 

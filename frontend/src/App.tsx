@@ -64,7 +64,7 @@ export default function App() {
           <Route
             path="/candidates"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'delivery_lead', 'recruiter']}>
+              <ProtectedRoute allowedRoles={['admin', 'delivery_lead', 'recruiter', 'kam']}>
                 <Candidates />
               </ProtectedRoute>
             }

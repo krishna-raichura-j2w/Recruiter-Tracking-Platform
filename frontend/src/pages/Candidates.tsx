@@ -82,6 +82,7 @@ export default function Candidates() {
   const sr   = user?.secondary_role ?? '';
   const isRecruiter    = role === 'recruiter'     || sr === 'recruiter';
   const isDeliveryLead = role === 'delivery_lead' || sr === 'delivery_lead';
+  const isKam          = role === 'kam'            || sr === 'kam';
   const canAdd    = role === 'admin' || isDeliveryLead || isRecruiter;
   const canAssign = role === 'admin' || isDeliveryLead;
 
@@ -274,6 +275,8 @@ export default function Candidates() {
 
   const pageTitle = isRecruiter
     ? 'My Candidates'
+    : isKam
+    ? 'Candidate Profiles'
     : jobIdFilter
     ? 'Candidates for Job'
     : 'Candidates';
@@ -370,6 +373,24 @@ export default function Candidates() {
         <span className="text-xs text-slate-400">{filtered.length} of {candidates.length}</span>
       </div>
 
+      {/* KAM legend */}
+      {isKam && (
+        <div className="flex flex-wrap items-center gap-3 mb-3 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-green-100 border border-green-300 inline-block" />
+            DL Verified — ready for submission
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-red-50 border border-red-200 inline-block" />
+            Rejected (DL or KAM)
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-white border border-slate-200 inline-block" />
+            Pending / In progress
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         {loading ? (
@@ -393,6 +414,10 @@ export default function Candidates() {
                       <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Caller</th>
                     </>
                   )}
+                  {/* KAM: DL verification status */}
+                  {isKam && (
+                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">DL Status</th>
+                  )}
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
                   <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Score</th>
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Recommend</th>
@@ -403,7 +428,13 @@ export default function Candidates() {
                 {filtered.map((c, i) => (
                   <tr
                     key={c.id}
-                    className={`border-b border-slate-50 hover:bg-blue-50/20 transition-colors ${i % 2 === 1 ? 'bg-slate-50/40' : ''}`}
+                    className={`border-b border-slate-50 hover:bg-blue-50/20 transition-colors ${
+                      isKam && (c.status === 'validated' || c.status === 'submitted_to_client')
+                        ? 'bg-green-50/40 border-l-2 border-l-green-400'
+                        : isKam && c.status === 'rejected'
+                        ? 'bg-red-50/20'
+                        : i % 2 === 1 ? 'bg-slate-50/40' : ''
+                    }`}
                   >
                     <td className="py-3.5 px-5">
                       <p className="font-semibold text-slate-800">{c.full_name}</p>
@@ -466,6 +497,30 @@ export default function Candidates() {
                           ) : <span className="text-xs text-slate-400">Unassigned</span>}
                         </td>
                       </>
+                    )}
+
+                    {/* KAM: DL verification status cell */}
+                    {isKam && (
+                      <td className="py-3.5 px-5">
+                        {(c.status === 'validated' || c.status === 'submitted_to_client') ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
+                            ✓ DL Verified
+                          </span>
+                        ) : c.status === 'rejected' ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700 border border-red-200">
+                              ✕ {c.rejected_by?.includes('KAM') ? 'KAM Rejected' : 'DL Rejected'}
+                            </span>
+                            {c.rejection_reason && (
+                              <p className="text-[10px] text-red-400 mt-0.5 max-w-32 line-clamp-1" title={c.rejection_reason}>
+                                {c.rejection_reason}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">Pending DL review</span>
+                        )}
+                      </td>
                     )}
 
                     <td className="py-3.5 px-5"><StatusBadge status={c.status} /></td>

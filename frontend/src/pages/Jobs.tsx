@@ -296,6 +296,13 @@ export default function Jobs() {
       max_experience:job.max_experience != null ? String(job.max_experience) : '',
       salary_range:  job.salary_range  ?? '',
     });
+    // Pre-select current delivery lead so admin can change it
+    setSelectedDeliveryLeadId(job.delivery_lead_id ?? '');
+    if (isAdmin) {
+      api.get<{ id: number; name: string; clients: string[] }[]>('/users/delivery-leads')
+        .then(r => setDeliveryLeads(r.data))
+        .catch(() => setDeliveryLeads([]));
+    }
     if (job.jd_parsed) {
       try { setParsedResult(JSON.parse(job.jd_parsed)); } catch { /* ignore */ }
     }
@@ -352,12 +359,12 @@ export default function Jobs() {
     max_experience:   data.max_experience ? Number(data.max_experience) : null,
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
     jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
-    // KAM/Admin creates: pick a DL. DL creates: optionally assign to another DL; always picks a KAM.
-    delivery_lead_id: !editJob
-      ? ((isKam || isAdmin) && selectedDeliveryLeadId
+    // Admin editing: can change DL. Creating: KAM/Admin pick DL; DL optionally delegates.
+    delivery_lead_id: editJob
+      ? (isAdmin && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined)
+      : ((isKam || isAdmin) && selectedDeliveryLeadId
           ? Number(selectedDeliveryLeadId)
-          : (isDeliveryLead && selectedAssignDlId ? Number(selectedAssignDlId) : undefined))
-      : undefined,
+          : (isDeliveryLead && selectedAssignDlId ? Number(selectedAssignDlId) : undefined)),
     kam_id: !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
     business_head_id: !editJob && selectedBhId ? Number(selectedBhId) : undefined,
     deadline:         data.deadline ? new Date(data.deadline).toISOString() : null,
@@ -778,6 +785,30 @@ export default function Jobs() {
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+
+              {/* ── Delivery Lead — admin editing an existing JD ── */}
+              {editJob && isAdmin && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                    <UserCheck size={13} className="text-slate-400" />
+                    Delivery Lead
+                  </label>
+                  {deliveryLeads.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">Loading…</p>
+                  ) : (
+                    <select
+                      value={selectedDeliveryLeadId}
+                      onChange={e => setSelectedDeliveryLeadId(e.target.value ? Number(e.target.value) : '')}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-indigo-400 bg-white"
+                    >
+                      <option value="">— No DL assigned —</option>
+                      {deliveryLeads.map(dl => (
+                        <option key={dl.id} value={dl.id}>{dl.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               {/* ── Delivery Lead — KAM-only users on create ── */}
               {!editJob && (isKam || isAdmin) && !(isKam && isDeliveryLead) && (

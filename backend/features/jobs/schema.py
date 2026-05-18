@@ -48,6 +48,7 @@ class JobUpdate(BaseModel):
     salary_range: str | None = None
     business_head_id: int | None = None
     deadline: str | None = None
+    delivery_lead_id: int | None = None
 
 
 class JobOut(BaseModel):

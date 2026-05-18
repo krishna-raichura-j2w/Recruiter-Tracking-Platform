@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
-from infra.models import Candidate, CandidateStatus
+from infra.models import Candidate, CandidateStatus  # noqa: F401 — CandidateStatus used in list_candidates
 
 
 def _apply_candidate_filters(q, job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search):
@@ -48,8 +48,11 @@ def list_candidates(
     search: str | None = None,
     skip: int = 0,
     limit: int = 0,
+    kam_order: bool = False,
 ) -> tuple[list[Candidate], int]:
-    """Returns (items, total). limit=0 means no pagination (return all)."""
+    """Returns (items, total). limit=0 means no pagination (return all).
+    kam_order=True sorts: validated first, then rejected, then rest."""
+    from sqlalchemy import case as sa_case
     # Count query — lightweight, no joins
     count_q = _apply_candidate_filters(
         db.query(Candidate.id), job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search
@@ -74,7 +77,22 @@ def list_candidates(
     if data_q is None:
         return [], 0
 
-    q = data_q.order_by(Candidate.updated_at.desc())
+    if kam_order:
+        # Priority: validated/submitted → rejected (DL or KAM) → everything else
+        priority = sa_case(
+            (Candidate.status.in_([
+                CandidateStatus.validated,
+                CandidateStatus.submitted_to_client,
+            ]), 0),
+            (Candidate.status.in_([
+                CandidateStatus.rejected,
+            ]), 1),
+            else_=2,
+        )
+        q = data_q.order_by(priority, Candidate.updated_at.desc())
+    else:
+        q = data_q.order_by(Candidate.updated_at.desc())
+
     if limit > 0:
         q = q.offset(skip).limit(limit)
     return q.all(), total
