@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { RealtimeProvider } from './context/RealtimeContext';
+import { NavCountsProvider } from './context/NavCountsContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
@@ -33,6 +34,7 @@ export default function App() {
   return (
     <AuthProvider>
       <RealtimeProvider>
+      <NavCountsProvider>
       <BrowserRouter>
         <ForceChangePasswordGate>
           <Routes>
@@ -188,6 +190,7 @@ export default function App() {
         </ForceChangePasswordGate>
       </BrowserRouter>
       </RealtimeProvider>
+      </NavCountsProvider>
     </AuthProvider>
   );
 }

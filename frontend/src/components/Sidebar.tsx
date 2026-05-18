@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext';
+import { useNavCounts } from '../context/NavCountsContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Users, CheckCircle, Send,
@@ -13,6 +14,7 @@ interface NavItem {
   path: string;
   icon: React.ReactNode;
   highlight?: boolean;
+  countKey?: 'jobs' | 'validation' | 'submissions' | 'candidates' | 'pipeline';
 }
 interface NavGroup {
   section?: string;
@@ -25,16 +27,16 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'Recruitment',
       items: [
-        { label: 'Jobs',             path: '/jobs',        icon: <Briefcase size={16} /> },
+        { label: 'Jobs',             path: '/jobs',        icon: <Briefcase size={16} />, countKey: 'jobs' },
         { label: 'All Candidates',   path: '/candidates',  icon: <Users size={16} /> },
-        { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} /> },
-        { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} /> },
+        { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
+        { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} />, countKey: 'submissions' },
       ],
     },
     {
       section: 'Pipeline',
       items: [
-        { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} /> },
+        { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Mail Tracker',       path: '/mail-tracker',  icon: <Send size={16} /> },
         { label: 'Recruiter Story',    path: '/followup',      icon: <GitBranch size={16} /> },
       ],
@@ -56,9 +58,9 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'My Work',
       items: [
-        { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, highlight: true },
-        { label: 'Submit to Client',   path: '/submissions',  icon: <Send size={16} /> },
-        { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} /> },
+        { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Submit to Client',   path: '/submissions',  icon: <Send size={16} />, countKey: 'submissions' },
+        { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} />, countKey: 'pipeline' },
       ],
     },
     {
@@ -76,17 +78,17 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'My Workflow',
       items: [
-        { label: 'JD Review Queue',  path: '/jobs',        icon: <Briefcase size={16} />, highlight: true },
+        { label: 'JD Review Queue',  path: '/jobs',        icon: <Briefcase size={16} />, countKey: 'jobs' },
         { label: 'My Team',          path: '/users',       icon: <UserCheck size={16} /> },
         { label: 'Candidates',       path: '/candidates',  icon: <Users size={16} /> },
-        { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} /> },
-        { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} /> },
+        { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
+        { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} />, countKey: 'submissions' },
       ],
     },
     {
       section: 'Tracking',
       items: [
-        { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} /> },
+        { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Export / Reports',   path: '/export',        icon: <BarChart2 size={16} /> },
         { label: 'Leaderboard',        path: '/leaderboard',   icon: <Trophy size={16} /> },
@@ -104,8 +106,8 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'My Work',
       items: [
-        { label: 'My JDs',          path: '/jobs',         icon: <Briefcase size={16} />, highlight: true },
-        { label: 'My Candidates',   path: '/candidates',   icon: <ClipboardList size={16} /> },
+        { label: 'My JDs',          path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'My Candidates',   path: '/candidates',   icon: <ClipboardList size={16} />, countKey: 'candidates' },
         { label: 'Mail Tracker',    path: '/mail-tracker', icon: <Send size={16} /> },
         { label: 'Recruiter Story', path: '/followup',     icon: <GitBranch size={16} /> },
       ],
@@ -126,6 +128,7 @@ function getInitials(name: string) {
 
 function SidebarContent({ onClose }: { onClose?: () => void }) {
   const { user, logout } = useAuth();
+  const counts = useNavCounts();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -197,10 +200,23 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
                     >
                       <span className="flex-shrink-0 opacity-80">{item.icon}</span>
                       <span className="flex-1 leading-none">{item.label}</span>
-                      {item.highlight && !active && (
-                        <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      )}
-                      {active && <ChevronRight size={12} className="flex-shrink-0 opacity-60" />}
+                      {/* Count badge */}
+                      {(() => {
+                        const n = item.countKey ? (counts[item.countKey] ?? 0) : 0;
+                        if (n <= 0) return null;
+                        return (
+                          <span
+                            className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-black leading-none"
+                            style={active
+                              ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
+                              : { background: '#EF4444', color: '#fff' }
+                            }
+                          >
+                            {n > 99 ? '99+' : n}
+                          </span>
+                        );
+                      })()}
+                      {active && !item.countKey && <ChevronRight size={12} className="flex-shrink-0 opacity-60" />}
                     </button>
                   </li>
                 );
