@@ -7,7 +7,7 @@ from features.jobs.schema import JobCreate, JobUpdate
 from features.jobs import service
 from features.allocation.service import get_min_load
 from features.notifications.service import push, push_to_role
-from infra.models import UserRole, JobStatus, NotifType, User
+from infra.models import UserRole, JobStatus, NotifType, User, PodMembership
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -77,13 +77,13 @@ def create_job(
 
     if is_kam and is_dl:
         # Dual-role: they're both KAM and DL — own the job as both
-        data["delivery_lead_id"] = current_user.id
+        data["delivery_lead_id"] = data.get("delivery_lead_id") or current_user.id
         created_by = current_user.id
     elif is_dl:
-        # DL only: must select a KAM as job owner
+        # DL only: must select a KAM as job owner; can optionally assign to another DL
         if not kam_id:
             raise HTTPException(status_code=400, detail="A KAM must be selected when a Delivery Lead creates a JD.")
-        data["delivery_lead_id"] = current_user.id
+        data["delivery_lead_id"] = data.get("delivery_lead_id") or current_user.id
         created_by = kam_id
     else:
         # KAM only: DL is mandatory
@@ -150,23 +150,33 @@ def confirm_jd(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
-    # Validate all recruiter IDs are active members of the DL's team
+    # The confirming DL is whoever is on the job; admin can confirm any job
     dl_id = current_user.id
+    is_admin = current_user.role.value == "admin"
+
+    # Validate all recruiter IDs are active members of the confirming DL's team
+    # (use pod_memberships for multi-team support)
     for uid in body.recruiter_ids:
-        member = db.query(User).filter(
-            User.id == uid,
-            User.pod_lead_id == dl_id,
-            User.is_active == True,
-        ).first()
-        if not member:
-            raise HTTPException(status_code=400, detail=f"Recruiter ID {uid} is not an active member of your team.")
+        if not is_admin:
+            in_team = db.query(PodMembership).filter(
+                PodMembership.user_id == uid,
+                PodMembership.pod_lead_id == dl_id,
+            ).first()
+            if not in_team:
+                u = db.query(User).filter(User.id == uid).first()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{u.name if u else uid} is not a member of your team.",
+                )
 
     # Both sourcer_ids and caller_ids point to the same unified recruiter list
     job.sourcer_ids         = json.dumps(body.recruiter_ids)
     job.caller_ids          = json.dumps(body.recruiter_ids)
     job.assigned_sourcer_id = body.recruiter_ids[0]
     job.assigned_caller_id  = body.recruiter_ids[0]
-    job.delivery_lead_id    = current_user.id
+    # Keep DL assignment if already set (another DL was assigned); otherwise assign to confirmer
+    if not job.delivery_lead_id:
+        job.delivery_lead_id = current_user.id
     job.status              = JobStatus.open
     if body.sourcing_target is not None:
         job.sourcing_target = body.sourcing_target
@@ -220,16 +230,21 @@ def reassign_recruiters(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
-    # Validate all recruiter IDs are active members of the DL's team
-    dl_id = current_user.id
+    # Validate all recruiter IDs are members of the job's DL team (multi-team support)
+    dl_id    = job.delivery_lead_id or current_user.id
+    is_admin = current_user.role.value == "admin"
     for uid in body.recruiter_ids:
-        member = db.query(User).filter(
-            User.id == uid,
-            User.pod_lead_id == dl_id,
-            User.is_active == True,
-        ).first()
-        if not member:
-            raise HTTPException(status_code=400, detail=f"Recruiter ID {uid} is not an active member of your team.")
+        if not is_admin:
+            in_team = db.query(PodMembership).filter(
+                PodMembership.user_id == uid,
+                PodMembership.pod_lead_id == dl_id,
+            ).first()
+            if not in_team:
+                u = db.query(User).filter(User.id == uid).first()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{u.name if u else uid} is not a member of your team.",
+                )
 
     old_ids = set(json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else [])
     new_ids = set(body.recruiter_ids)

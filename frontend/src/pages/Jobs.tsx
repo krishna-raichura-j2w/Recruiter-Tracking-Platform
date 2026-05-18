@@ -122,6 +122,7 @@ export default function Jobs() {
   const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
   const [kams, setKams]                             = useState<{ id: number; name: string }[]>([]);
   const [selectedKamId, setSelectedKamId]           = useState<number | ''>('');
+  const [selectedAssignDlId, setSelectedAssignDlId] = useState<number | ''>(''); // DL assigning JD to another DL
   const [clientOptions, setClientOptions]           = useState<ClientOption[]>([]);
   const [businessHeads, setBusinessHeads]           = useState<{ id: number; name: string }[]>([]);
   const [selectedBhId, setSelectedBhId]             = useState<number | ''>('');
@@ -307,7 +308,8 @@ export default function Jobs() {
     setShowModal(true);
     setSelectedDeliveryLeadId('');
     setSelectedKamId('');
-    if (isKam || isAdmin) {
+    setSelectedAssignDlId('');
+    if (isKam || isAdmin || isDeliveryLead) {
       api.get<{ id: number; name: string; clients: string[] }[]>('/users/delivery-leads')
         .then(r => setDeliveryLeads(r.data))
         .catch(() => setDeliveryLeads([]));
@@ -330,7 +332,7 @@ export default function Jobs() {
     setShowModal(false); setEditJob(null); reset({ headcount: 1 }); setApiError('');
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
-    setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedBhId('');
+    setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedBhId(''); setSelectedAssignDlId('');
   };
 
   const buildPayload = (data: JobForm) => ({
@@ -350,9 +352,13 @@ export default function Jobs() {
     max_experience:   data.max_experience ? Number(data.max_experience) : null,
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
     jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
-    // KAM creates: assign DL. DL creates: assign KAM (backend auto-sets DL to themselves)
-    delivery_lead_id: !editJob && (isKam || isAdmin) && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined,
-    kam_id:           !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
+    // KAM/Admin creates: pick a DL. DL creates: optionally assign to another DL; always picks a KAM.
+    delivery_lead_id: !editJob
+      ? ((isKam || isAdmin) && selectedDeliveryLeadId
+          ? Number(selectedDeliveryLeadId)
+          : (isDeliveryLead && selectedAssignDlId ? Number(selectedAssignDlId) : undefined))
+      : undefined,
+    kam_id: !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
     business_head_id: !editJob && selectedBhId ? Number(selectedBhId) : undefined,
     deadline:         data.deadline ? new Date(data.deadline).toISOString() : null,
   });
@@ -834,6 +840,27 @@ export default function Jobs() {
                       ⚠ Delivery Lead is required — please select one above.
                     </p>
                   )}
+                </div>
+              )}
+
+              {/* ── Assign to another DL — DL delegating this JD ── */}
+              {!editJob && isDeliveryLead && deliveryLeads.length > 1 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                    <UserCheck size={13} className="text-slate-400" />
+                    Assign JD to Delivery Lead
+                    <span className="text-slate-400 font-normal">(defaults to you)</span>
+                  </label>
+                  <select
+                    value={selectedAssignDlId}
+                    onChange={e => setSelectedAssignDlId(e.target.value ? Number(e.target.value) : '')}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-indigo-400 bg-white"
+                  >
+                    <option value="">— Assign to myself —</option>
+                    {deliveryLeads.map(dl => (
+                      <option key={dl.id} value={dl.id}>{dl.name}{dl.clients.length ? ` (${dl.clients.slice(0,2).join(', ')})` : ''}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 

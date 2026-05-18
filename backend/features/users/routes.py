@@ -255,9 +255,9 @@ def get_team_loads(
 @router.get("/activity-summary")
 def activity_summary(
     db: Session = Depends(get_db),
-    _           = Depends(require_roles("admin")),
+    _           = Depends(require_roles("admin", "delivery_lead", "kam")),
 ):
-    """All users with last login + last action — for the admin leaderboard."""
+    """All users with last login + last action — for the leaderboard."""
     from features.activity.service import get_activity_summary
     return get_activity_summary(db)
 
