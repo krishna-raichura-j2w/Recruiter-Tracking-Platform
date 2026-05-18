@@ -21,6 +21,7 @@ import ChangePassword from './pages/ChangePassword';
 import DemandStatus from './pages/DemandStatus';
 import FormBuilder from './pages/FormBuilder';
 import Leaderboard from './pages/Leaderboard';
+import Skills from './pages/Skills';
 
 function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
   const { user, updateUser } = useAuth();
@@ -180,6 +181,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <FormBuilder />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/skills"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'recruiter', 'delivery_lead', 'kam']}>
+                <Skills />
               </ProtectedRoute>
             }
           />

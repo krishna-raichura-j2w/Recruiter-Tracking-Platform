@@ -35,6 +35,7 @@ from features.demand_status.routes import router as demand_status_router
 from features.upload.routes import router as upload_router
 from features.form_config.routes import router as form_config_router, init_form_templates
 from features.probing.routes import router as probing_router
+from features.boolean_builder.routes import router as boolean_builder_router
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -176,6 +177,7 @@ app.include_router(demand_status_router,    prefix="/api")
 app.include_router(upload_router,           prefix="/api")
 app.include_router(form_config_router,      prefix="/api")
 app.include_router(probing_router,          prefix="/api")
+app.include_router(boolean_builder_router,  prefix="/api")
 
 
 def run_migrations(db):

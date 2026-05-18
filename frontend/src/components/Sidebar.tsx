@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Briefcase, Users, CheckCircle, Send,
   UserCheck, ClipboardList, LogOut, Activity,
   Building2, BarChart2, GitBranch, TrendingUp, Settings, Trophy,
-  ChevronRight, X, Menu,
+  ChevronRight, X, Menu, Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -31,6 +31,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'All Candidates',   path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
         { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} />, countKey: 'submissions' },
+        { label: 'Boolean Builder',  path: '/skills',      icon: <Sparkles size={16} /> },
       ],
     },
     {
@@ -83,6 +84,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Candidates',       path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
         { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} />, countKey: 'submissions' },
+        { label: 'Boolean Builder',  path: '/skills',      icon: <Sparkles size={16} /> },
       ],
     },
     {
@@ -108,6 +110,7 @@ const navConfig: Record<string, NavGroup[]> = {
       items: [
         { label: 'My JDs',          path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
         { label: 'My Candidates',   path: '/candidates',   icon: <ClipboardList size={16} />, countKey: 'candidates' },
+        { label: 'Boolean Builder', path: '/skills',       icon: <Sparkles size={16} /> },
         { label: 'Mail Tracker',    path: '/mail-tracker', icon: <Send size={16} /> },
         { label: 'Recruiter Story', path: '/followup',     icon: <GitBranch size={16} /> },
       ],
