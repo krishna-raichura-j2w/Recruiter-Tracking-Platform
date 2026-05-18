@@ -145,12 +145,9 @@ export default function Jobs() {
   const [apiError, setApiError]       = useState('');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
-  // Probing-sheet wizard state — Step 1 (probing) → Step 2 (existing JD form)
-  const [creationStep, setCreationStep]   = useState<'probing' | 'jd'>('probing');
-  const [probingForm, setProbingForm]     = useState<ProbingForm>(emptyProbing);
-  const [probingId, setProbingId]         = useState<number | null>(null);
-  const [savingProbing, setSavingProbing] = useState(false);
-  const [probingError, setProbingError]   = useState('');
+  // Probing-sheet fields — rendered inline at the top of the JD form for new jobs.
+  const [probingForm, setProbingForm] = useState<ProbingForm>(emptyProbing);
+  const [probingId, setProbingId]     = useState<number | null>(null);
 
   // JD extract state
   const [extractTab,  setExtractTab]  = useState<ExtractTab>('text');
@@ -327,7 +324,6 @@ export default function Jobs() {
 
   const openEditModal = (job: Job) => {
     setEditJob(job);
-    setCreationStep('jd');     // editing skips the probing step
     setProbingId(job.probing_id ?? null);
     setProbingForm(emptyProbing());
     reset({
@@ -365,10 +361,8 @@ export default function Jobs() {
   const openCreateModal = () => {
     setEditJob(null);
     setShowModal(true);
-    setCreationStep('probing');           // probing sheet is step 1
     setProbingForm(emptyProbing());
     setProbingId(null);
-    setProbingError('');
     setSelectedDeliveryLeadId('');
     setSelectedKamId('');
     setSelectedAssignDlId('');
@@ -396,33 +390,11 @@ export default function Jobs() {
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
     setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedBhId(''); setSelectedAssignDlId('');
-    setCreationStep('probing'); setProbingForm(emptyProbing());
-    setProbingId(null); setProbingError(''); setSavingProbing(false);
+    setProbingForm(emptyProbing());
+    setProbingId(null);
   };
 
   const probingComplete = PROBING_QUESTIONS.every(q => probingForm[q.key].trim().length > 0);
-
-  const handleProbingNext = async () => {
-    setProbingError('');
-    if (!probingComplete) {
-      setProbingError('Please answer all probing questions before continuing.');
-      return;
-    }
-    setSavingProbing(true);
-    try {
-      const res = await api.post<{ id: number }>('/probing', {
-        ...probingForm,
-        job_id: null,   // job_id is optional; left empty if not supplied in JD step
-      });
-      setProbingId(res.data.id);
-      setCreationStep('jd');
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setProbingError(msg || 'Failed to save probing details.');
-    } finally {
-      setSavingProbing(false);
-    }
-  };
 
   const buildPayload = (data: JobForm) => ({
     ...data,
@@ -472,17 +444,42 @@ export default function Jobs() {
       setApiError('Please select a Business Head before creating a JD.');
       return;
     }
+    // For new jobs: probing fields are required (single combined form).
+    if (!editJob && !probingComplete) {
+      setApiError('Please complete all probing questions before creating the job.');
+      // scroll to first empty probing field
+      const firstMissing = PROBING_QUESTIONS.find(q => !probingForm[q.key].trim());
+      if (firstMissing) {
+        const el = document.getElementById(`probing-${firstMissing.key}`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      }
+      return;
+    }
     setSubmitting(true);
     try {
-      // Mirror the (optional) UI Job ID onto the probing record so reports
-      // can join probing → job by string id even before the job is created.
-      if (!editJob && probingId && data.job_id && data.job_id.trim()) {
-        try { await api.patch(`/probing/${probingId}`, { job_id: data.job_id.trim() }); } catch { /* non-fatal */ }
+      // For new jobs: create probing row first, then create the job linked to it.
+      let probingIdForPayload = probingId;
+      if (!editJob) {
+        try {
+          const res = await api.post<{ id: number }>('/probing', {
+            ...probingForm,
+            job_id: data.job_id && data.job_id.trim() ? data.job_id.trim() : null,
+          });
+          probingIdForPayload = res.data.id;
+          setProbingId(res.data.id);
+        } catch (err: unknown) {
+          const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          setApiError(msg || 'Failed to save probing details.');
+          setSubmitting(false);
+          return;
+        }
       }
+      const payload = { ...buildPayload(data), probing_id: probingIdForPayload };
       if (editJob) {
-        await api.patch(`/jobs/${editJob.id}`, buildPayload(data));
+        await api.patch(`/jobs/${editJob.id}`, payload);
       } else {
-        await api.post('/jobs', buildPayload(data));
+        await api.post('/jobs', payload);
       }
       closeModal(); fetchJobs();
     } catch (err: unknown) {
@@ -790,67 +787,22 @@ export default function Jobs() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white z-10">
               <div>
                 <h3 className="text-base font-bold text-slate-800">
-                  {editJob
-                    ? 'Edit Job'
-                    : creationStep === 'probing' ? 'Probing Sheet — Step 1 of 2' : 'Job Details — Step 2 of 2'}
+                  {editJob ? 'Edit Job' : 'Create New Job'}
                 </h3>
                 {editJob ? (
                   <p className="text-xs text-slate-400 mt-0.5">
                     Posted {fmtDate(editJob.created_at)} · Last updated {timeAgo(editJob.updated_at)}
                   </p>
                 ) : (
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className={`w-8 h-1.5 rounded-full ${creationStep === 'probing' ? 'bg-blue-500' : 'bg-emerald-500'}`} />
-                    <span className={`w-8 h-1.5 rounded-full ${creationStep === 'jd' ? 'bg-blue-500' : 'bg-slate-200'}`} />
-                    <span className="text-xs text-slate-400 ml-1">
-                      {creationStep === 'probing' ? 'Answer all probing questions to continue' : 'Probing complete · fill JD details'}
-                    </span>
-                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Probing sheet · Job details — all in one form
+                  </p>
                 )}
               </div>
               <button onClick={closeModal} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"><X size={18} /></button>
             </div>
 
-            {/* ── Step 1: Probing Sheet (new jobs only) ─────────────────── */}
-            {!editJob && creationStep === 'probing' && (
-              <div className="p-6 space-y-3">
-                <p className="text-xs text-slate-500 mb-2">
-                  These details help recruiters pitch the role accurately. All fields are required.
-                </p>
-                {PROBING_QUESTIONS.map(q => (
-                  <div key={q.key}>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      {q.label} <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      rows={1}
-                      placeholder={q.placeholder}
-                      value={probingForm[q.key]}
-                      onChange={e => setProbingForm(p => ({ ...p, [q.key]: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-y"
-                    />
-                  </div>
-                ))}
-                {probingError && (
-                  <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{probingError}</p>
-                )}
-                <div className="flex gap-3 pt-2">
-                  <button type="button" onClick={closeModal}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                    Cancel
-                  </button>
-                  <button type="button" onClick={handleProbingNext} disabled={savingProbing || !probingComplete}
-                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
-                    style={{ backgroundColor: '#2563eb' }}
-                  >
-                    {savingProbing ? 'Saving…' : 'Next →'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* AI JD Parse panel — hidden during probing step */}
-            {(editJob || creationStep === 'jd') && (<>
+            {/* AI JD Parse panel */}
 
             <div className="px-6 pt-5 pb-4 border-b border-slate-100 bg-gradient-to-br from-blue-50 to-indigo-50">
               <div className="flex items-center gap-2 mb-3">
@@ -923,7 +875,64 @@ export default function Jobs() {
               </div>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+
+              {/* ── Probing Sheet (new jobs only) ───────────────────────── */}
+              {!editJob && (
+                <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-amber-200/70 bg-white/50 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-lg bg-amber-100"><BookOpen size={14} className="text-amber-700" /></div>
+                      <div>
+                        <h4 className="text-sm font-bold text-amber-900">Probing Sheet</h4>
+                        <p className="text-[11px] text-amber-700/80">Capture context from the stakeholder — all fields required.</p>
+                      </div>
+                    </div>
+                    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+                      probingComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {PROBING_QUESTIONS.filter(q => probingForm[q.key].trim()).length} / {PROBING_QUESTIONS.length} answered
+                    </span>
+                  </div>
+
+                  <div className="p-5 space-y-5">
+                    {([
+                      { title: 'Stakeholders & Setup',    keys: ['reporting_manager_location','work_location','work_mode','onsite_opportunities'] },
+                      { title: 'Role & Project',          keys: ['candidate_role','project_size','project_count','role_clarity','skill_type'] },
+                      { title: 'Interview & Timeline',    keys: ['interview_type','interview_rounds_count','feedback_eta','urgency_eta','notice_period'] },
+                    ] as { title: string; keys: (keyof ProbingForm)[] }[]).map(group => (
+                      <div key={group.title}>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800/70 mb-2">{group.title}</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                          {group.keys.map(k => {
+                            const q = PROBING_QUESTIONS.find(qq => qq.key === k)!;
+                            const filled = probingForm[k].trim().length > 0;
+                            return (
+                              <div key={k}>
+                                <label htmlFor={`probing-${k}`} className="block text-[11px] font-semibold text-slate-700 mb-1 leading-snug">
+                                  {q.label} <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  id={`probing-${k}`}
+                                  type="text"
+                                  placeholder={q.placeholder}
+                                  value={probingForm[k]}
+                                  onChange={e => setProbingForm(p => ({ ...p, [k]: e.target.value }))}
+                                  className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 transition-colors ${
+                                    filled
+                                      ? 'border-emerald-200 focus:border-emerald-400 focus:ring-emerald-50'
+                                      : 'border-slate-200 focus:border-amber-400 focus:ring-amber-50'
+                                  }`}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ── Delivery Lead — admin editing an existing JD ── */}
               {editJob && isAdmin && (
@@ -1277,12 +1286,6 @@ export default function Jobs() {
               </div>
               {apiError && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{apiError}</p>}
               <div className="flex gap-3 pt-2">
-                {!editJob && (
-                  <button type="button" onClick={() => setCreationStep('probing')}
-                    className="py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                    ← Back
-                  </button>
-                )}
                 <button type="button" onClick={closeModal} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
@@ -1292,7 +1295,6 @@ export default function Jobs() {
                 </button>
               </div>
             </form>
-            </>)}
           </div>
         </div>
       )}
