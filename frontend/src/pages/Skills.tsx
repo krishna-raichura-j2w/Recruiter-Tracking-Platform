@@ -1,12 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Sparkles, FileText, AlignLeft, Image as ImageIcon, Loader2,
-  Copy, Check, X, Plus, ExternalLink, Target, Zap, Trash2,
+  Sparkles, FileText, AlignLeft, Loader2,
+  Copy, Check, X, Plus, ExternalLink, Target, Zap, Trash2, Briefcase,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
+import type { Job } from '../types';
 
-type ExtractTab = 'paste' | 'upload';
+type ExtractTab = 'jd' | 'paste' | 'upload';
 type SkillStatus = 'mandatory' | 'optional' | 'excluded' | 'ignored';
 
 interface ApiSkill {
@@ -41,10 +43,48 @@ const STRICTNESS_LABELS: Record<number, { label: string; desc: string }> = {
 
 const NAUKRI_URL = 'https://www.naukri.com/recruit/dashboard';
 
+/** Build a JD text blob from a Job record — prefers raw text, falls back to
+ *  summary, otherwise stitches the structured fields together. */
+function jobToJdText(job: Job): string {
+  if (job.jd_raw_text && job.jd_raw_text.trim().length > 40) return job.jd_raw_text.trim();
+  if (job.jd_summary  && job.jd_summary.trim().length  > 40) {
+    return [
+      `Job Title: ${job.role_title}`,
+      job.client_name ? `Client: ${job.client_name}` : '',
+      job.location    ? `Location: ${job.location}` : '',
+      job.skill_stack ? `Skills: ${job.skill_stack}` : '',
+      (job.min_experience != null || job.max_experience != null)
+        ? `Experience: ${job.min_experience ?? '?'} – ${job.max_experience ?? '?'} years`
+        : '',
+      '',
+      job.jd_summary,
+    ].filter(Boolean).join('\n');
+  }
+  return [
+    `Job Title: ${job.role_title}`,
+    job.client_name ? `Client: ${job.client_name}` : '',
+    job.location    ? `Location: ${job.location}` : '',
+    job.skill_stack ? `Required Skills: ${job.skill_stack}` : '',
+    (job.min_experience != null || job.max_experience != null)
+      ? `Experience: ${job.min_experience ?? '?'} – ${job.max_experience ?? '?'} years`
+      : '',
+    job.work_mode ? `Work Mode: ${job.work_mode}` : '',
+    job.salary_range ? `Salary: ${job.salary_range}` : '',
+  ].filter(Boolean).join('\n');
+}
+
 export default function Skills() {
-  const [tab, setTab] = useState<ExtractTab>('paste');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialJobId = searchParams.get('job_id');
+
+  const [tab, setTab] = useState<ExtractTab>(initialJobId ? 'jd' : 'paste');
   const [jd, setJd] = useState('');
   const [strictness, setStrictness] = useState(3);
+
+  // Assigned-JDs picker
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<number | ''>(initialJobId ? Number(initialJobId) : '');
 
   const [skills, setSkills] = useState<Skill[]>([]);
   const [booleanString, setBooleanString] = useState('');
@@ -115,6 +155,59 @@ export default function Skills() {
         : 'No clear skills identified.',
       normalized.length ? 'ok' : 'idle'
     );
+  }
+
+  // ─── load assigned/visible JDs once ─────────────────────────────────────────
+  useEffect(() => {
+    setLoadingJobs(true);
+    api.get<{ items: Job[] } | Job[]>('/jobs', { params: { limit: 200 } })
+      .then(r => {
+        const items = Array.isArray(r.data) ? r.data : (r.data?.items ?? []);
+        // Only show open / pending-review JDs — closed ones aren't sourced
+        const usable = items.filter(j => j.status === 'open' || j.status === 'pending_review');
+        setJobs(usable);
+      })
+      .catch(() => setJobs([]))
+      .finally(() => setLoadingJobs(false));
+  }, []);
+
+  // ─── auto-load JD from ?job_id= or dropdown selection ───────────────────────
+  const selectedJob = useMemo(
+    () => jobs.find(j => j.id === selectedJobId) ?? null,
+    [jobs, selectedJobId],
+  );
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!selectedJob || autoLoadedRef.current) return;
+    if (initialJobId && Number(initialJobId) === selectedJob.id) {
+      autoLoadedRef.current = true;
+      // Auto-extract immediately when user arrived via "Generate Boolean" button
+      void extractFromJob(selectedJob);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJob]);
+
+  async function extractFromJob(job: Job) {
+    const jdText = jobToJdText(job);
+    if (!jdText.trim()) {
+      setMsg('This JD has no extractable text yet — upload or paste the raw JD instead.', 'err');
+      return;
+    }
+    setLoading(true);
+    setMsg(`Analyzing "${job.role_title}" (${job.client_name})…`, 'busy');
+    setSkills([]); setBooleanString(''); setTextPreview('');
+    setJobTitle(''); setExperienceRequired(''); setReasoning('');
+    try {
+      const res = await api.post<ExtractResponse>('/skills/extract', { jd: jdText, strictness });
+      applyResult(res.data);
+      // Reflect the choice in the URL so it's bookmarkable
+      setSearchParams({ job_id: String(job.id) }, { replace: true });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setMsg(msg || 'Unable to extract skills.', 'err');
+    } finally {
+      setLoading(false);
+    }
   }
 
   // ─── paste-text extract ─────────────────────────────────────────────────────
@@ -210,7 +303,10 @@ export default function Skills() {
   function clearAll() {
     setJd(''); setSkills([]); setBooleanString(''); setUploadedFile(null);
     setTextPreview(''); setJobTitle(''); setExperienceRequired(''); setReasoning('');
-    setMsg('Ready. Paste a new JD or upload a file.', 'idle');
+    setSelectedJobId('');
+    if (searchParams.get('job_id')) setSearchParams({}, { replace: true });
+    autoLoadedRef.current = false;
+    setMsg('Ready. Pick a JD, paste text, or upload a file.', 'idle');
   }
 
   // ─── render ─────────────────────────────────────────────────────────────────
@@ -257,7 +353,16 @@ export default function Skills() {
 
           {/* Tabs */}
           <div className="px-5 pt-4">
-            <div className="inline-flex gap-1 bg-slate-100 rounded-xl p-1">
+            <div className="inline-flex gap-1 bg-slate-100 rounded-xl p-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setTab('jd')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  tab === 'jd' ? 'bg-white shadow-sm text-violet-700' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Briefcase size={12} /> From My JDs
+              </button>
               <button
                 type="button"
                 onClick={() => setTab('paste')}
@@ -280,7 +385,72 @@ export default function Skills() {
           </div>
 
           <div className="px-5 py-4">
-            {tab === 'paste' ? (
+            {tab === 'jd' ? (
+              <>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Pick a JD assigned to you
+                </label>
+                <select
+                  value={selectedJobId}
+                  onChange={e => {
+                    const val = e.target.value ? Number(e.target.value) : '';
+                    setSelectedJobId(val);
+                    autoLoadedRef.current = false;
+                  }}
+                  disabled={loading || loadingJobs}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-50 disabled:opacity-60"
+                >
+                  <option value="">
+                    {loadingJobs ? 'Loading your JDs…' : jobs.length ? '— Select a JD —' : 'No assigned open JDs found'}
+                  </option>
+                  {jobs.map(j => (
+                    <option key={j.id} value={j.id}>
+                      {j.client_name} · {j.role_title}{j.client_job_id ? ` (${j.client_job_id})` : ''}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedJob && (
+                  <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      <div><span className="text-slate-400">Client</span><p className="font-semibold text-slate-700">{selectedJob.client_name}</p></div>
+                      <div><span className="text-slate-400">Role</span><p className="font-semibold text-slate-700">{selectedJob.role_title}</p></div>
+                      {selectedJob.location && (
+                        <div><span className="text-slate-400">Location</span><p className="font-semibold text-slate-700">{selectedJob.location}</p></div>
+                      )}
+                      {(selectedJob.min_experience != null || selectedJob.max_experience != null) && (
+                        <div><span className="text-slate-400">Experience</span>
+                          <p className="font-semibold text-slate-700">{selectedJob.min_experience ?? '?'}–{selectedJob.max_experience ?? '?'} yrs</p>
+                        </div>
+                      )}
+                      {selectedJob.skill_stack && (
+                        <div className="col-span-2"><span className="text-slate-400">Skills</span>
+                          <p className="font-semibold text-slate-700 truncate">{selectedJob.skill_stack}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => selectedJob && extractFromJob(selectedJob)}
+                    disabled={loading || !selectedJob}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-60"
+                  >
+                    {loading ? <><Loader2 size={14} className="animate-spin" /> Extracting…</> : <><Zap size={14} /> Generate Boolean</>}
+                  </button>
+                  <button type="button" onClick={clearAll} disabled={loading}
+                    className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50">
+                    <X size={14} />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Uses the JD's parsed text from when it was uploaded. If empty, switch to Paste or Upload.
+                </p>
+              </>
+            ) : tab === 'paste' ? (
               <>
                 <div className="relative">
                   <textarea

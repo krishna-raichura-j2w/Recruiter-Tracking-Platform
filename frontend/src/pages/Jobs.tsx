@@ -705,6 +705,7 @@ export default function Jobs() {
               canToggle={canToggle}
               onViewCandidates={() => navigate(`/candidates?job_id=${job.id}`)}
               onViewJD={() => setSelectedJob(job)}
+              onGenerateBoolean={() => navigate(`/skills?job_id=${job.id}`)}
               onToggleStatus={handleToggleStatus}
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
@@ -1322,6 +1323,7 @@ interface JobCardProps {
   canToggle: boolean;
   onViewCandidates: () => void;
   onViewJD: () => void;
+  onGenerateBoolean: () => void;
   onToggleStatus: (job: Job) => void;
   onEdit: () => void;
   onConfirm: () => void;
@@ -1352,7 +1354,7 @@ function Avatar({ name, size = 28, color }: { name: string; size?: number; color
   );
 }
 
-function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -1485,6 +1487,18 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#DDD6FE'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#EDE9FE'; }}>
                 <Users size={12} /> Reassign
+              </button>
+            )}
+
+            {/* Generate Boolean Search — for anyone who sources */}
+            {(isRecruiter || isDeliveryLead || isAdmin) && isOpen && (
+              <button onClick={onGenerateBoolean}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                style={{ background: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#EDE9FE'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#F5F3FF'; }}
+                title="Generate Naukri boolean search string from this JD">
+                <Sparkles size={12} /> Boolean
               </button>
             )}
 
