@@ -40,30 +40,38 @@ def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_u
         ).count()
 
     elif role == "delivery_lead":
-        counts["jobs"] = db.query(Job).filter(
-            Job.delivery_lead_id == uid,
-            Job.status == JobStatus.pending_review,
-        ).count()
-        counts["validation"] = db.query(Candidate).filter(
-            Candidate.assigned_validator_id == uid,
-            Candidate.status == CandidateStatus.ready_for_validation,
-            Candidate.sourced_by_id != uid,
-            Candidate.assigned_to_id != uid,
-        ).count()
-        dl_job_ids = [j.id for j in db.query(Job.id).filter(Job.delivery_lead_id == uid).all()]
+        # Collect all job IDs this DL owns (primary delivery_lead_id + multi-DL array)
+        dl_job_ids = []
+        for j in db.query(Job).all():
+            ids = _json.loads(j.delivery_lead_ids or '[]') if isinstance(j.delivery_lead_ids, str) else (j.delivery_lead_ids or [])
+            if j.delivery_lead_id == uid or uid in ids:
+                dl_job_ids.append(j.id)
+
         if dl_job_ids:
+            counts["jobs"] = db.query(Job).filter(
+                Job.id.in_(dl_job_ids),
+                Job.status == JobStatus.pending_review,
+            ).count()
+            # Validation queue: ready_for_validation candidates in DL's jobs,
+            # excluding candidates the DL personally sourced or called
+            counts["validation"] = db.query(Candidate).filter(
+                Candidate.job_id.in_(dl_job_ids),
+                Candidate.status == CandidateStatus.ready_for_validation,
+                Candidate.sourced_by_id != uid,
+                Candidate.assigned_to_id != uid,
+            ).count()
             submitted_ids = db.query(Submission.candidate_id)
             counts["submissions"] = db.query(Candidate).filter(
                 Candidate.job_id.in_(dl_job_ids),
                 Candidate.status == CandidateStatus.validated,
                 ~Candidate.id.in_(submitted_ids),
             ).count()
-        counts["pipeline"] = db.query(Submission).join(
-            Candidate, Submission.candidate_id == Candidate.id
-        ).join(Job, Candidate.job_id == Job.id).filter(
-            Job.delivery_lead_id == uid,
-            ~Submission.current_stage.in_(TERMINAL_STAGES),
-        ).count()
+            counts["pipeline"] = db.query(Submission).join(
+                Candidate, Submission.candidate_id == Candidate.id
+            ).filter(
+                Candidate.job_id.in_(dl_job_ids),
+                ~Submission.current_stage.in_(TERMINAL_STAGES),
+            ).count()
 
     elif role == "kam":
         counts["jobs"] = db.query(Job).filter(

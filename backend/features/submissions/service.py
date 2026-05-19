@@ -1,8 +1,15 @@
+import json as _json
 from sqlalchemy.orm import Session, joinedload
 from infra.models import (
     Submission, SubmissionTimeline, Candidate, CandidateStatus, InterviewStage,
     to_iso_utc, isofy_datetimes,
 )
+
+
+def _dl_owns_job(job, dl_id: int) -> bool:
+    """Return True if dl_id is assigned to this job (primary or multi-DL array)."""
+    dl_ids = _json.loads(job.delivery_lead_ids or '[]') if isinstance(job.delivery_lead_ids, str) else (job.delivery_lead_ids or [])
+    return job.delivery_lead_id == dl_id or dl_id in dl_ids
 
 TERMINAL_STAGES = {
     InterviewStage.ta_rejected,
@@ -159,7 +166,7 @@ def list_validated_candidates(
             continue
         if kam_id and c.job and c.job.created_by_id != kam_id:
             continue
-        if dl_id and c.job and c.job.delivery_lead_id != dl_id:
+        if dl_id and c.job and not _dl_owns_job(c.job, dl_id):
             continue
         if cf and (not c.job or (c.job.client_name or '').strip().lower() != cf):
             continue
@@ -219,7 +226,7 @@ def list_submissions(
     if kam_id:
         subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.created_by_id == kam_id]
     if dl_id:
-        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.delivery_lead_id == dl_id]
+        subs = [s for s in subs if s.candidate and s.candidate.job and _dl_owns_job(s.candidate.job, dl_id)]
     # Admin-driven filters (don't override scope, just narrow it further)
     if client_name:
         cf = client_name.strip().lower()
@@ -227,7 +234,7 @@ def list_submissions(
     if business_head_id:
         subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.account_manager_id == business_head_id]
     if delivery_lead_id:
-        subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.delivery_lead_id == delivery_lead_id]
+        subs = [s for s in subs if s.candidate and s.candidate.job and _dl_owns_job(s.candidate.job, int(delivery_lead_id))]
     if kam_filter_id:
         subs = [s for s in subs if s.candidate and s.candidate.job and s.candidate.job.created_by_id == kam_filter_id]
     from datetime import timedelta

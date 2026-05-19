@@ -77,6 +77,40 @@ def _pending_query(db: Session, validator_id: int | None = None, search: str | N
     return q.order_by(Candidate.updated_at.desc())
 
 
+def list_pending_for_dl(db: Session, dl_id: int, skip: int = 0, limit: int = 0, search: str | None = None, **filters):
+    """Validation queue scoped to a DL's jobs (checks both delivery_lead_id and delivery_lead_ids).
+    Excludes candidates the DL personally sourced or called."""
+    import json as _json
+    from infra.models import Job as _Job
+    # Collect all job IDs this DL owns
+    dl_job_ids = []
+    for j in db.query(_Job).all():
+        ids = _json.loads(j.delivery_lead_ids or '[]') if isinstance(j.delivery_lead_ids, str) else (j.delivery_lead_ids or [])
+        if j.delivery_lead_id == dl_id or dl_id in ids:
+            dl_job_ids.append(j.id)
+
+    if not dl_job_ids:
+        return [], 0
+
+    q = db.query(Candidate).options(
+        joinedload(Candidate.assessment),
+        joinedload(Candidate.assigned_to),
+        joinedload(Candidate.assigned_validator),
+        joinedload(Candidate.job),
+    ).filter(
+        Candidate.status == CandidateStatus.ready_for_validation,
+        Candidate.job_id.in_(dl_job_ids),
+        Candidate.sourced_by_id != dl_id,
+        Candidate.assigned_to_id != dl_id,
+    )
+    q = _apply_filters(q, search=search, **filters)
+    q = q.order_by(Candidate.updated_at.desc())
+    total = q.with_entities(func.count(Candidate.id)).order_by(None).scalar() or 0
+    if limit > 0:
+        return q.offset(skip).limit(limit).all(), total
+    return q.all(), total
+
+
 def list_pending(db: Session, skip: int = 0, limit: int = 0, search: str | None = None, **filters):
     q = _pending_query(db, search=search, **filters)
     total = q.with_entities(func.count(Candidate.id)).order_by(None).scalar() or 0

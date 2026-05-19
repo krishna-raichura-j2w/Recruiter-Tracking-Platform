@@ -53,8 +53,10 @@ def pending_queue(
         from_date=from_date, to_date=to_date,
     )
     if role == "delivery_lead":
-        # DLs stay scoped to candidates assigned to them; other filters layer on top.
-        candidates, total = service.list_pending_for_validator(db, current_user.id, skip=skip, limit=limit, **filters)
+        # DL sees all ready_for_validation candidates in their own jobs.
+        # Remove validator_id so it doesn't conflict with the explicit dl_id argument.
+        dl_filters = {k: v for k, v in filters.items() if k != 'validator_id' and k != 'delivery_lead_id'}
+        candidates, total = service.list_pending_for_dl(db, current_user.id, skip=skip, limit=limit, **dl_filters)
     else:
         candidates, total = service.list_pending(db, skip=skip, limit=limit, **filters)
 

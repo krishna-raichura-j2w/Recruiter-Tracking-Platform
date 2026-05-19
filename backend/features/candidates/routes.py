@@ -54,7 +54,13 @@ def list_candidates(
     if role == "recruiter":
         _recruiter_id = current_user.id
     elif role == "delivery_lead":
-        dl_job_ids = [j.id for j in db.query(Job).filter(Job.delivery_lead_id == current_user.id).all()]
+        import json as _json
+        uid = current_user.id
+        dl_job_ids = []
+        for j in db.query(Job).all():
+            dl_ids = _json.loads(j.delivery_lead_ids or '[]') if isinstance(j.delivery_lead_ids, str) else (j.delivery_lead_ids or [])
+            if j.delivery_lead_id == uid or uid in dl_ids:
+                dl_job_ids.append(j.id)
         _job_ids = dl_job_ids if dl_job_ids else []
     elif role == "kam":
         # KAM sees candidates for jobs they created/own
@@ -106,12 +112,28 @@ def create_candidate(
     db: Session    = Depends(get_db),
     current_user   = Depends(require_roles("recruiter", "admin", "delivery_lead")),
 ):
+    import json as _json
     role = current_user.role.value
-    sourced_by_id = current_user.id if role == "recruiter" else None
+    # Both recruiters and DLs are credited as sourcer
+    sourced_by_id = current_user.id if role in ("recruiter", "delivery_lead") else None
     candidate = service.create_candidate(db, body.model_dump(), sourced_by_id=sourced_by_id)
 
-    # Log activity
-    import json as _json
+    # DL adds candidates already pre-screened — skip the recruiter pipeline and
+    # go straight to validated so they appear in "Submit to Client"
+    if role == "delivery_lead":
+        from infra.models import Validation, ValidationStatus, now_utc
+        candidate.status = CandidateStatus.validated
+        # Create a validation record attributed to this DL
+        validation = Validation(
+            candidate_id=candidate.id,
+            delivery_lead_id=current_user.id,
+            status=ValidationStatus.validated,
+            comments="Added directly by Delivery Lead",
+        )
+        db.add(validation)
+        db.commit()
+        db.refresh(candidate)
+
     job = db.query(Job).filter(Job.id == candidate.job_id).first()
     from features.activity.service import log as log_activity
     log_activity(db, current_user.id, "sourced_candidate",
