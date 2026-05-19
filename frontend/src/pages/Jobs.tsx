@@ -946,17 +946,23 @@ export default function Jobs() {
               {/* ── Delivery Lead(s) — KAM or admin editing an existing JD ── */}
               {editJob && (isAdmin || isKam) && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
-                    <UserCheck size={13} className="text-slate-400" />
-                    Delivery Lead(s)
-                    {selectedDeliveryLeadIds.length > 0 && (
-                      <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
-                        {selectedDeliveryLeadIds.length} selected
-                      </span>
-                    )}
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <UserCheck size={13} className="text-slate-400" />
+                      Delivery Lead(s)
+                      {selectedDeliveryLeadIds.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                          {selectedDeliveryLeadIds.length} selected
+                        </span>
+                      )}
+                    </label>
+                    <span className="text-[10px] text-slate-400">Click to select — multiple allowed</span>
+                  </div>
                   {deliveryLeads.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">Loading…</p>
+                    <p className="text-xs text-slate-400 italic flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full border-2 border-slate-300 border-t-indigo-500 animate-spin inline-block" />
+                      Loading…
+                    </p>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
                       {deliveryLeads.map(dl => {
