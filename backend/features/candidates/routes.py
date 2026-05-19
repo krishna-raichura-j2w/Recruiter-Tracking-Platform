@@ -118,38 +118,32 @@ def create_candidate(
     sourced_by_id = current_user.id if role in ("recruiter", "delivery_lead") else None
     candidate = service.create_candidate(db, body.model_dump(), sourced_by_id=sourced_by_id)
 
-    # DL adds candidates already pre-screened — skip the recruiter pipeline and
-    # go straight to validated so they appear in "Submit to Client"
-    if role == "delivery_lead":
-        from infra.models import Validation, ValidationStatus, now_utc
-        candidate.status = CandidateStatus.validated
-        # Create a validation record attributed to this DL
-        validation = Validation(
-            candidate_id=candidate.id,
-            delivery_lead_id=current_user.id,
-            status=ValidationStatus.validated,
-            comments="Added directly by Delivery Lead",
-        )
-        db.add(validation)
-        db.commit()
-        db.refresh(candidate)
-
     job = db.query(Job).filter(Job.id == candidate.job_id).first()
     from features.activity.service import log as log_activity
     log_activity(db, current_user.id, "sourced_candidate",
                  f"Sourced {candidate.full_name} for {job.client_name} – {job.role_title}" if job
                  else f"Sourced candidate: {candidate.full_name}",
                  entity_type="candidate", entity_id=candidate.id)
+
+    # Assign the candidate to a caller. When a DL adds a candidate themselves,
+    # they're also the one who'll call & verify — assign to themselves so it
+    # shows up in their own "My Candidates" list, not someone else's.
     if job:
-        caller_ids = _json.loads(job.caller_ids or '[]') if isinstance(job.caller_ids, str) else []
-        if not caller_ids and job.assigned_caller_id:
-            caller_ids = [job.assigned_caller_id]
-        if caller_ids:
+        if role == "delivery_lead":
+            caller_id = current_user.id
+        else:
+            caller_ids = _json.loads(job.caller_ids or '[]') if isinstance(job.caller_ids, str) else []
+            if not caller_ids and job.assigned_caller_id:
+                caller_ids = [job.assigned_caller_id]
+            if not caller_ids:
+                return _serialize(candidate)
             from features.allocation.service import _caller_load
-            best_id = min(caller_ids, key=lambda uid: _caller_load(db, uid))
-            candidate = service.assign_candidate(db, candidate.id, best_id)
-            # Notify the caller
-            push(db, best_id,
+            caller_id = min(caller_ids, key=lambda uid: _caller_load(db, uid))
+
+        candidate = service.assign_candidate(db, candidate.id, caller_id)
+        # Don't notify the DL about their own self-assigned candidate
+        if caller_id != current_user.id:
+            push(db, caller_id,
                 f"New candidate sourced: {candidate.full_name} for {job.role_title} ({job.client_name}). Ready for your call.",
                 NotifType.candidate_sourced, entity_id=candidate.id)
             db.commit()

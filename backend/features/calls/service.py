@@ -75,9 +75,8 @@ def upsert_assessment(db: Session, data: dict, caller_id: int) -> Assessment:
     if submit_for_review:
         candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
         if candidate:
-            candidate.status = CandidateStatus.ready_for_validation
-            from infra.models import User, UserRole, NotifType
-            from features.notifications.service import push
+            from infra.models import User, UserRole, NotifType, Validation, ValidationStatus
+            from features.notifications.service import push, push_to_role
             # The validator is the JOB's delivery lead. Fall back to min-load
             # allocation only when the job has no DL assigned.
             validator = None
@@ -101,12 +100,45 @@ def upsert_assessment(db: Session, data: dict, caller_id: int) -> Assessment:
                         ).first()
             if validator:
                 candidate.assigned_validator_id = validator.id
-            # Notify the assigned validator (DL)
-            target_dl_id = validator.id if validator else (job.delivery_lead_id if job else None)
-            if target_dl_id:
-                push(db, target_dl_id,
-                    f"{candidate.full_name} is ready for validation — {job.role_title if job else ''} ({job.client_name if job else ''}). Score: {assessment.overall_score or '—'}",
-                    NotifType.ready_for_validation, entity_id=candidate.id)
+
+            # If the submitter is also the validator (DL submitting their own
+            # call), bypass the validation queue — they've already verified.
+            caller_user = db.query(User).filter(User.id == caller_id).first()
+            caller_is_dl = bool(caller_user and caller_user.role == UserRole.delivery_lead)
+            self_validation = (
+                caller_is_dl
+                and validator is not None
+                and validator.id == caller_id
+            )
+
+            if self_validation:
+                candidate.status = CandidateStatus.validated
+                # Record an audit-trail Validation row attributed to this DL
+                existing_v = db.query(Validation).filter(Validation.candidate_id == candidate.id).first()
+                if existing_v:
+                    existing_v.status = ValidationStatus.validated
+                    existing_v.delivery_lead_id = caller_id
+                    existing_v.comments = "Auto-validated — DL sourced and verified the candidate themselves."
+                else:
+                    db.add(Validation(
+                        candidate_id=candidate.id,
+                        delivery_lead_id=caller_id,
+                        status=ValidationStatus.validated,
+                        comments="Auto-validated — DL sourced and verified the candidate themselves.",
+                    ))
+                # Notify KAMs so they can Submit to Client
+                job_label = f"{job.role_title} ({job.client_name})" if job else ""
+                push_to_role(db, UserRole.kam,
+                    f"Candidate validated: {candidate.full_name} for {job_label}. Ready to submit to client.",
+                    NotifType.candidate_validated, entity_id=candidate.id)
+            else:
+                candidate.status = CandidateStatus.ready_for_validation
+                # Notify the assigned validator (DL)
+                target_dl_id = validator.id if validator else (job.delivery_lead_id if job else None)
+                if target_dl_id:
+                    push(db, target_dl_id,
+                        f"{candidate.full_name} is ready for validation — {job.role_title if job else ''} ({job.client_name if job else ''}). Score: {assessment.overall_score or '—'}",
+                        NotifType.ready_for_validation, entity_id=candidate.id)
 
     db.commit()
     db.refresh(assessment)
