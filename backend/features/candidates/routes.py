@@ -53,6 +53,19 @@ def list_candidates(
 
     if role == "recruiter":
         _recruiter_id = current_user.id
+        # Restrict to candidates on JDs the recruiter is CURRENTLY assigned to.
+        # When a recruiter is removed from a JD, they should stop seeing its
+        # candidates — even ones they originally sourced. Attribution is
+        # preserved in the DB (sourced_by_id) for leaderboards / reports.
+        import json as _json
+        uid = current_user.id
+        active_job_ids = []
+        for j in db.query(Job).all():
+            s_ids = _json.loads(j.sourcer_ids or '[]') if isinstance(j.sourcer_ids, str) else []
+            c_ids = _json.loads(j.caller_ids  or '[]') if isinstance(j.caller_ids,  str) else []
+            if uid in s_ids or uid in c_ids or j.assigned_sourcer_id == uid or j.assigned_caller_id == uid:
+                active_job_ids.append(j.id)
+        _job_ids = active_job_ids if active_job_ids else []
     elif role == "delivery_lead":
         import json as _json
         uid = current_user.id

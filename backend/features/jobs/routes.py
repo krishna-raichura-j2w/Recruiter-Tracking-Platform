@@ -208,11 +208,33 @@ def confirm_jd(
                     detail=f"{u.name if u else uid} is not a member of your team.",
                 )
 
+    # Same cleanup as /reassign — when the confirm flow is used to change the
+    # team on an already-assigned JD, transfer active candidates off any
+    # removed recruiters.
+    old_sourcers = set(json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else [])
+    old_callers  = set(json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else [])
+    removed_ids  = (old_sourcers | old_callers) - set(body.recruiter_ids)
+
     # Both sourcer_ids and caller_ids point to the same unified recruiter list
     job.sourcer_ids         = json.dumps(body.recruiter_ids)
     job.caller_ids          = json.dumps(body.recruiter_ids)
     job.assigned_sourcer_id = body.recruiter_ids[0]
     job.assigned_caller_id  = body.recruiter_ids[0]
+
+    # Transfer active candidates off removed recruiters
+    if removed_ids:
+        from infra.models import Candidate, CandidateStatus
+        from features.allocation.service import _caller_load
+        TERMINAL = [CandidateStatus.joined, CandidateStatus.backed_out, CandidateStatus.rejected]
+        for uid in removed_ids:
+            cands = db.query(Candidate).filter(
+                Candidate.job_id == job.id,
+                Candidate.assigned_to_id == uid,
+                ~Candidate.status.in_(TERMINAL),
+            ).all()
+            for c in cands:
+                c.assigned_to_id = min(body.recruiter_ids, key=lambda rid: _caller_load(db, rid))
+
     # Keep DL assignment if already set (another DL was assigned); otherwise assign to confirmer
     if not job.delivery_lead_id:
         job.delivery_lead_id = current_user.id
@@ -285,15 +307,44 @@ def reassign_recruiters(
                     detail=f"{u.name if u else uid} is not a member of your team.",
                 )
 
-    old_ids = set(json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else [])
+    old_sourcers = set(json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else [])
+    old_callers  = set(json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else [])
+    old_ids = old_sourcers | old_callers
     new_ids = set(body.recruiter_ids)
+    removed_ids = old_ids - new_ids
 
     job.sourcer_ids         = json.dumps(body.recruiter_ids)
     job.caller_ids          = json.dumps(body.recruiter_ids)
     job.assigned_sourcer_id = body.recruiter_ids[0]
     job.assigned_caller_id  = body.recruiter_ids[0]
 
-    # Notify newly added recruiters only
+    # When a recruiter is removed from the JD, any active candidates they
+    # currently own under this JD are reassigned to a remaining recruiter
+    # (least-loaded) so they don't keep showing up in the removed user's
+    # "My Candidates" list. Terminal-state candidates (joined/rejected/etc.)
+    # stay with their original owner for audit/history accuracy.
+    from infra.models import Candidate, CandidateStatus
+    from features.allocation.service import _caller_load
+    TERMINAL = {
+        CandidateStatus.joined,
+        CandidateStatus.backed_out,
+        CandidateStatus.rejected,
+    }
+    moved_count = 0
+    if removed_ids:
+        for uid in removed_ids:
+            cands = db.query(Candidate).filter(
+                Candidate.job_id == job.id,
+                Candidate.assigned_to_id == uid,
+                ~Candidate.status.in_([t for t in TERMINAL]),
+            ).all()
+            for c in cands:
+                # Pick the least-loaded remaining recruiter as the new owner
+                new_owner = min(body.recruiter_ids, key=lambda rid: _caller_load(db, rid))
+                c.assigned_to_id = new_owner
+                moved_count += 1
+
+    # Notify newly added recruiters
     for uid in new_ids - old_ids:
         u = db.query(User).filter(User.id == uid).first()
         if u:
@@ -301,12 +352,23 @@ def reassign_recruiters(
                 f"You've been assigned to {job.role_title} ({job.client_name}).",
                 NotifType.jd_assigned, entity_id=job.id)
 
+    # Notify removed recruiters
+    for uid in removed_ids:
+        u = db.query(User).filter(User.id == uid).first()
+        if u:
+            push(db, uid,
+                f"You've been removed from {job.role_title} ({job.client_name}). "
+                f"Any active candidates have been transferred to the remaining team.",
+                NotifType.jd_assigned, entity_id=job.id)
+
     db.commit()
     db.refresh(job)
 
     from features.activity.service import log as log_activity
-    log_activity(db, current_user.id, "reassigned_recruiters",
-                 f"Reassigned recruiters on {job.role_title} ({job.client_name})",
+    detail = f"Reassigned recruiters on {job.role_title} ({job.client_name})"
+    if removed_ids:
+        detail += f" — {len(removed_ids)} removed, {moved_count} active candidate(s) transferred"
+    log_activity(db, current_user.id, "reassigned_recruiters", detail,
                  entity_type="job", entity_id=job.id)
     return service._job_dict(db, job)
 

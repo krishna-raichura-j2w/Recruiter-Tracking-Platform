@@ -265,8 +265,10 @@ export default function Jobs() {
     finally { setLoadingTeam(false); }
   };
 
-  const toggleSelect = (id: number, list: number[], setList: (v: number[]) => void) => {
-    setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
+  const toggleRecruiter = (id: number) => {
+    // Functional update — reads the latest state each call so rapid toggles
+    // (select multiple, unselect some) don't trample each other.
+    setSelectedRecruiters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   const handleConfirmJD = async () => {
@@ -756,7 +758,7 @@ export default function Jobs() {
           team={dlTeam}
           loadingTeam={loadingTeam}
           selected={selectedRecruiters}
-          onToggle={(id) => toggleSelect(id, selectedRecruiters, setSelectedRecruiters)}
+          onToggle={toggleRecruiter}
           error={confirmError}
           confirming={confirming}
           onCancel={() => { setConfirmJob(null); setConfirmError(''); setSelectedRecruiters([]); setDlTeam([]); }}
@@ -780,7 +782,7 @@ export default function Jobs() {
           team={dlTeam}
           loadingTeam={loadingTeam}
           selected={selectedRecruiters}
-          onToggle={(id) => toggleSelect(id, selectedRecruiters, setSelectedRecruiters)}
+          onToggle={toggleRecruiter}
           error={confirmError}
           confirming={confirming}
           onCancel={() => { setReassignJob(null); setConfirmError(''); setSelectedRecruiters([]); setDlTeam([]); }}
