@@ -83,7 +83,6 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'My Team',          path: '/users',       icon: <UserCheck size={16} /> },
         { label: 'Candidates',       path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
-        { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} />, countKey: 'submissions' },
         { label: 'Boolean Builder',  path: '/skills',      icon: <Sparkles size={16} /> },
       ],
     },

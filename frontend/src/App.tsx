@@ -105,11 +105,11 @@ export default function App() {
             }
           />
 
-          {/* Delivery Lead + Admin */}
+          {/* Only KAM + Admin can submit candidates to a client */}
           <Route
             path="/submissions"
             element={
-              <ProtectedRoute allowedRoles={['delivery_lead', 'admin', 'kam']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam']}>
                 <Submissions />
               </ProtectedRoute>
             }

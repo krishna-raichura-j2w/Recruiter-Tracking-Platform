@@ -8,7 +8,12 @@ from features.submissions import service
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
-ALLOWED = ("delivery_lead", "admin", "kam")
+# Who can SUBMIT a candidate to a client (queue access + the submit action).
+# DLs validate but do NOT submit; only KAM + admin send to client.
+SUBMITTERS = ("admin", "kam")
+# Who can VIEW or UPDATE existing submissions (interview tracking).
+# DLs need to see and update interview stages for their team's candidates.
+VIEWERS    = ("admin", "kam", "delivery_lead", "recruiter")
 
 
 @router.get("/ready")
@@ -16,19 +21,18 @@ def ready_to_submit(
     search: str | None = Query(None),
     skip:   int        = Query(0, ge=0),
     limit:  int        = Query(50, ge=0, le=500),
-    # Filters (admin-only effectively; KAM/DL stay scoped to their JDs)
+    # Filters (admin-only effectively; KAM stays scoped to their JDs)
     client_name:      str | None = Query(None),
     business_head_id: int | None = Query(None),
     from_date:        str | None = Query(None),
     to_date:          str | None = Query(None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*ALLOWED)),
+    current_user=Depends(require_roles(*SUBMITTERS)),
 ):
     role   = current_user.role.value
     kam_id = current_user.id if role == "kam" else None
-    dl_id  = current_user.id if role == "delivery_lead" else None
     items, total = service.list_validated_candidates(
-        db, kam_id=kam_id, dl_id=dl_id, search=search,
+        db, kam_id=kam_id, dl_id=None, search=search,
         client_name=client_name, business_head_id=business_head_id,
         from_date=from_date, to_date=to_date,
         skip=skip, limit=limit,
@@ -50,7 +54,7 @@ def list_submissions(
     from_date:         str | None = Query(None),
     to_date:           str | None = Query(None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*ALLOWED, "recruiter")),
+    current_user=Depends(require_roles(*VIEWERS)),
 ):
     role   = current_user.role.value
     # Role-scoped IDs (KAM/DL only see their own; admin sees all, then applies filters)
@@ -71,7 +75,7 @@ def list_submissions(
 def submit_to_client(
     body: SubmitToClient,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*ALLOWED)),
+    current_user=Depends(require_roles(*SUBMITTERS)),
 ):
     result = service.submit_to_client(db, body.candidate_id, body.notes, current_user.id)
     if not result:
@@ -91,7 +95,7 @@ def update_stage(
     submission_id: int,
     body: StageUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*ALLOWED, "recruiter")),
+    current_user=Depends(require_roles(*VIEWERS)),
 ):
     result = service.update_stage(
         db, submission_id,
