@@ -234,10 +234,12 @@ function TodayTab({ data }: { data: PodReport }) {
       .map(r => {
         // Apply BH/client/KAM filters to which jobs count for this recruiter
         const scopedJobs = r.assigned_jobs.filter(jobMatchesFilters);
-        const scopedJobIds = new Set(scopedJobs.map(j => j.id));
+        // No JD filters → use ALL candidates; otherwise match candidates to scoped jobs by client+title
+        const scopedKeys = new Set(scopedJobs.map(j => `${j.client_name}|${j.role_title}`));
+        const noJobFilter = !filterBh && !filterClient && !filterKam;
         const todayCands = r.candidates.filter(c =>
           inRange(c.sourcing_date, today.from, today.to)
-          && (scopedJobIds.size === 0 || scopedJobIds.has(c.job_id))
+          && (noJobFilter || scopedKeys.has(`${c.job_client}|${c.job_title}`))
         );
         const sourced     = todayCands.length;
         const dlVerified  = todayCands.filter(c => c.dl_validated).length;
@@ -252,7 +254,7 @@ function TodayTab({ data }: { data: PodReport }) {
       })
       .filter(r => !onlyActive || r.sourced > 0 || r.dlVerified > 0 || r.todaySubs > 0)
       .sort((a, b) => b.todaySubs - a.todaySubs);
-  }, [data, today, sq, filterDl, jobMatchesFilters, onlyActive]);
+  }, [data, today, sq, filterDl, filterBh, filterClient, filterKam, jobMatchesFilters, onlyActive]);
 
   // ── DL rows ──
   const dlRows = useMemo(() => {
@@ -263,12 +265,13 @@ function TodayTab({ data }: { data: PodReport }) {
         const demands = dl.demands.filter(jobMatchesFilters);
         const todaySubs = demands.reduce((s, d) => s + d.today_subs, 0);
         const teamRecruiters = data.recruiters.filter(r => r.dl_name === dl.dl_name);
-        const scopedIds = new Set(demands.map(d => d.id));
+        const scopedKeys = new Set(demands.map(d => `${d.client_name}|${d.role_title}`));
+        const noJobFilter = !filterBh && !filterClient && !filterKam;
         const dlVerifiedToday = teamRecruiters.flatMap(r =>
           r.candidates.filter(c =>
             inRange(c.sourcing_date, today.from, today.to)
             && c.dl_validated
-            && (scopedIds.size === 0 || scopedIds.has(c.job_id))
+            && (noJobFilter || scopedKeys.has(`${c.job_client}|${c.job_title}`))
           )
         ).length;
         return {
@@ -279,7 +282,7 @@ function TodayTab({ data }: { data: PodReport }) {
       })
       .filter(dl => !onlyActive || dl.dlVerifiedToday > 0 || dl.sentToCustomer > 0)
       .sort((a, b) => b.todaySubs - a.todaySubs);
-  }, [data, today, sq, filterDl, jobMatchesFilters, onlyActive]);
+  }, [data, today, sq, filterDl, filterBh, filterClient, filterKam, jobMatchesFilters, onlyActive]);
 
   // ── KAM rows ──
   const kamRows = useMemo(() => {
