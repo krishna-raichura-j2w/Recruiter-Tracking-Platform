@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   RefreshCw, Trophy, TrendingUp, Users, Briefcase,
   ChevronUp, ChevronDown, ChevronsUpDown, Activity,
   Building2, CheckCircle, Target, AlertCircle, UserCheck,
-  Search, ChevronLeft, ChevronRight,
+  Search, ChevronLeft, ChevronRight, Filter, X,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -189,68 +189,175 @@ function SectionHeader({ icon, title, sub }: { icon: React.ReactNode; title: str
 // ── TODAY'S FOCUS TAB ─────────────────────────────────────────────────────────
 function TodayTab({ data }: { data: PodReport }) {
   const today = useMemo(() => periodRange('today'), []);
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // ── Filter state ──
+  const [search,      setSearch]      = useState('');
+  const [filterDl,    setFilterDl]    = useState('');
+  const [filterKam,   setFilterKam]   = useState('');
+  const [filterBh,    setFilterBh]    = useState('');
+  const [filterClient,setFilterClient]= useState('');
+  const [onlyActive,  setOnlyActive]  = useState(false);
+
+  // Dropdown options derived from data
+  const dlOptions = useMemo(
+    () => [...new Set(data.recruiters.map(r => r.dl_name).filter((x): x is string => !!x))].sort(),
+    [data]);
+  const kamOptions = useMemo(
+    () => [...new Set(data.kam_data.map(k => k.kam_name).filter((x): x is string => !!x))].sort(),
+    [data]);
+  const bhOptions = useMemo(
+    () => [...new Set(data.jobs.map(j => j.bh_name).filter((x): x is string => !!x))].sort(),
+    [data]);
+  const clientOptions = useMemo(
+    () => [...new Set(data.jobs.map(j => j.client_name).filter(Boolean))].sort(),
+    [data]);
+
+  const sq = search.trim().toLowerCase();
+  // A JD is "in scope" if it matches client + BH filters.
+  const jobMatchesFilters = useCallback((j: { client_name: string; bh_name: string | null; kam_name: string | null }) => {
+    if (filterBh     && (j.bh_name || '')     !== filterBh)     return false;
+    if (filterClient && (j.client_name || '') !== filterClient) return false;
+    if (filterKam    && (j.kam_name || '')    !== filterKam)    return false;
+    return true;
+  }, [filterBh, filterClient, filterKam]);
+
+  const activeCount = [search, filterDl, filterKam, filterBh, filterClient].filter(v => v).length + (onlyActive ? 1 : 0);
+  const clearFilters = () => {
+    setSearch(''); setFilterDl(''); setFilterKam(''); setFilterBh(''); setFilterClient(''); setOnlyActive(false);
+  };
 
   // ── Recruiter rows ──
   const recruiterRows = useMemo(() => {
-    return data.recruiters.map(r => {
-      const todayCands   = r.candidates.filter(c => inRange(c.sourcing_date, today.from, today.to));
-      const sourced      = todayCands.length;
-      const dlVerified   = todayCands.filter(c => c.dl_validated).length;
-      // Today's submissions = sum of today_subs from assigned jobs
-      const todaySubs    = r.assigned_jobs.reduce((s, j) => s + j.today_subs, 0);
-      // Day target: sourcing_target / 30 as a rough daily rate, times assigned jobs
-      const totalTarget  = r.assigned_jobs.reduce((s, j) => s + (j.sourcing_target ?? 0), 0);
-      const dayTarget    = totalTarget > 0 ? Math.max(1, Math.round(totalTarget / 30)) : 0;
-      return {
-        id: r.id, name: r.name, dl: r.dl_name,
-        jds: r.assigned_jobs.length, sourced, dlVerified, todaySubs, dayTarget,
-        pctDone: pct(todaySubs, dayTarget),
-      };
-    }).sort((a, b) => b.todaySubs - a.todaySubs);
-  }, [data, today]);
+    return data.recruiters
+      .filter(r => !filterDl || r.dl_name === filterDl)
+      .filter(r => !sq || r.name.toLowerCase().includes(sq))
+      .map(r => {
+        // Apply BH/client/KAM filters to which jobs count for this recruiter
+        const scopedJobs = r.assigned_jobs.filter(jobMatchesFilters);
+        const scopedJobIds = new Set(scopedJobs.map(j => j.id));
+        const todayCands = r.candidates.filter(c =>
+          inRange(c.sourcing_date, today.from, today.to)
+          && (scopedJobIds.size === 0 || scopedJobIds.has(c.job_id))
+        );
+        const sourced     = todayCands.length;
+        const dlVerified  = todayCands.filter(c => c.dl_validated).length;
+        const todaySubs   = scopedJobs.reduce((s, j) => s + j.today_subs, 0);
+        const totalTarget = scopedJobs.reduce((s, j) => s + (j.sourcing_target ?? 0), 0);
+        const dayTarget   = totalTarget > 0 ? Math.max(1, Math.round(totalTarget / 30)) : 0;
+        return {
+          id: r.id, name: r.name, dl: r.dl_name,
+          jds: scopedJobs.length, sourced, dlVerified, todaySubs, dayTarget,
+          pctDone: pct(todaySubs, dayTarget),
+        };
+      })
+      .filter(r => !onlyActive || r.sourced > 0 || r.dlVerified > 0 || r.todaySubs > 0)
+      .sort((a, b) => b.todaySubs - a.todaySubs);
+  }, [data, today, sq, filterDl, jobMatchesFilters, onlyActive]);
 
   // ── DL rows ──
   const dlRows = useMemo(() => {
-    return data.dl_teams.map(dl => {
-      const demands   = dl.demands;
-      const todaySubs = demands.reduce((s, d) => s + d.today_subs, 0);
-      // DL verified today = candidates validated today (approx: dl_validated cands sourced today)
-      const teamRecruiters = data.recruiters.filter(r => r.dl_name === dl.dl_name);
-      const dlVerifiedToday = teamRecruiters.flatMap(r =>
-        r.candidates.filter(c => inRange(c.sourcing_date, today.from, today.to) && c.dl_validated)
-      ).length;
-      const totalDemands = demands.length;
-      const sentToCustomer = todaySubs;
-      return {
-        dlName: dl.dl_name, teamSize: dl.recruiters.length,
-        demands: totalDemands, dlVerifiedToday, sentToCustomer, todaySubs,
-        pctVerified: pct(dlVerifiedToday, todaySubs),
-      };
-    }).sort((a, b) => b.todaySubs - a.todaySubs);
-  }, [data, today]);
+    return data.dl_teams
+      .filter(dl => !filterDl    || dl.dl_name === filterDl)
+      .filter(dl => !sq          || dl.dl_name.toLowerCase().includes(sq))
+      .map(dl => {
+        const demands = dl.demands.filter(jobMatchesFilters);
+        const todaySubs = demands.reduce((s, d) => s + d.today_subs, 0);
+        const teamRecruiters = data.recruiters.filter(r => r.dl_name === dl.dl_name);
+        const scopedIds = new Set(demands.map(d => d.id));
+        const dlVerifiedToday = teamRecruiters.flatMap(r =>
+          r.candidates.filter(c =>
+            inRange(c.sourcing_date, today.from, today.to)
+            && c.dl_validated
+            && (scopedIds.size === 0 || scopedIds.has(c.job_id))
+          )
+        ).length;
+        return {
+          dlName: dl.dl_name, teamSize: dl.recruiters.length,
+          demands: demands.length, dlVerifiedToday, sentToCustomer: todaySubs, todaySubs,
+          pctVerified: pct(dlVerifiedToday, todaySubs),
+        };
+      })
+      .filter(dl => !onlyActive || dl.dlVerifiedToday > 0 || dl.sentToCustomer > 0)
+      .sort((a, b) => b.todaySubs - a.todaySubs);
+  }, [data, today, sq, filterDl, jobMatchesFilters, onlyActive]);
 
   // ── KAM rows ──
   const kamRows = useMemo(() => {
-    return data.kam_data.map(k => {
-      const demands        = k.demands;
-      const openDemands    = demands.filter(d => d.status === 'open').length;
-      const awaitingFdbk   = demands.reduce((s, d) => s + d.l1_count, 0); // subs awaiting L1 feedback
-      const todayL1        = 0; // would need daily L1 tracking — not in current data
-      const todayL2        = 0;
-      const todaySel       = demands.reduce((s, d) => s + d.selections, 0);
-      const todaySubs      = demands.reduce((s, d) => s + d.today_subs, 0);
-      return {
-        kamName: k.kam_name, openDemands, awaitingFdbk, todayL1, todayL2, todaySel, todaySubs,
-        totalHC: demands.reduce((s, d) => s + d.headcount, 0),
-      };
-    }).sort((a, b) => b.todaySubs - a.todaySubs);
-  }, [data]);
+    return data.kam_data
+      .filter(k => !filterKam || k.kam_name === filterKam)
+      .filter(k => !sq        || k.kam_name.toLowerCase().includes(sq))
+      .map(k => {
+        const demands = k.demands.filter(jobMatchesFilters);
+        const openDemands  = demands.filter(d => d.status === 'open').length;
+        const awaitingFdbk = demands.reduce((s, d) => s + d.l1_count, 0);
+        const todaySel     = demands.reduce((s, d) => s + d.selections, 0);
+        const todaySubs    = demands.reduce((s, d) => s + d.today_subs, 0);
+        return {
+          kamName: k.kam_name, openDemands, awaitingFdbk, todayL1: 0, todayL2: 0, todaySel, todaySubs,
+          totalHC: demands.reduce((s, d) => s + d.headcount, 0),
+        };
+      })
+      .filter(k => !onlyActive || k.todaySubs > 0 || k.todaySel > 0 || k.awaitingFdbk > 0)
+      .sort((a, b) => b.todaySubs - a.todaySubs);
+  }, [data, sq, filterKam, jobMatchesFilters, onlyActive]);
 
   const ps = data.pod_stats;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* ── Filter bar ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3">
+        <div className="flex items-center flex-wrap gap-2">
+          <Filter size={13} className="text-slate-400 ml-1" />
+
+          <div className="relative">
+            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text" placeholder="Search name…"
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-40"
+            />
+          </div>
+
+          <select value={filterDl} onChange={e => setFilterDl(e.target.value)}
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-32 max-w-44">
+            <option value="">All Delivery Leads</option>
+            {dlOptions.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+
+          <select value={filterKam} onChange={e => setFilterKam(e.target.value)}
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-32 max-w-44">
+            <option value="">All KAMs</option>
+            {kamOptions.map(k => <option key={k} value={k}>{k}</option>)}
+          </select>
+
+          <select value={filterBh} onChange={e => setFilterBh(e.target.value)}
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-32 max-w-44">
+            <option value="">All Business Heads</option>
+            {bhOptions.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+
+          <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-32 max-w-44">
+            <option value="">All Clients</option>
+            {clientOptions.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50">
+            <input type="checkbox" checked={onlyActive} onChange={e => setOnlyActive(e.target.checked)}
+              className="accent-blue-500" />
+            Active today only
+          </label>
+
+          {activeCount > 0 && (
+            <button onClick={clearFilters}
+              className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100">
+              <X size={11} /> Clear ({activeCount})
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Pod-level today headline */}
       <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #0B1437 0%, #1E3A5F 100%)' }}>
         <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-3">
