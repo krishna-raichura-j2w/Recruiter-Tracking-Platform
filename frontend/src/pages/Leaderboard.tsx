@@ -3,6 +3,7 @@ import {
   RefreshCw, Trophy, TrendingUp, Users, Briefcase,
   ChevronUp, ChevronDown, ChevronsUpDown, Activity,
   Building2, CheckCircle, Target, AlertCircle, UserCheck,
+  Search, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -894,13 +895,283 @@ function ActivityTab({ activities }: { activities: UserActivity[] }) {
   );
 }
 
+// ── CANDIDATES TAB ────────────────────────────────────────────────────────────
+type CandRow = {
+  key: string;
+  recruiter_id: number; recruiter_name: string; dl_name: string;
+  full_name: string; status: string; current_stage: string;
+  overall_score: string; overall_score_num: number;
+  job_client: string; job_title: string; bh_name: string;
+  sourcing_date: string; sourcing_date_ts: number;
+  dl_validated: boolean; submitted_to_client: boolean;
+};
+
+function CandidatesTab({ data, range }: {
+  data: PodReport; range: { from: Date | null; to: Date | null };
+}) {
+  // Client → BH lookup from job data (job_client on candidate is the only link).
+  const clientToBh = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const j of data.jobs) {
+      if (j.client_name && j.bh_name) m[j.client_name] = j.bh_name;
+    }
+    return m;
+  }, [data]);
+
+  // Flatten candidates across all recruiters, scoping to period range.
+  const allRows: CandRow[] = useMemo(() => {
+    const rows: CandRow[] = [];
+    data.recruiters.forEach(r => {
+      r.candidates.forEach((c, idx) => {
+        if (!inRange(c.sourcing_date, range.from, range.to)) return;
+        const n = parseFloat(c.overall_score);
+        rows.push({
+          key: `${r.id}-${idx}-${c.full_name}`,
+          recruiter_id: r.id, recruiter_name: r.name, dl_name: r.dl_name || '—',
+          full_name: c.full_name, status: c.status || '—', current_stage: c.current_stage || '—',
+          overall_score: c.overall_score || '—',
+          overall_score_num: isNaN(n) ? -1 : n,
+          job_client: c.job_client || '—', job_title: c.job_title || '—',
+          bh_name: clientToBh[c.job_client] || 'Unassigned',
+          sourcing_date: c.sourcing_date || '—',
+          sourcing_date_ts: c.sourcing_date && c.sourcing_date !== '—'
+            ? new Date(c.sourcing_date).getTime() : 0,
+          dl_validated: !!c.dl_validated, submitted_to_client: !!c.submitted_to_client,
+        });
+      });
+    });
+    return rows;
+  }, [data, range, clientToBh]);
+
+  // Filter UI state
+  const [search, setSearch] = useState('');
+  const [dlFilter, setDlFilter] = useState('');
+  const [recruiterFilter, setRecruiterFilter] = useState('');
+  const [bhFilter, setBhFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [stageFilter, setStageFilter] = useState('');
+  const [validatedFilter, setValidatedFilter] = useState<'all' | 'yes' | 'no'>('all');
+  const [submittedFilter, setSubmittedFilter] = useState<'all' | 'yes' | 'no'>('all');
+
+  // Dropdown options (cascade: recruiter list narrows when DL chosen).
+  const dlOptions       = useMemo(() => [...new Set(allRows.map(r => r.dl_name).filter(v => v && v !== '—'))].sort(), [allRows]);
+  const recruiterOptions= useMemo(() => {
+    const base = dlFilter ? allRows.filter(r => r.dl_name === dlFilter) : allRows;
+    return [...new Set(base.map(r => r.recruiter_name))].sort();
+  }, [allRows, dlFilter]);
+  const bhOptions       = useMemo(() => [...new Set(allRows.map(r => r.bh_name))].sort(), [allRows]);
+  const clientOptions   = useMemo(() => [...new Set(allRows.map(r => r.job_client))].sort(), [allRows]);
+  const statusOptions   = useMemo(() => [...new Set(allRows.map(r => r.status).filter(v => v && v !== '—'))].sort(), [allRows]);
+  const stageOptions    = useMemo(() => [...new Set(allRows.map(r => r.current_stage).filter(v => v && v !== '—'))].sort(), [allRows]);
+
+  // Apply filters
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allRows.filter(r => {
+      if (dlFilter        && r.dl_name        !== dlFilter)        return false;
+      if (recruiterFilter && r.recruiter_name !== recruiterFilter) return false;
+      if (bhFilter        && r.bh_name        !== bhFilter)        return false;
+      if (clientFilter    && r.job_client     !== clientFilter)    return false;
+      if (statusFilter    && r.status         !== statusFilter)    return false;
+      if (stageFilter     && r.current_stage  !== stageFilter)     return false;
+      if (validatedFilter === 'yes' && !r.dl_validated)         return false;
+      if (validatedFilter === 'no'  &&  r.dl_validated)         return false;
+      if (submittedFilter === 'yes' && !r.submitted_to_client)  return false;
+      if (submittedFilter === 'no'  &&  r.submitted_to_client)  return false;
+      if (q && !`${r.full_name} ${r.job_client} ${r.job_title} ${r.recruiter_name}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [allRows, search, dlFilter, recruiterFilter, bhFilter, clientFilter, statusFilter, stageFilter, validatedFilter, submittedFilter]);
+
+  // Sort
+  const sort   = useSortState('sourcing_date_ts');
+  const sorted = useMemo(() => sortRows(filtered, sort.col, sort.dir), [filtered, sort.col, sort.dir]);
+
+  // Pagination
+  const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  // Clamp the page whenever filters/data change so we don't show empty pages.
+  const pageSafe = Math.min(page, totalPages);
+  const pageStart = (pageSafe - 1) * pageSize;
+  const pageRows  = sorted.slice(pageStart, pageStart + pageSize);
+  // Reset to page 1 whenever any filter changes
+  useEffect(() => { setPage(1); }, [search, dlFilter, recruiterFilter, bhFilter, clientFilter, statusFilter, stageFilter, validatedFilter, submittedFilter, pageSize]);
+
+  // Validated/submitted counters
+  const validatedCount = filtered.filter(r => r.dl_validated).length;
+  const submittedCount = filtered.filter(r => r.submitted_to_client).length;
+
+  const clearAll = () => {
+    setSearch(''); setDlFilter(''); setRecruiterFilter(''); setBhFilter('');
+    setClientFilter(''); setStatusFilter(''); setStageFilter('');
+    setValidatedFilter('all'); setSubmittedFilter('all');
+  };
+  const hasFilters = !!(search || dlFilter || recruiterFilter || bhFilter || clientFilter
+    || statusFilter || stageFilter || validatedFilter !== 'all' || submittedFilter !== 'all');
+
+  return (
+    <div className="space-y-3">
+      {/* Filters row 1 — search + DL + recruiter + BH + client */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search candidate / client / role / recruiter…"
+            className="pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 w-72" />
+        </div>
+        <select value={dlFilter} onChange={e => { setDlFilter(e.target.value); setRecruiterFilter(''); }}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All DL pods</option>
+          {dlOptions.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select value={recruiterFilter} onChange={e => setRecruiterFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All recruiters{dlFilter ? ` (${recruiterOptions.length})` : ''}</option>
+          {recruiterOptions.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={bhFilter} onChange={e => setBhFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All BHs</option>
+          {bhOptions.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All clients</option>
+          {clientOptions.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {/* Filters row 2 — status + stage + validated + submitted + clear */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All statuses</option>
+          {statusOptions.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+        </select>
+        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none">
+          <option value="">All stages</option>
+          {stageOptions.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+        </select>
+        <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 p-1">
+          <span className="text-[10px] text-slate-400 px-2 font-semibold">DL Verified</span>
+          {(['all','yes','no'] as const).map(v => (
+            <button key={v} onClick={() => setValidatedFilter(v)}
+              className="px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all capitalize"
+              style={validatedFilter===v ? {background:'#2563EB',color:'#fff'} : {color:'#64748b'}}>{v}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 p-1">
+          <span className="text-[10px] text-slate-400 px-2 font-semibold">Submitted</span>
+          {(['all','yes','no'] as const).map(v => (
+            <button key={v} onClick={() => setSubmittedFilter(v)}
+              className="px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all capitalize"
+              style={submittedFilter===v ? {background:'#2563EB',color:'#fff'} : {color:'#64748b'}}>{v}</button>
+          ))}
+        </div>
+        {hasFilters && (
+          <button onClick={clearAll}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold text-slate-500 hover:bg-slate-100">Clear filters</button>
+        )}
+        <span className="ml-auto text-xs text-slate-400 font-medium">
+          {filtered.length} of {allRows.length} candidates · {validatedCount} verified · {submittedCount} submitted
+        </span>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-auto rounded-xl border border-slate-100" style={{ maxHeight: 'calc(100vh - 460px)' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}><tr style={{ background: '#1e293b' }}>
+            <TH sortKey="full_name"        sortState={sort} onClick={()=>sort.toggle('full_name')}>Candidate</TH>
+            <TH sortKey="recruiter_name"   sortState={sort} onClick={()=>sort.toggle('recruiter_name')}>Recruiter</TH>
+            <TH sortKey="dl_name"          sortState={sort} onClick={()=>sort.toggle('dl_name')}>Pod (DL)</TH>
+            <TH sortKey="bh_name"          sortState={sort} onClick={()=>sort.toggle('bh_name')}>BH</TH>
+            <TH sortKey="job_client"       sortState={sort} onClick={()=>sort.toggle('job_client')}>Client</TH>
+            <TH sortKey="job_title"        sortState={sort} onClick={()=>sort.toggle('job_title')}>Role</TH>
+            <TH sortKey="status"           sortState={sort} onClick={()=>sort.toggle('status')}>Status</TH>
+            <TH sortKey="current_stage"    sortState={sort} onClick={()=>sort.toggle('current_stage')}>Stage</TH>
+            <TH sortKey="overall_score_num" sortState={sort} onClick={()=>sort.toggle('overall_score_num')} center>Score</TH>
+            <TH center>Verified</TH>
+            <TH center>Submitted</TH>
+            <TH sortKey="sourcing_date_ts" sortState={sort} onClick={()=>sort.toggle('sourcing_date_ts')}>Sourced</TH>
+          </tr></thead>
+          <tbody>
+            {pageRows.length === 0 && (
+              <tr><td colSpan={12} className="text-center py-10 text-slate-400 text-sm">
+                {allRows.length === 0 ? 'No candidates in this period.' : 'No candidates match the current filters.'}
+              </td></tr>
+            )}
+            {pageRows.map((r, i) => {
+              const rb = i%2===0 ? '#fff' : '#fafafa';
+              return (
+                <tr key={r.key}>
+                  <TD bold>{r.full_name}</TD>
+                  <TD>{r.recruiter_name}</TD>
+                  <TD>{r.dl_name}</TD>
+                  <TD>{r.bh_name}</TD>
+                  <TD>{r.job_client}</TD>
+                  <TD>{r.job_title}</TD>
+                  <TD><span className="text-[11px] px-2 py-0.5 rounded-full font-semibold capitalize" style={{background:'#e0e7ff',color:'#3730a3'}}>{r.status.replace(/_/g,' ')}</span></TD>
+                  <TD><span className="text-[11px] text-slate-600 capitalize">{r.current_stage.replace(/_/g,' ')}</span></TD>
+                  <TD bg={r.overall_score_num >= 4 ? '#dcfce7' : r.overall_score_num >= 3 ? '#fef9c3' : r.overall_score_num >= 0 ? '#fee2e2' : rb} center bold={r.overall_score_num >= 0}>{r.overall_score}</TD>
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', textAlign:'center' }}>
+                    {r.dl_validated
+                      ? <CheckCircle size={14} className="inline" style={{color:'#059669'}} />
+                      : <span className="text-slate-300 text-xs">—</span>}
+                  </td>
+                  <td style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', textAlign:'center' }}>
+                    {r.submitted_to_client
+                      ? <CheckCircle size={14} className="inline" style={{color:'#1d4ed8'}} />
+                      : <span className="text-slate-300 text-xs">—</span>}
+                  </td>
+                  <TD>{r.sourcing_date}</TD>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination footer */}
+      {sorted.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 px-1">
+          <div className="flex items-center gap-2">
+            <span>Page size:</span>
+            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}
+              className="px-2 py-1 rounded-lg border border-slate-200 text-xs font-semibold">
+              {[25,50,100,200].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span className="ml-2 text-slate-400">
+              Showing {pageStart + 1}–{Math.min(pageStart + pageSize, sorted.length)} of {sorted.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pageSafe <= 1}
+              className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50">
+              <ChevronLeft size={14} />
+            </button>
+            <span className="px-3 font-bold tabular-nums text-slate-700">{pageSafe} / {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={pageSafe >= totalPages}
+              className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MAIN ──────────────────────────────────────────────────────────────────────
-type Tab = 'today' | 'client' | 'recruiters' | 'demands' | 'activity';
+type Tab = 'today' | 'client' | 'recruiters' | 'demands' | 'candidates' | 'activity';
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'today',      label: "Today's Focus",       icon: <Target    size={14} /> },
   { id: 'client',     label: 'By Client (BH-wise)',  icon: <Building2 size={14} /> },
   { id: 'recruiters', label: 'Recruiter Rankings',  icon: <Trophy    size={14} /> },
   { id: 'demands',    label: 'Demand Health',        icon: <TrendingUp size={14} /> },
+  { id: 'candidates', label: 'Candidates',           icon: <UserCheck size={14} /> },
   { id: 'activity',   label: 'User Activity',        icon: <Activity  size={14} /> },
 ];
 
@@ -1029,6 +1300,7 @@ export default function Leaderboard() {
                 {tab === 'client'     && <ClientTab     data={data} />}
                 {tab === 'recruiters' && <RecruiterTab  data={data} range={range} activities={activities} />}
                 {tab === 'demands'    && <DemandTab     data={data} />}
+                {tab === 'candidates' && <CandidatesTab data={data} range={range} />}
                 {tab === 'activity'   && <ActivityTab   activities={activities} />}
               </div>
             </div>
