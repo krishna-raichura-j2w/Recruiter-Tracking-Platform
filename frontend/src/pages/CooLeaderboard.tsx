@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { RefreshCw, Search, X, Calendar } from 'lucide-react';
+import { RefreshCw, Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
 
@@ -42,25 +42,36 @@ function pal(key: string) {
   return COL_PALETTE[key] ?? { hdr: '#475569', cellTotal: '#F8FAFC', cellToday: '#F1F5F9' };
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// ── Sort helpers ──────────────────────────────────────────────────────────────
+
+type SortDir = 'desc' | 'asc';
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ChevronsUpDown size={9} className="opacity-40 flex-shrink-0" />;
+  return dir === 'desc'
+    ? <ChevronDown size={9} className="flex-shrink-0" />
+    : <ChevronUp   size={9} className="flex-shrink-0" />;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CooLeaderboard() {
-  const [data, setData]             = useState<ApiResponse | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [search, setSearch]         = useState('');
-  const [compareDate, setCompareDate] = useState('');   // empty = show Total
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [data, setData]               = useState<ApiResponse | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [search, setSearch]           = useState('');
+  const [compareDate, setCompareDate] = useState('');
+  const [pickerOpen, setPickerOpen]   = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [sortKey, setSortKey]         = useState('');   // e.g. "bh" | "am" | "client" | "submission.left" | "submission.today"
+  const [sortDir, setSortDir]         = useState<SortDir>('desc');
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = (cmpDate = compareDate) => {
@@ -79,10 +90,7 @@ export default function CooLeaderboard() {
 
   useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When picker opens, focus the hidden date input immediately
-  useEffect(() => {
-    if (pickerOpen) dateInputRef.current?.showPicker?.();
-  }, [pickerOpen]);
+  useEffect(() => { if (pickerOpen) dateInputRef.current?.showPicker?.(); }, [pickerOpen]);
 
   const handleDatePick = (val: string) => {
     setPickerOpen(false);
@@ -91,21 +99,51 @@ export default function CooLeaderboard() {
     fetchData(val);
   };
 
-  const clearCompare = () => {
-    setCompareDate('');
-    fetchData('');
+  const clearCompare = () => { setCompareDate(''); fetchData(''); };
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  const rowValue = (row: LeaderboardRow, key: string): string | number => {
+    if (key === 'bh')     return row.bh_name;
+    if (key === 'am')     return row.am_name;
+    if (key === 'client') return row.client_name;
+    const [colKey, side] = key.split('.');
+    const c = row.cols[colKey];
+    if (side === 'today') return c?.today   ?? 0;
+    if (side === 'left')  return compareDate ? (c?.compare ?? 0) : (c?.total ?? 0);
+    return 0;
   };
 
   const filteredRows = useMemo(() => {
     if (!data) return [];
-    if (!search.trim()) return data.rows;
-    const q = search.toLowerCase();
-    return data.rows.filter(r =>
-      r.bh_name.toLowerCase().includes(q) ||
-      r.am_name.toLowerCase().includes(q) ||
-      r.client_name.toLowerCase().includes(q)
-    );
-  }, [data, search]);
+    let rows = data.rows;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      rows = rows.filter(r =>
+        r.bh_name.toLowerCase().includes(q) ||
+        r.am_name.toLowerCase().includes(q) ||
+        r.client_name.toLowerCase().includes(q)
+      );
+    }
+    if (sortKey) {
+      rows = [...rows].sort((a, b) => {
+        const av = rowValue(a, sortKey);
+        const bv = rowValue(b, sortKey);
+        const cmp = typeof av === 'string'
+          ? av.localeCompare(bv as string)
+          : (av as number) - (bv as number);
+        return sortDir === 'desc' ? -cmp : cmp;
+      });
+    }
+    return rows;
+  }, [data, search, sortKey, sortDir, compareDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totals = useMemo(() => {
     const t: Record<string, ColCounts> = {};
@@ -120,11 +158,12 @@ export default function CooLeaderboard() {
     return t;
   }, [filteredRows, data]);
 
-  const cols = data?.columns ?? [];
+  const cols      = data?.columns ?? [];
   const totalCols = 3 + cols.length * 2;
-
-  // Sub-header label for the left (Total / compare) column
   const leftLabel = compareDate ? fmtDate(compareDate) : 'Total';
+
+  // Shared th style builder for sortable fixed columns
+  const fixedThCls = "text-left py-3 px-4 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none";
 
   return (
     <Layout title="COO Leaderboard" subtitle="Pipeline activity by Business Head & Client">
@@ -138,7 +177,6 @@ export default function CooLeaderboard() {
             </span>
           )}
         </div>
-
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -167,7 +205,7 @@ export default function CooLeaderboard() {
         </div>
       )}
 
-      {/* Hidden date input — triggered programmatically when Total is clicked */}
+      {/* Hidden date input */}
       <input
         ref={dateInputRef}
         type="date"
@@ -196,29 +234,45 @@ export default function CooLeaderboard() {
             ) : (
               <>
                 <thead>
-                  {/* Row 1: column group headers */}
+                  {/* Row 1: group headers */}
                   <tr>
+                    {/* Business Head */}
                     <th
                       rowSpan={2}
-                      className="text-left py-3 px-4 text-xs font-bold text-white border-r border-green-800 whitespace-nowrap"
+                      className={`${fixedThCls} border-r border-green-800`}
                       style={{ background: '#14532D', minWidth: 130 }}
+                      onClick={() => handleSort('bh')}
                     >
-                      Business Head
+                      <span className="flex items-center gap-1">
+                        Business Head
+                        <SortIcon active={sortKey === 'bh'} dir={sortDir} />
+                      </span>
                     </th>
+                    {/* Account Manager */}
                     <th
                       rowSpan={2}
-                      className="text-left py-3 px-4 text-xs font-bold text-white border-r border-green-700 whitespace-nowrap"
+                      className={`${fixedThCls} border-r border-green-700`}
                       style={{ background: '#166534', minWidth: 110 }}
+                      onClick={() => handleSort('am')}
                     >
-                      Account Manager
+                      <span className="flex items-center gap-1">
+                        Account Manager
+                        <SortIcon active={sortKey === 'am'} dir={sortDir} />
+                      </span>
                     </th>
+                    {/* Customer */}
                     <th
                       rowSpan={2}
-                      className="text-left py-3 px-4 text-xs font-bold text-white border-r border-green-700 whitespace-nowrap"
+                      className={`${fixedThCls} border-r border-green-700`}
                       style={{ background: '#15803D', minWidth: 120 }}
+                      onClick={() => handleSort('client')}
                     >
-                      Customer
+                      <span className="flex items-center gap-1">
+                        Customer
+                        <SortIcon active={sortKey === 'client'} dir={sortDir} />
+                      </span>
                     </th>
+                    {/* Pipeline stage group headers */}
                     {cols.map(col => (
                       <th
                         key={col.key}
@@ -231,23 +285,29 @@ export default function CooLeaderboard() {
                     ))}
                   </tr>
 
-                  {/* Row 2: Total (clickable) / Today sub-headers */}
+                  {/* Row 2: sub-headers (Total/date + Today) — all sortable */}
                   <tr>
                     {cols.map(col => {
-                      const p = pal(col.key);
+                      const p       = pal(col.key);
+                      const leftKey = `${col.key}.left`;
+                      const todayKey = `${col.key}.today`;
+                      const leftActive  = sortKey === leftKey;
+                      const todayActive = sortKey === todayKey;
                       return (
                         <>
-                          {/* Left: Total (clickable) or selected date */}
+                          {/* Left: Total (clickable for date) or selected date — also sortable */}
                           <th
-                            key={`${col.key}-left`}
-                            className="text-center py-1.5 px-3 text-[10px] border-r border-white/20 whitespace-nowrap"
+                            key={leftKey}
+                            className="text-center py-1.5 px-3 text-[10px] border-r border-white/20 whitespace-nowrap cursor-pointer select-none"
                             style={{
                               background: p.hdr,
-                              color: 'rgba(255,255,255,0.85)',
+                              color: leftActive ? '#fff' : 'rgba(255,255,255,0.82)',
                               borderTop: '1px solid rgba(255,255,255,0.25)',
-                              cursor: compareDate ? 'default' : 'pointer',
                             }}
-                            onClick={() => { if (!compareDate) setPickerOpen(true); }}
+                            onClick={() => {
+                              if (!compareDate) setPickerOpen(true);
+                              handleSort(leftKey);
+                            }}
                           >
                             {compareDate ? (
                               <span className="flex items-center justify-center gap-1 font-semibold">
@@ -259,25 +319,31 @@ export default function CooLeaderboard() {
                                 >
                                   <X size={8} />
                                 </button>
+                                <SortIcon active={leftActive} dir={sortDir} />
                               </span>
                             ) : (
                               <span className="flex items-center justify-center gap-1 font-semibold hover:text-white">
                                 Total
                                 <Calendar size={9} className="opacity-60" />
+                                <SortIcon active={leftActive} dir={sortDir} />
                               </span>
                             )}
                           </th>
-                          {/* Right: Today */}
+                          {/* Right: Today — sortable */}
                           <th
-                            key={`${col.key}-today`}
-                            className="text-center py-1.5 px-2 text-[10px] font-black border-r border-white/30 whitespace-nowrap"
+                            key={todayKey}
+                            className="text-center py-1.5 px-2 text-[10px] font-black border-r border-white/30 whitespace-nowrap cursor-pointer select-none"
                             style={{
                               background: p.hdr,
                               color: '#fff',
                               borderTop: '1px solid rgba(255,255,255,0.25)',
                             }}
+                            onClick={() => handleSort(todayKey)}
                           >
-                            Today
+                            <span className="flex items-center justify-center gap-1">
+                              Today
+                              <SortIcon active={todayActive} dir={sortDir} />
+                            </span>
                           </th>
                         </>
                       );
