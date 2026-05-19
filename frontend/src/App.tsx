@@ -6,6 +6,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import CooDashboard from './pages/CooDashboard';
+import CooUsers from './pages/CooUsers';
 import Jobs from './pages/Jobs';
 import Candidates from './pages/Candidates';
 import CandidateDetail from './pages/CandidateDetail';
@@ -31,6 +33,16 @@ function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function DashboardRouter() {
+  const { user } = useAuth();
+  return user?.role === 'coo' ? <CooDashboard /> : <Dashboard />;
+}
+
+function UsersRouter() {
+  const { user } = useAuth();
+  return user?.role === 'coo' ? <CooUsers /> : <Users />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -50,7 +62,7 @@ export default function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <DashboardRouter />
               </ProtectedRoute>
             }
           />
@@ -111,12 +123,12 @@ export default function App() {
             }
           />
 
-          {/* Delivery Lead + Admin */}
+          {/* Delivery Lead + Admin + COO */}
           <Route
             path="/users"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'delivery_lead']}>
-                <Users />
+              <ProtectedRoute allowedRoles={['admin', 'delivery_lead', 'coo']}>
+                <UsersRouter />
               </ProtectedRoute>
             }
           />

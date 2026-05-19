@@ -16,9 +16,10 @@ const roleColors: Record<string, string> = {
   kam:           'bg-purple-100 text-purple-700 border-purple-200',
   delivery_lead: 'bg-orange-100 text-orange-700 border-orange-200',
   recruiter:     'bg-blue-100 text-blue-700 border-blue-200',
+  coo:           'bg-sky-100 text-sky-700 border-sky-200',
 };
 const roleLabels: Record<string, string> = {
-  admin: 'Admin', kam: 'KAM', delivery_lead: 'Delivery Lead', recruiter: 'Recruiter',
+  admin: 'Admin', kam: 'KAM', delivery_lead: 'Delivery Lead', recruiter: 'Recruiter', coo: 'COO',
 };
 
 const notifTypeIcon: Record<string, string> = {

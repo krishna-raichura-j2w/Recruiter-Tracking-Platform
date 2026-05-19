@@ -98,6 +98,10 @@ def ensure_schema():
             "ALTER TABLE probing_data ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
             # Multi-DL support: JSON array of delivery lead IDs
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS delivery_lead_ids TEXT DEFAULT '[]'",
+            # Allow 'coo' value in users.role CHECK constraint (SAEnum native_enum=False)
+            "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
+            "ALTER TABLE users DROP CONSTRAINT IF EXISTS userrole",
+            "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'kam', 'recruiter', 'delivery_lead', 'coo'))",
         ]
         for sql in stmts:
             try:
@@ -121,6 +125,24 @@ def ensure_schema():
         except Exception as _e:
             db.rollback()
             print(f"[ensure_schema] pod_memberships backfill: {_e}")
+
+        # Seed COO user Priya Mohan (idempotent)
+        try:
+            from core.security import hash_password
+            db.execute(
+                text("""INSERT INTO users (name, email, password_hash, role, is_active, must_change_password)
+                        VALUES (:name, :email, :ph, 'coo', true, false)
+                        ON CONFLICT (email) DO NOTHING"""),
+                {
+                    "name": "Priya Mohan",
+                    "email": "priya.mohan@joulestowatts.com",
+                    "ph": hash_password("joules@123"),
+                },
+            )
+            db.commit()
+        except Exception as _e:
+            db.rollback()
+            print(f"[ensure_schema] coo seed: {_e}")
     finally:
         db.close()
 

@@ -116,6 +116,15 @@ const navConfig: Record<string, NavGroup[]> = {
       ],
     },
   ],
+  coo: [
+    { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
+    {
+      section: 'Organization',
+      items: [
+        { label: 'Users', path: '/users', icon: <UserCheck size={16} /> },
+      ],
+    },
+  ],
 };
 
 const roleLabels: Record<string, { title: string; sub: string; color: string }> = {
@@ -123,6 +132,7 @@ const roleLabels: Record<string, { title: string; sub: string; color: string }> 
   kam:           { title: 'KAM',           sub: 'Manages client demands',       color: '#A855F7' },
   delivery_lead: { title: 'Delivery Lead', sub: 'Manages recruitment pipeline', color: '#F97316' },
   recruiter:     { title: 'Recruiter',     sub: 'Sources & screens candidates', color: '#3B82F6' },
+  coo:           { title: 'COO',           sub: 'Executive oversight',          color: '#0EA5E9' },
 };
 
 function getInitials(name: string) {

@@ -42,6 +42,7 @@ class UserRole(str, enum.Enum):
     kam           = "kam"
     recruiter     = "recruiter"
     delivery_lead = "delivery_lead"
+    coo           = "coo"
 
 
 class RecruiterType(str, enum.Enum):

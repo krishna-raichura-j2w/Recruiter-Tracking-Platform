@@ -41,9 +41,9 @@ def list_users(
     skip:      int        = Query(0, ge=0),
     limit:     int        = Query(0, ge=0, le=500),
     db: Session           = Depends(get_db),
-    current_user          = Depends(require_roles("admin", "delivery_lead")),
+    current_user          = Depends(require_roles("admin", "delivery_lead", "coo")),
 ):
-    """admin: all users (paginated). delivery_lead: their team or ?available=true for unassigned."""
+    """admin/coo: all users (paginated). delivery_lead: their team or ?available=true for unassigned."""
     is_dl = current_user.role.value == "delivery_lead"
     if available and is_dl:
         items, total = service.list_available_team(
