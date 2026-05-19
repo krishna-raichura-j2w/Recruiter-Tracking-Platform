@@ -43,13 +43,14 @@ def list_clients(db: Session = Depends(get_db), _=Depends(get_current_user)):
 def create_client(
     body: ClientCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MANAGE_ROLES)),
+    _=Depends(get_current_user),
 ):
-    client = Client(**body.model_dump(), last_updated_by=current_user.name)
-    db.add(client)
-    db.commit()
-    db.refresh(client)
-    return _out(client)
+    # Client creation is intentionally disabled — the client list is fixed
+    # (sourced from of_clients). Existing entries can still be edited.
+    raise HTTPException(
+        status_code=403,
+        detail="Adding new clients is disabled. Please contact an administrator.",
+    )
 
 
 @router.patch("/{client_id}")

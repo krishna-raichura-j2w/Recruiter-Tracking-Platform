@@ -273,6 +273,10 @@ def run_migrations(db):
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_warned BOOLEAN DEFAULT FALSE")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_alerted BOOLEAN DEFAULT FALSE")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_job_id VARCHAR(100)")
+    # Ensure of_clients has a client_id column with UNIQUE so jobs.client_id can FK to it.
+    _run("ALTER TABLE of_clients ADD COLUMN IF NOT EXISTS client_id INTEGER")
+    _run("ALTER TABLE of_clients ADD CONSTRAINT of_clients_client_id_key UNIQUE (client_id)")
+    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES of_clients(client_id)")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_source VARCHAR(80)")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_type VARCHAR(50)")
     _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_exclusivity VARCHAR(50)")

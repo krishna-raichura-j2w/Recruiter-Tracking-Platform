@@ -216,8 +216,9 @@ class BusinessHead(Base):
 
 
 class Client(Base):
-    __tablename__ = "clients"
+    __tablename__ = "of_clients"
     id               = Column(Integer, primary_key=True, index=True)
+    client_id        = Column(Integer, unique=True, nullable=True)   # external/business client identifier; FK target for jobs.client_id
     name             = Column(String(120), unique=True, nullable=False)
     short_name       = Column(String(80))
     website_url      = Column(String(300))
@@ -231,6 +232,7 @@ class Client(Base):
 class Job(Base):
     __tablename__ = "jobs"
     id           = Column(Integer, primary_key=True, index=True)
+    client_id    = Column(Integer, ForeignKey("of_clients.client_id"), nullable=True)
     client_name   = Column(String(120), nullable=False)
     role_title    = Column(String(200), nullable=False)
     job_id             = Column(Integer, nullable=True)  # optional, UI-supplied numeric identifier
@@ -278,6 +280,7 @@ class Job(Base):
     delivery_lead    = relationship("User", foreign_keys=[delivery_lead_id])
     business_head    = relationship("BusinessHead")
     probing          = relationship("ProbingData", foreign_keys=[probing_id])
+    client           = relationship("Client", foreign_keys=[client_id])
 
 
 class ProbingData(Base):

@@ -40,8 +40,11 @@ def create_probing(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
+    payload = body.model_dump()
+    # job_id is intentionally never persisted — drop whatever the UI sent.
+    payload.pop("job_id", None)
     row = ProbingData(
-        **body.model_dump(),
+        **payload,
         created_by_id=current_user.id,
         email_id=current_user.email,
     )
@@ -74,6 +77,9 @@ def update_probing(
     if not row:
         raise HTTPException(status_code=404, detail="Probing record not found")
     for k, v in body.model_dump(exclude_unset=True).items():
+        # job_id is intentionally never persisted — skip it even if UI sends it.
+        if k == "job_id":
+            continue
         setattr(row, k, v)
     db.commit()
     db.refresh(row)

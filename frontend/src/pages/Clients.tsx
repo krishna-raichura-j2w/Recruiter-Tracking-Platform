@@ -134,13 +134,7 @@ export default function Clients() {
 
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-slate-500">{clients.length} client{clients.length !== 1 ? 's' : ''}</p>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
-          style={{ backgroundColor: '#3b82f6' }}
-        >
-          <Plus size={16} /> Add Client
-        </button>
+        {/* Client list is fixed (sourced from of_clients) — only editing is allowed. */}
       </div>
 
       {loading ? (

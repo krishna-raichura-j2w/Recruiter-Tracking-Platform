@@ -189,7 +189,7 @@ export default function Jobs() {
   const isKam          = user?.role === 'kam'          || user?.secondary_role === 'kam';
   const isDeliveryLead = user?.role === 'delivery_lead' || user?.secondary_role === 'delivery_lead';
   const isRecruiter    = user?.role === 'recruiter'     || user?.secondary_role === 'recruiter';
-  const canCreate      = isAdmin || isKam || isDeliveryLead;
+  const canCreate      = user?.role === 'kam';   // Only primary-role KAMs can create JDs (not secondary/dual).
 
   // Pagination state
   const [jobPage,    setJobPage]    = useState(1);

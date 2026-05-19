@@ -7,7 +7,7 @@ from features.jobs.schema import JobCreate, JobUpdate
 from features.jobs import service
 from features.allocation.service import get_min_load
 from features.notifications.service import push, push_to_role
-from infra.models import UserRole, JobStatus, NotifType, User, PodMembership
+from infra.models import UserRole, JobStatus, NotifType, User, PodMembership, Client
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -66,9 +66,13 @@ def get_job(
 def create_job(
     body: JobCreate,
     db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "kam", "delivery_lead")),
+    current_user = Depends(get_current_user),
 ):
-    """KAM/DL/Admin creates a JD → status = pending_review."""
+    """Only users whose PRIMARY role is KAM can create a JD → status = pending_review.
+    Dual-role users (e.g. DL with secondary_role=kam) are blocked. Admin and DL retain
+    view/edit/reassign rights through their respective endpoints."""
+    if current_user.role.value != "kam":
+        raise HTTPException(status_code=403, detail="Only KAMs can create a JD.")
     from datetime import datetime
     data = body.model_dump()
     kam_id = data.pop("kam_id", None)
@@ -94,6 +98,20 @@ def create_job(
     # Business Head is mandatory for all creators
     if not data.get("account_manager_id") and not data.get("business_head_id"):
         raise HTTPException(status_code=400, detail="A Business Head must be selected before creating a JD.")
+
+    # Auto-link jobs.client_id by matching client_name → of_clients.name (case-insensitive).
+    # The client must already exist in of_clients; new clients can no longer be created.
+    from sqlalchemy import func as _f
+    client_name = (data.get("client_name") or "").strip()
+    if not client_name:
+        raise HTTPException(status_code=400, detail="Client is required.")
+    matched_client = db.query(Client).filter(_f.lower(Client.name) == client_name.lower()).first()
+    if not matched_client:
+        raise HTTPException(status_code=400, detail=f"Client '{client_name}' is not in the client list. Pick an existing client.")
+    if matched_client.client_id is None:
+        raise HTTPException(status_code=400, detail=f"Client '{matched_client.name}' has no client_id set. Ask an admin to assign one before creating jobs for this client.")
+    data["client_id"] = matched_client.client_id
+    data["client_name"] = matched_client.name   # snap to the canonical casing
 
     # Job ID must be unique across all jobs
     if data.get("client_job_id") and service.is_job_id_taken(db, data["client_job_id"]):
