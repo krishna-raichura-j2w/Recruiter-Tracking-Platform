@@ -55,9 +55,25 @@ STEP_IDS = tuple(STEP_TO_COL.keys())
 
 # ── Excel BH + AM mapping ─────────────────────────────────────────────────────
 
-EXCEL_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "Mehr.xlsx")
-)
+def _resolve_excel_path() -> str:
+    """Locate Mehr.xlsx across local dev layout and deployed container layouts.
+    Allows an explicit override via COO_EXCEL_PATH for any other deploy shape."""
+    env_override = os.environ.get("COO_EXCEL_PATH")
+    if env_override:
+        return env_override
+    base = os.path.dirname(__file__)
+    candidates = [
+        os.path.normpath(os.path.join(base, "..", "..", "..", "Mehr.xlsx")),  # local repo: backend/features/coo → repo root
+        os.path.normpath(os.path.join(base, "..", "..", "Mehr.xlsx")),        # deployed: file copied next to backend root (/app/Mehr.xlsx)
+        "/Mehr.xlsx",                                                          # fallback: container root
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+
+EXCEL_PATH = _resolve_excel_path()
 
 
 @lru_cache(maxsize=1)

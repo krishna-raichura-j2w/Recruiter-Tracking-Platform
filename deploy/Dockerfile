@@ -52,6 +52,9 @@ ARG BUILD_NONCE=0
 # Copy backend source
 COPY backend/ ./
 
+# Copy COO leaderboard BH/AM mapping spreadsheet (lives at repo root)
+COPY Mehr.xlsx ./
+
 # Copy built frontend from stage 1
 COPY --from=frontend-build /fe/dist /app/frontend_dist
 
