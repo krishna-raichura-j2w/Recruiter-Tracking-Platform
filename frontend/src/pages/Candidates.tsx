@@ -18,9 +18,11 @@ const EDUCATION_OPTIONS = [
 const EXP_RANGES = ['0-1 yr', '1-3 yrs', '3-5 yrs', '5-8 yrs', '8-12 yrs', '12-15 yrs', '15+ yrs'];
 const CITIES = ['Bangalore', 'Hyderabad', 'Chennai', 'Mumbai', 'Delhi', 'Pune', 'Noida', 'Other'];
 const LEAD_SOURCES = ['Naukri', 'LinkedIn', 'Referral', 'Direct', 'Other'];
+const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
 
 interface CandidateForm {
   job_id: number;
+  // Legacy
   full_name: string;
   mobile: string;
   email: string;
@@ -34,6 +36,18 @@ interface CandidateForm {
   immediate_joiner: string;
   lead_source: string;
   sourcing_date: string;
+  // New compulsory fields
+  first_name: string;
+  last_name: string;
+  contact_phone: string;
+  gender: string;
+  location_id: number | string;
+  designation: string;
+  employer: string;
+  min_experience: number | string;
+  max_experience: number | string;
+  current_ctc: number | string;
+  expected_ctc: number | string;
 }
 
 type ExtractTab = 'text' | 'image' | 'pdf';
@@ -148,13 +162,27 @@ export default function Candidates() {
 
   const onSubmit = async (data: CandidateForm) => {
     setApiError('');
+    if (!resumeKey) {
+      setApiError('Resume is required. Please upload a PDF or Word document.');
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.post('/candidates', { ...data, job_id: Number(data.job_id), resume_data: resumeKey });
+      await api.post('/candidates', {
+        ...data,
+        job_id:           Number(data.job_id),
+        location_id:      Number(data.location_id),
+        min_experience:   Number(data.min_experience),
+        max_experience:   Number(data.max_experience),
+        current_ctc:      Number(data.current_ctc),
+        expected_ctc:     Number(data.expected_ctc),
+        resume:           resumeKey,
+        resume_data:      resumeKey, // legacy mirror
+      });
       closeAddModal();
       fetchCandidates();
     } catch {
-      setApiError('Failed to add candidate.');
+      setApiError('Failed to add candidate. Please check all required fields.');
     } finally {
       setSubmitting(false);
     }
@@ -196,14 +224,34 @@ export default function Candidates() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const p = res.data.profile;
-      if (p.name) setValue('full_name', p.name);
-      if (p.mobile_number) setValue('mobile', p.mobile_number);
+      if (p.name) {
+        setValue('full_name', p.name);
+        const parts = String(p.name).trim().split(/\s+/);
+        if (parts.length) setValue('first_name', parts[0]);
+        if (parts.length > 1) setValue('last_name', parts.slice(1).join(' '));
+      }
+      if (p.mobile_number) {
+        setValue('mobile', p.mobile_number);
+        setValue('contact_phone', p.mobile_number);
+      }
       if (p.email) setValue('email', p.email);
       if (p.linkedin_url && p.linkedin_url !== 'N/A') setValue('linkedin_url', p.linkedin_url);
       if (p.education) setValue('education', p.education);
       if (p.current_location) setValue('city', p.current_location);
-      if (p.experience_range) setValue('exp_range', p.experience_range);
-      if (p.current_company) setValue('current_company', p.current_company);
+      if (p.experience_range) {
+        setValue('exp_range', p.experience_range);
+        // Try to parse "3-5 yrs" → min/max
+        const m = String(p.experience_range).match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+        if (m) {
+          setValue('min_experience', parseFloat(m[1]));
+          setValue('max_experience', parseFloat(m[2]));
+        }
+      }
+      if (p.current_company) {
+        setValue('current_company', p.current_company);
+        setValue('employer', p.current_company);
+      }
+      if (p.designation) setValue('designation', p.designation);
       if (p.relevant_skills) setValue('skills', p.relevant_skills);
       if (p.immediate_joinee) setValue('immediate_joiner', p.immediate_joinee);
       if (p.sourcing_date) setValue('sourcing_date', p.sourcing_date);
@@ -743,13 +791,83 @@ export default function Candidates() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile</label>
-                  <input type="tel" placeholder="+91 9XXXXXXXXX" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('mobile')} />
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">First Name *</label>
+                  <input type="text" placeholder="Priya" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('first_name', { required: true })} />
+                  {errors.first_name && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email</label>
-                  <input type="email" placeholder="priya@example.com" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('email')} />
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Last Name *</label>
+                  <input type="text" placeholder="Sharma" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('last_name', { required: true })} />
+                  {errors.last_name && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email *</label>
+                  <input type="email" placeholder="priya@example.com" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('email', { required: true })} />
+                  {errors.email && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Contact Phone *</label>
+                  <input type="tel" placeholder="+91 9XXXXXXXXX" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('contact_phone', { required: true })} />
+                  {errors.contact_phone && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Gender *</label>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('gender', { required: true })}>
+                    <option value="">Select</option>
+                    {GENDER_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                  {errors.gender && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location ID *</label>
+                  <input type="number" placeholder="1" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('location_id', { required: true, valueAsNumber: true })} />
+                  {errors.location_id && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation *</label>
+                  <input type="text" placeholder="Software Engineer" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('designation', { required: true })} />
+                  {errors.designation && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Employer *</label>
+                  <input type="text" placeholder="TCS, Infosys…" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('employer', { required: true })} />
+                  {errors.employer && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Min Experience (yrs) *</label>
+                  <input type="number" step="0.1" placeholder="3" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('min_experience', { required: true, valueAsNumber: true })} />
+                  {errors.min_experience && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Max Experience (yrs) *</label>
+                  <input type="number" step="0.1" placeholder="5" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('max_experience', { required: true, valueAsNumber: true })} />
+                  {errors.max_experience && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Current CTC (LPA) *</label>
+                  <input type="number" step="0.1" placeholder="12.5" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('current_ctc', { required: true, valueAsNumber: true })} />
+                  {errors.current_ctc && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Expected CTC (LPA) *</label>
+                  <input type="number" step="0.1" placeholder="18" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('expected_ctc', { required: true, valueAsNumber: true })} />
+                  {errors.expected_ctc && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile</label>
+                  <input type="tel" placeholder="+91 9XXXXXXXXX" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('mobile')} />
                 </div>
 
                 <div>
@@ -827,7 +945,7 @@ export default function Candidates() {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF / Word)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Resume (PDF / Word) *</label>
                   <input
                     type="file"
                     ref={resumeInputRef}

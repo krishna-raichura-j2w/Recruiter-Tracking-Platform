@@ -113,6 +113,8 @@ def ensure_schema():
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS designation      VARCHAR(200)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS employer         VARCHAR(200)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS total_experience DOUBLE PRECISION",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS min_experience   DOUBLE PRECISION",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS max_experience   DOUBLE PRECISION",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS current_ctc      DOUBLE PRECISION",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS expected_ctc     DOUBLE PRECISION",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume           TEXT",

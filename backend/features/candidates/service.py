@@ -114,6 +114,28 @@ def get_candidate(db: Session, candidate_id: int) -> Candidate | None:
 def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None) -> Candidate:
     if sourced_by_id:
         data["sourced_by_id"] = sourced_by_id
+
+    # Derive legacy / convenience fields from the new required ones so existing
+    # downstream pages (validation queue, submissions, pipeline, etc.) keep
+    # working without code changes.
+    fn = (data.get("first_name") or "").strip()
+    ln = (data.get("last_name") or "").strip()
+    if not data.get("full_name"):
+        data["full_name"] = (fn + " " + ln).strip() or "Unknown"
+    if not data.get("mobile") and data.get("contact_phone"):
+        data["mobile"] = data["contact_phone"]
+    if not data.get("current_company") and data.get("employer"):
+        data["current_company"] = data["employer"]
+    if not data.get("resume_data") and data.get("resume"):
+        data["resume_data"] = data["resume"]
+    # total_experience = mid-point of the min/max range when not explicitly set
+    if data.get("total_experience") is None:
+        mn, mx = data.get("min_experience"), data.get("max_experience")
+        if mn is not None and mx is not None:
+            data["total_experience"] = (float(mn) + float(mx)) / 2.0
+    if not data.get("exp_range") and data.get("min_experience") is not None and data.get("max_experience") is not None:
+        data["exp_range"] = f"{data['min_experience']}-{data['max_experience']} yrs"
+
     candidate = Candidate(**data, status=CandidateStatus.sourced)
     db.add(candidate)
     db.commit()

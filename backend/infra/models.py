@@ -353,6 +353,8 @@ class Candidate(Base):
     designation      = Column(String(200), nullable=True)
     employer         = Column(String(200), nullable=True)
     total_experience = Column(Float, nullable=True)
+    min_experience   = Column(Float, nullable=True)
+    max_experience   = Column(Float, nullable=True)
     current_ctc      = Column(Float, nullable=True)
     expected_ctc     = Column(Float, nullable=True)
     resume           = Column(Text, nullable=True)
