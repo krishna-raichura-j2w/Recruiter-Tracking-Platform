@@ -2,7 +2,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from infra.models import (
-    Validation, Candidate, CandidateStatus, ValidationStatus, Notification, NotifType, UserRole, Job
+    Validation, Candidate, CandidateStatus, ValidationStatus, Notification, NotifType, UserRole, Job,
+    ConsultantMail, now_utc,
 )
 from features.notifications.service import push, push_to_role
 
@@ -120,6 +121,11 @@ def validate_candidate(db: Session, data: dict, validator_id: int, validator_nam
     if candidate:
         if vstatus == ValidationStatus.validated:
             candidate.status = CandidateStatus.validated
+            # Mark consultant mail as DL-verified if a mail record exists
+            mail = db.query(ConsultantMail).filter(ConsultantMail.candidate_id == candidate_id).first()
+            if mail and not mail.dl_verified:
+                mail.dl_verified = True
+                mail.dl_verified_at = now_utc()
             job = candidate.job
             job_label = f"{job.role_title} ({job.client_name})" if job else ""
             # Notify assigned caller
