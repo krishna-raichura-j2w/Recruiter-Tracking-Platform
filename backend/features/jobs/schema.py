@@ -23,6 +23,7 @@ class JobCreate(BaseModel):
     max_experience: int | None = None
     salary_range: str | None = None
     delivery_lead_id: int | None = None
+    delivery_lead_ids: list[int] = []
     business_head_id: int | None = None
     kam_id: int | None = None
     deadline: str | None = None
@@ -53,6 +54,7 @@ class JobUpdate(BaseModel):
     business_head_id: int | None = None
     deadline: str | None = None
     delivery_lead_id: int | None = None
+    delivery_lead_ids: list[int] | None = None
 
 
 class JobOut(BaseModel):

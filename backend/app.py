@@ -96,6 +96,8 @@ def ensure_schema():
             # Creator email snapshot
             "ALTER TABLE jobs         ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
             "ALTER TABLE probing_data ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
+            # Multi-DL support: JSON array of delivery lead IDs
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS delivery_lead_ids TEXT DEFAULT '[]'",
         ]
         for sql in stmts:
             try:

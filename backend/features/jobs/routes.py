@@ -48,13 +48,16 @@ def get_job(
     job = service.get_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    import json as _json
     is_kam = user_has_role(current_user, "kam")
     is_dl  = user_has_role(current_user, "delivery_lead")
     if is_kam and is_dl:
-        if job.created_by_id != current_user.id and job.delivery_lead_id != current_user.id:
+        dl_ids = service._dl_ids_for(job)
+        if job.created_by_id != current_user.id and current_user.id not in dl_ids:
             raise HTTPException(status_code=404, detail="Job not found")
     elif is_dl:
-        if job.delivery_lead_id != current_user.id:
+        dl_ids = service._dl_ids_for(job)
+        if current_user.id not in dl_ids:
             raise HTTPException(status_code=404, detail="Job not found")
     elif is_kam:
         if job.created_by_id != current_user.id:
@@ -74,26 +77,40 @@ def create_job(
     if current_user.role.value != "kam":
         raise HTTPException(status_code=403, detail="Only KAMs can create a JD.")
     from datetime import datetime
+    import json as _json
     data = body.model_dump()
     kam_id = data.pop("kam_id", None)
+    # Merge delivery_lead_ids with legacy delivery_lead_id
+    dl_ids: list[int] = data.pop("delivery_lead_ids", []) or []
+    single_dl_id: int | None = data.get("delivery_lead_id")
+    if single_dl_id and single_dl_id not in dl_ids:
+        dl_ids.insert(0, single_dl_id)
+
     is_kam = user_has_role(current_user, "kam")
     is_dl  = user_has_role(current_user, "delivery_lead")
 
     if is_kam and is_dl:
         # Dual-role: they're both KAM and DL — own the job as both
-        data["delivery_lead_id"] = data.get("delivery_lead_id") or current_user.id
+        if current_user.id not in dl_ids:
+            dl_ids.insert(0, current_user.id)
+        data["delivery_lead_id"] = dl_ids[0]
         created_by = current_user.id
     elif is_dl:
         # DL only: must select a KAM as job owner; can optionally assign to another DL
         if not kam_id:
             raise HTTPException(status_code=400, detail="A KAM must be selected when a Delivery Lead creates a JD.")
-        data["delivery_lead_id"] = data.get("delivery_lead_id") or current_user.id
+        if not dl_ids:
+            dl_ids = [current_user.id]
+        data["delivery_lead_id"] = dl_ids[0]
         created_by = kam_id
     else:
-        # KAM only: DL is mandatory
-        if not data.get("delivery_lead_id"):
-            raise HTTPException(status_code=400, detail="A Delivery Lead must be selected before creating a JD.")
+        # KAM only: at least one DL is mandatory
+        if not dl_ids:
+            raise HTTPException(status_code=400, detail="At least one Delivery Lead must be selected before creating a JD.")
+        data["delivery_lead_id"] = dl_ids[0]
         created_by = current_user.id
+
+    data["delivery_lead_ids"] = _json.dumps(dl_ids)
 
     # Business Head is mandatory for all creators
     if not data.get("account_manager_id") and not data.get("business_head_id"):
@@ -126,11 +143,15 @@ def create_job(
             data["deadline"] = None
     job = service.create_job(db, data, created_by)
 
-    # Notify DL (if someone else created the job and DL is assigned)
-    if job.delivery_lead_id and job.delivery_lead_id != current_user.id:
-        push(db, job.delivery_lead_id,
-            f"New JD uploaded: {job.role_title} for {job.client_name} — pending your review.",
-            NotifType.jd_created, entity_id=job.id)
+    # Notify all assigned DLs (except the creator)
+    notified_dl_ids = _json.loads(job.delivery_lead_ids or '[]') if isinstance(job.delivery_lead_ids, str) else []
+    if not notified_dl_ids and job.delivery_lead_id:
+        notified_dl_ids = [job.delivery_lead_id]
+    for dl_id in notified_dl_ids:
+        if dl_id != current_user.id:
+            push(db, dl_id,
+                f"New JD uploaded: {job.role_title} for {job.client_name} — pending your review.",
+                NotifType.jd_created, entity_id=job.id)
     db.commit()
 
     from features.activity.service import log as log_activity
@@ -297,6 +318,7 @@ def update_job(
     db: Session = Depends(get_db),
     _=Depends(require_roles("admin", "kam", "delivery_lead")),
 ):
+    import json as _json
     from datetime import datetime
     data = body.model_dump(exclude_none=True)
     if "business_head_id" in data:
@@ -306,6 +328,12 @@ def update_job(
             data["deadline"] = datetime.fromisoformat(data["deadline"].replace("Z", "+00:00"))
         except ValueError:
             data.pop("deadline")
+    # Handle multi-DL: serialize delivery_lead_ids and sync primary delivery_lead_id
+    if "delivery_lead_ids" in data:
+        dl_ids = data["delivery_lead_ids"] or []
+        data["delivery_lead_ids"] = _json.dumps(dl_ids)
+        if dl_ids:
+            data["delivery_lead_id"] = dl_ids[0]
     # Ensure updated job ID stays unique
     if "client_job_id" in data and data["client_job_id"] and service.is_job_id_taken(db, data["client_job_id"], exclude_job_id=job_id):
         raise HTTPException(status_code=400, detail=f"Job ID '{data['client_job_id']}' is already in use.")

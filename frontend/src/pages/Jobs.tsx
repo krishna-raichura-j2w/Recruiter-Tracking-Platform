@@ -164,7 +164,7 @@ export default function Jobs() {
 
   // Delivery lead allocation (KAM only) + KAM selection (DL only)
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
-  const [selectedDeliveryLeadId, setSelectedDeliveryLeadId] = useState<number | ''>('');
+  const [selectedDeliveryLeadIds, setSelectedDeliveryLeadIds] = useState<number[]>([]);
   const [kams, setKams]                             = useState<{ id: number; name: string }[]>([]);
   const [selectedKamId, setSelectedKamId]           = useState<number | ''>('');
   const [selectedAssignDlId, setSelectedAssignDlId] = useState<number | ''>(''); // DL assigning JD to another DL
@@ -343,8 +343,11 @@ export default function Jobs() {
       max_experience:job.max_experience != null ? String(job.max_experience) : '',
       salary_range:  job.salary_range  ?? '',
     });
-    // Pre-select current delivery lead so admin can change it
-    setSelectedDeliveryLeadId(job.delivery_lead_id ?? '');
+    // Pre-select current delivery leads so admin can change them
+    setSelectedDeliveryLeadIds(
+      job.delivery_lead_ids?.length ? job.delivery_lead_ids
+        : job.delivery_lead_id ? [job.delivery_lead_id] : []
+    );
     if (isAdmin) {
       api.get<{ id: number; name: string; clients: string[] }[]>('/users/delivery-leads')
         .then(r => setDeliveryLeads(r.data))
@@ -362,7 +365,7 @@ export default function Jobs() {
     setShowModal(true);
     setProbingForm(emptyProbing());
     setProbingId(null);
-    setSelectedDeliveryLeadId('');
+    setSelectedDeliveryLeadIds([]);
     setSelectedKamId('');
     setSelectedAssignDlId('');
     if (isKam || isAdmin || isDeliveryLead) {
@@ -388,7 +391,7 @@ export default function Jobs() {
     setShowModal(false); setEditJob(null); reset({ headcount: 1 }); setApiError('');
     setExtractTab('text'); setExtractText(''); setExtractFile(null);
     setExtractError(''); setExtracted(false); setParsedResult(null); setRawJdText(null);
-    setSelectedDeliveryLeadId(''); setSelectedKamId(''); setSelectedBhId(''); setSelectedAssignDlId('');
+    setSelectedDeliveryLeadIds([]); setSelectedKamId(''); setSelectedBhId(''); setSelectedAssignDlId('');
     setProbingForm(emptyProbing());
     setProbingId(null);
   };
@@ -413,12 +416,12 @@ export default function Jobs() {
     max_experience:   data.max_experience ? Number(data.max_experience) : null,
     jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
     jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
-    // Admin editing: can change DL. Creating: KAM/Admin pick DL; DL optionally delegates.
-    delivery_lead_id: editJob
-      ? (isAdmin && selectedDeliveryLeadId ? Number(selectedDeliveryLeadId) : undefined)
-      : ((isKam || isAdmin) && selectedDeliveryLeadId
-          ? Number(selectedDeliveryLeadId)
-          : (isDeliveryLead && selectedAssignDlId ? Number(selectedAssignDlId) : undefined)),
+    // Admin editing: can change DLs. Creating: KAM/Admin pick DLs; DL optionally delegates.
+    delivery_lead_ids: editJob
+      ? (isAdmin ? selectedDeliveryLeadIds : undefined)
+      : ((isKam || isAdmin) && !(isKam && isDeliveryLead)
+          ? selectedDeliveryLeadIds
+          : (isDeliveryLead && selectedAssignDlId ? [Number(selectedAssignDlId)] : undefined)),
     kam_id: !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
     business_head_id: !editJob && selectedBhId ? Number(selectedBhId) : undefined,
     deadline:         data.deadline ? new Date(data.deadline).toISOString() : null,
@@ -426,9 +429,9 @@ export default function Jobs() {
 
   const onSubmit = async (data: JobForm) => {
     setApiError('');
-    // DL is mandatory for KAM-only users
-    if (!editJob && isKam && !isDeliveryLead && !selectedDeliveryLeadId) {
-      setApiError('Please select a Delivery Lead before creating a JD.');
+    // At least one DL is mandatory for KAM-only users
+    if (!editJob && isKam && !isDeliveryLead && !selectedDeliveryLeadIds.length) {
+      setApiError('Please select at least one Delivery Lead before creating a JD.');
       return;
     }
     // KAM is mandatory for DL-only users
@@ -940,45 +943,91 @@ export default function Jobs() {
               {/* ── Delivery Lead — admin editing an existing JD ── */}
               {editJob && isAdmin && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                  <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
                     <UserCheck size={13} className="text-slate-400" />
-                    Delivery Lead
+                    Delivery Lead(s)
+                    {selectedDeliveryLeadIds.length > 0 && (
+                      <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                        {selectedDeliveryLeadIds.length} selected
+                      </span>
+                    )}
                   </label>
                   {deliveryLeads.length === 0 ? (
                     <p className="text-xs text-slate-400 italic">Loading…</p>
                   ) : (
-                    <select
-                      value={selectedDeliveryLeadId}
-                      onChange={e => setSelectedDeliveryLeadId(e.target.value ? Number(e.target.value) : '')}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-indigo-400 bg-white"
-                    >
-                      <option value="">— No DL assigned —</option>
-                      {deliveryLeads.map(dl => (
-                        <option key={dl.id} value={dl.id}>{dl.name}</option>
-                      ))}
-                    </select>
+                    <div className="grid grid-cols-2 gap-2">
+                      {deliveryLeads.map(dl => {
+                        const selected = selectedDeliveryLeadIds.includes(dl.id);
+                        return (
+                          <button
+                            key={dl.id}
+                            type="button"
+                            onClick={() => setSelectedDeliveryLeadIds(
+                              selected
+                                ? selectedDeliveryLeadIds.filter(id => id !== dl.id)
+                                : [...selectedDeliveryLeadIds, dl.id]
+                            )}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                              selected
+                                ? 'border-indigo-400 bg-indigo-50'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
+                              selected ? 'bg-indigo-500' : 'bg-slate-400'
+                            }`}>
+                              {dl.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                {dl.name}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-0.5 truncate">
+                                {dl.clients.length > 0 ? dl.clients.join(' · ') : 'No active clients'}
+                              </p>
+                            </div>
+                            {selected && (
+                              <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* ── Delivery Lead — KAM-only users on create ── */}
+              {/* ── Delivery Lead(s) — KAM-only or Admin users on create ── */}
               {!editJob && (isKam || isAdmin) && !(isKam && isDeliveryLead) && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
                     <UserCheck size={13} className="text-slate-400" />
-                    Assign Delivery Lead
+                    Assign Delivery Lead(s) *
+                    {selectedDeliveryLeadIds.length > 0 && (
+                      <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                        {selectedDeliveryLeadIds.length} selected
+                      </span>
+                    )}
                   </label>
                   {deliveryLeads.length === 0 ? (
                     <p className="text-xs text-slate-400 italic">No delivery leads available.</p>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
                       {deliveryLeads.map(dl => {
-                        const selected = selectedDeliveryLeadId === dl.id;
+                        const selected = selectedDeliveryLeadIds.includes(dl.id);
                         return (
                           <button
                             key={dl.id}
                             type="button"
-                            onClick={() => setSelectedDeliveryLeadId(selected ? '' : dl.id)}
+                            onClick={() => setSelectedDeliveryLeadIds(
+                              selected
+                                ? selectedDeliveryLeadIds.filter(id => id !== dl.id)
+                                : [...selectedDeliveryLeadIds, dl.id]
+                            )}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
                               selected
                                 ? 'border-indigo-400 bg-indigo-50'
@@ -1017,9 +1066,9 @@ export default function Jobs() {
                       })}
                     </div>
                   )}
-                  {!selectedDeliveryLeadId && (
+                  {!selectedDeliveryLeadIds.length && (
                     <p className="text-xs text-red-500 mt-1.5 font-medium">
-                      ⚠ Delivery Lead is required — please select one above.
+                      ⚠ At least one Delivery Lead is required — please select above.
                     </p>
                   )}
                 </div>
@@ -1637,11 +1686,14 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                 <Users size={10} /> No recruiters assigned yet
               </span>
             )}
-            {job.delivery_lead_name && (
-              <span className="text-[10px] font-semibold text-indigo-600 flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50">
-                <UserCheck size={9} /> DL: {job.delivery_lead_name}
+            {(job.delivery_lead_names?.length
+              ? job.delivery_lead_names
+              : job.delivery_lead_name ? [job.delivery_lead_name] : []
+            ).map((name, i) => (
+              <span key={i} className="text-[10px] font-semibold text-indigo-600 flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50">
+                <UserCheck size={9} /> DL: {name}
               </span>
-            )}
+            ))}
           </div>
 
           {/* Right: Stats */}

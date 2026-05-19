@@ -15,7 +15,19 @@ def _job_dict(db: Session, job: Job) -> dict:
     d["business_head_id"]      = d.pop("account_manager_id", None)
     d["sourcer_ids"] = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
     d["caller_ids"]  = json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
+
     from infra.models import User as UserModel
+    # Multi-DL: deserialize delivery_lead_ids; back-fill from delivery_lead_id for old rows
+    dl_ids = json.loads(job.delivery_lead_ids or '[]') if isinstance(job.delivery_lead_ids, str) else (job.delivery_lead_ids or [])
+    if not dl_ids and job.delivery_lead_id:
+        dl_ids = [job.delivery_lead_id]
+    d["delivery_lead_ids"] = dl_ids
+    dl_names = []
+    for did in dl_ids:
+        u = db.query(UserModel).filter(UserModel.id == did).first()
+        if u:
+            dl_names.append(u.name)
+    d["delivery_lead_names"] = dl_names
     sourcer_names = []
     for sid in d["sourcer_ids"]:
         u = db.query(UserModel).filter(UserModel.id == sid).first()
@@ -47,6 +59,14 @@ def _job_dict(db: Session, job: Job) -> dict:
     return d
 
 
+def _dl_ids_for(job) -> list:
+    """Return the full list of DL IDs for a job (multi-DL + legacy single-DL)."""
+    ids = json.loads(job.delivery_lead_ids or '[]') if isinstance(job.delivery_lead_ids, str) else (job.delivery_lead_ids or [])
+    if not ids and job.delivery_lead_id:
+        ids = [job.delivery_lead_id]
+    return ids
+
+
 def list_jobs(
     db: Session,
     status: str | None = None,
@@ -63,13 +83,9 @@ def list_jobs(
     q = db.query(Job)
     if status:
         q = q.filter(Job.status == status)
-    if dual_user_id is not None:
-        q = q.filter(or_(Job.created_by_id == dual_user_id, Job.delivery_lead_id == dual_user_id))
-    else:
-        if created_by_id is not None:
-            q = q.filter(Job.created_by_id == created_by_id)
-        if delivery_lead_id is not None:
-            q = q.filter(Job.delivery_lead_id == delivery_lead_id)
+    # Apply SQL filters only for fields that don't need JSON-array inspection
+    if created_by_id is not None and dual_user_id is None:
+        q = q.filter(Job.created_by_id == created_by_id)
     if search:
         s = f"%{search.lower()}%"
         q = q.filter(or_(
@@ -80,16 +96,30 @@ def list_jobs(
 
     q = q.order_by(Job.created_at.desc())
 
-    # For recruiter: must do in-Python filter on JSON arrays (DB-agnostic)
-    if assigned_sourcer_id is not None:
+    # Python-side filters for JSON array columns (delivery_lead_ids, sourcer_ids, caller_ids)
+    needs_python_filter = (delivery_lead_id is not None or dual_user_id is not None or assigned_sourcer_id is not None)
+    if needs_python_filter:
         all_jobs = q.all()
-        uid = assigned_sourcer_id
         filtered = []
         for job in all_jobs:
-            sourcer_ids = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
-            caller_ids  = json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
-            if uid in sourcer_ids or uid in caller_ids or job.assigned_sourcer_id == uid or job.assigned_caller_id == uid:
-                filtered.append(job)
+            dl_ids = _dl_ids_for(job)
+            # dual_user_id: created_by OR is a DL on this job
+            if dual_user_id is not None:
+                if job.created_by_id != dual_user_id and dual_user_id not in dl_ids:
+                    continue
+            # delivery_lead_id: is a DL on this job
+            if delivery_lead_id is not None:
+                if delivery_lead_id not in dl_ids:
+                    continue
+            # assigned_sourcer_id: in sourcer/caller JSON arrays
+            if assigned_sourcer_id is not None:
+                sourcer_ids = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
+                caller_ids  = json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
+                if (assigned_sourcer_id not in sourcer_ids and assigned_sourcer_id not in caller_ids
+                        and job.assigned_sourcer_id != assigned_sourcer_id
+                        and job.assigned_caller_id  != assigned_sourcer_id):
+                    continue
+            filtered.append(job)
         total = len(filtered)
         if limit > 0:
             filtered = filtered[skip:skip + limit]

@@ -88,6 +88,8 @@ export interface Job {
   recruiter_names: string[];
   delivery_lead_id: number | null;
   delivery_lead_name: string | null;
+  delivery_lead_ids: number[];
+  delivery_lead_names: string[];
   business_head_id: number | null;
   business_head_name: string | null;
   deadline: string | null;

@@ -260,6 +260,7 @@ class Job(Base):
     sourcing_target      = Column(Integer, nullable=True)   # how many candidates to source
     kam_id               = Column(Integer, ForeignKey("users.id"), nullable=True)  # KAM when DL creates
     delivery_lead_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
+    delivery_lead_ids    = Column(Text, default='[]')   # JSON array of DL user IDs
     account_manager_id   = Column(Integer, ForeignKey("account_managers.id"), nullable=True)
     deadline             = Column(DateTime, nullable=True)
     sourcing_deadline    = Column(DateTime, nullable=True)
