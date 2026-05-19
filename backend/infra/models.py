@@ -344,6 +344,21 @@ class Candidate(Base):
     rejection_reason      = Column(Text, nullable=True)
     rejected_by           = Column(String(200), nullable=True)   # e.g. "KAM: Priya Sharma"
 
+    # External system / polymorphic-user fields
+    first_name       = Column(String(100), nullable=True)
+    last_name        = Column(String(100), nullable=True)
+    location_id      = Column(Integer, nullable=True)
+    contact_phone    = Column(String(30), nullable=True)
+    gender           = Column(String(20), nullable=True)
+    designation      = Column(String(200), nullable=True)
+    employer         = Column(String(200), nullable=True)
+    total_experience = Column(Float, nullable=True)
+    current_ctc      = Column(Float, nullable=True)
+    expected_ctc     = Column(Float, nullable=True)
+    resume           = Column(Text, nullable=True)
+    role_id          = Column(Integer, nullable=False, default=4, server_default="4")
+    type             = Column(String(50), nullable=False, default="UserCandidate", server_default="UserCandidate")
+
     job                = relationship("Job", back_populates="candidates")
     sourced_by         = relationship("User", foreign_keys=[sourced_by_id], back_populates="sourced_candidates")
     assigned_to        = relationship("User", foreign_keys=[assigned_to_id], back_populates="assigned_candidates")

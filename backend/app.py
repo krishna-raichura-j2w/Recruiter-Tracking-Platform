@@ -103,6 +103,23 @@ def ensure_schema():
             "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
             "ALTER TABLE users DROP CONSTRAINT IF EXISTS userrole",
             "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'kam', 'recruiter', 'delivery_lead', 'coo'))",
+            # ── candidates: external-system / polymorphic-user columns ─────
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS first_name       VARCHAR(100)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_name        VARCHAR(100)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS location_id      INTEGER",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS contact_phone    VARCHAR(30)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS gender           VARCHAR(20)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS designation      VARCHAR(200)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS employer         VARCHAR(200)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS total_experience DOUBLE PRECISION",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS current_ctc      DOUBLE PRECISION",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS expected_ctc     DOUBLE PRECISION",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume           TEXT",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS role_id          INTEGER     NOT NULL DEFAULT 4",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS type             VARCHAR(50) NOT NULL DEFAULT 'UserCandidate'",
+            # Backfill defaults for any rows the DEFAULT didn't catch (e.g. column pre-existed without default)
+            "UPDATE candidates SET role_id = 4              WHERE role_id IS NULL",
+            "UPDATE candidates SET type    = 'UserCandidate' WHERE type    IS NULL",
         ]
         for sql in stmts:
             try:
