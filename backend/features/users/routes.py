@@ -238,14 +238,20 @@ def get_team_assignments(
 
 @router.get("/team-loads")
 def get_team_loads(
+    dl_id: int | None = Query(None, description="DL user ID — admin can pass any DL's ID"),
     db: Session  = Depends(get_db),
     current_user = Depends(require_roles("admin", "delivery_lead")),
 ):
-    """Return per-role load counts for each DL's team."""
-    dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
-    if dl_id is None:
-        return {"sourcers": [], "callers": []}
-    members = team_loads(db, dl_id)   # all team members regardless of role
+    """Return per-role load counts for each DL's team.
+    DL users always see their own team. Admins may pass ?dl_id=<N> to see a specific DL's team."""
+    is_admin = current_user.role.value == "admin"
+    if is_admin:
+        if dl_id is None:
+            return {"sourcers": [], "callers": []}
+        effective_dl_id = dl_id
+    else:
+        effective_dl_id = current_user.id
+    members = team_loads(db, effective_dl_id)
     return {
         "sourcers": members,
         "callers":  members,

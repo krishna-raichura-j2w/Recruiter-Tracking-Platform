@@ -222,8 +222,9 @@ export default function Jobs() {
   // Reset to page 1 when filters change
   useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter]);
 
-  const fetchDlTeam = async () => {
-    const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads');
+  const fetchDlTeam = async (dlId?: number | null) => {
+    const params = isAdmin && dlId ? { dl_id: dlId } : undefined;
+    const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads', { params });
     return res.data.sourcers ?? [];
   };
 
@@ -234,7 +235,7 @@ export default function Jobs() {
     setSelectedRecruiters([]);
     setLoadingTeam(true);
     try {
-      const team = await fetchDlTeam();
+      const team = await fetchDlTeam(job.delivery_lead_id);
       setDlTeam(team);
       // Auto-select lowest-load recruiter
       if (team.length) {
@@ -252,7 +253,7 @@ export default function Jobs() {
     setSelectedRecruiters([]);
     setLoadingTeam(true);
     try {
-      const team = await fetchDlTeam();
+      const team = await fetchDlTeam(job.delivery_lead_id);
       setDlTeam(team);
       const teamIds = new Set(team.map((m) => m.id));
       // Pre-select currently assigned recruiters that are still in this DL's team
