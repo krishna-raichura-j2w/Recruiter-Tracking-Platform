@@ -1,14 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
-import { RefreshCw, Search, Calendar } from 'lucide-react';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { RefreshCw, Search, X, Calendar } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface ColCounts { today: number; compare: number; }
+interface ColCounts { total: number; today: number; compare: number; }
 
 interface LeaderboardRow {
   bh_name:     string;
+  am_name:     string;
   client_name: string;
   cols:        Record<string, ColCounts>;
 }
@@ -19,37 +20,32 @@ interface ApiResponse {
   rows:         LeaderboardRow[];
   columns:      ColDef[];
   today:        string;
-  compare_date: string;
+  compare_date: string | null;
 }
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 
-const COL_PALETTE: Record<string, { hdr: string; cellToday: string; cellCompare: string }> = {
-  submission:    { hdr: '#1E40AF', cellToday: '#DBEAFE', cellCompare: '#EFF6FF' },
-  screen_reject: { hdr: '#991B1B', cellToday: '#FEE2E2', cellCompare: '#FEF2F2' },
-  l1_reject:     { hdr: '#C2410C', cellToday: '#FFEDD5', cellCompare: '#FFF7ED' },
-  l1_accept:     { hdr: '#166534', cellToday: '#DCFCE7', cellCompare: '#F0FDF4' },
-  l2_reject:     { hdr: '#B45309', cellToday: '#FEF3C7', cellCompare: '#FFFBEB' },
-  l2_accept:     { hdr: '#15803D', cellToday: '#D1FAE5', cellCompare: '#ECFDF5' },
-  l3_reject:     { hdr: '#9F1239', cellToday: '#FFE4E6', cellCompare: '#FFF1F2' },
-  l3_accept:     { hdr: '#047857', cellToday: '#A7F3D0', cellCompare: '#D1FAE5' },
-  selection:     { hdr: '#0F766E', cellToday: '#CCFBF1', cellCompare: '#F0FDFA' },
-  onboarding:    { hdr: '#065F46', cellToday: '#6EE7B7', cellCompare: '#ECFDF5' },
+const COL_PALETTE: Record<string, { hdr: string; cellTotal: string; cellToday: string }> = {
+  submission:    { hdr: '#1E40AF', cellTotal: '#EFF6FF', cellToday: '#DBEAFE' },
+  screen_reject: { hdr: '#991B1B', cellTotal: '#FEF2F2', cellToday: '#FEE2E2' },
+  l1_reject:     { hdr: '#C2410C', cellTotal: '#FFF7ED', cellToday: '#FFEDD5' },
+  l1_accept:     { hdr: '#166534', cellTotal: '#F0FDF4', cellToday: '#DCFCE7' },
+  l2_reject:     { hdr: '#B45309', cellTotal: '#FFFBEB', cellToday: '#FEF3C7' },
+  l2_accept:     { hdr: '#15803D', cellTotal: '#ECFDF5', cellToday: '#D1FAE5' },
+  l3_reject:     { hdr: '#9F1239', cellTotal: '#FFF1F2', cellToday: '#FFE4E6' },
+  l3_accept:     { hdr: '#047857', cellTotal: '#D1FAE5', cellToday: '#A7F3D0' },
+  selection:     { hdr: '#0F766E', cellTotal: '#F0FDFA', cellToday: '#CCFBF1' },
+  onboarding:    { hdr: '#065F46', cellTotal: '#ECFDF5', cellToday: '#6EE7B7' },
 };
 
 function pal(key: string) {
-  return COL_PALETTE[key] ?? { hdr: '#475569', cellToday: '#F1F5F9', cellCompare: '#F8FAFC' };
+  return COL_PALETTE[key] ?? { hdr: '#475569', cellTotal: '#F8FAFC', cellToday: '#F1F5F9' };
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
-function yesterdayISO() {
-  const d = new Date(); d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
+
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -58,17 +54,21 @@ function fmtDate(iso: string) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CooLeaderboard() {
-  const [data, setData]           = useState<ApiResponse | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
-  const [compareDate, setCompareDate] = useState(yesterdayISO());
+  const [data, setData]             = useState<ApiResponse | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState('');
+  const [search, setSearch]         = useState('');
+  const [compareDate, setCompareDate] = useState('');   // empty = show Total
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchData = (date = compareDate) => {
+  const fetchData = (cmpDate = compareDate) => {
     setLoading(true);
     setError('');
-    api.get<ApiResponse>('/coo/leaderboard', { params: { compare_date: date } })
+    api.get<ApiResponse>('/coo/leaderboard', {
+      params: cmpDate ? { compare_date: cmpDate } : undefined,
+    })
       .then(r => { setData(r.data); setLastRefresh(new Date()); })
       .catch(e => {
         const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -79,9 +79,21 @@ export default function CooLeaderboard() {
 
   useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDateChange = (d: string) => {
-    setCompareDate(d);
-    fetchData(d);
+  // When picker opens, focus the hidden date input immediately
+  useEffect(() => {
+    if (pickerOpen) dateInputRef.current?.showPicker?.();
+  }, [pickerOpen]);
+
+  const handleDatePick = (val: string) => {
+    setPickerOpen(false);
+    if (!val) return;
+    setCompareDate(val);
+    fetchData(val);
+  };
+
+  const clearCompare = () => {
+    setCompareDate('');
+    fetchData('');
   };
 
   const filteredRows = useMemo(() => {
@@ -90,6 +102,7 @@ export default function CooLeaderboard() {
     const q = search.toLowerCase();
     return data.rows.filter(r =>
       r.bh_name.toLowerCase().includes(q) ||
+      r.am_name.toLowerCase().includes(q) ||
       r.client_name.toLowerCase().includes(q)
     );
   }, [data, search]);
@@ -97,8 +110,9 @@ export default function CooLeaderboard() {
   const totals = useMemo(() => {
     const t: Record<string, ColCounts> = {};
     for (const col of (data?.columns ?? [])) {
-      t[col.key] = { today: 0, compare: 0 };
+      t[col.key] = { total: 0, today: 0, compare: 0 };
       for (const r of filteredRows) {
+        t[col.key].total   += r.cols[col.key]?.total   ?? 0;
         t[col.key].today   += r.cols[col.key]?.today   ?? 0;
         t[col.key].compare += r.cols[col.key]?.compare ?? 0;
       }
@@ -107,7 +121,10 @@ export default function CooLeaderboard() {
   }, [filteredRows, data]);
 
   const cols = data?.columns ?? [];
-  const totalCols = 2 + cols.length * 2;
+  const totalCols = 3 + cols.length * 2;
+
+  // Sub-header label for the left (Total / compare) column
+  const leftLabel = compareDate ? fmtDate(compareDate) : 'Total';
 
   return (
     <Layout title="COO Leaderboard" subtitle="Pipeline activity by Business Head & Client">
@@ -115,18 +132,6 @@ export default function CooLeaderboard() {
       {/* ── Controls ── */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
-          {/* Compare date picker */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white">
-            <Calendar size={13} className="text-slate-400 flex-shrink-0" />
-            <span className="text-[11px] text-slate-500 font-medium">Compare date:</span>
-            <input
-              type="date"
-              value={compareDate}
-              max={todayISO()}
-              onChange={e => handleDateChange(e.target.value)}
-              className="text-xs bg-transparent focus:outline-none text-slate-700 font-semibold"
-            />
-          </div>
           {lastRefresh && (
             <span className="text-[11px] text-slate-400">
               Updated {lastRefresh.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
@@ -139,10 +144,10 @@ export default function CooLeaderboard() {
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search BH or client…"
+              placeholder="Search BH, AM or client…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white w-48"
+              className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white w-52"
             />
           </div>
           <button
@@ -162,12 +167,22 @@ export default function CooLeaderboard() {
         </div>
       )}
 
+      {/* Hidden date input — triggered programmatically when Total is clicked */}
+      <input
+        ref={dateInputRef}
+        type="date"
+        max={todayISO()}
+        className="sr-only"
+        onChange={e => handleDatePick(e.target.value)}
+        onBlur={() => setPickerOpen(false)}
+      />
+
       {/* ── Table ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table
             className="w-full border-collapse text-sm"
-            style={{ minWidth: Math.max(700, 260 + cols.length * 130) }}
+            style={{ minWidth: Math.max(800, 380 + cols.length * 130) }}
           >
             {loading ? (
               <tbody>
@@ -193,7 +208,14 @@ export default function CooLeaderboard() {
                     <th
                       rowSpan={2}
                       className="text-left py-3 px-4 text-xs font-bold text-white border-r border-green-700 whitespace-nowrap"
-                      style={{ background: '#166534', minWidth: 120 }}
+                      style={{ background: '#166534', minWidth: 110 }}
+                    >
+                      Account Manager
+                    </th>
+                    <th
+                      rowSpan={2}
+                      className="text-left py-3 px-4 text-xs font-bold text-white border-r border-green-700 whitespace-nowrap"
+                      style={{ background: '#15803D', minWidth: 120 }}
                     >
                       Customer
                     </th>
@@ -209,15 +231,46 @@ export default function CooLeaderboard() {
                     ))}
                   </tr>
 
-                  {/* Row 2: Today / [Selected Date] sub-headers */}
+                  {/* Row 2: Total (clickable) / Today sub-headers */}
                   <tr>
                     {cols.map(col => {
                       const p = pal(col.key);
                       return (
                         <>
+                          {/* Left: Total (clickable) or selected date */}
+                          <th
+                            key={`${col.key}-left`}
+                            className="text-center py-1.5 px-3 text-[10px] border-r border-white/20 whitespace-nowrap"
+                            style={{
+                              background: p.hdr,
+                              color: 'rgba(255,255,255,0.85)',
+                              borderTop: '1px solid rgba(255,255,255,0.25)',
+                              cursor: compareDate ? 'default' : 'pointer',
+                            }}
+                            onClick={() => { if (!compareDate) setPickerOpen(true); }}
+                          >
+                            {compareDate ? (
+                              <span className="flex items-center justify-center gap-1 font-semibold">
+                                {leftLabel}
+                                <button
+                                  onClick={e => { e.stopPropagation(); clearCompare(); }}
+                                  className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full hover:bg-white/20"
+                                  title="Back to Total"
+                                >
+                                  <X size={8} />
+                                </button>
+                              </span>
+                            ) : (
+                              <span className="flex items-center justify-center gap-1 font-semibold hover:text-white">
+                                Total
+                                <Calendar size={9} className="opacity-60" />
+                              </span>
+                            )}
+                          </th>
+                          {/* Right: Today */}
                           <th
                             key={`${col.key}-today`}
-                            className="text-center py-1.5 px-3 text-[10px] font-black border-r border-white/20 whitespace-nowrap"
+                            className="text-center py-1.5 px-2 text-[10px] font-black border-r border-white/30 whitespace-nowrap"
                             style={{
                               background: p.hdr,
                               color: '#fff',
@@ -225,17 +278,6 @@ export default function CooLeaderboard() {
                             }}
                           >
                             Today
-                          </th>
-                          <th
-                            key={`${col.key}-cmp`}
-                            className="text-center py-1.5 px-2 text-[10px] font-semibold border-r border-white/30 whitespace-nowrap"
-                            style={{
-                              background: p.hdr,
-                              color: 'rgba(255,255,255,0.72)',
-                              borderTop: '1px solid rgba(255,255,255,0.25)',
-                            }}
-                          >
-                            {fmtDate(compareDate)}
                           </th>
                         </>
                       );
@@ -247,14 +289,14 @@ export default function CooLeaderboard() {
                   {filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan={totalCols} className="py-14 text-center text-sm text-slate-400">
-                        {search ? 'No matches found.' : 'No data for selected dates.'}
+                        {search ? 'No matches found.' : 'No data available.'}
                       </td>
                     </tr>
                   ) : (
                     <>
                       {filteredRows.map((row, ri) => (
                         <tr
-                          key={`${row.bh_name}-${row.client_name}`}
+                          key={`${row.bh_name}-${row.am_name}-${row.client_name}`}
                           className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors"
                         >
                           <td
@@ -264,31 +306,37 @@ export default function CooLeaderboard() {
                             {row.bh_name}
                           </td>
                           <td
+                            className="py-2.5 px-4 text-xs text-slate-600 border-r border-slate-200 whitespace-nowrap"
+                            style={{ background: ri % 2 === 0 ? '#F0FDF4' : '#ECFDF5' }}
+                          >
+                            {row.am_name || <span className="text-slate-300">—</span>}
+                          </td>
+                          <td
                             className="py-2.5 px-4 text-xs text-slate-700 border-r border-slate-200 whitespace-nowrap"
                             style={{ background: ri % 2 === 0 ? '#F0FDF4' : '#ECFDF5' }}
                           >
                             {row.client_name}
                           </td>
                           {cols.map(col => {
-                            const c = row.cols[col.key];
-                            const tv = c?.today   ?? 0;
-                            const cv = c?.compare ?? 0;
+                            const c  = row.cols[col.key];
+                            const lv = compareDate ? (c?.compare ?? 0) : (c?.total ?? 0);
+                            const dv = c?.today ?? 0;
                             const p  = pal(col.key);
                             return (
                               <>
                                 <td
-                                  key={`${col.key}-t`}
-                                  className="text-center text-xs font-bold py-2.5 px-3 border-r border-white/50"
-                                  style={{ background: p.cellToday }}
+                                  key={`${col.key}-l`}
+                                  className="text-center text-xs font-medium py-2.5 px-3 border-r border-white/50"
+                                  style={{ background: p.cellTotal }}
                                 >
-                                  {tv || <span className="text-slate-300">—</span>}
+                                  {lv || <span className="text-slate-300">—</span>}
                                 </td>
                                 <td
-                                  key={`${col.key}-c`}
-                                  className="text-center text-xs font-medium py-2.5 px-3 border-r border-slate-200"
-                                  style={{ background: p.cellCompare }}
+                                  key={`${col.key}-r`}
+                                  className="text-center text-xs font-bold py-2.5 px-3 border-r border-slate-200"
+                                  style={{ background: p.cellToday }}
                                 >
-                                  {cv || <span className="text-slate-300">—</span>}
+                                  {dv || <span className="text-slate-300">—</span>}
                                 </td>
                               </>
                             );
@@ -299,30 +347,31 @@ export default function CooLeaderboard() {
                       {/* Totals row */}
                       <tr className="border-t-2 border-slate-300">
                         <td
-                          colSpan={2}
+                          colSpan={3}
                           className="py-3 px-4 text-xs font-black border-r border-slate-200 whitespace-nowrap"
                           style={{ color: '#14532D', background: '#D1FAE5' }}
                         >
                           TOTAL&nbsp;({filteredRows.length})
                         </td>
                         {cols.map(col => {
-                          const t = totals[col.key];
-                          const p = pal(col.key);
+                          const t  = totals[col.key];
+                          const lv = compareDate ? (t?.compare ?? 0) : (t?.total ?? 0);
+                          const p  = pal(col.key);
                           return (
                             <>
                               <td
-                                key={`${col.key}-tot-t`}
-                                className="text-center text-xs font-black py-3 px-3 border-r border-white/50"
+                                key={`${col.key}-tot-l`}
+                                className="text-center text-xs font-bold py-3 px-3 border-r border-white/50"
+                                style={{ color: p.hdr, background: p.cellTotal }}
+                              >
+                                {lv || '—'}
+                              </td>
+                              <td
+                                key={`${col.key}-tot-r`}
+                                className="text-center text-xs font-black py-3 px-3 border-r border-slate-200"
                                 style={{ color: p.hdr, background: p.cellToday }}
                               >
                                 {t?.today || '—'}
-                              </td>
-                              <td
-                                key={`${col.key}-tot-c`}
-                                className="text-center text-xs font-bold py-3 px-3 border-r border-slate-200"
-                                style={{ color: p.hdr, background: p.cellCompare }}
-                              >
-                                {t?.compare || '—'}
                               </td>
                             </>
                           );

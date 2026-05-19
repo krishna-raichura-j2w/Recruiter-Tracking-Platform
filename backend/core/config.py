@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # OL Replica MySQL (read-only)
     ol_replica_host:     str | None = Field(default=None, validation_alias="OL_REPLICA_HOST")
     ol_replica_port:     int        = Field(default=3306,  validation_alias="OL_REPLICA_PORT")
-    ol_replica_database: str | None = Field(default=None, validation_alias="OL_REPLICA_DATABASE")
+    ol_replica_database: str        = Field(default="offerletter", validation_alias="OL_REPLICA_DATABASE")
     ol_replica_user:     str | None = Field(default=None, validation_alias="OL_REPLICA_USER")
     ol_replica_password: str | None = Field(default=None, validation_alias="OL_REPLICA_PASSWORD")
 
