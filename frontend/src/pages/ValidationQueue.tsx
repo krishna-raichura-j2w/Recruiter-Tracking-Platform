@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSignal } from '../context/RealtimeContext';
-import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink, UserCheck } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink, UserCheck, Search } from 'lucide-react';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
@@ -9,6 +9,31 @@ import FilterBar, { emptyFilters, toQueryParams, type FilterValues } from '../co
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { Candidate, Assessment } from '../types';
+
+// ── Day-grouping helpers ───────────────────────────────────────────────────────
+
+function dayLabel(iso: string | null | undefined): string {
+  if (!iso) return 'Unknown Date';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 'Unknown Date';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const item = new Date(d); item.setHours(0, 0, 0, 0);
+  const diff = Math.round((item.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return 'Today';
+  if (diff === -1) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function groupByDay<T>(items: T[], getDate: (item: T) => string | null | undefined): Array<{ label: string; items: T[] }> {
+  const groups: { label: string; items: T[] }[] = [];
+  const seen = new Map<string, number>();
+  for (const item of items) {
+    const label = dayLabel(getDate(item));
+    if (!seen.has(label)) { seen.set(label, groups.length); groups.push({ label, items: [] }); }
+    groups[seen.get(label)!].items.push(item);
+  }
+  return groups;
+}
 
 interface QueueItem {
   candidate: Candidate;
@@ -24,6 +49,8 @@ export default function ValidationQueue() {
   const [perPage, setPerPage] = useState(50);
   const [total,   setTotal]   = useState(0);
   const [filters, setFilters] = useState<FilterValues>(emptyFilters);
+  const [search, setSearch]   = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [fullCandidate, setFullCandidate] = useState<Candidate | null>(null);
   const [comment, setComment] = useState('');
@@ -35,20 +62,20 @@ export default function ValidationQueue() {
 
   const fetchQueue = useCallback(() => {
     setLoading(true);
+    const params: Record<string, string | number> = { skip: (page - 1) * perPage, limit: perPage, ...toQueryParams(filters) };
+    if (search) params.search = search;
     api
-      .get<{ items: QueueItem[]; total: number } | QueueItem[]>('/validation/queue', {
-        params: { skip: (page - 1) * perPage, limit: perPage, ...toQueryParams(filters) },
-      })
+      .get<{ items: QueueItem[]; total: number } | QueueItem[]>('/validation/queue', { params })
       .then((res) => {
         if (Array.isArray(res.data)) { setQueue(res.data); setTotal(res.data.length); }
         else { setQueue(res.data.items ?? []); setTotal(res.data.total ?? 0); }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [page, perPage, filters]);
+  }, [page, perPage, filters, search]);
 
-  // Reset to page 1 whenever filters change
-  useEffect(() => { setPage(1); }, [filters]);
+  // Reset to page 1 whenever filters or search change
+  useEffect(() => { setPage(1); }, [filters, search]);
 
   const validationSignal = useSignal('validation');
   useEffect(() => { fetchQueue(); }, [fetchQueue, validationSignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -105,6 +132,11 @@ export default function ValidationQueue() {
     }
   };
 
+  const grouped = useMemo(
+    () => groupByDay(queue, item => item.candidate.updated_at),
+    [queue]
+  );
+
   return (
     <Layout title="Validation Queue">
       {message && (
@@ -113,14 +145,36 @@ export default function ValidationQueue() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="mb-4">
+      {/* Filters + search */}
+      <div className="mb-4 space-y-2">
         <FilterBar value={filters} onChange={setFilters} />
-        {!loading && (
-          <p className="text-xs text-slate-400 mt-2 px-1">
-            Showing <span className="font-semibold text-slate-600">{total}</span> candidate{total !== 1 ? 's' : ''} pending validation
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search candidate, company, role…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') setSearch(searchInput); }}
+              onBlur={() => setSearch(searchInput)}
+              className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 bg-white"
+            />
+          </div>
+          {(search || searchInput) && (
+            <button
+              onClick={() => { setSearch(''); setSearchInput(''); }}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200"
+            >
+              <X size={11} /> Clear
+            </button>
+          )}
+          {!loading && (
+            <p className="text-xs text-slate-400 ml-auto">
+              <span className="font-semibold text-slate-600">{total}</span> candidate{total !== 1 ? 's' : ''} pending
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -151,7 +205,22 @@ export default function ValidationQueue() {
                 </tr>
               </thead>
               <tbody>
-                {queue.map((item, i) => (
+                {grouped.map(group => (
+                  <>
+                    <tr key={`day-${group.label}`}>
+                      <td colSpan={isAdmin ? 7 : 6} className="px-5 pt-4 pb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                            group.label === 'Today' ? 'bg-blue-100 text-blue-700' :
+                            group.label === 'Yesterday' ? 'bg-slate-100 text-slate-600' :
+                            'bg-slate-50 text-slate-500'
+                          }`}>{group.label}</span>
+                          <span className="flex-1 border-t border-slate-100" />
+                          <span className="text-[10px] text-slate-400">{group.items.length} candidate{group.items.length !== 1 ? 's' : ''}</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {group.items.map((item, i) => (
                   <tr
                     key={item.candidate.id}
                     className={`border-b border-slate-50 hover:bg-blue-50/20 transition-colors ${i % 2 === 1 ? 'bg-slate-50/40' : ''}`}
@@ -207,6 +276,8 @@ export default function ValidationQueue() {
                       </button>
                     </td>
                   </tr>
+                    ))}
+                  </>
                 ))}
               </tbody>
             </table>

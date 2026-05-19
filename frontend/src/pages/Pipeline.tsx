@@ -213,6 +213,31 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
   );
 }
 
+// ── Day-grouping helpers ───────────────────────────────────────────────────────
+
+function dayLabel(iso: string | null | undefined): string {
+  if (!iso) return 'Unknown Date';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 'Unknown Date';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const item = new Date(d); item.setHours(0, 0, 0, 0);
+  const diff = Math.round((item.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return 'Today';
+  if (diff === -1) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function groupByDay<T>(items: T[], getDate: (item: T) => string | null | undefined): Array<{ label: string; items: T[] }> {
+  const groups: { label: string; items: T[] }[] = [];
+  const seen = new Map<string, number>();
+  for (const item of items) {
+    const label = dayLabel(getDate(item));
+    if (!seen.has(label)) { seen.set(label, groups.length); groups.push({ label, items: [] }); }
+    groups[seen.get(label)!].items.push(item);
+  }
+  return groups;
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 type FormState = Record<string, string | boolean>;
@@ -234,6 +259,8 @@ export default function Pipeline() {
   const [filterGroup,    setFilterGroup]    = useState('');
   const [filterStage,    setFilterStage]    = useState('');
   const [filterAction,   setFilterAction]   = useState('');
+  const [filterFromDate, setFilterFromDate] = useState('');
+  const [filterToDate,   setFilterToDate]   = useState('');
   const [showFilters,    setShowFilters]    = useState(false);
 
   const showToast = (msg: string) => {
@@ -348,8 +375,14 @@ export default function Pipeline() {
   const list = useMemo(() => {
     const today     = new Date(); today.setHours(0, 0, 0, 0);
     const weekEnd   = new Date(today); weekEnd.setDate(today.getDate() + 7);
+    const fromDt = filterFromDate ? new Date(filterFromDate + 'T00:00:00') : null;
+    const toDt   = filterToDate   ? new Date(filterToDate   + 'T23:59:59') : null;
     return baseList.filter(s => {
-      if (search       && !s.candidate_name?.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const hay = `${s.candidate_name ?? ''} ${s.client_name ?? ''} ${s.job_title ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       if (filterCompany && s.client_name !== filterCompany) return false;
       if (filterJob    && s.job_title !== filterJob) return false;
       if (filterGroup) {
@@ -364,15 +397,20 @@ export default function Pipeline() {
         if (filterAction === 'this_week')  { if (!d || d < today || d > weekEnd) return false; }
         if (filterAction === 'no_action')  { if (s.next_action_date) return false; }
       }
+      if (fromDt && s.updated_at && new Date(s.updated_at) < fromDt) return false;
+      if (toDt   && s.updated_at && new Date(s.updated_at) > toDt)   return false;
       return true;
     });
-  }, [baseList, search, filterCompany, filterJob, filterGroup, filterStage, filterAction]);
+  }, [baseList, search, filterCompany, filterJob, filterGroup, filterStage, filterAction, filterFromDate, filterToDate]);
 
-  const activeFilters = [search, filterCompany, filterJob, filterGroup, filterStage, filterAction].filter(Boolean).length;
+  const grouped = useMemo(() => groupByDay(list, s => s.updated_at), [list]);
+
+  const activeFilters = [search, filterCompany, filterJob, filterGroup, filterStage, filterAction, filterFromDate, filterToDate].filter(Boolean).length;
 
   const clearAllFilters = () => {
     setSearch(''); setFilterCompany(''); setFilterJob('');
     setFilterGroup(''); setFilterStage(''); setFilterAction('');
+    setFilterFromDate(''); setFilterToDate('');
   };
 
   return (
@@ -451,7 +489,7 @@ export default function Pipeline() {
 
         {/* ── Expanded filter row ── */}
         {showFilters && (
-          <div className="bg-white border border-slate-100 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 shadow-sm">
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 shadow-sm">
 
             {/* Company */}
             <div>
@@ -521,6 +559,18 @@ export default function Pipeline() {
               </select>
             </div>
 
+            {/* Date Updated */}
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Updated From</label>
+              <input type="date" value={filterFromDate} onChange={e => setFilterFromDate(e.target.value)} max={filterToDate || undefined}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Updated To</label>
+              <input type="date" value={filterToDate} onChange={e => setFilterToDate(e.target.value)} min={filterFromDate || undefined}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white" />
+            </div>
+
           </div>
         )}
       </div>
@@ -545,53 +595,64 @@ export default function Pipeline() {
           )}
         </div>
       ) : (
-        <div className="space-y-2.5">
-          {list.map(sub => {
-            const nextActionDate = sub.next_action_date ? new Date(sub.next_action_date) : null;
-            const isOverdue = nextActionDate != null && nextActionDate < new Date();
-            return (
-            <button
-              key={sub.id}
-              onClick={() => openOverlay(sub)}
-              className={`w-full text-left rounded-2xl border shadow-sm hover:shadow-md transition-all px-5 py-4 flex items-center gap-4 ${
-                isOverdue
-                  ? 'bg-amber-50 border-amber-200 hover:border-amber-300'
-                  : 'bg-white border-slate-100 hover:border-blue-200'
-              }`}
-            >
-              {/* Avatar */}
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}
-              >
-                {(sub.candidate_name ?? '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+        <div className="space-y-1">
+          {grouped.map(group => (
+            <div key={group.label}>
+              {/* Day header */}
+              <div className="flex items-center gap-2 py-2 px-1">
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                  group.label === 'Today' ? 'bg-blue-100 text-blue-700' :
+                  group.label === 'Yesterday' ? 'bg-slate-100 text-slate-600' :
+                  'bg-slate-50 text-slate-500'
+                }`}>{group.label}</span>
+                <span className="flex-1 border-t border-slate-100" />
+                <span className="text-[10px] text-slate-400">{group.items.length} candidate{group.items.length !== 1 ? 's' : ''}</span>
               </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-800 text-sm">{sub.candidate_name ?? '—'}</p>
-                <p className="text-xs text-slate-500 truncate">
-                  {sub.job_title ?? '—'}
-                  <span className="mx-1.5 text-slate-300">@</span>
-                  <span className="font-medium text-slate-600">{sub.client_name ?? '—'}</span>
-                </p>
+              <div className="space-y-2">
+                {group.items.map(sub => {
+                const nextActionDate = sub.next_action_date ? new Date(sub.next_action_date) : null;
+                const isOverdue = nextActionDate != null && nextActionDate < new Date();
+                return (
+                <button
+                  key={sub.id}
+                  onClick={() => openOverlay(sub)}
+                  className={`w-full text-left rounded-2xl border shadow-sm hover:shadow-md transition-all px-5 py-4 flex items-center gap-4 ${
+                    isOverdue
+                      ? 'bg-amber-50 border-amber-200 hover:border-amber-300'
+                      : 'bg-white border-slate-100 hover:border-blue-200'
+                  }`}
+                >
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}
+                  >
+                    {(sub.candidate_name ?? '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm">{sub.candidate_name ?? '—'}</p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {sub.job_title ?? '—'}
+                      <span className="mx-1.5 text-slate-300">@</span>
+                      <span className="font-medium text-slate-600">{sub.client_name ?? '—'}</span>
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                    <StageBadge stage={sub.current_stage} />
+                    <span className="text-slate-400" style={{ fontSize: '10px' }}>
+                      Updated {fmtDate(sub.updated_at)}
+                    </span>
+                    {sub.next_action && sub.next_action_date && (
+                      <span className={`text-[10px] font-semibold ${isOverdue ? 'text-amber-600' : 'text-slate-400'}`}>
+                        {isOverdue ? '⚠ ' : ''}Action: {fmtDate(sub.next_action_date)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+                );
+              })}
               </div>
-
-              {/* Stage + date + next action */}
-              <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                <StageBadge stage={sub.current_stage} />
-                <span className="text-slate-400" style={{ fontSize: '10px' }}>
-                  Updated {fmtDate(sub.updated_at)}
-                </span>
-                {sub.next_action && sub.next_action_date && (
-                  <span className={`text-[10px] font-semibold ${isOverdue ? 'text-amber-600' : 'text-slate-400'}`}>
-                    {isOverdue ? '⚠ ' : ''}Action: {fmtDate(sub.next_action_date)}
-                  </span>
-                )}
-              </div>
-            </button>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 

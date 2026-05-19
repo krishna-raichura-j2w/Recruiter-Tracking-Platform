@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSignal } from '../context/RealtimeContext';
 import {
   Send, Phone, Mail, MapPin, Briefcase,
@@ -15,6 +15,31 @@ import api from '../api/client';
 import type { Candidate } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+// ── Day-grouping helpers ───────────────────────────────────────────────────────
+
+function dayLabel(iso: string | null | undefined): string {
+  if (!iso) return 'Unknown Date';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 'Unknown Date';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const item = new Date(d); item.setHours(0, 0, 0, 0);
+  const diff = Math.round((item.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return 'Today';
+  if (diff === -1) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function groupByDay<T>(items: T[], getDate: (item: T) => string | null | undefined): Array<{ label: string; items: T[] }> {
+  const groups: { label: string; items: T[] }[] = [];
+  const seen = new Map<string, number>();
+  for (const item of items) {
+    const label = dayLabel(getDate(item));
+    if (!seen.has(label)) { seen.set(label, groups.length); groups.push({ label, items: [] }); }
+    groups[seen.get(label)!].items.push(item);
+  }
+  return groups;
+}
 
 interface ReadyCandidate {
   id: number;
@@ -36,6 +61,7 @@ interface ReadyCandidate {
   last_working_day: string | null;
   total_exp: number | null;
   relevant_exp: number | null;
+  updated_at: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -401,6 +427,8 @@ export default function Submissions() {
   // Reset page when search or filters change
   useEffect(() => { setPage(1); }, [search, filters]);
 
+  const grouped = useMemo(() => groupByDay(ready, c => c.updated_at), [ready]);
+
   const openDetails = async (id: number) => {
     setDetailLoading(id);
     try {
@@ -507,7 +535,20 @@ export default function Submissions() {
             <p className="text-sm mt-1">Candidates validated by the delivery lead will appear here.</p>
           </div>
         ) : (
-          ready.map(c => (
+          grouped.map(group => (
+            <div key={group.label}>
+              {/* Day header */}
+              <div className="flex items-center gap-2 py-2 px-1 mb-2">
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                  group.label === 'Today' ? 'bg-blue-100 text-blue-700' :
+                  group.label === 'Yesterday' ? 'bg-slate-100 text-slate-600' :
+                  'bg-slate-50 text-slate-500'
+                }`}>{group.label}</span>
+                <span className="flex-1 border-t border-slate-100" />
+                <span className="text-[10px] text-slate-400">{group.items.length} candidate{group.items.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="space-y-4">
+              {group.items.map(c => (
             <div
               key={c.id}
               className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
@@ -628,6 +669,9 @@ export default function Submissions() {
                     {submitting === c.id ? 'Submitting…' : 'Submit to Client'}
                   </button>
                 </div>
+              </div>
+            </div>
+              ))}
               </div>
             </div>
           ))

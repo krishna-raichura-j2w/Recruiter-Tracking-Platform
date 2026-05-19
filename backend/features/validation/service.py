@@ -20,10 +20,11 @@ def _parse_date(s: str | None):
             return None
 
 
-def _apply_filters(q, *, client_name=None, business_head_id=None, kam_id=None,
+def _apply_filters(q, *, search=None, client_name=None, business_head_id=None, kam_id=None,
                    delivery_lead_id=None, validator_id=None, from_date=None, to_date=None):
     """Apply optional admin filters to a Candidate query. Joins Job lazily."""
-    needs_job_join = any(v is not None for v in (client_name, business_head_id, kam_id, delivery_lead_id))
+    from sqlalchemy import or_
+    needs_job_join = any(v is not None for v in (client_name, business_head_id, kam_id, delivery_lead_id, search))
     if needs_job_join:
         q = q.join(Job, Candidate.job_id == Job.id)
         if client_name:
@@ -34,6 +35,20 @@ def _apply_filters(q, *, client_name=None, business_head_id=None, kam_id=None,
             q = q.filter(Job.created_by_id == kam_id)
         if delivery_lead_id:
             q = q.filter(Job.delivery_lead_id == delivery_lead_id)
+        if search:
+            s = f"%{search.lower()}%"
+            q = q.filter(or_(
+                func.lower(Candidate.full_name).like(s),
+                func.lower(Candidate.current_company).like(s),
+                func.lower(Job.client_name).like(s),
+                func.lower(Job.role_title).like(s),
+            ))
+    elif search:
+        s = f"%{search.lower()}%"
+        q = q.filter(or_(
+            func.lower(Candidate.full_name).like(s),
+            func.lower(Candidate.current_company).like(s),
+        ))
     if validator_id:
         q = q.filter(Candidate.assigned_validator_id == validator_id)
     if from_date:
@@ -49,7 +64,7 @@ def _apply_filters(q, *, client_name=None, business_head_id=None, kam_id=None,
     return q
 
 
-def _pending_query(db: Session, validator_id: int | None = None, **filters):
+def _pending_query(db: Session, validator_id: int | None = None, search: str | None = None, **filters):
     q = db.query(Candidate).options(
         joinedload(Candidate.assessment),
         joinedload(Candidate.assigned_to),
@@ -58,20 +73,20 @@ def _pending_query(db: Session, validator_id: int | None = None, **filters):
     ).filter(Candidate.status == CandidateStatus.ready_for_validation)
     if validator_id:
         q = q.filter(Candidate.assigned_validator_id == validator_id)
-    q = _apply_filters(q, **filters)
+    q = _apply_filters(q, search=search, **filters)
     return q.order_by(Candidate.updated_at.desc())
 
 
-def list_pending(db: Session, skip: int = 0, limit: int = 0, **filters):
-    q = _pending_query(db, **filters)
+def list_pending(db: Session, skip: int = 0, limit: int = 0, search: str | None = None, **filters):
+    q = _pending_query(db, search=search, **filters)
     total = q.with_entities(func.count(Candidate.id)).order_by(None).scalar() or 0
     if limit > 0:
         return q.offset(skip).limit(limit).all(), total
     return q.all(), total
 
 
-def list_pending_for_validator(db: Session, validator_id: int, skip: int = 0, limit: int = 0, **filters):
-    q = _pending_query(db, validator_id, **filters)
+def list_pending_for_validator(db: Session, validator_id: int, skip: int = 0, limit: int = 0, search: str | None = None, **filters):
+    q = _pending_query(db, validator_id, search=search, **filters)
     # A validator must not validate candidates they personally sourced or called
     q = q.filter(
         Candidate.sourced_by_id != validator_id,

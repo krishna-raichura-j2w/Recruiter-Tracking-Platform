@@ -34,6 +34,7 @@ def pending_queue(
     skip:  int   = Query(0, ge=0),
     limit: int   = Query(50, ge=0, le=500),
     # Filters (admin can use freely; DLs are still scoped to their own queue)
+    search:            str | None = Query(None),
     client_name:       str | None = Query(None),
     business_head_id:  int | None = Query(None),
     kam_id:            int | None = Query(None),
@@ -46,6 +47,7 @@ def pending_queue(
 ):
     role = current_user.role.value
     filters = dict(
+        search=search,
         client_name=client_name, business_head_id=business_head_id, kam_id=kam_id,
         delivery_lead_id=delivery_lead_id, validator_id=validator_id,
         from_date=from_date, to_date=to_date,
