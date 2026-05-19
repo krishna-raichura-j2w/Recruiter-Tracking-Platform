@@ -119,6 +119,12 @@ const navConfig: Record<string, NavGroup[]> = {
   coo: [
     { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
     {
+      section: 'Performance',
+      items: [
+        { label: 'Leaderboard', path: '/coo-leaderboard', icon: <Trophy size={16} /> },
+      ],
+    },
+    {
       section: 'Organization',
       items: [
         { label: 'Users', path: '/users', icon: <UserCheck size={16} /> },

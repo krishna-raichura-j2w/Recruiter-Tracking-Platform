@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import CooDashboard from './pages/CooDashboard';
 import CooUsers from './pages/CooUsers';
+import CooLeaderboard from './pages/CooLeaderboard';
 import Jobs from './pages/Jobs';
 import Candidates from './pages/Candidates';
 import CandidateDetail from './pages/CandidateDetail';
@@ -184,6 +185,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <Leaderboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/coo-leaderboard"
+            element={
+              <ProtectedRoute allowedRoles={['coo', 'admin']}>
+                <CooLeaderboard />
               </ProtectedRoute>
             }
           />
