@@ -150,8 +150,6 @@ def update_candidate(db: Session, candidate_id: int, data: dict) -> Candidate | 
     for k, v in data.items():
         if v is not None:
             setattr(candidate, k, v)
-    if data.get("pool_verified") and candidate.status == CandidateStatus.sourced:
-        candidate.status = CandidateStatus.pool_verified
     db.commit()
     db.refresh(candidate)
     return candidate

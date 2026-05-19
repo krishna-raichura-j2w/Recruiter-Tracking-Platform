@@ -68,7 +68,6 @@ class WorkMode(str, enum.Enum):
 
 class CandidateStatus(str, enum.Enum):
     sourced = "sourced"
-    pool_verified = "pool_verified"
     handed_to_recruiter = "handed_to_recruiter"
     call_in_progress = "call_in_progress"
     ready_for_validation = "ready_for_validation"
@@ -326,7 +325,6 @@ class Candidate(Base):
     immediate_joiner = Column(String(10))
     lead_source      = Column(String(100))
     resume_data      = Column(Text, nullable=True)
-    pool_verified    = Column(Boolean, default=False)
     status           = Column(SAEnum(CandidateStatus, native_enum=False), default=CandidateStatus.sourced)
     # Sourcing timestamps
     sourcing_date        = Column(String(20))        # YYYY-MM-DD

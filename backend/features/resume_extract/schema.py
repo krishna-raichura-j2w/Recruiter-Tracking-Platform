@@ -13,7 +13,6 @@ EXPERIENCE_OPTIONS = [
 
 class ConsultantProfile(BaseModel):
     sourcing_date:         str | None = None
-    pool_verified:         str | None = None
     name:                  str | None = None
     mobile_number:         str | None = None
     email:                 str | None = None

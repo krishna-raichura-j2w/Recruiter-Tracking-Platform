@@ -63,7 +63,6 @@ const STAGE_COLORS = [
 
 const stageLabels: Record<string, string> = {
   sourced: 'Sourced',
-  pool_verified: 'Pool Verified',
   handed_to_recruiter: 'Handed Over',
   call_in_progress: 'Call in Progress',
   ready_for_validation: 'Ready for Validation',

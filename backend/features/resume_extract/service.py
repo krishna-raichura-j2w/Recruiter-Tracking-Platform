@@ -36,7 +36,6 @@ SYSTEM_PROMPT = f"""You are an expert HR data extractor. Extract consultant prof
 
 Return a JSON object with ONLY these fields:
 - sourcing_date: date profile was sourced (YYYY-MM-DD format; use today's date {date.today()} if not present)
-- pool_verified: "Yes" or "No"
 - name: full name of the consultant
 - mobile_number: the CANDIDATE'S personal mobile number only (digits only, no spaces/dashes/dots/brackets; include + country code only if explicitly written)
 - email: email address

@@ -257,7 +257,6 @@ def pod_report(
         sub = c.submission
         return {
             "sourcing_date":      _safe(c.sourcing_date),
-            "pool_verified":      "Yes" if c.pool_verified else "No",
             "full_name":          c.full_name or "—",
             "mobile":             c.mobile or "—",
             "email":              c.email or "—",

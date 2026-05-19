@@ -85,7 +85,6 @@ function timeBetween(from: string | null, to: string | null): string | null {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   sourced:              { bg: '#f1f5f9', text: '#475569' },
-  pool_verified:        { bg: '#e0f2fe', text: '#0369a1' },
   call_in_progress:     { bg: '#ede9fe', text: '#6d28d9' },
   ready_for_validation: { bg: '#fef3c7', text: '#92400e' },
   validated:            { bg: '#ccfbf1', text: '#0f766e' },

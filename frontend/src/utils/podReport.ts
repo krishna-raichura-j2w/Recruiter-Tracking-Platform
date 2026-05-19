@@ -62,7 +62,6 @@ const dataCell = (ws: ExcelJS.Worksheet, addr: string, val: unknown,
 // Status → background colour
 const statusBg: Record<string, string> = {
   'Sourced':               'e0f2fe',
-  'Pool Verified':         'f0fdf4',
   'Handed To Recruiter':   'fef9c3',
   'Call In Progress':      'fef3c7',
   'Ready For Validation':  'e0e7ff',
@@ -626,7 +625,6 @@ function buildRecruiterSheet(wb: ExcelJS.Workbook, recruiter: RecruiterData, rep
   // Profile data rows (rows 11-24, matching original structure)
   const POOL_FIELDS: { label: string; key: keyof CandidateRow; bg: string }[] = [
     { label: 'Sourcing Date',            key: 'sourcing_date',      bg: C.white },
-    { label: 'Pool Verified?',           key: 'pool_verified',      bg: C.white },
     { label: 'DL Calibration (Approved)',key: 'dl_validated',       bg: 'fef9c3' },
     { label: 'Name of the Consultant',   key: 'full_name',          bg: C.white },
     { label: 'Mobile Number',            key: 'mobile',             bg: C.white },
@@ -742,7 +740,6 @@ function colLetter(idx: number): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface CandidateRow {
   sourcing_date: string;
-  pool_verified: string;
   full_name: string;
   mobile: string;
   email: string;

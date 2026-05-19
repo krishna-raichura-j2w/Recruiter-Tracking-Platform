@@ -125,28 +125,30 @@ def create_candidate(
                  else f"Sourced candidate: {candidate.full_name}",
                  entity_type="candidate", entity_id=candidate.id)
 
-    # Assign the candidate to a caller. When a DL adds a candidate themselves,
-    # they're also the one who'll call & verify — assign to themselves so it
-    # shows up in their own "My Candidates" list, not someone else's.
+    # Caller assignment:
+    #  - Recruiter sourced → hand off to a recruiter caller (min-load).
+    #  - DL sourced  → DL keeps the candidate; no "handed to recruiter" badge.
     if job:
         if role == "delivery_lead":
-            caller_id = current_user.id
+            # DL is the caller. Assign directly without flipping status to
+            # "handed_to_recruiter" — that label is only correct when someone
+            # ELSE is going to make the call.
+            candidate.assigned_to_id = current_user.id
+            db.commit()
+            db.refresh(candidate)
         else:
             caller_ids = _json.loads(job.caller_ids or '[]') if isinstance(job.caller_ids, str) else []
             if not caller_ids and job.assigned_caller_id:
                 caller_ids = [job.assigned_caller_id]
-            if not caller_ids:
-                return _serialize(candidate)
-            from features.allocation.service import _caller_load
-            caller_id = min(caller_ids, key=lambda uid: _caller_load(db, uid))
-
-        candidate = service.assign_candidate(db, candidate.id, caller_id)
-        # Don't notify the DL about their own self-assigned candidate
-        if caller_id != current_user.id:
-            push(db, caller_id,
-                f"New candidate sourced: {candidate.full_name} for {job.role_title} ({job.client_name}). Ready for your call.",
-                NotifType.candidate_sourced, entity_id=candidate.id)
-            db.commit()
+            if caller_ids:
+                from features.allocation.service import _caller_load
+                caller_id = min(caller_ids, key=lambda uid: _caller_load(db, uid))
+                candidate = service.assign_candidate(db, candidate.id, caller_id)
+                if caller_id != current_user.id:
+                    push(db, caller_id,
+                        f"New candidate sourced: {candidate.full_name} for {job.role_title} ({job.client_name}). Ready for your call.",
+                        NotifType.candidate_sourced, entity_id=candidate.id)
+                    db.commit()
 
     return _serialize(candidate)
 

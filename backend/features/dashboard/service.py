@@ -6,7 +6,6 @@ from infra.models import Candidate, Job, Submission, CandidateStatus, User, Noti
 
 PIPELINE_STAGES = [
     ("sourced",              "Sourced"),
-    ("pool_verified",        "Pool Verified"),
     ("handed_to_recruiter",  "Handed to Recruiter"),
     ("call_in_progress",     "Call in Progress"),
     ("ready_for_validation", "Ready for Validation"),
@@ -57,7 +56,7 @@ def get_dashboard(db: Session, user_id: int, role: str) -> dict:
             sourced = db.query(func.count(Candidate.id)).filter(Candidate.assigned_to_id == caller.id).scalar() or 0
             called = db.query(func.count(Candidate.id)).filter(
                 Candidate.assigned_to_id == caller.id,
-                Candidate.status.notin_(["sourced", "pool_verified", "handed_to_recruiter"])
+                Candidate.status.notin_(["sourced", "handed_to_recruiter"])
             ).scalar() or 0
             validated = db.query(func.count(Candidate.id)).filter(
                 Candidate.assigned_to_id == caller.id,

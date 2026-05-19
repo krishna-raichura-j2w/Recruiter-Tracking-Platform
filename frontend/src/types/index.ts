@@ -134,7 +134,6 @@ export interface Candidate {
   immediate_joiner: string | null;
   lead_source: string | null;
   resume_data: string | null;
-  pool_verified: boolean;
   status: string;
   sourcing_date: string | null;
   pool_added_at: string | null;

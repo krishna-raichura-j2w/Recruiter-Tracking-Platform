@@ -363,6 +363,10 @@ export default function CandidateDetail() {
   const sr   = user?.secondary_role ?? '';
   const isRecruiter = role === 'recruiter'     || sr === 'recruiter';
   const isValidator = role === 'delivery_lead' || role === 'admin' || sr === 'delivery_lead';
+  // A DL who sourced the candidate themselves also acts as the caller — they
+  // must be able to fill the Call & Verification form like a recruiter.
+  const isAssignedCaller = !!(user && candidate && candidate.assigned_to_id === user.user_id);
+  const canFillAssessment = isRecruiter || isAssignedCaller;
 
   const showMsg = (msg: string) => {
     setMessage(msg);
@@ -836,11 +840,11 @@ export default function CandidateDetail() {
         <div className="space-y-5">
 
           {/* SECTION 2: CALL & VERIFICATION — editable by caller */}
-          {(isRecruiter || isValidator) && (
+          {(canFillAssessment || isValidator) && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
               <SectionHeader color="bg-blue-700" title="Call & Verification" />
 
-              {isRecruiter ? (
+              {canFillAssessment ? (
                 <form onSubmit={(e) => e.preventDefault()}>
 
                   {/* ── CALL META ───────────────────────────────── */}

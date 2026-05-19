@@ -38,7 +38,6 @@ class CandidateCreate(BaseModel):
 
 
 class CandidateUpdate(BaseModel):
-    pool_verified: bool | None = None
     assigned_to_id: int | None = None
     status: CandidateStatus | None = None
     full_name: str | None = None

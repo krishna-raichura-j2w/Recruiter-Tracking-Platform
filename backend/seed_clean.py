@@ -760,11 +760,11 @@ c = make_candidate(j8, "Deepa Raj", "9844800002", "deepa.raj@gmail.com",
                    "Bangalore", "Docker, AWS, Ansible, Python", "2-4 yrs", subhashree, shwetha, base)
 c.status = CandidateStatus.handed_to_recruiter
 
-# C3 — POOL VERIFIED
+# C3 — SOURCED
 base = dt(2026, 4, 16, 11)
 c = make_candidate(j8, "Prashanth K", "9844800003", "prashanth.k@gmail.com",
                    "Mysore", "Kubernetes, CI/CD, Git, Linux", "3-5 yrs", subhashree, None, base)
-c.status = CandidateStatus.pool_verified
+c.status = CandidateStatus.sourced
 
 # C4 — SOURCED
 base = dt(2026, 4, 18, 14)

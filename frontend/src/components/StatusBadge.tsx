@@ -5,7 +5,6 @@ interface StatusBadgeProps {
 
 const candidateStatusMap: Record<string, { bg: string; text: string; label: string }> = {
   sourced: { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Sourced' },
-  pool_verified: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Pool Verified' },
   handed_to_recruiter: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'Handed to Recruiter' },
   call_in_progress: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Call in Progress' },
   ready_for_validation: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Ready for Validation' },

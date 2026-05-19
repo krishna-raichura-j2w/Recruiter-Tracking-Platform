@@ -264,13 +264,6 @@ export default function Candidates() {
     }
   };
 
-  const handlePoolVerify = async (candidateId: number) => {
-    try {
-      await api.patch(`/candidates/${candidateId}`, { pool_verified: true });
-      fetchCandidates();
-    } catch { }
-  };
-
   const handleAssign = async (userId: number) => {
     if (!assignModal) return;
     try {
@@ -312,7 +305,7 @@ export default function Candidates() {
   });
 
   const STATUS_OPTIONS = [
-    'sourced', 'pool_verified', 'handed_to_recruiter', 'call_in_progress',
+    'sourced', 'handed_to_recruiter', 'call_in_progress',
     'ready_for_validation', 'validated', 'needs_rework', 'on_hold',
     'rejected', 'submitted_to_client', 'interview_stage', 'offer_rolled_out',
     'joined', 'backed_out',
@@ -595,14 +588,6 @@ export default function Candidates() {
 
                     <td className="py-3.5 px-5">
                       <div className="flex items-center gap-2 justify-end">
-                        {canSourceLikeRecruiter && c.status === 'sourced' && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handlePoolVerify(c.id); }}
-                            className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
-                          >
-                            Pool Verify
-                          </button>
-                        )}
                         {canAssign && (
                           <button
                             onClick={(e) => { e.stopPropagation(); setAssignModal({ candidateId: c.id }); }}

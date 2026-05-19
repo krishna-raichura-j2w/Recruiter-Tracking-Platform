@@ -186,7 +186,7 @@ CANDIDATE_FLOW = {
     15: (nithish.id, ravi.id,    2, 4.10, InterviewStage.l1_scheduled,  True,  True,  True,  CandidateStatus.submitted_to_client),
     16: (nithish.id, shwetha.id, 3, 4.00, None,                          True,  True,  False, CandidateStatus.validated),
     17: (gagana.id,  ravi.id,    4, 3.70, None,                          False, False, False, CandidateStatus.call_in_progress),
-    18: (nithish.id, None,       5, None, None,                          False, False, False, CandidateStatus.pool_verified),
+    18: (nithish.id, None,       5, None, None,                          False, False, False, CandidateStatus.sourced),
     19: (gagana.id,  prathik.id, 6, None, None,                          False, False, False, CandidateStatus.handed_to_recruiter),
     20: (nithish.id, shwetha.id, 4, 3.40, None,                          False, False, False, CandidateStatus.needs_rework),
 }

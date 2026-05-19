@@ -54,7 +54,7 @@ const COLUMNS: { key: keyof ExportRow; label: string; width: number; group?: str
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  sourced: '#e0f2fe', pool_verified: '#f0fdf4', handed_to_recruiter: '#fef9c3',
+  sourced: '#e0f2fe', handed_to_recruiter: '#fef9c3',
   call_in_progress: '#fef3c7', ready_for_validation: '#e0e7ff', validated: '#dcfce7',
   needs_rework: '#fee2e2', on_hold: '#f1f5f9', rejected: '#fecaca',
   submitted_to_client: '#dbeafe', interview_stage: '#ede9fe',
@@ -466,7 +466,7 @@ function RecruiterView({ data }: { data: PodReport }) {
                   <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
                       {[
-                        ['Sourcing Date','#6d28d9'],['Pool Verified','#6d28d9'],['Name','#6d28d9'],
+                        ['Sourcing Date','#6d28d9'],['Name','#6d28d9'],
                         ['Mobile','#6d28d9'],['Email','#6d28d9'],['City','#6d28d9'],
                         ['Education','#6d28d9'],['Exp Range','#6d28d9'],['Company','#6d28d9'],
                         ['Skills','#6d28d9'],['Demand','#0f766e'],['Client','#0f766e'],
@@ -481,7 +481,6 @@ function RecruiterView({ data }: { data: PodReport }) {
                     {recruiter.candidates.map((c, i) => (
                       <tr key={i} style={{ background: rowBg(i) }}>
                         <TD>{c.sourcing_date}</TD>
-                        <TD center bg={c.pool_verified === 'Yes' ? '#dcfce7' : rowBg(i)}>{c.pool_verified}</TD>
                         <TD bold>{c.full_name}</TD>
                         <TD>{c.mobile}</TD>
                         <TD>{c.email}</TD>
