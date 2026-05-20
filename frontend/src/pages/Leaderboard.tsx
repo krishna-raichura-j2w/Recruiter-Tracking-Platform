@@ -17,10 +17,11 @@ interface RecruiterRow {
   kam_names: string[];           // pod's KAMs — any of them may work with this recruiter's DL
   bh_name:   string | null;
   pod_name:  string | null;
-  day_target: number;
+  day_target:    number;         // sum of all hourly slot targets for today
+  target_so_far: number;         // cumulative target the user should have reached by now
   done: number;
   verified: number;
-  pct: number;
+  pct: number;                   // verified / target_so_far × 100
   status: 'On Track' | 'Behind';
   rejections: number;
   ack_sent: number;
@@ -28,20 +29,20 @@ interface RecruiterRow {
 }
 
 interface RecruiterTotals {
-  day_target: number;
-  done: number;
-  verified: number;
-  rejections: number;
-  ack_sent: number;
-  pct: number;
-  status: 'On Track' | 'Behind';
+  day_target:    number;
+  target_so_far: number;
+  done:          number;
+  verified:      number;
+  rejections:    number;
+  ack_sent:      number;
+  pct:           number;
+  status:       'On Track' | 'Behind';
 }
 
 interface RecruiterApiResponse {
-  rows: RecruiterRow[];
+  rows:   RecruiterRow[];
   totals: RecruiterTotals;
-  day_target: number;
-  today: string;
+  today:  string;
 }
 
 const PERF_STYLES: Record<RecruiterRow['performance'], string> = {
@@ -113,17 +114,20 @@ function RecruiterLeaderboardSection() {
     if (!data) return null;
     const t = filteredRows.reduce(
       (a, r) => {
-        a.day_target += r.day_target;
-        a.done       += r.done;
-        a.verified   += r.verified;
-        a.rejections += r.rejections;
-        a.ack_sent   += r.ack_sent;
+        a.day_target    += r.day_target;
+        a.target_so_far += r.target_so_far;
+        a.done          += r.done;
+        a.verified      += r.verified;
+        a.rejections    += r.rejections;
+        a.ack_sent      += r.ack_sent;
         return a;
       },
-      { day_target: 0, done: 0, verified: 0, rejections: 0, ack_sent: 0 }
+      { day_target: 0, target_so_far: 0, done: 0, verified: 0, rejections: 0, ack_sent: 0 }
     );
-    const pct = t.day_target ? Math.round((t.verified / t.day_target) * 100) : 0;
-    return { ...t, pct, status: pct >= 75 ? 'On Track' as const : 'Behind' as const };
+    const pct = t.target_so_far ? Math.round((t.verified / t.target_so_far) * 100) : 0;
+    const status: 'On Track' | 'Behind' =
+      t.target_so_far === 0 || pct >= 75 ? 'On Track' : 'Behind';
+    return { ...t, pct, status };
   }, [filteredRows, data]);
 
   const activeFilters = [search, fDl, fKam, fBh, fPod, fStatus, fPerf].filter(Boolean).length;
@@ -209,7 +213,7 @@ function RecruiterLeaderboardSection() {
 
       {!error && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: 1200 }}>
+          <table className="w-full text-sm" style={{ minWidth: 1300 }}>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Recruiter</th>
@@ -217,10 +221,11 @@ function RecruiterLeaderboardSection() {
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">KAM</th>
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">BH</th>
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pod</th>
+                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider" title="Cumulative target the user should have hit by now">Target so far</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Day target</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Done (subs)</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Verified by DL</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">% of target</th>
+                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">% so far</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Rejections</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Ack sent</th>
@@ -230,11 +235,11 @@ function RecruiterLeaderboardSection() {
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-sm text-slate-400">Loading…</td>
+                  <td colSpan={14} className="py-12 text-center text-sm text-slate-400">Loading…</td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-sm text-slate-400">
+                  <td colSpan={14} className="py-12 text-center text-sm text-slate-400">
                     {activeFilters > 0 ? 'No recruiters match these filters.' : 'No recruiters found.'}
                   </td>
                 </tr>
@@ -246,10 +251,11 @@ function RecruiterLeaderboardSection() {
                     <td className="py-2.5 px-3 text-slate-600">{row.kam_names.length > 0 ? row.kam_names.join(', ') : <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.bh_name  ?? <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.pod_name ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-600">{row.day_target}</td>
+                    <td className="py-2.5 px-3 text-center font-semibold text-slate-800">{row.target_so_far || <span className="text-slate-300">—</span>}</td>
+                    <td className="py-2.5 px-3 text-center text-slate-500">{row.day_target || <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-center text-slate-700">{row.done || ''}</td>
                     <td className="py-2.5 px-3 text-center text-slate-700">{row.verified || ''}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-600">{row.pct}%</td>
+                    <td className="py-2.5 px-3 text-center text-slate-600">{row.target_so_far ? `${row.pct}%` : <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-center">
                       {row.status === 'On Track' ? (
                         <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
@@ -276,10 +282,11 @@ function RecruiterLeaderboardSection() {
                   <td className="py-2.5 px-3" colSpan={5}>
                     TOTAL ({filteredRows.length})
                   </td>
-                  <td className="py-2.5 px-3 text-center">{totals.day_target}</td>
+                  <td className="py-2.5 px-3 text-center">{totals.target_so_far}</td>
+                  <td className="py-2.5 px-3 text-center text-slate-500">{totals.day_target}</td>
                   <td className="py-2.5 px-3 text-center">{totals.done}</td>
                   <td className="py-2.5 px-3 text-center">{totals.verified}</td>
-                  <td className="py-2.5 px-3 text-center">{totals.pct}%</td>
+                  <td className="py-2.5 px-3 text-center">{totals.target_so_far ? `${totals.pct}%` : '—'}</td>
                   <td className="py-2.5 px-3 text-center">
                     {totals.status === 'On Track' ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600 text-xs">

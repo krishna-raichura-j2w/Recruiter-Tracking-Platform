@@ -5,7 +5,7 @@ import {
   Briefcase, Users, CheckCircle, Send,
   UserCheck, ClipboardList, LogOut, Activity,
   Building2, BarChart2, GitBranch, TrendingUp, Settings, Trophy,
-  ChevronRight, X, Menu, Sparkles, Network,
+  ChevronRight, X, Menu, Sparkles, Network, Target,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -47,6 +47,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Clients',          path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',    path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Leaderboard',      path: '/leaderboard',   icon: <Trophy size={16} /> },
+        { label: 'Targets',          path: '/targets',       icon: <Target size={16} /> },
         { label: 'Export / Reports', path: '/export',        icon: <BarChart2 size={16} /> },
         { label: 'Users',            path: '/users',         icon: <UserCheck size={16} /> },
         { label: 'Pods',             path: '/pods',          icon: <Network size={16} /> },
@@ -69,6 +70,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Clients',           path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',     path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Leaderboard',       path: '/leaderboard',   icon: <Trophy size={16} /> },
+        { label: 'Targets',           path: '/targets',       icon: <Target size={16} /> },
         { label: 'Export / Reports',  path: '/export',        icon: <BarChart2 size={16} /> },
       ],
     },
@@ -90,6 +92,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Leaderboard',        path: '/leaderboard',   icon: <Trophy size={16} /> },
+        { label: 'Targets',            path: '/targets',       icon: <Target size={16} /> },
         { label: 'My Pod',             path: '/pods',          icon: <Network size={16} /> },
         { label: 'Export / Reports',   path: '/export',        icon: <BarChart2 size={16} /> },
       ],
