@@ -26,7 +26,7 @@ def _serialize(c):
     else:
         base["overall_score"]       = None
         base["auto_recommendation"] = None
-    base["resume_data"] = to_viewable_url(base.get("resume_data"))
+    base["resume_data"] = to_viewable_url(base.get("resume_data"), candidate_id=c.id)
     return base
 
 
