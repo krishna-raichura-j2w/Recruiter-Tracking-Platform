@@ -318,9 +318,9 @@ def recruiter_leaderboard(
     """
     from infra.models import (
         User, UserRole, Candidate, CandidateStatus,
-        Validation, ValidationStatus, ConsultantMail,
+        Submission, Validation, ValidationStatus, ConsultantMail,
     )
-    from sqlalchemy import func, or_, and_, cast, Date
+    from sqlalchemy import func, or_
 
     # IST today
     ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
@@ -348,39 +348,43 @@ def recruiter_leaderboard(
             "today": today_ist.isoformat(),
         }
 
-    # Submissions done today, grouped by sourcing recruiter.
-    # We treat a candidate as "submitted today" when submission_time_ts (HH:MM
-    # string set the day the submission record was created) is non-null AND the
-    # candidate's updated_at falls inside today's IST day. This matches how
-    # other "today" widgets in the app are computed (call_time, validation_done_at).
-    done_rows = (
-        db.query(Candidate.sourced_by_id, func.count(Candidate.id))
+    # We define a recruiter's "submission" for today as any candidate they
+    # sourced where there's activity today on the submission pipeline — either
+    # a Submission row submitted today, OR a Validation row updated today.
+    # This guarantees Verified <= Done (a candidate the DL verified today
+    # always shows up in Done, even if the original submission was yesterday).
+    subs_today: set[tuple[int, int]] = set(
+        db.query(Candidate.sourced_by_id, Submission.candidate_id)
+        .join(Submission, Submission.candidate_id == Candidate.id)
         .filter(
             Candidate.sourced_by_id.in_(rec_ids),
-            Candidate.submission_time_ts.isnot(None),
-            Candidate.submission_time_ts != "",
-            Candidate.updated_at >= day_start_utc,
-            Candidate.updated_at <  day_end_utc,
-        )
-        .group_by(Candidate.sourced_by_id)
-        .all()
+            Submission.submitted_at >= day_start_utc,
+            Submission.submitted_at <  day_end_utc,
+        ).all()
     )
-    done_by_rec = {uid: int(cnt) for uid, cnt in done_rows}
 
-    # Verified by DL today — validations created/updated today with status=validated
-    verified_rows = (
-        db.query(Candidate.sourced_by_id, func.count(Validation.id))
+    val_rows_today = (
+        db.query(Candidate.sourced_by_id, Validation.candidate_id, Validation.status)
         .join(Validation, Validation.candidate_id == Candidate.id)
         .filter(
             Candidate.sourced_by_id.in_(rec_ids),
-            Validation.status == ValidationStatus.validated,
             Validation.updated_at >= day_start_utc,
             Validation.updated_at <  day_end_utc,
-        )
-        .group_by(Candidate.sourced_by_id)
-        .all()
+        ).all()
     )
-    verified_by_rec = {uid: int(cnt) for uid, cnt in verified_rows}
+    val_today: set[tuple[int, int]] = {(r, c) for r, c, _ in val_rows_today}
+    verified_today: set[tuple[int, int]] = {
+        (r, c) for r, c, s in val_rows_today if s == ValidationStatus.validated
+    }
+
+    # Done = union of (submitted today) and (had validation activity today)
+    done_set = subs_today | val_today
+    done_by_rec: dict[int, int] = {}
+    for r, _c in done_set:
+        done_by_rec[r] = done_by_rec.get(r, 0) + 1
+    verified_by_rec: dict[int, int] = {}
+    for r, _c in verified_today:
+        verified_by_rec[r] = verified_by_rec.get(r, 0) + 1
 
     # Rejections today — candidates flipped to rejected with updated_at today
     reject_rows = (
