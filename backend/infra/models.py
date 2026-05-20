@@ -349,6 +349,7 @@ class Candidate(Base):
     first_name       = Column(String(100), nullable=True)
     last_name        = Column(String(100), nullable=True)
     location         = Column(String(200), nullable=True)
+    created_by       = Column(String(200), nullable=True)
     contact_phone    = Column(String(30), nullable=True)
     gender           = Column(String(20), nullable=True)
     designation      = Column(String(200), nullable=True)

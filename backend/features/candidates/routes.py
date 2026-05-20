@@ -129,7 +129,11 @@ def create_candidate(
     role = current_user.role.value
     # Both recruiters and DLs are credited as sourcer
     sourced_by_id = current_user.id if role in ("recruiter", "delivery_lead") else None
-    candidate = service.create_candidate(db, body.model_dump(), sourced_by_id=sourced_by_id)
+    candidate = service.create_candidate(
+        db, body.model_dump(),
+        sourced_by_id=sourced_by_id,
+        created_by_email=current_user.email,
+    )
 
     job = db.query(Job).filter(Job.id == candidate.job_id).first()
     from features.activity.service import log as log_activity
