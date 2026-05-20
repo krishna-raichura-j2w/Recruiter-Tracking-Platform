@@ -722,10 +722,16 @@ export default function Jobs() {
               onReassign={() => openReassignModal(job)}
               onDelete={async () => {
                 if (!confirm(`Delete JD "${job.role_title}" (${job.client_job_id ?? ''})? This cannot be undone.`)) return;
+                const previousJobs = jobs;
+                const previousTotal = jobTotal;
+                setJobs((prev) => prev.filter((j) => j.id !== job.id));
+                setJobTotal((t) => Math.max(0, t - 1));
                 try {
                   await api.delete(`/jobs/${job.id}`);
                   fetchJobs();
                 } catch (e: unknown) {
+                  setJobs(previousJobs);
+                  setJobTotal(previousTotal);
                   const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
                   alert(msg || 'Delete failed.');
                 }
