@@ -1480,9 +1480,17 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
             {/* Title row */}
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <h3 className="text-sm font-bold text-slate-800 leading-snug">{job.role_title}</h3>
+              {job.job_id != null && (
+                <code className="px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide"
+                  style={{ background: '#F1F5F9', color: '#475569', border: '1px solid #CBD5E1' }}
+                  title="Internal job ID">
+                  JD-{job.job_id}
+                </code>
+              )}
               {job.client_job_id && (
                 <code className="px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide"
-                  style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                  style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+                  title="Client job ID">
                   #{job.client_job_id}
                 </code>
               )}
