@@ -1,0 +1,255 @@
+import uuid
+from datetime import datetime, timezone
+from sqlalchemy import Column, Text, SmallInteger, Integer, DateTime, Boolean, Numeric, Date, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
+from core.database import Base
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+class HRBPKraDefinition(Base):
+    __tablename__ = "hrbp_kra_definitions"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kra_code            = Column(Text, unique=True, nullable=False)
+    name                = Column(Text, nullable=False)
+    description         = Column(Text)
+    what_you_own        = Column(Text)
+    target              = Column(Text)
+    revenue_consequence = Column(Text)
+    control_level       = Column(Text)
+    sop_refs            = Column(ARRAY(Text))
+    created_at          = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPEmailTemplate(Base):
+    __tablename__ = "hrbp_email_templates"
+
+    id              = Column(Text, primary_key=True)
+    name            = Column(Text, nullable=False)
+    group_name      = Column(Text, nullable=False)
+    channel         = Column(ARRAY(Text), nullable=False)
+    subject_tpl     = Column(Text)
+    body_tpl        = Column(Text, nullable=False)
+    required_vars   = Column(ARRAY(Text))
+    forbidden_words = Column(ARRAY(Text))
+    locked_cc       = Column(ARRAY(Text))
+    sop_step_ref    = Column(ARRAY(Text))
+    kra_ref         = Column(ARRAY(Text))
+    send_direction  = Column(Text, nullable=False)
+    created_at      = Column(DateTime(timezone=True), default=_now)
+    updated_at      = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPSopDefinition(Base):
+    __tablename__ = "hrbp_sop_definitions"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sop_type          = Column(Text, unique=True, nullable=False)
+    number            = Column(Text, nullable=False)
+    name              = Column(Text, nullable=False)
+    description       = Column(Text)
+    trigger_source    = Column(Text, nullable=False)
+    kra_tags          = Column(ARRAY(Text))
+    control_level     = Column(Text, nullable=False)
+    email_templates   = Column(ARRAY(Text))
+    persons_hierarchy = Column(JSONB, nullable=False)
+    steps_definition  = Column(JSONB, nullable=False)
+    created_at        = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPSignalDefinition(Base):
+    __tablename__ = "hrbp_signal_definitions"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    signal_code      = Column(Text, unique=True, nullable=False)
+    number           = Column(Text, nullable=False)
+    name             = Column(Text, nullable=False)
+    source           = Column(Text, nullable=False)
+    description      = Column(Text)
+    indicators       = Column(ARRAY(Text), nullable=False)
+    auto_action      = Column(Text)
+    auto_sop_trigger = Column(Text)   # soft ref to hrbp_sop_definitions.sop_type
+    threshold_count  = Column(SmallInteger)
+    urgency          = Column(Text)
+    created_at       = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPClient(Base):
+    __tablename__ = "hrbp_clients"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name       = Column(Text, nullable=False)
+    industry   = Column(Text)
+    bh_id      = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    hrbp_id    = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_active  = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPConsultant(Base):
+    __tablename__ = "hrbp_consultants"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    emp_id         = Column(Text, unique=True, nullable=False)
+    name           = Column(Text, nullable=False)
+    email          = Column(Text)
+    phone          = Column(Text)
+    client_id      = Column(UUID(as_uuid=True), ForeignKey("hrbp_clients.id"), nullable=False)
+    hrbp_id        = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    manager_name   = Column(Text)
+    modality       = Column(Text)
+    skill          = Column(Text)
+    cohort         = Column(Text)
+    perf_tier      = Column(Text)
+    monthly_po     = Column(Numeric(12, 2))
+    monthly_ctc    = Column(Numeric(12, 2))
+    po_end_date    = Column(Date)
+    join_date      = Column(Date)
+    bh_feedback    = Column(Text)
+    nps_score      = Column(SmallInteger)
+    last_hike_date = Column(Date)
+    last_hike_pct  = Column(Numeric(5, 2))
+    l_d_status     = Column(Text)
+    is_active      = Column(Boolean, default=True)
+    created_at     = Column(DateTime(timezone=True), default=_now)
+    updated_at     = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPIncident(Base):
+    __tablename__ = "hrbp_incidents"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_ref      = Column(Text, unique=True)
+    consultant_id   = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
+    client_id       = Column(UUID(as_uuid=True), ForeignKey("hrbp_clients.id"), nullable=False)
+    opened_by       = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    sop_type        = Column(Text, ForeignKey("hrbp_sop_definitions.sop_type"), nullable=False)
+    kra_tags        = Column(ARRAY(Text))
+    risk_level      = Column(Text)
+    status          = Column(Text, default="open")
+    current_step    = Column(SmallInteger, default=1)
+    description     = Column(Text)
+    source          = Column(Text)
+    source_email_id = Column(UUID(as_uuid=True))
+    opened_at       = Column(DateTime(timezone=True), default=_now)
+    resolved_at     = Column(DateTime(timezone=True))
+    created_at      = Column(DateTime(timezone=True), default=_now)
+    updated_at      = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPSopStep(Base):
+    __tablename__ = "hrbp_sop_steps"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id         = Column(UUID(as_uuid=True), ForeignKey("hrbp_incidents.id", ondelete="CASCADE"), nullable=False)
+    step_number         = Column(SmallInteger, nullable=False)
+    action_label        = Column(Text, nullable=False)
+    action_detail       = Column(Text)
+    owner_role          = Column(Text, nullable=False)
+    owner_user_id       = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    sla_working_hours   = Column(SmallInteger, nullable=False)
+    due_at              = Column(DateTime(timezone=True))
+    started_at          = Column(DateTime(timezone=True))
+    completed_at        = Column(DateTime(timezone=True))
+    escalated_at        = Column(DateTime(timezone=True))
+    escalated_to_role   = Column(Text)
+    escalated_to_user   = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    status              = Column(Text, default="pending")
+    completion_notes    = Column(Text)
+    completed_by        = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    email_template_id   = Column(Text, ForeignKey("hrbp_email_templates.id"))
+    hard_gate           = Column(Text)
+    hard_gate_cleared   = Column(Boolean, default=False)
+    kra_ref             = Column(Text)
+    created_at          = Column(DateTime(timezone=True), default=_now)
+    updated_at          = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPEmail(Base):
+    __tablename__ = "hrbp_emails"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    direction       = Column(Text, nullable=False)
+    consultant_id   = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"))
+    incident_id     = Column(UUID(as_uuid=True), ForeignKey("hrbp_incidents.id"))
+    from_address    = Column(Text, nullable=False)
+    to_addresses    = Column(ARRAY(Text), nullable=False)
+    cc_addresses    = Column(ARRAY(Text))
+    subject         = Column(Text)
+    body_raw        = Column(Text)
+    body_parsed     = Column(Text)
+    template_id     = Column(Text, ForeignKey("hrbp_email_templates.id"))
+    intent          = Column(Text)
+    sop_type_mapped = Column(Text)
+    sent_at         = Column(DateTime(timezone=True))
+    received_at     = Column(DateTime(timezone=True))
+    processed       = Column(Boolean, default=False)
+    outlook_msg_id  = Column(Text)
+    created_at      = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPSignal(Base):
+    __tablename__ = "hrbp_signals"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    consultant_id = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
+    logged_by     = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    signal_type   = Column(Text, nullable=False)
+    description   = Column(Text, nullable=False)
+    risk_score    = Column(SmallInteger)
+    action_taken  = Column(Text)
+    incident_id   = Column(UUID(as_uuid=True), ForeignKey("hrbp_incidents.id"))
+    logged_at     = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPRoutineSchedule(Base):
+    __tablename__ = "hrbp_routine_schedules"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    consultant_id     = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
+    assigned_to       = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    task_type         = Column(Text, nullable=False)
+    sop_ref           = Column(Text)
+    kra_ref           = Column(Text)
+    email_template_id = Column(Text, ForeignKey("hrbp_email_templates.id"))
+    due_at            = Column(DateTime(timezone=True), nullable=False)
+    completed_at      = Column(DateTime(timezone=True))
+    completed_by      = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    status            = Column(Text, default="pending")
+    recurrence_days   = Column(SmallInteger)
+    next_due_at       = Column(DateTime(timezone=True))
+    created_at        = Column(DateTime(timezone=True), default=_now)
+    updated_at        = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPNpsSurvey(Base):
+    __tablename__ = "hrbp_nps_surveys"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    consultant_id    = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
+    survey_type      = Column(Text)
+    q1_project_score = Column(SmallInteger)
+    q2_changes       = Column(Text)
+    q3_happiness     = Column(SmallInteger)
+    q4_help_needed   = Column(Text)
+    q5_open          = Column(Text)
+    dispatched_at    = Column(DateTime(timezone=True), default=_now)
+    responded_at     = Column(DateTime(timezone=True))
+    created_at       = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPAuditLog(Base):
+    __tablename__ = "hrbp_audit_log"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type = Column(Text, nullable=False)
+    entity_id   = Column(UUID(as_uuid=True), nullable=False)
+    action      = Column(Text, nullable=False)
+    actor_id    = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    old_value   = Column(JSONB)
+    new_value   = Column(JSONB)
+    ts          = Column(DateTime(timezone=True), default=_now)
