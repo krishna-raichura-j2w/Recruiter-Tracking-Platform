@@ -13,10 +13,10 @@ import api from '../api/client';
 interface RecruiterRow {
   recruiter_id: number;
   recruiter_name: string;
-  dl_name:  string | null;
-  kam_name: string | null;
-  bh_name:  string | null;
-  pod_name: string | null;
+  dl_name:   string | null;
+  kam_names: string[];           // pod's KAMs — any of them may work with this recruiter's DL
+  bh_name:   string | null;
+  pod_name:  string | null;
   day_target: number;
   done: number;
   verified: number;
@@ -88,7 +88,7 @@ function RecruiterLeaderboardSection() {
 
   // ── Filter-option lists derived from the data ──
   const dlOptions  = useMemo(() => uniq(data?.rows.map(r => r.dl_name)  ?? []), [data]);
-  const kamOptions = useMemo(() => uniq(data?.rows.map(r => r.kam_name) ?? []), [data]);
+  const kamOptions = useMemo(() => uniq((data?.rows ?? []).flatMap(r => r.kam_names)), [data]);
   const bhOptions  = useMemo(() => uniq(data?.rows.map(r => r.bh_name)  ?? []), [data]);
   const podOptions = useMemo(() => uniq(data?.rows.map(r => r.pod_name) ?? []), [data]);
 
@@ -99,7 +99,7 @@ function RecruiterLeaderboardSection() {
     return rows.filter(r => {
       if (q && !r.recruiter_name.toLowerCase().includes(q)) return false;
       if (fDl  && r.dl_name  !== fDl)  return false;
-      if (fKam && r.kam_name !== fKam) return false;
+      if (fKam && !r.kam_names.includes(fKam)) return false;
       if (fBh  && r.bh_name  !== fBh)  return false;
       if (fPod && r.pod_name !== fPod) return false;
       if (fStatus && r.status      !== fStatus) return false;
@@ -243,7 +243,7 @@ function RecruiterLeaderboardSection() {
                   <tr key={row.recruiter_id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">{row.recruiter_name}</td>
                     <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.dl_name  ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.kam_name ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="py-2.5 px-3 text-slate-600">{row.kam_names.length > 0 ? row.kam_names.join(', ') : <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.bh_name  ?? <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.pod_name ?? <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-center text-slate-600">{row.day_target}</td>
