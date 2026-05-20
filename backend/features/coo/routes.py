@@ -329,16 +329,34 @@ def recruiter_leaderboard(
     day_start_utc = datetime(today_ist.year, today_ist.month, today_ist.day) - timedelta(hours=5, minutes=30)
     day_end_utc   = day_start_utc + timedelta(days=1)
 
-    # All active recruiters (primary or secondary role)
+    # All active recruiters (primary or secondary role)…
     recruiters = (
         db.query(User)
         .filter(
             User.is_active == True,  # noqa: E712
             or_(User.role == UserRole.recruiter, User.secondary_role == "recruiter"),
         )
-        .order_by(User.name)
         .all()
     )
+    rec_ids_set = {u.id for u in recruiters}
+    # …plus any user who has sourced a candidate today, even if not classified
+    # as a recruiter (e.g. delivery leads who source directly). Without this,
+    # POD TOTAL diverges from the candidates table.
+    extra_sourcer_ids = [
+        row[0] for row in db.query(Candidate.sourced_by_id)
+        .filter(
+            Candidate.sourced_by_id.isnot(None),
+            Candidate.sourced_at >= day_start_utc,
+            Candidate.sourced_at <  day_end_utc,
+        )
+        .distinct()
+        .all()
+        if row[0] not in rec_ids_set
+    ]
+    if extra_sourcer_ids:
+        extras = db.query(User).filter(User.id.in_(extra_sourcer_ids)).all()
+        recruiters = recruiters + extras
+    recruiters.sort(key=lambda u: u.name or "")
     rec_ids = [u.id for u in recruiters]
     if not rec_ids:
         return {
