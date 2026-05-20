@@ -23,7 +23,6 @@ interface NavGroup {
 
 const navConfig: Record<string, NavGroup[]> = {
   admin: [
-    { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
     {
       section: 'Recruitment',
       items: [
@@ -55,7 +54,6 @@ const navConfig: Record<string, NavGroup[]> = {
     },
   ],
   kam: [
-    { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
     {
       section: 'My Work',
       items: [
@@ -75,7 +73,6 @@ const navConfig: Record<string, NavGroup[]> = {
     },
   ],
   delivery_lead: [
-    { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
     {
       section: 'My Workflow',
       items: [
@@ -103,7 +100,6 @@ const navConfig: Record<string, NavGroup[]> = {
     },
   ],
   recruiter: [
-    { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
     {
       section: 'My Work',
       items: [
