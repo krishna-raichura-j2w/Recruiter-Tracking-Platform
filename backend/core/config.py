@@ -72,10 +72,6 @@ class Settings(BaseSettings):
     )
 
     # Startup behavior
-    run_startup_bootstrap: bool = Field(
-        default=False,
-        validation_alias="RUN_STARTUP_BOOTSTRAP",
-    )
     start_scheduler_on_startup: bool = Field(
         default=True,
         validation_alias="START_SCHEDULER_ON_STARTUP",
