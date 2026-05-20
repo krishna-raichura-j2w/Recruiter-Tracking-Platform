@@ -39,6 +39,7 @@ from features.boolean_builder.routes import router as boolean_builder_router
 from features.coo.routes import router as coo_router
 from features.pods.routes import router as pods_router
 from features.targets.routes import router as targets_router
+from features.hrbp.router import hrbp_router
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -189,6 +190,7 @@ app.include_router(boolean_builder_router,  prefix="/api")
 app.include_router(coo_router,              prefix="/api")
 app.include_router(pods_router,             prefix="/api")
 app.include_router(targets_router,          prefix="/api")
+app.include_router(hrbp_router,             prefix="/api")
 
 
 def run_migrations(db):
