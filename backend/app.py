@@ -51,8 +51,7 @@ def ensure_schema():
 
     # Let SQLAlchemy create ALL ORM-defined tables (no-ops for existing ones)
     from core.database import Base
-    from infra import models as _m        # noqa: F401 — registers all models
-    from infra import hrbp_models as _hm  # noqa: F401 — registers HRBP models
+    from infra import models as _m  # noqa: F401 — registers all models
     Base.metadata.create_all(bind=engine)
 
     # Belt-and-suspenders: also create via raw DDL (catches edge-cases where
