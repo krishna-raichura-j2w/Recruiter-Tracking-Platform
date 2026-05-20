@@ -32,12 +32,8 @@ def get_activity_summary(db: Session) -> list[dict]:
 
     # Bulk: latest audit log per user
     from sqlalchemy import text
-    rows = db.execute(text("""
-        SELECT DISTINCT ON (user_id)
-            user_id, action, detail, entity_type, entity_id, created_at
-        FROM audit_logs
-        ORDER BY user_id, created_at DESC
-    """)).fetchall()
+    from core.sql_loader import load_sql
+    rows = db.execute(text(load_sql("003-latest_audit_log_per_user.sql"))).fetchall()
 
     last_act: dict[int, dict] = {}
     for r in rows:

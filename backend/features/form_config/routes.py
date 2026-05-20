@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from core.database import get_db, SessionLocal
 from core.deps import get_current_user, require_roles
+from core.sql_loader import load_sql
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/form-config", tags=["form-config"])
@@ -280,28 +281,19 @@ _DEFAULTS: dict[str, dict] = {
 
 
 def _ensure_table(db: Session):
-    db.execute(text("""
-        CREATE TABLE IF NOT EXISTS form_templates (
-            id          SERIAL PRIMARY KEY,
-            form_name   VARCHAR(80) UNIQUE NOT NULL,
-            label       VARCHAR(120),
-            config      TEXT NOT NULL,
-            updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_by  VARCHAR(120)
-        )
-    """))
+    db.execute(text(load_sql("004-create_form_templates_table.sql")))
     db.commit()
 
 
 def _seed_defaults(db: Session):
     for name, tpl in _DEFAULTS.items():
         existing = db.execute(
-            text("SELECT id FROM form_templates WHERE form_name = :n"),
+            text(load_sql("005-check_form_template_exists.sql")),
             {"n": name},
         ).first()
         if not existing:
             db.execute(
-                text("INSERT INTO form_templates (form_name, label, config) VALUES (:n, :l, :c)"),
+                text(load_sql("006-insert_form_template.sql")),
                 {"n": name, "l": tpl["label"], "c": json.dumps(tpl)},
             )
     db.commit()
@@ -326,16 +318,14 @@ class TemplateSave(BaseModel):
 
 @router.get("")
 def list_templates(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    rows = db.execute(text(
-        "SELECT form_name, label, updated_at, updated_by FROM form_templates ORDER BY form_name"
-    )).mappings().all()
+    rows = db.execute(text(load_sql("007-list_form_templates.sql"))).mappings().all()
     return [dict(r) for r in rows]
 
 
 @router.get("/{form_name}")
 def get_template(form_name: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
     row = db.execute(
-        text("SELECT config FROM form_templates WHERE form_name = :n"),
+        text(load_sql("008-get_form_template_config.sql")),
         {"n": form_name},
     ).first()
     if not row:
@@ -351,7 +341,7 @@ def save_template(
     current_user=Depends(require_roles("admin")),
 ):
     row = db.execute(
-        text("SELECT id FROM form_templates WHERE form_name = :n"),
+        text(load_sql("005-check_form_template_exists.sql")),
         {"n": form_name},
     ).first()
     if not row:
@@ -363,12 +353,7 @@ def save_template(
     else:
         config["sections"] = body.sections or []
     db.execute(
-        text("""
-            UPDATE form_templates
-            SET config = :c, label = :l,
-                updated_at = NOW(), updated_by = :u
-            WHERE form_name = :n
-        """),
+        text(load_sql("009-update_form_template.sql")),
         {"c": json.dumps(config), "l": body.label, "u": current_user.name, "n": form_name},
     )
     db.commit()
@@ -385,7 +370,7 @@ def reset_template(
         raise HTTPException(404, detail="No default found for this form")
     tpl = _DEFAULTS[form_name]
     db.execute(
-        text("UPDATE form_templates SET config = :c, label = :l, updated_at = NOW() WHERE form_name = :n"),
+        text(load_sql("010-reset_form_template.sql")),
         {"c": json.dumps(tpl), "l": tpl["label"], "n": form_name},
     )
     db.commit()

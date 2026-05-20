@@ -12,6 +12,7 @@ import sys
 from botocore.exceptions import ClientError
 from sqlalchemy import text
 from core.database import SessionLocal
+from core.sql_loader import load_sql
 from infra.s3 import _s3, _bucket, build_resume_key, copy_resume_to_canonical
 
 
@@ -27,11 +28,7 @@ def _object_exists(key: str) -> bool:
 
 def main() -> int:
     db = SessionLocal()
-    rows = db.execute(text(
-        "SELECT id, resume, resume_data FROM candidates "
-        "WHERE (resume IS NOT NULL AND resume <> 'None' AND resume LIKE '%/%') "
-        "   OR (resume_data IS NOT NULL AND resume_data <> 'None' AND resume_data LIKE '%/%')"
-    )).fetchall()
+    rows = db.execute(text(load_sql("028-select_candidates_for_resume_backfill.sql"))).fetchall()
 
     total = len(rows)
     moved, skipped, errors = 0, 0, 0
@@ -58,7 +55,7 @@ def main() -> int:
             else:
                 print(f"[backfill]   id={cid} source missing in S3 ({source_key!r}) — rewriting DB only")
             db.execute(
-                text("UPDATE candidates SET resume = :f, resume_data = :f WHERE id = :id"),
+                text(load_sql("029-update_candidate_resume_path.sql")),
                 {"f": filename, "id": cid},
             )
             db.commit()

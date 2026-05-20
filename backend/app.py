@@ -49,6 +49,7 @@ def ensure_schema():
     multiple instances and regardless of RUN_STARTUP_BOOTSTRAP."""
     from sqlalchemy import text
     from core.database import engine, SessionLocal as _SL
+    from core.sql_loader import load_sql, load_sql_list
 
     # Let SQLAlchemy create ALL ORM-defined tables (no-ops for existing ones).
     # try/except: users.id is UUID in Supabase but Integer in ORM — causes FK
@@ -65,106 +66,7 @@ def ensure_schema():
     # create_all silently skips due to partial metadata load)
     db = _SL()
     try:
-        stmts = [
-            """CREATE TABLE IF NOT EXISTS pod_memberships (
-                id          SERIAL PRIMARY KEY,
-                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                pod_lead_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                CONSTRAINT uq_pod_membership UNIQUE (user_id, pod_lead_id)
-            )""",
-            "CREATE INDEX IF NOT EXISTS ix_pod_memberships_user_id     ON pod_memberships(user_id)",
-            "CREATE INDEX IF NOT EXISTS ix_pod_memberships_pod_lead_id ON pod_memberships(pod_lead_id)",
-            # ── Probing sheet ────────────────────────────────────────────────
-            """CREATE TABLE IF NOT EXISTS probing_data (
-                id                          SERIAL PRIMARY KEY,
-                job_id                      INTEGER,
-                reporting_manager_location  TEXT,
-                onsite_opportunities        TEXT,
-                project_size                TEXT,
-                project_count               TEXT,
-                work_mode                   TEXT,
-                candidate_role              TEXT,
-                feedback_eta                TEXT,
-                work_location               TEXT,
-                interview_type              TEXT,
-                role_clarity                TEXT,
-                notice_period               TEXT,
-                interview_rounds_count      TEXT,
-                urgency_eta                 TEXT,
-                skill_type                  TEXT,
-                created_by_id               INTEGER REFERENCES users(id),
-                created_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            )""",
-            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_id INTEGER",
-            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS probing_id INTEGER REFERENCES probing_data(id)",
-            # If a prior deploy created job_id as VARCHAR, convert to INTEGER (idempotent)
-            "ALTER TABLE jobs         ALTER COLUMN job_id TYPE INTEGER USING NULLIF(job_id::text, '')::INTEGER",
-            "ALTER TABLE probing_data ALTER COLUMN job_id TYPE INTEGER USING NULLIF(job_id::text, '')::INTEGER",
-            # Creator email snapshot
-            "ALTER TABLE jobs         ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
-            "ALTER TABLE probing_data ADD COLUMN IF NOT EXISTS email_id VARCHAR(200)",
-            # Multi-DL support: JSON array of delivery lead IDs
-            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS delivery_lead_ids TEXT DEFAULT '[]'",
-            # Allow 'coo' value in users.role CHECK constraint (SAEnum native_enum=False)
-            "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
-            "ALTER TABLE users DROP CONSTRAINT IF EXISTS userrole",
-            "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'bh', 'kam', 'recruiter', 'delivery_lead', 'coo'))",
-            # ── Pods (strict tree: BH → KAMs → DLs → Recruiters) ──────────────
-            """CREATE TABLE IF NOT EXISTS pods (
-                id         SERIAL PRIMARY KEY,
-                name       VARCHAR(120) NOT NULL UNIQUE,
-                bh_user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE SET NULL,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            )""",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pod_id INTEGER REFERENCES pods(id) ON DELETE SET NULL",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_user_id INTEGER REFERENCES users(id)",
-            "CREATE INDEX IF NOT EXISTS ix_users_pod_id         ON users(pod_id)",
-            "CREATE INDEX IF NOT EXISTS ix_users_parent_user_id ON users(parent_user_id)",
-            # ── Hourly targets ────────────────────────────────────────────────
-            """CREATE TABLE IF NOT EXISTS hourly_targets (
-                id            SERIAL PRIMARY KEY,
-                user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                date          DATE    NOT NULL,
-                slot_index    INTEGER NOT NULL,
-                target_count  INTEGER NOT NULL DEFAULT 0,
-                created_by_id INTEGER REFERENCES users(id),
-                updated_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                CONSTRAINT uq_hourly_target UNIQUE (user_id, date, slot_index)
-            )""",
-            "CREATE INDEX IF NOT EXISTS ix_hourly_targets_user_date ON hourly_targets(user_id, date)",
-            # ── candidates: external-system / polymorphic-user columns ─────
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS first_name       VARCHAR(100)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_name        VARCHAR(100)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS location         VARCHAR(200)",
-            # Migrate legacy integer location_id → string location, then drop the old column
-            "UPDATE candidates SET location = location_id::text WHERE location IS NULL AND location_id IS NOT NULL",
-            "ALTER TABLE candidates DROP COLUMN IF EXISTS location_id",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS contact_phone    VARCHAR(30)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS gender           VARCHAR(20)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS designation      VARCHAR(200)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS employer         VARCHAR(200)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS total_experience DOUBLE PRECISION",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS min_experience   DOUBLE PRECISION",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS max_experience   DOUBLE PRECISION",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS current_ctc      DOUBLE PRECISION",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS expected_ctc     DOUBLE PRECISION",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume           TEXT",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS role_id          INTEGER     NOT NULL DEFAULT 4",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS type             VARCHAR(50) NOT NULL DEFAULT 'UserCandidate'",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS created_by       VARCHAR(200)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS dl_verified      BOOLEAN NOT NULL DEFAULT FALSE",
-            # Backfill defaults for any rows the DEFAULT didn't catch (e.g. column pre-existed without default)
-            "UPDATE candidates SET role_id = 4              WHERE role_id IS NULL",
-            "UPDATE candidates SET type    = 'UserCandidate' WHERE type    IS NULL",
-            # Backfill created_by with the sourcer's email so historical rows attribute correctly
-            "UPDATE candidates SET created_by = u.email FROM users u WHERE candidates.created_by IS NULL AND candidates.sourced_by_id = u.id",
-            # Backfill dl_verified from existing validations so historical rows reflect the same flag
-            "UPDATE candidates SET dl_verified = TRUE FROM validations v WHERE v.candidate_id = candidates.id AND v.status = 'validated' AND candidates.dl_verified IS DISTINCT FROM TRUE",
-        ]
-        for sql in stmts:
+        for sql in load_sql_list("030-ensure_schema_ddl.sql"):
             try:
                 db.execute(text(sql))
                 db.commit()
@@ -178,31 +80,16 @@ def ensure_schema():
         # at the new user.id; (3) drop the FK on jobs.account_manager_id so it can reference users.
         try:
             from core.security import hash_password
-            # 1) Idempotent user insert per AM (skip rows without email — can't create login).
-            ams = db.execute(text(
-                "SELECT id, name, email FROM account_managers WHERE email IS NOT NULL AND email <> ''"
-            )).fetchall()
+            ams = db.execute(text(load_sql("012-fetch_account_managers_for_migration.sql"))).fetchall()
             for am in ams:
                 db.execute(
-                    text("""INSERT INTO users (name, email, password_hash, role, is_active, must_change_password)
-                            VALUES (:name, :email, :ph, 'bh', true, true)
-                            ON CONFLICT (email) DO NOTHING"""),
+                    text(load_sql("013-migrate_account_managers_to_users.sql")),
                     {"name": am.name, "email": am.email, "ph": hash_password("joules@123")},
                 )
             db.commit()
-            # 2) Drop the FK so jobs.account_manager_id can hold user IDs (different value range
-            #    after the swap below). Idempotent — does nothing if constraint already missing.
-            db.execute(text("ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_account_manager_id_fkey"))
+            db.execute(text(load_sql("014-drop_jobs_account_manager_fkey.sql")))
             db.commit()
-            # 3) Re-point existing jobs to the matching user (by email) when possible.
-            db.execute(text(
-                """UPDATE jobs j
-                       SET account_manager_id = u.id
-                      FROM account_managers am
-                      JOIN users u ON LOWER(u.email) = LOWER(am.email) AND u.role = 'bh'
-                     WHERE j.account_manager_id = am.id
-                       AND am.email IS NOT NULL AND am.email <> ''"""
-            ))
+            db.execute(text(load_sql("015-remap_jobs_to_user_account_managers.sql")))
             db.commit()
         except Exception as _e:
             db.rollback()
@@ -210,12 +97,10 @@ def ensure_schema():
 
         # Backfill existing pod_lead_id values into pod_memberships
         try:
-            rows = db.execute(text("SELECT id, pod_lead_id FROM users WHERE pod_lead_id IS NOT NULL")).fetchall()
+            rows = db.execute(text(load_sql("016-fetch_users_with_pod_lead.sql"))).fetchall()
             for row in rows:
                 db.execute(
-                    text("""INSERT INTO pod_memberships (user_id, pod_lead_id)
-                            VALUES (:uid, :plid)
-                            ON CONFLICT (user_id, pod_lead_id) DO NOTHING"""),
+                    text(load_sql("017-backfill_pod_memberships.sql")),
                     {"uid": row.id, "plid": row.pod_lead_id},
                 )
             if rows:
@@ -228,9 +113,7 @@ def ensure_schema():
         try:
             from core.security import hash_password
             db.execute(
-                text("""INSERT INTO users (name, email, password_hash, role, is_active, must_change_password)
-                        VALUES (:name, :email, :ph, 'coo', true, false)
-                        ON CONFLICT (email) DO NOTHING"""),
+                text(load_sql("018-seed_coo_user.sql")),
                 {
                     "name": "Priya Mohan",
                     "email": "priya.mohan@joulestowatts.com",
@@ -312,6 +195,7 @@ def run_migrations(db):
     """Run all DDL migrations. Each statement is committed individually so that
     concurrent startup workers don't deadlock each other on ALTER TABLE locks."""
     from sqlalchemy import text
+    from core.sql_loader import load_sql, load_sql_list
 
     def _run(sql: str, params: dict | None = None):
         try:
@@ -324,104 +208,19 @@ def run_migrations(db):
     try:
         new_hash = hash_password("rec123")
         result = db.execute(
-            text("UPDATE users SET role='recruiter', password_hash=:h WHERE role IN ('caller','sourcing_partner')"),
+            text(load_sql("019-migrate_recruiter_roles.sql")),
             {"h": new_hash},
         )
         if result.rowcount:
             print(f"Migrated {result.rowcount} users → recruiter")
-        db.execute(text("UPDATE users SET role='kam' WHERE role='pod_lead'"))
+        db.execute(text(load_sql("020-migrate_pod_lead_to_kam.sql")))
         db.commit()
     except Exception:
         db.rollback()
 
     # ── DDL: one commit per statement ────────────────────────────────────────
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_caller_id INTEGER REFERENCES users(id)")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS recruiter_type VARCHAR(20)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcer_ids TEXT DEFAULT '[]'")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS caller_ids TEXT DEFAULT '[]'")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS jd_raw_text TEXT")
-    _run("""
-        CREATE TABLE IF NOT EXISTS submission_timeline (
-            id             SERIAL PRIMARY KEY,
-            submission_id  INTEGER NOT NULL REFERENCES submissions(id),
-            stage          VARCHAR(60) NOT NULL,
-            stage_label    VARCHAR(120),
-            interview_date VARCHAR(30),
-            feedback       VARCHAR(30),
-            note           TEXT,
-            updated_by_id  INTEGER REFERENCES users(id),
-            created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-    """)
-    _run("""CREATE TABLE IF NOT EXISTS consultant_mails (
-        id SERIAL PRIMARY KEY,
-        candidate_id INTEGER UNIQUE NOT NULL REFERENCES candidates(id),
-        sent_by_id INTEGER REFERENCES users(id),
-        sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-        exit_date VARCHAR(20),
-        acknowledgement_received BOOLEAN DEFAULT FALSE,
-        acknowledgement_at TIMESTAMP WITH TIME ZONE,
-        dl_verified BOOLEAN DEFAULT FALSE,
-        dl_verified_at TIMESTAMP WITH TIME ZONE
-    )""")
-    _run("""CREATE TABLE IF NOT EXISTS account_managers (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(120) NOT NULL,
-        email VARCHAR(200),
-        phone VARCHAR(30),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-    )""")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS account_manager_id INTEGER REFERENCES account_managers(id)")
-    _run("""CREATE TABLE IF NOT EXISTS clients (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(120) UNIQUE NOT NULL,
-        short_name VARCHAR(80),
-        website_url VARCHAR(300),
-        logo_data TEXT,
-        description TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-        last_updated_by VARCHAR(120)
-    )""")
-    _run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
-    _run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_updated_by VARCHAR(120)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deadline TIMESTAMP WITH TIME ZONE")
-    _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
-    _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(200)")
-    _run("ALTER TABLE consultant_mails ADD COLUMN IF NOT EXISTS exit_proof TEXT")
-    _run("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_data TEXT")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_deadline TIMESTAMP WITH TIME ZONE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_deadline TIMESTAMP WITH TIME ZONE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_warned BOOLEAN DEFAULT FALSE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_alerted BOOLEAN DEFAULT FALSE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_warned BOOLEAN DEFAULT FALSE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS calling_alerted BOOLEAN DEFAULT FALSE")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_job_id VARCHAR(100)")
-    # Ensure of_clients has a client_id column with UNIQUE so jobs.client_id can FK to it.
-    _run("ALTER TABLE of_clients ADD COLUMN IF NOT EXISTS client_id INTEGER")
-    _run("ALTER TABLE of_clients ADD CONSTRAINT of_clients_client_id_key UNIQUE (client_id)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES of_clients(client_id)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_source VARCHAR(80)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_type VARCHAR(50)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS demand_exclusivity VARCHAR(50)")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS sourcing_target INTEGER")
-    _run("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS kam_id INTEGER REFERENCES users(id)")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_role VARCHAR(30)")
-    _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE")
-    _run("""
-        CREATE TABLE IF NOT EXISTS audit_logs (
-            id          SERIAL PRIMARY KEY,
-            user_id     INTEGER REFERENCES users(id),
-            action      VARCHAR(100),
-            entity_type VARCHAR(100),
-            entity_id   INTEGER,
-            detail      TEXT,
-            created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-    """)
-    _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id)")
-    _run("CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs(created_at DESC)")
+    for stmt in load_sql_list("031-run_migrations_ddl.sql"):
+        _run(stmt)
 
     # pod_memberships table + backfill is handled by ensure_schema() which runs
     # unconditionally at startup — no need to repeat it here.
@@ -430,14 +229,14 @@ def run_migrations(db):
     # Old data had separate sourcer/caller people; unify them so nothing breaks.
     try:
         import json as _json
-        rows = db.execute(text("SELECT id, sourcer_ids, caller_ids FROM jobs")).fetchall()
+        rows = db.execute(text(load_sql("021-fetch_jobs_recruiter_lists.sql"))).fetchall()
         for row in rows:
             s = _json.loads(row.sourcer_ids or '[]') if isinstance(row.sourcer_ids, str) else (row.sourcer_ids or [])
             c = _json.loads(row.caller_ids  or '[]') if isinstance(row.caller_ids,  str) else (row.caller_ids  or [])
             merged = list(dict.fromkeys(s + c))   # union, preserve order, deduplicate
             if merged != s or merged != c:
                 db.execute(
-                    text("UPDATE jobs SET sourcer_ids = :s, caller_ids = :c WHERE id = :id"),
+                    text(load_sql("022-update_jobs_recruiter_lists.sql")),
                     {"s": _json.dumps(merged), "c": _json.dumps(merged), "id": row.id},
                 )
         db.commit()

@@ -12,6 +12,7 @@ load_dotenv()
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from core.database import SessionLocal
+from core.sql_loader import load_sql
 from infra.models import (
     User, Job, Candidate, CallLog, Assessment, Validation,
     ConsultantMail, Submission, SubmissionTimeline,
@@ -32,7 +33,7 @@ tables = [
 ]
 for t in tables:
     try:
-        db.execute(text(f"DELETE FROM {t}"))
+        db.execute(text(load_sql("023-delete_table_records.sql").format(t=t)))
         db.commit()
     except Exception as e:
         db.rollback()
@@ -44,14 +45,14 @@ seqs = ["jobs_id_seq", "candidates_id_seq", "call_logs_id_seq", "assessments_id_
         "submission_timeline_id_seq", "account_managers_id_seq", "clients_id_seq"]
 for s in seqs:
     try:
-        db.execute(text(f"ALTER SEQUENCE {s} RESTART WITH 1"))
+        db.execute(text(load_sql("024-reset_sequence.sql").format(s=s)))
         db.commit()
     except Exception:
         db.rollback()
 
 # Remove test users (id >= 10), keep real team
 try:
-    db.execute(text("DELETE FROM users WHERE id >= 10"))
+    db.execute(text(load_sql("025-delete_test_users.sql")))
     db.commit()
 except Exception:
     db.rollback()
@@ -66,13 +67,9 @@ RECRUITER_TYPES = {
     9: "sourcer", # Subhashree P
 }
 for uid, rt in RECRUITER_TYPES.items():
-    db.execute(text("UPDATE users SET recruiter_type=:rt, pod_lead_id=3 WHERE id=:id"), {"rt": rt, "id": uid})
+    db.execute(text(load_sql("026-update_user_recruiter_type.sql")), {"rt": rt, "id": uid})
 # Also add Rakshith B if missing
-db.execute(text("""
-    INSERT INTO users (name, email, password_hash, role, recruiter_type, pod_lead_id, is_active)
-    VALUES ('Rakshith B', 'rakshith@j2w.com', :ph, 'recruiter', 'caller', 3, true)
-    ON CONFLICT (email) DO UPDATE SET recruiter_type='caller', pod_lead_id=3
-"""), {"ph": hash_password("rec123")})
+db.execute(text(load_sql("027-upsert_user_rakshith.sql")), {"ph": hash_password("rec123")})
 db.commit()
 print("✓ Users cleaned and types set")
 
@@ -775,12 +772,13 @@ db.commit()
 print("✓ All jobs and candidates created with full pipeline data")
 
 # ── Summary ────────────────────────────────────────────────────────────────────
-jobs_count = db.execute(text("SELECT COUNT(*) FROM jobs")).scalar()
-cands_count = db.execute(text("SELECT COUNT(*) FROM candidates")).scalar()
-mails_count = db.execute(text("SELECT COUNT(*) FROM consultant_mails")).scalar()
-val_count   = db.execute(text("SELECT COUNT(*) FROM validations")).scalar()
-sub_count   = db.execute(text("SELECT COUNT(*) FROM submissions")).scalar()
-tl_count    = db.execute(text("SELECT COUNT(*) FROM submission_timeline")).scalar()
+_count_sql = load_sql("032-count_table_records.sql")
+jobs_count  = db.execute(text(_count_sql.format(t="jobs"))).scalar()
+cands_count = db.execute(text(_count_sql.format(t="candidates"))).scalar()
+mails_count = db.execute(text(_count_sql.format(t="consultant_mails"))).scalar()
+val_count   = db.execute(text(_count_sql.format(t="validations"))).scalar()
+sub_count   = db.execute(text(_count_sql.format(t="submissions"))).scalar()
+tl_count    = db.execute(text(_count_sql.format(t="submission_timeline"))).scalar()
 
 print(f"""
 ╔══════════════════════════════════════════════╗

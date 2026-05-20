@@ -12,6 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import text
 
 from core.database import SessionLocal
+from core.sql_loader import load_sql
 from infra.models import Job, JobStatus, User, UserRole, NotifType
 from features.notifications.service import push
 
@@ -55,7 +56,7 @@ def check_deadlines():
         # cleanup path to leak — even if the worker crashes or the connection
         # is recycled by the pool.
         acquired = db.execute(
-            text("SELECT pg_try_advisory_xact_lock(:k)"),
+            text(load_sql("011-advisory_lock.sql")),
             {"k": _SCHED_LOCK_KEY},
         ).scalar()
         if not acquired:
