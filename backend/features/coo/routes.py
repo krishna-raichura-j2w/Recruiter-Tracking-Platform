@@ -428,31 +428,36 @@ def recruiter_leaderboard(
     )
     ack_by_rec = {uid: int(cnt) for uid, cnt in ack_rows}
 
-    # ── Org chain (DL/KAM/BH/Pod) per recruiter ──
-    # Walk up users.parent_user_id from each recruiter to find their DL → KAM → BH.
-    # Fall back to legacy pod_memberships.pod_lead when parent_user_id is null,
-    # so existing data without populated pod trees still shows the DL.
-    pod_name_by_id: dict[int, str] = {p.id: p.name for p in db.query(Pod).all()}
+    # ── Org chain per recruiter ──
+    # New pod shape: KAMs and DLs are flat peers under the BH. A recruiter
+    # rolls up to one DL; KAMs are not in the recruiter's direct chain. The
+    # leaderboard shows the recruiter's DL, the pod's BH, the pod name, and
+    # the full list of KAMs in that pod (since any KAM may work with any DL).
+    pods_by_id: dict[int, Pod] = {p.id: p for p in db.query(Pod).all()}
 
-    # Gather every user id referenced anywhere in the chains we need to walk.
-    chain_ids = set(rec_ids)
-    for u in recruiters:
-        if u.parent_user_id:
-            chain_ids.add(u.parent_user_id)
-    # Walk up: collect parents-of-parents two more levels (KAM, BH).
-    if chain_ids:
-        more = db.query(User.id, User.parent_user_id).filter(User.id.in_(chain_ids)).all()
-        for _id, pid in more:
-            if pid:
-                chain_ids.add(pid)
-        more2 = db.query(User.id, User.parent_user_id).filter(User.id.in_(chain_ids)).all()
-        for _id, pid in more2:
-            if pid:
-                chain_ids.add(pid)
+    # Map pod_id → list of KAM names in that pod.
+    kams_by_pod: dict[int, list[str]] = {}
+    for pid, name in (
+        db.query(User.pod_id, User.name)
+        .filter(User.role == UserRole.kam, User.pod_id.isnot(None), User.is_active == True)  # noqa: E712
+        .order_by(User.name)
+        .all()
+    ):
+        kams_by_pod.setdefault(pid, []).append(name)
 
-    chain_users: dict[int, User] = {
-        u.id: u for u in db.query(User).filter(User.id.in_(chain_ids)).all()
-    } if chain_ids else {}
+    # Map pod_id → BH name.
+    bh_by_pod: dict[int, str] = {}
+    for p in pods_by_id.values():
+        if p.bh_user_id:
+            bh_user = db.query(User).filter(User.id == p.bh_user_id).first()
+            if bh_user:
+                bh_by_pod[p.id] = bh_user.name
+
+    # Map user_id → DL name (the user's parent IF that parent is a DL).
+    parent_ids = {u.parent_user_id for u in recruiters if u.parent_user_id}
+    parent_users: dict[int, User] = {}
+    if parent_ids:
+        parent_users = {u.id: u for u in db.query(User).filter(User.id.in_(parent_ids)).all()}
 
     # Legacy fallback: a recruiter's first pod_lead (DL) from pod_memberships
     legacy_dl_by_user: dict[int, str] = {}
@@ -470,30 +475,23 @@ def recruiter_leaderboard(
         return u.role.value if hasattr(u.role, "value") else str(u.role)
 
     def _chain_for(u: User) -> dict:
-        dl_name = kam_name = bh_name = None
-        cur: User | None = u
-        seen = set()
-        steps = 0
-        while cur and steps < 6 and cur.id not in seen:
-            seen.add(cur.id)
-            rv = _role_value(cur)
-            if rv == "delivery_lead" and dl_name is None and cur.id != u.id:
-                dl_name = cur.name
-            elif rv == "kam" and kam_name is None:
-                kam_name = cur.name
-            elif rv == "bh" and bh_name is None:
-                bh_name = cur.name
-            cur = chain_users.get(cur.parent_user_id) if cur.parent_user_id else None
-            steps += 1
-        # If user themselves IS a DL (DL sourcing directly), surface them as DL.
+        dl_name = None
+        # Direct parent → DL?
+        parent = parent_users.get(u.parent_user_id) if u.parent_user_id else None
+        if parent and _role_value(parent) == "delivery_lead":
+            dl_name = parent.name
+        # User themselves is a DL (sourcing directly).
         if dl_name is None and _role_value(u) == "delivery_lead":
             dl_name = u.name
-        # Legacy fallback for DL if pod tree isn't populated yet.
+        # Legacy fallback when pod tree isn't populated yet.
         if dl_name is None:
             dl_name = legacy_dl_by_user.get(u.id)
-        # Pod name from User.pod_id, or via the BH-of-pod lookup.
-        pod_name = pod_name_by_id.get(u.pod_id) if u.pod_id else None
-        return {"dl": dl_name, "kam": kam_name, "bh": bh_name, "pod": pod_name}
+
+        pod = pods_by_id.get(u.pod_id) if u.pod_id else None
+        pod_name = pod.name if pod else None
+        bh_name  = bh_by_pod.get(u.pod_id) if u.pod_id else None
+        kam_names = kams_by_pod.get(u.pod_id, []) if u.pod_id else []
+        return {"dl": dl_name, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
 
     rows = []
     sum_done = sum_verified = sum_rejects = sum_ack = 0
@@ -509,7 +507,7 @@ def recruiter_leaderboard(
             "recruiter_id":   u.id,
             "recruiter_name": u.name,
             "dl_name":        chain["dl"],
-            "kam_name":       chain["kam"],
+            "kam_names":      chain["kam_names"],
             "bh_name":        chain["bh"],
             "pod_name":       chain["pod"],
             "day_target":     RECRUITER_DAY_TARGET,

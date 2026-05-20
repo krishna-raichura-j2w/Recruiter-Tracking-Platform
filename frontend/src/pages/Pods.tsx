@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Plus, Trash2, UserPlus, Users, Pencil, X, ChevronRight,
   ChevronDown, RefreshCw, Crown, Briefcase, ClipboardList, UserCheck,
+  Search,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -21,6 +22,7 @@ interface MemberShort {
 interface MemberNode extends MemberShort {
   parent_user_id: number | null;
   children: MemberNode[];
+  team_members?: MemberShort[];   // present only on DL nodes
 }
 
 interface PodTree {
@@ -44,8 +46,14 @@ const ROLE_META: Record<RoleKey, { label: string; color: string; bg: string; ico
   recruiter:     { label: 'Recruiter',  color: '#1D4ED8', bg: '#DBEAFE', icon: <ClipboardList size={14} /> },
 };
 
-const CHILD_ROLE: Record<RoleKey, RoleKey | null> = {
-  bh: 'kam', kam: 'delivery_lead', delivery_lead: 'recruiter', recruiter: null,
+// KAMs, DLs, and Recruiters are all flat peers under the BH. Recruiters do
+// NOT formally report to a DL in the tree — instead each DL picks recruiters
+// from the pod into their own working team (see <DlTeam> below).
+const CHILD_ROLES: Record<RoleKey, RoleKey[]> = {
+  bh: ['kam', 'delivery_lead', 'recruiter'],
+  kam: [],
+  delivery_lead: [],
+  recruiter: [],
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -69,10 +77,15 @@ function PickerDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
+  // A pod has exactly one BH, so BH stays single-select. Everything else is multi-select.
+  const isMulti = role !== 'bh';
+
   const [options, setOptions] = useState<MemberShort[]>([]);
-  const [pick, setPick] = useState<number | null>(null);
+  const [picked, setPicked]   = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+  const [search, setSearch]   = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -82,71 +95,157 @@ function PickerDialog({
       .finally(() => setLoading(false));
   }, [podId, role]);
 
+  const toggle = (id: number) => {
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (isMulti) {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      } else {
+        next.clear();
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(u =>
+      u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    );
+  }, [options, search]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(u => picked.has(u.id));
+  const toggleAllFiltered = () => {
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filtered.forEach(u => next.delete(u.id));
+      else                     filtered.forEach(u => next.add(u.id));
+      return next;
+    });
+  };
+
   const submit = async () => {
-    if (!pick) return;
+    const ids = [...picked];
+    if (ids.length === 0) return;
     setError('');
+    setSaving(true);
     try {
       if (role === 'bh') {
-        await api.patch(`/pods/${podId}`, { bh_user_id: pick });
+        await api.patch(`/pods/${podId}`, { bh_user_id: ids[0] });
       } else {
-        await api.post(`/pods/${podId}/members`, { user_id: pick, parent_user_id: parentUserId });
+        // Add each picked user under the same parent. Collect per-user failures
+        // so partial successes still propagate to the tree refresh.
+        const failed: { name: string; reason: string }[] = [];
+        for (const uid of ids) {
+          try {
+            await api.post(`/pods/${podId}/members`, { user_id: uid, parent_user_id: parentUserId });
+          } catch (e) {
+            const err = e as { response?: { data?: { detail?: string } } };
+            const u = options.find(o => o.id === uid);
+            failed.push({ name: u?.name ?? `#${uid}`, reason: err?.response?.data?.detail || 'Failed' });
+          }
+        }
+        if (failed.length > 0) {
+          setError('Could not add: ' + failed.map(f => `${f.name} (${f.reason})`).join('; '));
+          onDone();           // refresh anyway — some may have succeeded
+          setSaving(false);
+          return;
+        }
       }
       onDone();
       onClose();
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } } };
       setError(err?.response?.data?.detail || 'Failed');
+    } finally {
+      setSaving(false);
     }
   };
+
+  const submitLabel = isMulti && picked.size > 1 ? `Add (${picked.size})` : 'Add';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-base font-bold text-slate-800">
-            Add {meta(role).label}
+            Add {meta(role).label}{isMulti ? 's' : ''}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
         </div>
         {error && <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs font-medium">{error}</div>}
+
+        {options.length > 0 && (
+          <div className="mb-2 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            {isMulti && filtered.length > 0 && (
+              <button
+                onClick={toggleAllFiltered}
+                className="text-[11px] font-semibold text-blue-600 hover:underline whitespace-nowrap"
+              >
+                {allFilteredSelected ? 'Clear' : `Select all (${filtered.length})`}
+              </button>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className="py-8 text-center text-sm text-slate-400">Loading…</div>
         ) : options.length === 0 ? (
           <div className="py-8 text-center text-sm text-slate-400">
             No unassigned {meta(role).label.toLowerCase()}s available. Create one in Users first.
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-8 text-center text-sm text-slate-400">No matches.</div>
         ) : (
           <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-100">
-            {options.map(u => (
-              <label
-                key={u.id}
-                className="flex items-center gap-3 px-3 py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50"
-              >
-                <input
-                  type="radio" name="pickuser"
-                  checked={pick === u.id}
-                  onChange={() => setPick(u.id)}
-                  className="accent-blue-500"
-                />
-                <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600">
-                  {initials(u.name)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{u.name}</p>
-                  <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
-                </div>
-              </label>
-            ))}
+            {filtered.map(u => {
+              const checked = picked.has(u.id);
+              return (
+                <label
+                  key={u.id}
+                  className="flex items-center gap-3 px-3 py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50"
+                >
+                  <input
+                    type={isMulti ? 'checkbox' : 'radio'}
+                    name="pickuser"
+                    checked={checked}
+                    onChange={() => toggle(u.id)}
+                    className="accent-blue-500"
+                  />
+                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600">
+                    {initials(u.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{u.name}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
+                  </div>
+                </label>
+              );
+            })}
           </div>
         )}
+
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
           <button
             onClick={submit}
-            disabled={!pick || loading}
+            disabled={picked.size === 0 || loading || saving}
             className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            Add
+            {saving ? 'Saving…' : submitLabel}
           </button>
         </div>
       </div>
@@ -232,21 +331,247 @@ function MemberChip({
   );
 }
 
+// ── Team picker (recruiters within a pod, scoped to a single DL) ─────────────
+
+function TeamPickerDialog({
+  podId, dlId, podRecruiters, alreadyInTeam, onClose, onDone,
+}: {
+  podId: number;
+  dlId: number;
+  podRecruiters: MemberShort[];
+  alreadyInTeam: Set<number>;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const options = useMemo(
+    () => podRecruiters.filter(r => !alreadyInTeam.has(r.id)),
+    [podRecruiters, alreadyInTeam],
+  );
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(u =>
+      u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    );
+  }, [options, search]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(u => picked.has(u.id));
+  const toggleAllFiltered = () => {
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filtered.forEach(u => next.delete(u.id));
+      else                     filtered.forEach(u => next.add(u.id));
+      return next;
+    });
+  };
+  const toggle = (id: number) =>
+    setPicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const submit = async () => {
+    const ids = [...picked];
+    if (ids.length === 0) return;
+    setSaving(true);
+    setError('');
+    const failed: { name: string; reason: string }[] = [];
+    for (const uid of ids) {
+      try {
+        await api.post(`/pods/${podId}/dl-team/${dlId}/members`, { user_id: uid });
+      } catch (e) {
+        const err = e as { response?: { data?: { detail?: string } } };
+        const u = options.find(o => o.id === uid);
+        failed.push({ name: u?.name ?? `#${uid}`, reason: err?.response?.data?.detail || 'Failed' });
+      }
+    }
+    setSaving(false);
+    onDone();
+    if (failed.length > 0) {
+      setError('Could not add: ' + failed.map(f => `${f.name} (${f.reason})`).join('; '));
+    } else {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold text-slate-800">Add to team</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
+        </div>
+        {error && <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs font-medium">{error}</div>}
+
+        {options.length > 0 && (
+          <div className="mb-2 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text" placeholder="Search recruiters in this pod…"
+                value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            {filtered.length > 0 && (
+              <button
+                onClick={toggleAllFiltered}
+                className="text-[11px] font-semibold text-blue-600 hover:underline whitespace-nowrap"
+              >
+                {allFilteredSelected ? 'Clear' : `Select all (${filtered.length})`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {options.length === 0 ? (
+          <div className="py-8 text-center text-sm text-slate-400">
+            All pod recruiters are already in this team.
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-8 text-center text-sm text-slate-400">No matches.</div>
+        ) : (
+          <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-100">
+            {filtered.map(u => (
+              <label
+                key={u.id}
+                className="flex items-center gap-3 px-3 py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50"
+              >
+                <input type="checkbox" checked={picked.has(u.id)} onChange={() => toggle(u.id)} className="accent-blue-500" />
+                <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600">
+                  {initials(u.name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{u.name}</p>
+                  <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button
+            onClick={submit}
+            disabled={picked.size === 0 || saving}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : (picked.size > 1 ? `Add (${picked.size})` : 'Add')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DL inline team section ───────────────────────────────────────────────────
+
+function DlTeam({
+  podId, dl, podRecruiters, canEditTeam, onChange,
+}: {
+  podId: number;
+  dl: MemberNode;
+  podRecruiters: MemberShort[];
+  canEditTeam: boolean;
+  onChange: () => void;
+}) {
+  const [open, setOpen]     = useState(false);
+  const [picker, setPicker] = useState(false);
+  const members = dl.team_members ?? [];
+
+  const removeFromTeam = async (recruiterId: number, name: string) => {
+    if (!confirm(`Remove ${name} from ${dl.name}'s team?`)) return;
+    try {
+      await api.delete(`/pods/${podId}/dl-team/${dl.id}/members/${recruiterId}`);
+      onChange();
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      alert(err?.response?.data?.detail || 'Failed');
+    }
+  };
+
+  return (
+    <div className="ml-7 mt-0.5 mb-1">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+      >
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        Team ({members.length})
+      </button>
+      {open && (
+        <div className="mt-1.5 pl-4 border-l-2 border-slate-100">
+          {members.length === 0 ? (
+            <p className="text-[11px] text-slate-400 py-1.5">No team members yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5 py-1">
+              {members.map(m => (
+                <span
+                  key={m.id}
+                  className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border text-[11px] font-semibold"
+                  style={{ background: '#DBEAFE', color: '#1D4ED8', borderColor: '#1D4ED840' }}
+                >
+                  {m.name}
+                  {canEditTeam && (
+                    <button
+                      onClick={() => removeFromTeam(m.id, m.name)}
+                      className="w-3.5 h-3.5 rounded-full flex items-center justify-center hover:bg-white/60"
+                      title={`Remove ${m.name} from team`}
+                    >
+                      <X size={9} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          {canEditTeam && (
+            <button
+              onClick={() => setPicker(true)}
+              className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-blue-600 hover:bg-blue-50"
+            >
+              <UserPlus size={10} /> Add to team
+            </button>
+          )}
+        </div>
+      )}
+      {picker && (
+        <TeamPickerDialog
+          podId={podId}
+          dlId={dl.id}
+          podRecruiters={podRecruiters}
+          alreadyInTeam={new Set(members.map(m => m.id))}
+          onClose={() => setPicker(false)}
+          onDone={onChange}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Recursive tree row ────────────────────────────────────────────────────────
 
 function TreeNode({
-  node, depth, podId, canEdit, onChange,
+  node, depth, podId, isAdmin, currentUserId, podRecruiters, onChange,
 }: {
   node: MemberNode;
   depth: number;
   podId: number;
-  canEdit: (n: MemberNode) => boolean;
+  isAdmin: boolean;
+  currentUserId: number;
+  podRecruiters: MemberShort[];
   onChange: () => void;
 }) {
   const [open, setOpen] = useState(depth < 2);
   const [picker, setPicker] = useState<RoleKey | null>(null);
-  const childRole = CHILD_ROLE[node.role as RoleKey];
+  const childRoles = CHILD_ROLES[node.role as RoleKey] ?? [];
   const mt = meta(node.role);
+  const isDL = node.role === 'delivery_lead';
+  const canEditTree = isAdmin;                            // Only admins edit the tree itself
+  const canEditTeam = isAdmin || node.id === currentUserId; // DL may edit own team
 
   const removeMember = async () => {
     if (!confirm(`Remove ${node.name} from this pod?`)) return;
@@ -278,16 +603,17 @@ function TreeNode({
         <span className="text-sm font-semibold text-slate-800">{node.name}</span>
         <span className="text-[11px] text-slate-400 truncate">{node.email}</span>
         <div className="flex-1" />
-        {childRole && canEdit(node) && (
+        {canEditTree && childRoles.map(cr => (
           <button
-            onClick={() => setPicker(childRole)}
+            key={cr}
+            onClick={() => setPicker(cr)}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
-            title={`Add ${meta(childRole).label} under ${node.name}`}
+            title={`Add ${meta(cr).label} to pod`}
           >
-            <UserPlus size={11} /> Add {meta(childRole).label}
+            <UserPlus size={11} /> Add {meta(cr).label}s
           </button>
-        )}
-        {canEdit(node) && node.role !== 'bh' && (
+        ))}
+        {canEditTree && node.role !== 'bh' && (
           <button
             onClick={removeMember}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-red-500 hover:bg-red-50"
@@ -297,8 +623,27 @@ function TreeNode({
           </button>
         )}
       </div>
+      {/* DL's working team — inline expandable section */}
+      {isDL && (
+        <DlTeam
+          podId={podId}
+          dl={node}
+          podRecruiters={podRecruiters}
+          canEditTeam={canEditTeam}
+          onChange={onChange}
+        />
+      )}
       {open && node.children.map(c => (
-        <TreeNode key={c.id} node={c} depth={depth + 1} podId={podId} canEdit={canEdit} onChange={onChange} />
+        <TreeNode
+          key={c.id}
+          node={c}
+          depth={depth + 1}
+          podId={podId}
+          isAdmin={isAdmin}
+          currentUserId={currentUserId}
+          podRecruiters={podRecruiters}
+          onChange={onChange}
+        />
       ))}
       {picker && (
         <PickerDialog
@@ -327,13 +672,12 @@ function PodCard({
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState(pod.name);
 
-  // Edit rules:
-  // - Admin: edit anything.
-  // - DL: only add/remove recruiters directly under themselves.
-  const canEdit = (node: MemberNode): boolean => {
-    if (isAdmin) return true;
-    return node.id === currentUserId && node.role === 'delivery_lead';
-  };
+  // All recruiters in this pod (peers under BH). DLs use this list when
+  // building their working team.
+  const podRecruiters: MemberShort[] = useMemo(
+    () => (pod.bh?.children ?? []).filter(c => c.role === 'recruiter'),
+    [pod.bh],
+  );
 
   const rename = async () => {
     if (!newName.trim() || newName === pod.name) { setRenaming(false); return; }
@@ -401,7 +745,15 @@ function PodCard({
 
       <div className="p-5">
         {pod.bh ? (
-          <TreeNode node={pod.bh} depth={0} podId={pod.id} canEdit={canEdit} onChange={onChange} />
+          <TreeNode
+            node={pod.bh}
+            depth={0}
+            podId={pod.id}
+            isAdmin={isAdmin}
+            currentUserId={currentUserId}
+            podRecruiters={podRecruiters}
+            onChange={onChange}
+          />
         ) : (
           <div className="text-center py-8">
             <p className="text-sm text-slate-500 mb-3">No BH assigned yet.</p>
