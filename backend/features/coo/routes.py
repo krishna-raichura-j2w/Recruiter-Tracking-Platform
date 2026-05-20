@@ -11,7 +11,7 @@ from datetime import timedelta, datetime, timezone
 from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from core.deps import require_roles
+from core.deps import get_current_user
 from core.database import get_db
 
 router = APIRouter(prefix="/coo", tags=["coo"])
@@ -193,7 +193,7 @@ def _utc_day_range(d) -> tuple[str, str]:
 @router.get("/leaderboard")
 def coo_leaderboard(
     compare_date: str | None = None,
-    _=Depends(require_roles("coo", "admin")),
+    _=Depends(get_current_user),
 ):
     """
     Returns per-BH × per-client pipeline counts — total (all-time), today, and
@@ -308,7 +308,7 @@ def _performance_category(verified: int) -> str:
 @router.get("/recruiter-leaderboard")
 def recruiter_leaderboard(
     db: Session = Depends(get_db),
-    _=Depends(require_roles("coo", "admin")),
+    _=Depends(get_current_user),
 ):
     """Per-recruiter daily metrics for the COO dashboard.
 

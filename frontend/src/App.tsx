@@ -5,9 +5,7 @@ import { NavCountsProvider } from './context/NavCountsContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
-import CooDashboard from './pages/CooDashboard';
 import CooUsers from './pages/CooUsers';
-import CooLeaderboard from './pages/CooLeaderboard';
 import Jobs from './pages/Jobs';
 import Candidates from './pages/Candidates';
 import CandidateDetail from './pages/CandidateDetail';
@@ -33,15 +31,9 @@ function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function DashboardRouter() {
-  const { user } = useAuth();
-  // Only COO has a dashboard now. Every other role lands on /jobs.
-  return user?.role === 'coo' ? <CooDashboard /> : <Navigate to="/jobs" replace />;
-}
-
 function HomeRedirect() {
   const { user } = useAuth();
-  return <Navigate to={user?.role === 'coo' ? '/dashboard' : '/jobs'} replace />;
+  return <Navigate to={user?.role === 'coo' ? '/leaderboard' : '/jobs'} replace />;
 }
 
 function UsersRouter() {
@@ -62,16 +54,6 @@ export default function App() {
 
           {/* Root redirect */}
           <Route path="/" element={<HomeRedirect />} />
-
-          {/* Protected: All roles */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardRouter />
-              </ProtectedRoute>
-            }
-          />
 
           <Route
             path="/jobs"
@@ -188,17 +170,8 @@ export default function App() {
           <Route
             path="/leaderboard"
             element={
-              <ProtectedRoute allowedRoles={['admin']}>
+              <ProtectedRoute>
                 <Leaderboard />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/coo-leaderboard"
-            element={
-              <ProtectedRoute allowedRoles={['coo', 'admin']}>
-                <CooLeaderboard />
               </ProtectedRoute>
             }
           />
