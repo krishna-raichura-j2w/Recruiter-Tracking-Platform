@@ -1,61 +1,94 @@
+"""
+Business Heads — now backed by users with role='bh'.
+
+The legacy `account_managers` table has been migrated into `users` (see
+`ensure_schema()` in app.py). This module remains under the same `/business-heads`
+URL so existing frontend callers (Jobs.tsx, Export.tsx, FilterBar.tsx) continue
+to work without changes. All CRUD now goes through the users table — admins
+manage BH accounts (logins) via the regular Users page.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
-from infra.models import BusinessHead, isofy_datetimes
+from core.security import hash_password
+from infra.models import User, UserRole
 
 router = APIRouter(prefix="/business-heads", tags=["business-heads"])
 
 
-class BHCreate(BaseModel):
-    name: str
-    email: str | None = None
-    phone: str | None = None
-
-
-class BHUpdate(BaseModel):
-    name: str | None = None
-    email: str | None = None
-    phone: str | None = None
-
-
-def _out(bh: BusinessHead) -> dict:
-    return isofy_datetimes({col.name: getattr(bh, col.name) for col in bh.__table__.columns})
+def _out(u: User) -> dict:
+    return {
+        "id":    u.id,
+        "name":  u.name,
+        "email": u.email,
+        "phone": None,   # BHs no longer carry a phone field; left for response-shape compat
+    }
 
 
 @router.get("")
 def list_bhs(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return [_out(bh) for bh in db.query(BusinessHead).order_by(BusinessHead.name).all()]
+    rows = (
+        db.query(User)
+          .filter(User.role == UserRole.bh, User.is_active == True)  # noqa: E712
+          .order_by(User.name)
+          .all()
+    )
+    return [_out(u) for u in rows]
+
+
+class BHCreate(BaseModel):
+    name:  str
+    email: str
+    phone: str | None = None   # accepted for compat, not persisted
 
 
 @router.post("")
 def create_bh(body: BHCreate, db: Session = Depends(get_db), _=Depends(require_roles("admin"))):
-    bh = BusinessHead(**body.model_dump())
-    db.add(bh); db.commit(); db.refresh(bh)
-    return _out(bh)
+    if not body.email:
+        raise HTTPException(400, "Email is required for a BH login")
+    if db.query(User).filter(User.email == body.email).first():
+        raise HTTPException(409, "A user with this email already exists")
+    u = User(
+        name=body.name,
+        email=body.email,
+        password_hash=hash_password("joules@123"),
+        role=UserRole.bh,
+        is_active=True,
+        must_change_password=True,
+    )
+    db.add(u); db.commit(); db.refresh(u)
+    return _out(u)
+
+
+class BHUpdate(BaseModel):
+    name:  str | None = None
+    email: str | None = None
+    phone: str | None = None
 
 
 @router.patch("/{bh_id}")
 def update_bh(bh_id: int, body: BHUpdate, db: Session = Depends(get_db), _=Depends(require_roles("admin"))):
-    bh = db.query(BusinessHead).filter(BusinessHead.id == bh_id).first()
-    if not bh:
-        raise HTTPException(status_code=404, detail="Business head not found")
-    for k, v in body.model_dump(exclude_none=True).items():
-        setattr(bh, k, v)
-    db.commit(); db.refresh(bh)
-    return _out(bh)
+    u = db.query(User).filter(User.id == bh_id, User.role == UserRole.bh).first()
+    if not u:
+        raise HTTPException(404, "Business head not found")
+    data = body.model_dump(exclude_none=True)
+    if "name" in data:  u.name  = data["name"]
+    if "email" in data: u.email = data["email"]
+    db.commit(); db.refresh(u)
+    return _out(u)
 
 
 @router.delete("/{bh_id}")
 def delete_bh(bh_id: int, db: Session = Depends(get_db), _=Depends(require_roles("admin"))):
     from infra.models import Job
-    bh = db.query(BusinessHead).filter(BusinessHead.id == bh_id).first()
-    if not bh:
-        raise HTTPException(status_code=404, detail="Business head not found")
-    # Nullify FK on linked jobs before deleting
+    u = db.query(User).filter(User.id == bh_id, User.role == UserRole.bh).first()
+    if not u:
+        raise HTTPException(404, "Business head not found")
+    # Detach from any jobs that pointed at this BH.
     db.query(Job).filter(Job.account_manager_id == bh_id).update(
         {"account_manager_id": None}, synchronize_session=False
     )
-    db.delete(bh); db.commit()
+    db.delete(u); db.commit()
     return {"message": "Deleted"}

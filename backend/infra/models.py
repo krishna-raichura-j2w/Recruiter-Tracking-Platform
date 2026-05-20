@@ -39,6 +39,7 @@ def isofy_datetimes(d: dict) -> dict:
 
 class UserRole(str, enum.Enum):
     admin         = "admin"
+    bh            = "bh"
     kam           = "kam"
     recruiter     = "recruiter"
     delivery_lead = "delivery_lead"
@@ -178,6 +179,9 @@ class User(Base):
     is_active             = Column(Boolean, default=True)
     must_change_password  = Column(Boolean, default=False)
     pod_lead_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # New strict-tree pod membership (Pod → BH → KAM → DL → Recruiter).
+    pod_id         = Column(Integer, ForeignKey("pods.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at     = Column(DateTime, default=now_utc)
     last_login_at  = Column(DateTime, nullable=True)
 
@@ -190,6 +194,8 @@ class User(Base):
     notifications       = relationship("Notification", back_populates="user")
     pod_memberships     = relationship("PodMembership", foreign_keys="PodMembership.user_id", back_populates="user", cascade="all, delete-orphan")
     led_pod_memberships = relationship("PodMembership", foreign_keys="PodMembership.pod_lead_id", back_populates="pod_lead")
+    pod                 = relationship("Pod", foreign_keys=[pod_id], back_populates="members")
+    parent_user         = relationship("User", remote_side="User.id", foreign_keys=[parent_user_id])
 
 
 class PodMembership(Base):
@@ -204,6 +210,23 @@ class PodMembership(Base):
 
     user     = relationship("User", foreign_keys=[user_id],     back_populates="pod_memberships")
     pod_lead = relationship("User", foreign_keys=[pod_lead_id], back_populates="led_pod_memberships")
+
+
+class Pod(Base):
+    """A pod is a team headed by one BH. Tree: BH → KAMs → DLs → Recruiters.
+
+    Every member's `users.pod_id` points here; `users.parent_user_id` points to
+    the level above in the same pod (BH has no parent inside the pod).
+    """
+    __tablename__ = "pods"
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String(120), nullable=False, unique=True)
+    bh_user_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, unique=True)
+    created_at  = Column(DateTime, default=now_utc)
+    updated_at  = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+    bh      = relationship("User", foreign_keys=[bh_user_id])
+    members = relationship("User", foreign_keys="User.pod_id", back_populates="pod")
 
 
 class BusinessHead(Base):
