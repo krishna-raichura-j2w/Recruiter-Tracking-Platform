@@ -28,3 +28,8 @@ Thumbs.db
 # Documentation
 docs/
 CLAUDE.md
+
+# Database backups
+backups/
+*.sql
+*.sql.gz
