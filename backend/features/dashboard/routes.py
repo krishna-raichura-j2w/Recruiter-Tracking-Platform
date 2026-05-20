@@ -105,7 +105,7 @@ def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_u
 
         active_statuses = [
             CandidateStatus.sourced,
-            CandidateStatus.calling, CandidateStatus.ready_for_validation,
+            CandidateStatus.call_in_progress, CandidateStatus.ready_for_validation,
         ]
         counts["candidates"] = db.query(Candidate).filter(
             Candidate.sourced_by_id == uid,
