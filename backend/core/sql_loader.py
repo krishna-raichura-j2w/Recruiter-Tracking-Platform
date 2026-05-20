@@ -1,6 +1,6 @@
 from pathlib import Path
 
-_SQL_DIR = Path(__file__).parent.parent / "sql"
+_SQL_DIR = Path(__file__).parent.parent / "db" / "mrr"
 
 
 def load_sql(name: str) -> str:
