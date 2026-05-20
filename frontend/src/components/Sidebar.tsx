@@ -47,7 +47,6 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Clients',          path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',    path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Export / Reports', path: '/export',        icon: <BarChart2 size={16} /> },
-        { label: 'Leaderboard',      path: '/leaderboard',   icon: <Trophy size={16} /> },
         { label: 'Users',            path: '/users',         icon: <UserCheck size={16} /> },
         { label: 'Form Builder',     path: '/form-builder',  icon: <Settings size={16} /> },
       ],
@@ -68,7 +67,6 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Clients',           path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',     path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Export / Reports',  path: '/export',        icon: <BarChart2 size={16} /> },
-        { label: 'Leaderboard',       path: '/leaderboard',   icon: <Trophy size={16} /> },
       ],
     },
   ],
@@ -89,7 +87,6 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={16} /> },
         { label: 'Export / Reports',   path: '/export',        icon: <BarChart2 size={16} /> },
-        { label: 'Leaderboard',        path: '/leaderboard',   icon: <Trophy size={16} /> },
       ],
     },
     {
