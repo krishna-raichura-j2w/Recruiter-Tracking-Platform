@@ -2,7 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavCounts } from '../context/NavCountsContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Briefcase, Users, CheckCircle, Send,
+  Briefcase, Users, CheckCircle, Send,
   UserCheck, ClipboardList, LogOut, Activity,
   Building2, BarChart2, GitBranch, TrendingUp, Settings, Trophy,
   ChevronRight, X, Menu, Sparkles,
@@ -46,6 +46,7 @@ const navConfig: Record<string, NavGroup[]> = {
       items: [
         { label: 'Clients',          path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',    path: '/demand-status', icon: <TrendingUp size={16} /> },
+        { label: 'Leaderboard',      path: '/leaderboard',   icon: <Trophy size={16} /> },
         { label: 'Export / Reports', path: '/export',        icon: <BarChart2 size={16} /> },
         { label: 'Users',            path: '/users',         icon: <UserCheck size={16} /> },
         { label: 'Form Builder',     path: '/form-builder',  icon: <Settings size={16} /> },
@@ -66,6 +67,7 @@ const navConfig: Record<string, NavGroup[]> = {
       items: [
         { label: 'Clients',           path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',     path: '/demand-status', icon: <TrendingUp size={16} /> },
+        { label: 'Leaderboard',       path: '/leaderboard',   icon: <Trophy size={16} /> },
         { label: 'Export / Reports',  path: '/export',        icon: <BarChart2 size={16} /> },
       ],
     },
@@ -86,6 +88,7 @@ const navConfig: Record<string, NavGroup[]> = {
       items: [
         { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={16} /> },
+        { label: 'Leaderboard',        path: '/leaderboard',   icon: <Trophy size={16} /> },
         { label: 'Export / Reports',   path: '/export',        icon: <BarChart2 size={16} /> },
       ],
     },
@@ -105,15 +108,15 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Boolean Builder', path: '/skills',       icon: <Sparkles size={16} /> },
         { label: 'Mail Tracker',    path: '/mail-tracker', icon: <Send size={16} /> },
         { label: 'Recruiter Story', path: '/followup',     icon: <GitBranch size={16} /> },
+        { label: 'Leaderboard',     path: '/leaderboard',  icon: <Trophy size={16} /> },
       ],
     },
   ],
   coo: [
-    { items: [{ label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={16} /> }] },
     {
       section: 'Performance',
       items: [
-        { label: 'Leaderboard', path: '/coo-leaderboard', icon: <Trophy size={16} /> },
+        { label: 'Leaderboard', path: '/leaderboard', icon: <Trophy size={16} /> },
       ],
     },
     {
