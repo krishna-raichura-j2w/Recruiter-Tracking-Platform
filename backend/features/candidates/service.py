@@ -111,9 +111,11 @@ def get_candidate(db: Session, candidate_id: int) -> Candidate | None:
     ).filter(Candidate.id == candidate_id).first()
 
 
-def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None) -> Candidate:
+def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None, created_by_email: str | None = None) -> Candidate:
     if sourced_by_id:
         data["sourced_by_id"] = sourced_by_id
+    if created_by_email:
+        data["created_by"] = created_by_email
 
     # Derive legacy / convenience fields from the new required ones so existing
     # downstream pages (validation queue, submissions, pipeline, etc.) keep
