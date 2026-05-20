@@ -366,6 +366,11 @@ export default function Jobs() {
 
   const openCreateModal = () => {
     setEditJob(null);
+    reset({ headcount: 1 });
+    setApiError('');
+    setExtractTab('text'); setExtractText(''); setExtractFile(null);
+    setExtractError(''); setExtracted(false);
+    setParsedResult(null); setRawJdText(null);
     setShowModal(true);
     setProbingForm(emptyProbing());
     setProbingId(null);
