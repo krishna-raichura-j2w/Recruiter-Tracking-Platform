@@ -14,17 +14,23 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from features.hrbp.router import hrbp_router  # noqa: E402
-from features.mrr.account_managers.routes import router as business_heads_router  # noqa: E402
+from features.mrr.account_managers.routes import (  # noqa: E402
+    router as business_heads_router,
+)
 
 # Remove KAM imports (role no longer exists)
 from features.mrr.auth.routes import router as auth_router  # noqa: E402
-from features.mrr.boolean_builder.routes import router as boolean_builder_router  # noqa: E402
+from features.mrr.boolean_builder.routes import (  # noqa: E402
+    router as boolean_builder_router,
+)
 from features.mrr.calls.routes import router as calls_router  # noqa: E402
 from features.mrr.candidates.routes import router as candidates_router  # noqa: E402
 from features.mrr.clients.routes import router as clients_router  # noqa: E402
 from features.mrr.coo.routes import router as coo_router  # noqa: E402
 from features.mrr.dashboard.routes import router as dashboard_router  # noqa: E402
-from features.mrr.demand_status.routes import router as demand_status_router  # noqa: E402
+from features.mrr.demand_status.routes import (  # noqa: E402
+    router as demand_status_router,
+)
 from features.mrr.export.routes import router as export_router  # noqa: E402
 from features.mrr.followup.routes import router as followup_router  # noqa: E402
 from features.mrr.form_config.routes import (  # noqa: E402
@@ -36,10 +42,14 @@ from features.mrr.form_config.routes import (  # noqa: E402
 from features.mrr.jd_extract.routes import router as jd_extract_router  # noqa: E402
 from features.mrr.jobs.routes import router as jobs_router  # noqa: E402
 from features.mrr.mails.routes import router as mails_router  # noqa: E402
-from features.mrr.notifications.routes import router as notifications_router  # noqa: E402
+from features.mrr.notifications.routes import (  # noqa: E402
+    router as notifications_router,
+)
 from features.mrr.pods.routes import router as pods_router  # noqa: E402
 from features.mrr.probing.routes import router as probing_router  # noqa: E402
-from features.mrr.resume_extract.routes import router as resume_extract_router  # noqa: E402
+from features.mrr.resume_extract.routes import (  # noqa: E402
+    router as resume_extract_router,
+)
 from features.mrr.submissions.routes import router as submissions_router  # noqa: E402
 from features.mrr.targets.routes import router as targets_router  # noqa: E402
 from features.mrr.tasks import scheduler as task_scheduler  # noqa: E402
@@ -49,7 +59,14 @@ from features.mrr.validation.consultant_profile_routes import (  # noqa: E402
     router as consultant_profile_router,
 )
 from features.mrr.validation.routes import router as validation_router  # noqa: E402
-from infra.models import Job, JobStatus, PodMembership, User, UserRole, WorkMode  # noqa: E402
+from infra.models import (  # noqa: E402
+    Job,
+    JobStatus,
+    PodMembership,
+    User,
+    UserRole,
+    WorkMode,
+)
 from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: E402
 
 
