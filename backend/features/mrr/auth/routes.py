@@ -22,7 +22,8 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = authenticate_user(db, body.email, body.password)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
         )
     # Record login timestamp + activity log
     user.last_login_at = datetime.now(timezone.utc)
@@ -30,7 +31,12 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     from features.mrr.activity.service import log as log_activity
 
     log_activity(
-        db, user.id, "login", "Logged in", entity_type="user", entity_id=user.id,
+        db,
+        user.id,
+        "login",
+        "Logged in",
+        entity_type="user",
+        entity_id=user.id,
     )
     return build_token(user)
 
@@ -58,7 +64,8 @@ def change_password(
         raise HTTPException(status_code=400, detail="Passwords do not match")
     if len(body.new_password) < 6:
         raise HTTPException(
-            status_code=400, detail="Password must be at least 6 characters",
+            status_code=400,
+            detail="Password must be at least 6 characters",
         )
     from features.mrr.users.service import change_password as svc_change
 

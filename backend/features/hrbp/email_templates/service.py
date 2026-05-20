@@ -15,7 +15,8 @@ from features.hrbp.email_templates.schema import (
 def create(db: Session, payload: EmailTemplateCreate) -> HRBPEmailTemplate:
     if db.query(HRBPEmailTemplate).filter_by(id=payload.id).first():
         raise HTTPException(
-            status_code=409, detail=f"Template id '{payload.id}' already exists",
+            status_code=409,
+            detail=f"Template id '{payload.id}' already exists",
         )
     record = HRBPEmailTemplate(**payload.model_dump())
     db.add(record)

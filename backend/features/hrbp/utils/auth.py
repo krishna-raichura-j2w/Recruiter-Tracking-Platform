@@ -24,7 +24,9 @@ def get_hrbp_user(
 
     try:
         payload = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.algorithm],
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
         )
     except ExpiredSignatureError:
         raise HTTPException(
@@ -44,9 +46,7 @@ def get_hrbp_user(
             detail="Invalid token payload",
         )
 
-    user = (
-        db.query(User).filter(User.id == int(user_id), User.is_active).first()
-    )
+    user = db.query(User).filter(User.id == int(user_id), User.is_active).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

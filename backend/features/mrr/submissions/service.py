@@ -354,7 +354,10 @@ def list_submissions(
 
 
 def submit_to_client(
-    db: Session, candidate_id: int, notes: str | None, submitted_by_id: int,
+    db: Session,
+    candidate_id: int,
+    notes: str | None,
+    submitted_by_id: int,
 ) -> dict | None:
     candidate = (
         db.query(Candidate)
@@ -394,7 +397,10 @@ def submit_to_client(
 
 
 def update_stage(
-    db: Session, submission_id: int, data: dict, updated_by_id: int | None = None,
+    db: Session,
+    submission_id: int,
+    data: dict,
+    updated_by_id: int | None = None,
 ) -> dict | None:
     submission = _load(db).filter(Submission.id == submission_id).first()
     if not submission:

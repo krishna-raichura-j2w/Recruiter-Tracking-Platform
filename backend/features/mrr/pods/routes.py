@@ -286,7 +286,8 @@ def delete_pod(
         raise HTTPException(404, "Pod not found")
     # Detach all members
     db.query(User).filter(User.pod_id == pod.id).update(
-        {User.pod_id: None, User.parent_user_id: None}, synchronize_session=False,
+        {User.pod_id: None, User.parent_user_id: None},
+        synchronize_session=False,
     )
     db.delete(pod)
     db.commit()
@@ -337,7 +338,8 @@ def add_member(
 
     if user.pod_id is not None and user.pod_id != pod.id:
         raise HTTPException(
-            409, f"User already belongs to a different pod (id={user.pod_id})",
+            409,
+            f"User already belongs to a different pod (id={user.pod_id})",
         )
 
     _validate_placement(db, pod, user, body.parent_user_id)
@@ -401,7 +403,8 @@ def remove_member(
         )
         if has_team:
             raise HTTPException(
-                409, "This DL still has team members. Clear their team first.",
+                409,
+                "This DL still has team members. Clear their team first.",
             )
 
     # If removing a recruiter, drop any DL-team memberships they belong to.
@@ -482,7 +485,8 @@ def dl_team_remove(
         raise HTTPException(404, "Pod not found")
     dl = _resolve_dl(db, pod, dl_id, current_user)
     db.query(PodMembership).filter(
-        PodMembership.user_id == user_id, PodMembership.pod_lead_id == dl.id,
+        PodMembership.user_id == user_id,
+        PodMembership.pod_lead_id == dl.id,
     ).delete()
     db.commit()
     return _build_tree(db, pod)
@@ -511,7 +515,8 @@ def assignable_users(
         raise HTTPException(400, "Unknown role")
 
     q = db.query(User).filter(
-        User.role == role_enum, User.is_active,
+        User.role == role_enum,
+        User.is_active,
     )
     if pod_id is not None:
         # users not yet attached, OR attached to this same pod (for re-parent moves)

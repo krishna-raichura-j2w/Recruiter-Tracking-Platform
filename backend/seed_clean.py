@@ -101,11 +101,13 @@ RECRUITER_TYPES = {
 }
 for uid, rt in RECRUITER_TYPES.items():
     db.execute(
-        text(load_sql("026-update_user_recruiter_type.sql")), {"rt": rt, "id": uid},
+        text(load_sql("026-update_user_recruiter_type.sql")),
+        {"rt": rt, "id": uid},
     )
 # Also add Rakshith B if missing
 db.execute(
-    text(load_sql("027-upsert_user_rakshith.sql")), {"ph": hash_password("rec123")},
+    text(load_sql("027-upsert_user_rakshith.sql")),
+    {"ph": hash_password("rec123")},
 )
 db.commit()
 print("✓ Users cleaned and types set")
@@ -667,7 +669,8 @@ add_mail(c5, gagana, after(base, days=2))
 add_validation(c5, dl, after(base, days=3))
 sub5 = add_submission(c5, j, kam, after(base, days=4), InterviewStage.submitted)
 reject_by_kam(
-    c5, "CTC expectation ₹35L is 25% above client budget cap of ₹28L. Not viable.",
+    c5,
+    "CTC expectation ₹35L is 25% above client budget cap of ₹28L. Not viable.",
 )
 db.flush()
 

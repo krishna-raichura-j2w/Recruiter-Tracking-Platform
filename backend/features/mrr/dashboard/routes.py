@@ -186,14 +186,17 @@ def dashboard(db: Session = Depends(get_db), current_user=Depends(get_current_us
 
 @router.get("/notifications")
 def notifications(
-    db: Session = Depends(get_db), current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     return service.get_notifications(db, current_user.id)
 
 
 @router.post("/notifications/{notif_id}/read")
 def mark_read(
-    notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user),
+    notif_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     service.mark_read(db, notif_id, current_user.id)
     return {"message": "marked read"}

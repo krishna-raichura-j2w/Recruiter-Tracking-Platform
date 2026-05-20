@@ -1,4 +1,3 @@
-
 from core.database import get_db
 from core.deps import get_current_user
 from core.response_format import (
@@ -24,7 +23,8 @@ def create_email(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="Email record created successfully",
+            data=data.__dict__,
+            message="Email record created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -42,7 +42,13 @@ def list_emails(
     _: object = Depends(get_current_user),
 ):
     result = service.list_paginated(
-        db, page_no, per_page, direction, consultant_id, incident_id, processed,
+        db,
+        page_no,
+        per_page,
+        direction,
+        consultant_id,
+        incident_id,
+        processed,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
@@ -63,7 +69,8 @@ def get_email(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Email record fetched successfully",
+            data=data.__dict__,
+            message="Email record fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -79,7 +86,8 @@ def update_email(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Email record updated successfully",
+            data=data.__dict__,
+            message="Email record updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

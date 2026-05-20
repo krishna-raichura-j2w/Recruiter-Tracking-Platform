@@ -30,27 +30,34 @@ async def extract_jd(
         fname = (file.filename or "").lower()
         if mime == "application/pdf" or fname.endswith(".pdf"):
             parsed, cost, raw_text = await asyncio.to_thread(
-                service.extract_from_pdf, data,
+                service.extract_from_pdf,
+                data,
             )
         elif mime in DOCX_MIMES or fname.endswith((".docx", ".doc")):
             parsed, cost, raw_text = await asyncio.to_thread(
-                service.extract_from_docx, data,
+                service.extract_from_docx,
+                data,
             )
         elif mime in IMAGE_MIMES:
             parsed, cost, raw_text = await asyncio.to_thread(
-                service.extract_from_image, data, mime,
+                service.extract_from_image,
+                data,
+                mime,
             )
         else:
             raise HTTPException(
-                status_code=400, detail=f"Unsupported file type: {mime}",
+                status_code=400,
+                detail=f"Unsupported file type: {mime}",
             )
     elif text and text.strip():
         parsed, cost, raw_text = await asyncio.to_thread(
-            service.extract_from_text, text.strip(),
+            service.extract_from_text,
+            text.strip(),
         )
     else:
         raise HTTPException(
-            status_code=400, detail="Provide either text or a file (PDF/image)",
+            status_code=400,
+            detail="Provide either text or a file (PDF/image)",
         )
 
     return JDExtractResponse(parsed=parsed, cost_info=cost, raw_text=raw_text)

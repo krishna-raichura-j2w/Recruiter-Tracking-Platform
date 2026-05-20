@@ -63,11 +63,7 @@ def get_dashboard(db: Session, user_id: int, role: str) -> dict:
     # Per-recruiter breakdown (pod lead only)
     recruiter_stats = []
     if role in ("delivery_lead", "admin"):
-        callers = (
-            db.query(User)
-            .filter(User.role == "recruiter", User.is_active)
-            .all()
-        )
+        callers = db.query(User).filter(User.role == "recruiter", User.is_active).all()
         for caller in callers:
             sourced = (
                 db.query(func.count(Candidate.id))

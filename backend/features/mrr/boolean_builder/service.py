@@ -241,7 +241,8 @@ def _title_fallback(jd_text: str) -> str:
     if not lines:
         return ""
     pat = re.compile(
-        r"^(?:job\s*title|position|role)\s*[:\-]\s*(.+)$", flags=re.IGNORECASE,
+        r"^(?:job\s*title|position|role)\s*[:\-]\s*(.+)$",
+        flags=re.IGNORECASE,
     )
     for line in lines[:12]:
         m = pat.match(line)

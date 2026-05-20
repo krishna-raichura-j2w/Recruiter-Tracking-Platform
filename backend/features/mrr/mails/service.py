@@ -106,7 +106,10 @@ def list_mails(
 
 
 def update_mail(
-    db: Session, mail_id: int, data: dict, updated_by_role: str,
+    db: Session,
+    mail_id: int,
+    data: dict,
+    updated_by_role: str,
 ) -> dict | None:
     mail = _load(db).filter(ConsultantMail.id == mail_id).first()
     if not mail:
@@ -147,7 +150,9 @@ def update_mail(
                         from features.mrr.allocation.service import get_min_load
 
                         validator = get_min_load(
-                            db, pod_lead_id, UserRole.delivery_lead,
+                            db,
+                            pod_lead_id,
+                            UserRole.delivery_lead,
                         )
                         if not validator:
                             validator = (

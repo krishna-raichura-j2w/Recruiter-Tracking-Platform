@@ -46,7 +46,8 @@ def get_by_code(db: Session, signal_code: str) -> HRBPSignalDefinition:
     record = db.query(HRBPSignalDefinition).filter_by(signal_code=signal_code).first()
     if not record:
         raise HTTPException(
-            status_code=404, detail=f"Signal code '{signal_code}' not found",
+            status_code=404,
+            detail=f"Signal code '{signal_code}' not found",
         )
     return record
 
@@ -61,7 +62,9 @@ def list_by_urgency(db: Session, urgency: str) -> list[HRBPSignalDefinition]:
 
 
 def update(
-    db: Session, id: int, payload: SignalDefinitionUpdate,
+    db: Session,
+    id: int,
+    payload: SignalDefinitionUpdate,
 ) -> HRBPSignalDefinition:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():

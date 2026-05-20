@@ -193,7 +193,8 @@ class User(Base):
     password_hash = Column(String(256), nullable=False)
     role = Column(SAEnum(UserRole, native_enum=False), nullable=False)
     secondary_role = Column(
-        String(30), nullable=True,
+        String(30),
+        nullable=True,
     )  # e.g. "delivery_lead" for a KAM who is also DL
     recruiter_type = Column(SAEnum(RecruiterType, native_enum=False), nullable=True)
     is_active = Column(Boolean, default=True)
@@ -201,7 +202,10 @@ class User(Base):
     pod_lead_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     # New strict-tree pod membership (Pod → BH → KAM → DL → Recruiter).
     pod_id = Column(
-        Integer, ForeignKey("pods.id", ondelete="SET NULL"), nullable=True, index=True,
+        Integer,
+        ForeignKey("pods.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=now_utc)
@@ -213,7 +217,9 @@ class User(Base):
         back_populates="assigned_to",
     )
     sourced_candidates = relationship(
-        "Candidate", foreign_keys="Candidate.sourced_by_id", back_populates="sourced_by",
+        "Candidate",
+        foreign_keys="Candidate.sourced_by_id",
+        back_populates="sourced_by",
     )
     call_logs = relationship("CallLog", back_populates="caller")
     assessments = relationship("Assessment", back_populates="caller")
@@ -233,7 +239,9 @@ class User(Base):
     )
     pod = relationship("Pod", foreign_keys=[pod_id], back_populates="members")
     parent_user = relationship(
-        "User", remote_side="User.id", foreign_keys=[parent_user_id],
+        "User",
+        remote_side="User.id",
+        foreign_keys=[parent_user_id],
     )
 
 
@@ -251,10 +259,14 @@ class PodMembership(Base):
     )
 
     user = relationship(
-        "User", foreign_keys=[user_id], back_populates="pod_memberships",
+        "User",
+        foreign_keys=[user_id],
+        back_populates="pod_memberships",
     )
     pod_lead = relationship(
-        "User", foreign_keys=[pod_lead_id], back_populates="led_pod_memberships",
+        "User",
+        foreign_keys=[pod_lead_id],
+        back_populates="led_pod_memberships",
     )
 
 
@@ -271,7 +283,10 @@ class HourlyTarget(Base):
     __tablename__ = "hourly_targets"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True,
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     date = Column(Date, nullable=False, index=True)
     slot_index = Column(Integer, nullable=False)
@@ -296,7 +311,10 @@ class Pod(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(120), nullable=False, unique=True)
     bh_user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, unique=True,
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
     )
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
@@ -318,7 +336,9 @@ class Client(Base):
     __tablename__ = "of_clients"
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(
-        Integer, unique=True, nullable=True,
+        Integer,
+        unique=True,
+        nullable=True,
     )  # external/business client identifier; FK target for jobs.client_id
     name = Column(String(120), unique=True, nullable=False)
     short_name = Column(String(80))
@@ -360,12 +380,16 @@ class Job(Base):
     caller_ids = Column(Text, default="[]")  # JSON array e.g. "[4,8]"
     sourcing_target = Column(Integer, nullable=True)  # how many candidates to source
     kam_id = Column(
-        Integer, ForeignKey("users.id"), nullable=True,
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
     )  # KAM when DL creates
     delivery_lead_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     delivery_lead_ids = Column(Text, default="[]")  # JSON array of DL user IDs
     account_manager_id = Column(
-        Integer, ForeignKey("account_managers.id"), nullable=True,
+        Integer,
+        ForeignKey("account_managers.id"),
+        nullable=True,
     )
     deadline = Column(DateTime, nullable=True)
     sourcing_deadline = Column(DateTime, nullable=True)
@@ -377,7 +401,8 @@ class Job(Base):
     calling_alerted = Column(Boolean, default=False)
     created_by_id = Column(Integer, ForeignKey("users.id"))
     email_id = Column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )  # creator's email (snapshot at create time)
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
@@ -433,7 +458,8 @@ class Candidate(Base):
     lead_source = Column(String(100))
     resume_data = Column(Text, nullable=True)
     status = Column(
-        SAEnum(CandidateStatus, native_enum=False), default=CandidateStatus.sourced,
+        SAEnum(CandidateStatus, native_enum=False),
+        default=CandidateStatus.sourced,
     )
     # Sourcing timestamps
     sourcing_date = Column(String(20))  # YYYY-MM-DD
@@ -477,10 +503,14 @@ class Candidate(Base):
 
     job = relationship("Job", back_populates="candidates")
     sourced_by = relationship(
-        "User", foreign_keys=[sourced_by_id], back_populates="sourced_candidates",
+        "User",
+        foreign_keys=[sourced_by_id],
+        back_populates="sourced_candidates",
     )
     assigned_to = relationship(
-        "User", foreign_keys=[assigned_to_id], back_populates="assigned_candidates",
+        "User",
+        foreign_keys=[assigned_to_id],
+        back_populates="assigned_candidates",
     )
     assigned_validator = relationship("User", foreign_keys=[assigned_validator_id])
     call_logs = relationship("CallLog", back_populates="candidate")
@@ -488,10 +518,14 @@ class Candidate(Base):
     validation = relationship("Validation", back_populates="candidate", uselist=False)
     submission = relationship("Submission", back_populates="candidate", uselist=False)
     consultant_profile = relationship(
-        "ConsultantProfile", back_populates="candidate", uselist=False,
+        "ConsultantProfile",
+        back_populates="candidate",
+        uselist=False,
     )
     consultant_mail = relationship(
-        "ConsultantMail", back_populates="candidate", uselist=False,
+        "ConsultantMail",
+        back_populates="candidate",
+        uselist=False,
     )
 
 
@@ -514,7 +548,10 @@ class Assessment(Base):
     __tablename__ = "assessments"
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(
-        Integer, ForeignKey("candidates.id"), unique=True, nullable=False,
+        Integer,
+        ForeignKey("candidates.id"),
+        unique=True,
+        nullable=False,
     )
     caller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     # Verification basics (Stage A)
@@ -590,7 +627,10 @@ class Validation(Base):
     __tablename__ = "validations"
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(
-        Integer, ForeignKey("candidates.id"), unique=True, nullable=False,
+        Integer,
+        ForeignKey("candidates.id"),
+        unique=True,
+        nullable=False,
     )
     delivery_lead_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(SAEnum(ValidationStatus, native_enum=False))
@@ -608,7 +648,10 @@ class ConsultantProfile(Base):
     __tablename__ = "consultant_profiles"
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(
-        Integer, ForeignKey("candidates.id"), unique=True, nullable=False,
+        Integer,
+        ForeignKey("candidates.id"),
+        unique=True,
+        nullable=False,
     )
     resignation_acceptance = Column(String(10))  # Y/N/NA
     replacement_kt_status = Column(String(100))
@@ -639,13 +682,17 @@ class Submission(Base):
     __tablename__ = "submissions"
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(
-        Integer, ForeignKey("candidates.id"), unique=True, nullable=False,
+        Integer,
+        ForeignKey("candidates.id"),
+        unique=True,
+        nullable=False,
     )
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
     delivery_lead_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     submitted_at = Column(DateTime, default=now_utc)
     current_stage = Column(
-        SAEnum(InterviewStage, native_enum=False), default=InterviewStage.submitted,
+        SAEnum(InterviewStage, native_enum=False),
+        default=InterviewStage.submitted,
     )
     # TA / HM screening
     ta_feedback = Column(String(30))  # Pending / Accepted / Rejected

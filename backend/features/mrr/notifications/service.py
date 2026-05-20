@@ -10,7 +10,10 @@ def push(
     entity_id: int | None = None,
 ) -> Notification:
     n = Notification(
-        user_id=user_id, message=message, notif_type=notif_type, entity_id=entity_id,
+        user_id=user_id,
+        message=message,
+        notif_type=notif_type,
+        entity_id=entity_id,
     )
     db.add(n)
     # caller is responsible for committing the outer transaction
@@ -54,6 +57,7 @@ def get_new_since(db: Session, user_id: int, since_id: int) -> list[dict]:
 
 def mark_all_read(db: Session, user_id: int):
     db.query(Notification).filter(
-        Notification.user_id == user_id, not Notification.is_read,
+        Notification.user_id == user_id,
+        not Notification.is_read,
     ).update({"is_read": True})
     db.commit()

@@ -12,7 +12,8 @@ from features.hrbp.sop_definitions.schema import (
 def create(db: Session, payload: SopDefinitionCreate) -> HRBPSopDefinition:
     if db.query(HRBPSopDefinition).filter_by(sop_type=payload.sop_type).first():
         raise HTTPException(
-            status_code=409, detail=f"SOP type '{payload.sop_type}' already exists",
+            status_code=409,
+            detail=f"SOP type '{payload.sop_type}' already exists",
         )
     record = HRBPSopDefinition(**payload.model_dump())
     db.add(record)

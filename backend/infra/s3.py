@@ -44,7 +44,9 @@ def build_resume_key(candidate_id: int, filename: str) -> str:
 
 
 def upload_resume_pending(
-    data: bytes, filename: str, content_type: str,
+    data: bytes,
+    filename: str,
+    content_type: str,
 ) -> tuple[str, str]:
     """
     Upload a resume to the pending area before a candidate row exists.
@@ -142,7 +144,9 @@ def get_presigned_url(key: str) -> str:
     if ct:
         params["ResponseContentType"] = ct
     return _s3().generate_presigned_url(
-        "get_object", Params=params, ExpiresIn=PRESIGN_EXPIRY,
+        "get_object",
+        Params=params,
+        ExpiresIn=PRESIGN_EXPIRY,
     )
 
 

@@ -26,7 +26,8 @@ def create_signal(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="Signal definition created successfully",
+            data=data.__dict__,
+            message="Signal definition created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -72,7 +73,8 @@ def get_signal_by_id(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Signal definition fetched successfully",
+            data=data.__dict__,
+            message="Signal definition fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -87,7 +89,8 @@ def get_signal_by_code(
     try:
         data = service.get_by_code(db, signal_code)
         return success_response(
-            data=data.__dict__, message="Signal definition fetched successfully",
+            data=data.__dict__,
+            message="Signal definition fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -103,7 +106,8 @@ def update_signal(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Signal definition updated successfully",
+            data=data.__dict__,
+            message="Signal definition updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -118,7 +122,8 @@ def delete_signal(
     try:
         service.delete(db, id)
         return success_response(
-            data={}, message="Signal definition deleted successfully",
+            data={},
+            message="Signal definition deleted successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

@@ -91,7 +91,10 @@ def submit_to_client(
     current_user=Depends(require_roles(*SUBMITTERS)),
 ):
     result = service.submit_to_client(
-        db, body.candidate_id, body.notes, current_user.id,
+        db,
+        body.candidate_id,
+        body.notes,
+        current_user.id,
     )
     if not result:
         raise HTTPException(status_code=404, detail="Candidate not found")

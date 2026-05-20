@@ -1,4 +1,3 @@
-
 from core.database import get_db
 from core.deps import get_current_user
 from core.response_format import (
@@ -25,7 +24,12 @@ def list_audit_log(
     _: object = Depends(get_current_user),
 ):
     result = service.list_paginated(
-        db, page_no, per_page, entity_type, entity_id, actor_id,
+        db,
+        page_no,
+        per_page,
+        entity_type,
+        entity_id,
+        actor_id,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
@@ -46,7 +50,8 @@ def get_audit_entry(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Audit log entry fetched successfully",
+            data=data.__dict__,
+            message="Audit log entry fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

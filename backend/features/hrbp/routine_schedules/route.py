@@ -1,4 +1,3 @@
-
 from core.database import get_db
 from core.deps import get_current_user
 from core.response_format import (
@@ -27,7 +26,8 @@ def create_schedule(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="Routine schedule created successfully",
+            data=data.__dict__,
+            message="Routine schedule created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -45,7 +45,13 @@ def list_schedules(
     _: object = Depends(get_current_user),
 ):
     result = service.list_paginated(
-        db, page_no, per_page, consultant_id, assigned_to, task_type, status,
+        db,
+        page_no,
+        per_page,
+        consultant_id,
+        assigned_to,
+        task_type,
+        status,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
@@ -66,7 +72,8 @@ def get_schedule(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Routine schedule fetched successfully",
+            data=data.__dict__,
+            message="Routine schedule fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -82,7 +89,8 @@ def update_schedule(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Routine schedule updated successfully",
+            data=data.__dict__,
+            message="Routine schedule updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -97,7 +105,8 @@ def delete_schedule(
     try:
         service.delete(db, id)
         return success_response(
-            data={}, message="Routine schedule deleted successfully",
+            data={},
+            message="Routine schedule deleted successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

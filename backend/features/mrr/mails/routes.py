@@ -29,7 +29,11 @@ def list_mails(
     role = current_user.role.value
     sent_by_id = current_user.id if role == "recruiter" else None
     items, total = service.list_mails(
-        db, sent_by_id, search=search, skip=skip, limit=limit,
+        db,
+        sent_by_id,
+        search=search,
+        skip=skip,
+        limit=limit,
     )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
@@ -42,7 +46,10 @@ def update_mail(
     current_user=Depends(get_current_user),
 ):
     result = service.update_mail(
-        db, mail_id, body.model_dump(exclude_none=True), current_user.role.value,
+        db,
+        mail_id,
+        body.model_dump(exclude_none=True),
+        current_user.role.value,
     )
     if not result:
         raise HTTPException(status_code=404, detail="Mail record not found")

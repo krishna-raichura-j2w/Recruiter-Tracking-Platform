@@ -49,7 +49,9 @@ def export_candidates(
         )
         .join(Candidate.job)
         .order_by(
-            Job.account_manager_id, Job.client_name, Candidate.full_name,
+            Job.account_manager_id,
+            Job.client_name,
+            Candidate.full_name,
         )  # account_manager_id = business_head FK
     )
 

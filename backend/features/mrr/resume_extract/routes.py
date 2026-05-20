@@ -34,17 +34,21 @@ async def extract_profile(
             profile, cost = await asyncio.to_thread(service.extract_from_docx, data)
         elif mime in IMAGE_MIMES:
             profile, cost = await asyncio.to_thread(
-                service.extract_from_image, data, mime,
+                service.extract_from_image,
+                data,
+                mime,
             )
         else:
             raise HTTPException(
-                status_code=400, detail=f"Unsupported file type: {mime}",
+                status_code=400,
+                detail=f"Unsupported file type: {mime}",
             )
     elif text and text.strip():
         profile, cost = await asyncio.to_thread(service.extract_from_text, text.strip())
     else:
         raise HTTPException(
-            status_code=400, detail="Provide either text or a file (PDF/image)",
+            status_code=400,
+            detail="Provide either text or a file (PDF/image)",
         )
 
     return ExtractResponse(profile=profile, cost_info=cost)

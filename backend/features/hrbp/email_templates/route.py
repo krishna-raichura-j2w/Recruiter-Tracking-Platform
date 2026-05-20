@@ -27,7 +27,8 @@ def create_template(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="Email template created successfully",
+            data=data.__dict__,
+            message="Email template created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -59,7 +60,8 @@ def list_by_group(
 ):
     data = service.list_by_group(db, group_name)
     return success_response(
-        data=[r.__dict__ for r in data], message="Email templates fetched successfully",
+        data=[r.__dict__ for r in data],
+        message="Email templates fetched successfully",
     )
 
 
@@ -72,7 +74,8 @@ def get_template(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Email template fetched successfully",
+            data=data.__dict__,
+            message="Email template fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -88,7 +91,8 @@ def update_template(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Email template updated successfully",
+            data=data.__dict__,
+            message="Email template updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -117,7 +121,8 @@ def render_template(
     try:
         data = service.render(db, id, payload.consultant_id)
         return success_response(
-            data=data.model_dump(), message="Template rendered successfully",
+            data=data.model_dump(),
+            message="Template rendered successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

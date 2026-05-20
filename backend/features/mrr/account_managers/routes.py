@@ -47,7 +47,9 @@ class BHCreate(BaseModel):
 
 @router.post("")
 def create_bh(
-    body: BHCreate, db: Session = Depends(get_db), _=Depends(require_roles("admin")),
+    body: BHCreate,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
 ):
     if not body.email:
         raise HTTPException(400, "Email is required for a BH login")
@@ -95,7 +97,9 @@ def update_bh(
 
 @router.delete("/{bh_id}")
 def delete_bh(
-    bh_id: int, db: Session = Depends(get_db), _=Depends(require_roles("admin")),
+    bh_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
 ):
     from infra.models import Job
 
@@ -104,7 +108,8 @@ def delete_bh(
         raise HTTPException(404, "Business head not found")
     # Detach from any jobs that pointed at this BH.
     db.query(Job).filter(Job.account_manager_id == bh_id).update(
-        {"account_manager_id": None}, synchronize_session=False,
+        {"account_manager_id": None},
+        synchronize_session=False,
     )
     db.delete(u)
     db.commit()

@@ -27,19 +27,31 @@ def list_jobs(
 
     if is_kam and is_dl:
         items, total = service.list_jobs(
-            db, status, dual_user_id=current_user.id, **kwargs,
+            db,
+            status,
+            dual_user_id=current_user.id,
+            **kwargs,
         )
     elif is_kam:
         items, total = service.list_jobs(
-            db, status, created_by_id=current_user.id, **kwargs,
+            db,
+            status,
+            created_by_id=current_user.id,
+            **kwargs,
         )
     elif is_dl:
         items, total = service.list_jobs(
-            db, status, delivery_lead_id=current_user.id, **kwargs,
+            db,
+            status,
+            delivery_lead_id=current_user.id,
+            **kwargs,
         )
     elif current_user.role.value == "recruiter":
         items, total = service.list_jobs(
-            db, status, assigned_sourcer_id=current_user.id, **kwargs,
+            db,
+            status,
+            assigned_sourcer_id=current_user.id,
+            **kwargs,
         )
     else:
         items, total = service.list_jobs(db, status, **kwargs)
@@ -301,7 +313,8 @@ def confirm_jd(
             )
             for c in cands:
                 c.assigned_to_id = min(
-                    body.recruiter_ids, key=lambda rid: _caller_load(db, rid),
+                    body.recruiter_ids,
+                    key=lambda rid: _caller_load(db, rid),
                 )
 
     # Keep DL assignment if already set (another DL was assigned); otherwise assign to confirmer
@@ -435,7 +448,8 @@ def reassign_recruiters(
             for c in cands:
                 # Pick the least-loaded remaining recruiter as the new owner
                 new_owner = min(
-                    body.recruiter_ids, key=lambda rid: _caller_load(db, rid),
+                    body.recruiter_ids,
+                    key=lambda rid: _caller_load(db, rid),
                 )
                 c.assigned_to_id = new_owner
                 moved_count += 1
@@ -554,7 +568,8 @@ def delete_job(
         )
         if not job:
             raise HTTPException(
-                status_code=404, detail="Job not found or cannot be deleted",
+                status_code=404,
+                detail="Job not found or cannot be deleted",
             )
         db.delete(job)
         db.commit()

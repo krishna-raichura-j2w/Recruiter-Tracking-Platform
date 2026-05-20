@@ -9,7 +9,8 @@ from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
 def create(db: Session, payload: ConsultantCreate) -> HRBPConsultant:
     if db.query(HRBPConsultant).filter_by(emp_id=payload.emp_id).first():
         raise HTTPException(
-            status_code=409, detail=f"Employee ID '{payload.emp_id}' already exists",
+            status_code=409,
+            detail=f"Employee ID '{payload.emp_id}' already exists",
         )
     record = HRBPConsultant(**payload.model_dump())
     db.add(record)

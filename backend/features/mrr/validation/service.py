@@ -93,7 +93,10 @@ def _apply_filters(
 
 
 def _pending_query(
-    db: Session, validator_id: int | None = None, search: str | None = None, **filters,
+    db: Session,
+    validator_id: int | None = None,
+    search: str | None = None,
+    **filters,
 ):
     q = (
         db.query(Candidate)
@@ -165,7 +168,11 @@ def list_pending_for_dl(
 
 
 def list_pending(
-    db: Session, skip: int = 0, limit: int = 0, search: str | None = None, **filters,
+    db: Session,
+    skip: int = 0,
+    limit: int = 0,
+    search: str | None = None,
+    **filters,
 ):
     q = _pending_query(db, search=search, **filters)
     total = q.with_entities(func.count(Candidate.id)).order_by(None).scalar() or 0
@@ -207,7 +214,10 @@ def list_all_for_validator(db: Session) -> list:
 
 
 def validate_candidate(
-    db: Session, data: dict, validator_id: int, validator_name: str = "",
+    db: Session,
+    data: dict,
+    validator_id: int,
+    validator_name: str = "",
 ) -> Validation:
     candidate_id = data["candidate_id"]
     vstatus = data["status"]

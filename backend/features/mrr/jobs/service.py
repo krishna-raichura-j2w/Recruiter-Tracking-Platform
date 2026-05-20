@@ -180,7 +180,9 @@ def get_job(db: Session, job_id: int) -> Job | None:
 
 
 def is_job_id_taken(
-    db: Session, client_job_id: str, exclude_job_id: int | None = None,
+    db: Session,
+    client_job_id: str,
+    exclude_job_id: int | None = None,
 ) -> bool:
     """Return True if client_job_id is already used by another job."""
     q = db.query(Job).filter(Job.client_job_id == client_job_id)

@@ -7,7 +7,14 @@ from sqlalchemy.orm import Session, joinedload
 
 
 def _apply_candidate_filters(
-    q, job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search,
+    q,
+    job_id,
+    status,
+    assigned_to,
+    sourced_by,
+    job_ids,
+    recruiter_id,
+    search,
 ):
     """Apply all candidate filters to a query object. Used for both count and data queries."""
     from infra.models import Candidate

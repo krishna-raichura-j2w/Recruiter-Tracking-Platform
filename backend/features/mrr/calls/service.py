@@ -78,7 +78,9 @@ def upsert_assessment(db: Session, data: dict, caller_id: int) -> Assessment:
             k: v for k, v in data.items() if v is not None and k != "candidate_id"
         }
         assessment = Assessment(
-            candidate_id=candidate_id, caller_id=caller_id, **payload,
+            candidate_id=candidate_id,
+            caller_id=caller_id,
+            **payload,
         )
         db.add(assessment)
 

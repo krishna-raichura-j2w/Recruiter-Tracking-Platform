@@ -26,7 +26,8 @@ def create_sop(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="SOP definition created successfully",
+            data=data.__dict__,
+            message="SOP definition created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -59,7 +60,8 @@ def get_sop_by_id(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="SOP definition fetched successfully",
+            data=data.__dict__,
+            message="SOP definition fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -74,7 +76,8 @@ def get_sop_by_type(
     try:
         data = service.get_by_type(db, sop_type)
         return success_response(
-            data=data.__dict__, message="SOP definition fetched successfully",
+            data=data.__dict__,
+            message="SOP definition fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -89,7 +92,8 @@ def get_sop_steps(
     try:
         data = service.get_by_type(db, sop_type)
         return success_response(
-            data=data.steps_definition, message="SOP steps fetched successfully",
+            data=data.steps_definition,
+            message="SOP steps fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -104,7 +108,8 @@ def get_sop_hierarchy(
     try:
         data = service.get_by_type(db, sop_type)
         return success_response(
-            data=data.persons_hierarchy, message="SOP hierarchy fetched successfully",
+            data=data.persons_hierarchy,
+            message="SOP hierarchy fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -120,7 +125,8 @@ def update_sop(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="SOP definition updated successfully",
+            data=data.__dict__,
+            message="SOP definition updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

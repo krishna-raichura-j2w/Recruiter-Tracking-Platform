@@ -61,7 +61,9 @@ def _build_sessions(schedule_id: int, dates: list[date]) -> list[HRBPCadenceSess
 
 
 def create(
-    db: Session, payload: CadenceScheduleCreate, hrbp_id: int,
+    db: Session,
+    payload: CadenceScheduleCreate,
+    hrbp_id: int,
 ) -> HRBPCadenceSchedule:
     if payload.meeting_type == "one_time":
         effective_end = payload.start_date
@@ -69,11 +71,14 @@ def create(
         effective_end = payload.end_date  # already validated non-null by schema
 
     session_dates = _generate_session_dates(
-        payload.start_date, effective_end, payload.frequency_weeks,
+        payload.start_date,
+        effective_end,
+        payload.frequency_weeks,
     )
     if not session_dates:
         raise HTTPException(
-            status_code=400, detail="No valid weekday dates found in the given range",
+            status_code=400,
+            detail="No valid weekday dates found in the given range",
         )
 
     schedule = HRBPCadenceSchedule(
@@ -206,7 +211,9 @@ def update(db: Session, id: int, payload: CadenceScheduleUpdate) -> HRBPCadenceS
 
 
 def get_session_by_id(
-    db: Session, schedule_id: int, session_id: int,
+    db: Session,
+    schedule_id: int,
+    session_id: int,
 ) -> HRBPCadenceSession:
     return _get_session(db, schedule_id, session_id)
 
@@ -223,7 +230,8 @@ def cancel(db: Session, id: int) -> None:
 
 def get_summary(db: Session, hrbp_id: int | None = None) -> dict:
     base = db.query(HRBPCadenceSession).join(
-        HRBPCadenceSchedule, HRBPCadenceSession.schedule_id == HRBPCadenceSchedule.id,
+        HRBPCadenceSchedule,
+        HRBPCadenceSession.schedule_id == HRBPCadenceSchedule.id,
     )
     if hrbp_id is not None:
         base = base.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
@@ -290,7 +298,8 @@ def list_all_sessions(
         rows = rows.filter(HRBPCadenceSession.scheduled_date <= date_to)
 
     rows = rows.order_by(
-        HRBPCadenceSession.scheduled_date, HRBPCadenceSession.cadence_number,
+        HRBPCadenceSession.scheduled_date,
+        HRBPCadenceSession.cadence_number,
     )
 
     total = rows.count()

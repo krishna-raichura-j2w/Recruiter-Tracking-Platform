@@ -1476,7 +1476,9 @@ def list_templates(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 @router.get("/{form_name}")
 def get_template(
-    form_name: str, db: Session = Depends(get_db), _=Depends(get_current_user),
+    form_name: str,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
 ):
     row = db.execute(
         text(load_sql("008-get_form_template_config.sql")),

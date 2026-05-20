@@ -1,4 +1,3 @@
-
 from core.database import get_db
 from core.deps import get_current_user
 from core.response_format import (
@@ -25,7 +24,8 @@ def create_client(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="Client created successfully",
+            data=data.__dict__,
+            message="Client created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -60,7 +60,8 @@ def get_client(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Client fetched successfully",
+            data=data.__dict__,
+            message="Client fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -76,7 +77,8 @@ def update_client(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Client updated successfully",
+            data=data.__dict__,
+            message="Client updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

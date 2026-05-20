@@ -71,7 +71,8 @@ def check_deadlines():
             db.query(Job)
             .filter(Job.status == JobStatus.open)
             .filter(
-                (Job.sourcing_deadline.isnot(None)) | (Job.calling_deadline.isnot(None)),
+                (Job.sourcing_deadline.isnot(None))
+                | (Job.calling_deadline.isnot(None)),
             )
             .all()
         )

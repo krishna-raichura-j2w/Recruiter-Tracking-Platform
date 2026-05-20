@@ -18,54 +18,67 @@ class Settings(BaseSettings):
 
     # Supabase
     supabase_db_url: str | None = Field(
-        default=None, validation_alias="SUPABASE_DB_URL",
+        default=None,
+        validation_alias="SUPABASE_DB_URL",
     )
     database_to_use: str = Field(default="SUPABASE", validation_alias="DATABASE_TO_USE")
 
     # Azure OpenAI
     azure_openai_api_key: str | None = Field(
-        default=None, validation_alias="AZURE_OPENAI_API_KEY",
+        default=None,
+        validation_alias="AZURE_OPENAI_API_KEY",
     )
     azure_openai_endpoint: str | None = Field(
-        default=None, validation_alias="AZURE_OPENAI_ENDPOINT",
+        default=None,
+        validation_alias="AZURE_OPENAI_ENDPOINT",
     )
     azure_openai_deployment: str = Field(
-        default="gpt-4o-mini", validation_alias="AZURE_OPENAI_DEPLOYMENT",
+        default="gpt-4o-mini",
+        validation_alias="AZURE_OPENAI_DEPLOYMENT",
     )
     azure_api_version: str = Field(
-        default="2024-12-01-preview", validation_alias="AZURE_API_VERSION",
+        default="2024-12-01-preview",
+        validation_alias="AZURE_API_VERSION",
     )
     azure_openai_model: str = Field(
-        default="gpt-4o-mini", validation_alias="AZURE_OPENAI_MODEL",
+        default="gpt-4o-mini",
+        validation_alias="AZURE_OPENAI_MODEL",
     )
 
     # Gmail
     gmail_user: str | None = Field(default=None, validation_alias="GMAIL_USER")
     gmail_app_password: str | None = Field(
-        default=None, validation_alias="GMAIL_APP_PASSWORD",
+        default=None,
+        validation_alias="GMAIL_APP_PASSWORD",
     )
 
     # OL Replica MySQL (read-only)
     ol_replica_host: str | None = Field(
-        default=None, validation_alias="OL_REPLICA_HOST",
+        default=None,
+        validation_alias="OL_REPLICA_HOST",
     )
     ol_replica_port: int = Field(default=3306, validation_alias="OL_REPLICA_PORT")
     ol_replica_database: str = Field(
-        default="offerletter", validation_alias="OL_REPLICA_DATABASE",
+        default="offerletter",
+        validation_alias="OL_REPLICA_DATABASE",
     )
     ol_replica_user: str | None = Field(
-        default=None, validation_alias="OL_REPLICA_USER",
+        default=None,
+        validation_alias="OL_REPLICA_USER",
     )
     ol_replica_password: str | None = Field(
-        default=None, validation_alias="OL_REPLICA_PASSWORD",
+        default=None,
+        validation_alias="OL_REPLICA_PASSWORD",
     )
 
     # Startup behavior
     run_startup_bootstrap: bool = Field(
-        default=False, validation_alias="RUN_STARTUP_BOOTSTRAP",
+        default=False,
+        validation_alias="RUN_STARTUP_BOOTSTRAP",
     )
     start_scheduler_on_startup: bool = Field(
-        default=True, validation_alias="START_SCHEDULER_ON_STARTUP",
+        default=True,
+        validation_alias="START_SCHEDULER_ON_STARTUP",
     )
 
     @staticmethod

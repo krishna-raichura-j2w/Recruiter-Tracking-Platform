@@ -72,7 +72,11 @@ def list_users(
         )
     else:
         users, total = service.list_users(
-            db, role=role, search=search, skip=skip, limit=limit,
+            db,
+            role=role,
+            search=search,
+            skip=skip,
+            limit=limit,
         )
 
     items = [_out(u, db) for u in users]
@@ -284,7 +288,8 @@ def get_team_assignments(
 @router.get("/team-loads")
 def get_team_loads(
     dl_id: int | None = Query(
-        None, description="DL user ID — admin can pass any DL's ID",
+        None,
+        description="DL user ID — admin can pass any DL's ID",
     ),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles("admin", "delivery_lead")),

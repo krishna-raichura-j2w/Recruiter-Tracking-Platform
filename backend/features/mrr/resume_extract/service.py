@@ -26,7 +26,9 @@ _MODEL_RATES: dict[str, dict[str, float]] = {
 
 
 def calc_cost(
-    model: str, input_tokens: int, output_tokens: int,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
 ) -> tuple[float, float, float]:
     rates = _MODEL_RATES.get(model, _MODEL_RATES["gpt-4o-mini"])
     inp = round(input_tokens * rates["input"], 8)
@@ -71,7 +73,9 @@ def _call_azure(content: list) -> tuple[ConsultantProfile, dict]:
     profile = ConsultantProfile(**raw)
     usage = response.usage
     inp, out, total = calc_cost(
-        DEPLOYMENT, usage.prompt_tokens, usage.completion_tokens,
+        DEPLOYMENT,
+        usage.prompt_tokens,
+        usage.completion_tokens,
     )
     cost_info = {
         "model": DEPLOYMENT,

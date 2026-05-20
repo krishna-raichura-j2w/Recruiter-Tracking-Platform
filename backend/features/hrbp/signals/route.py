@@ -1,4 +1,3 @@
-
 from core.database import get_db
 from core.deps import get_current_user
 from core.response_format import (
@@ -24,7 +23,8 @@ def create_signal(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="Signal created successfully",
+            data=data.__dict__,
+            message="Signal created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -41,7 +41,12 @@ def list_signals(
     _: object = Depends(get_current_user),
 ):
     result = service.list_paginated(
-        db, page_no, per_page, consultant_id, signal_type, incident_id,
+        db,
+        page_no,
+        per_page,
+        consultant_id,
+        signal_type,
+        incident_id,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
@@ -62,7 +67,8 @@ def get_signal(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Signal fetched successfully",
+            data=data.__dict__,
+            message="Signal fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -78,7 +84,8 @@ def update_signal(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Signal updated successfully",
+            data=data.__dict__,
+            message="Signal updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

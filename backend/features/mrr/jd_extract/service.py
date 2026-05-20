@@ -77,7 +77,9 @@ def _call_azure(content: list) -> tuple[ParsedJD, dict]:
     parsed = ParsedJD(**raw)
     usage = response.usage
     inp, out, total = _calc_cost(
-        DEPLOYMENT, usage.prompt_tokens, usage.completion_tokens,
+        DEPLOYMENT,
+        usage.prompt_tokens,
+        usage.completion_tokens,
     )
     cost_info = {
         "model": DEPLOYMENT,

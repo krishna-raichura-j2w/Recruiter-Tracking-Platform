@@ -30,7 +30,8 @@ def create_cadence_schedule(
     try:
         data = service.create(db, payload, hrbp_id=current_user.id)
         return success_response(
-            data=data.__dict__, message="Cadence schedule created successfully",
+            data=data.__dict__,
+            message="Cadence schedule created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -44,7 +45,8 @@ def get_sessions_summary(
 ):
     data = service.get_summary(db, hrbp_id)
     return success_response(
-        data=data, message="Cadence sessions summary fetched successfully",
+        data=data,
+        message="Cadence sessions summary fetched successfully",
     )
 
 
@@ -96,7 +98,13 @@ def list_cadence_schedules(
     _: User = Depends(get_current_user),
 ):
     result = service.list_paginated(
-        db, page_no, per_page, client_id, consultant_id, hrbp_id, status,
+        db,
+        page_no,
+        per_page,
+        client_id,
+        consultant_id,
+        hrbp_id,
+        status,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
@@ -117,7 +125,8 @@ def get_cadence_schedule(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="Cadence schedule fetched successfully",
+            data=data.__dict__,
+            message="Cadence schedule fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -156,7 +165,8 @@ def update_cadence_schedule(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="Cadence schedule updated successfully",
+            data=data.__dict__,
+            message="Cadence schedule updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -172,7 +182,8 @@ def get_cadence_session(
     try:
         data = service.get_session_by_id(db, id, session_id)
         return success_response(
-            data=data.__dict__, message="Cadence session fetched successfully",
+            data=data.__dict__,
+            message="Cadence session fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -189,7 +200,8 @@ def update_cadence_session(
     try:
         data = service.update_session(db, id, session_id, payload)
         return success_response(
-            data=data.__dict__, message="Cadence session updated successfully",
+            data=data.__dict__,
+            message="Cadence session updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -204,7 +216,8 @@ def cancel_cadence_schedule(
     try:
         service.cancel(db, id)
         return success_response(
-            data={}, message="Cadence schedule cancelled successfully",
+            data={},
+            message="Cadence schedule cancelled successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

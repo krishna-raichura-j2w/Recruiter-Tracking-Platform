@@ -16,7 +16,8 @@ def get_sample_api():
     try:
         data = service.get_sample()
         return success_response(
-            data=data, message="Sample get API executed successfully",
+            data=data,
+            message="Sample get API executed successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

@@ -16,7 +16,8 @@ def get_current_user(
     payload = decode_token(credentials.credentials)
     if not payload:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
         )
     user = db.query(User).filter(User.id == payload.get("sub")).first()
     if not user or not user.is_active:
@@ -34,7 +35,8 @@ def require_roles(*roles: str):
             user_roles.add(current_user.secondary_role)
         if not user_roles.intersection(set(roles)):
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
             )
         return current_user
 

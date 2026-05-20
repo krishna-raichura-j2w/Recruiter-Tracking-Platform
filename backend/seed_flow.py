@@ -140,7 +140,11 @@ def set_assessment(candidate_id, caller_id, assessed_at, score):
 
 
 def add_call_log(
-    candidate_id, caller_id, call_at, outcome="5_10min", notes="Positive call",
+    candidate_id,
+    caller_id,
+    call_at,
+    outcome="5_10min",
+    notes="Positive call",
 ):
     existing = db.query(CallLog).filter(CallLog.candidate_id == candidate_id).first()
     if existing:
@@ -199,7 +203,13 @@ JOB_ASSIGN = {
 }
 
 BASE_DATE = datetime(
-    2026, 4, 1, 9, 0, 0, tzinfo=timezone.utc,
+    2026,
+    4,
+    1,
+    9,
+    0,
+    0,
+    tzinfo=timezone.utc,
 )  # April 1 — JD upload day
 
 for job_id, (s_ids, c_ids) in JOB_ASSIGN.items():
@@ -528,7 +538,11 @@ if c3:
     upsert_mail(c3.id, nithish.id, mail_at, do_ack=True, do_dl=True)
     validated_at = ts(mail_at, hours=8)
     upsert_validation(
-        c3.id, dl.id, ValidationStatus.validated, validated_at, "Approved",
+        c3.id,
+        dl.id,
+        ValidationStatus.validated,
+        validated_at,
+        "Approved",
     )
     submitted_at = ts(validated_at, hours=4)
     upsert_submission(c3.id, c3.job_id, kam.id, submitted_at, InterviewStage.submitted)

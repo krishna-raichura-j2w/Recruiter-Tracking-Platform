@@ -26,7 +26,8 @@ def create_kra(
     try:
         data = service.create(db, payload)
         return success_response(
-            data=data.__dict__, message="KRA definition created successfully",
+            data=data.__dict__,
+            message="KRA definition created successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -59,7 +60,8 @@ def get_kra_by_id(
     try:
         data = service.get_by_id(db, id)
         return success_response(
-            data=data.__dict__, message="KRA definition fetched successfully",
+            data=data.__dict__,
+            message="KRA definition fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -74,7 +76,8 @@ def get_kra_by_code(
     try:
         data = service.get_by_code(db, kra_code)
         return success_response(
-            data=data.__dict__, message="KRA definition fetched successfully",
+            data=data.__dict__,
+            message="KRA definition fetched successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))
@@ -90,7 +93,8 @@ def update_kra(
     try:
         data = service.update(db, id, payload)
         return success_response(
-            data=data.__dict__, message="KRA definition updated successfully",
+            data=data.__dict__,
+            message="KRA definition updated successfully",
         )
     except Exception as exc:
         return error_response(message=str(exc))

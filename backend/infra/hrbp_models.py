@@ -157,7 +157,9 @@ class HRBPSopStep(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     incident_id = Column(
-        Integer, ForeignKey("hrbp_incidents.id", ondelete="CASCADE"), nullable=False,
+        Integer,
+        ForeignKey("hrbp_incidents.id", ondelete="CASCADE"),
+        nullable=False,
     )
     step_number = Column(SmallInteger, nullable=False)
     action_label = Column(Text, nullable=False)
@@ -283,7 +285,8 @@ class HRBPCadenceSchedule(Base):
     end_date = Column(Date)  # required for recurring
     frequency_weeks = Column(SmallInteger, default=1)
     status = Column(
-        Text, default="not_started",
+        Text,
+        default="not_started",
     )  # not_started | in_progress | completed | cancelled
     supporting_documents = Column(ARRAY(Text), default=list)
     created_at = Column(DateTime(timezone=True), default=_now)

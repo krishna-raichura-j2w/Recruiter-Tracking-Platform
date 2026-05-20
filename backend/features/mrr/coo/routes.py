@@ -158,7 +158,8 @@ def _get_mysql_conn():
     ]
     if missing:
         raise HTTPException(
-            status_code=503, detail=f"OL Replica not configured: {', '.join(missing)}",
+            status_code=503,
+            detail=f"OL Replica not configured: {', '.join(missing)}",
         )
     return pymysql.connect(
         host=settings.ol_replica_host,
@@ -216,7 +217,8 @@ def coo_leaderboard(
             cmp_d = _date.fromisoformat(compare_date)
         except ValueError:
             raise HTTPException(
-                status_code=400, detail="compare_date must be YYYY-MM-DD",
+                status_code=400,
+                detail="compare_date must be YYYY-MM-DD",
             )
         cmp_utc_start, cmp_utc_end = _utc_day_range(cmp_d)
     else:
@@ -343,7 +345,9 @@ def recruiter_leaderboard(
     today_ist = ist_now.date()
     # UTC range covering the IST day
     day_start_utc = datetime(
-        today_ist.year, today_ist.month, today_ist.day,
+        today_ist.year,
+        today_ist.month,
+        today_ist.day,
     ) - timedelta(hours=5, minutes=30)
     day_end_utc = day_start_utc + timedelta(days=1)
 
@@ -460,7 +464,9 @@ def recruiter_leaderboard(
     completed_slots = set(current_slot_indices_completed(ist_now))
     target_rows = (
         db.query(
-            HourlyTarget.user_id, HourlyTarget.slot_index, HourlyTarget.target_count,
+            HourlyTarget.user_id,
+            HourlyTarget.slot_index,
+            HourlyTarget.target_count,
         )
         .filter(HourlyTarget.user_id.in_(rec_ids), HourlyTarget.date == today_ist)
         .all()
@@ -487,7 +493,9 @@ def recruiter_leaderboard(
     for pid, name in (
         db.query(User.pod_id, User.name)
         .filter(
-            User.role == UserRole.kam, User.pod_id.isnot(None), User.is_active,
+            User.role == UserRole.kam,
+            User.pod_id.isnot(None),
+            User.is_active,
         )
         .order_by(User.name)
         .all()

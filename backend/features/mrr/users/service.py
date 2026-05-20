@@ -201,7 +201,10 @@ def remove_from_pod(db: Session, user_id: int, pod_lead_id: int) -> User | None:
 
 
 def reassign_pod(
-    db: Session, user_id: int, from_dl_id: int | None, to_dl_id: int,
+    db: Session,
+    user_id: int,
+    from_dl_id: int | None,
+    to_dl_id: int,
 ) -> User | None:
     """Move user from one DL's team to another (or just add to a new team if from_dl_id is None)."""
     user = db.query(User).filter(User.id == user_id).first()
@@ -261,7 +264,8 @@ def get_user_activity(db: Session, user_id: int, date: str | None = None) -> dic
     )
     if start:
         q_sourced = q_sourced.filter(
-            Candidate.sourced_at >= start, Candidate.sourced_at < end,
+            Candidate.sourced_at >= start,
+            Candidate.sourced_at < end,
         )
     sourced = q_sourced.order_by(Candidate.sourced_at.desc()).all()
 
@@ -372,7 +376,8 @@ def get_user_details(db: Session, user_id: int) -> dict | None:
     unread_notifications = (
         db.query(Notification)
         .filter(
-            Notification.user_id == user_id, not Notification.is_read,
+            Notification.user_id == user_id,
+            not Notification.is_read,
         )
         .count()
     )

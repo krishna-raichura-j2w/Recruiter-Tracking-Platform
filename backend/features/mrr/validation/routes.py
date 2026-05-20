@@ -73,7 +73,11 @@ def pending_queue(
             if k != "validator_id" and k != "delivery_lead_id"
         }
         candidates, total = service.list_pending_for_dl(
-            db, current_user.id, skip=skip, limit=limit, **dl_filters,
+            db,
+            current_user.id,
+            skip=skip,
+            limit=limit,
+            **dl_filters,
         )
     else:
         candidates, total = service.list_pending(db, skip=skip, limit=limit, **filters)
@@ -93,7 +97,10 @@ def validate(
     current_user=Depends(require_roles(*VALIDATORS)),
 ):
     v = service.validate_candidate(
-        db, body.model_dump(), current_user.id, current_user.name,
+        db,
+        body.model_dump(),
+        current_user.id,
+        current_user.name,
     )
     from infra.models import Candidate
 

@@ -56,7 +56,8 @@ async def extract_from_file(
             jd_text = await asyncio.to_thread(service.extract_text_from_docx, data)
         else:
             raise HTTPException(
-                status_code=400, detail="Unsupported file. Upload PDF/DOC/DOCX.",
+                status_code=400,
+                detail="Unsupported file. Upload PDF/DOC/DOCX.",
             )
     except HTTPException:
         raise
@@ -65,7 +66,8 @@ async def extract_from_file(
 
     if not jd_text:
         raise HTTPException(
-            status_code=422, detail="No readable text in the uploaded file.",
+            status_code=422,
+            detail="No readable text in the uploaded file.",
         )
 
     try:

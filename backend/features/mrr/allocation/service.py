@@ -106,7 +106,9 @@ def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
 
 
 def team_loads(
-    db: Session, pod_lead_id: int, role: UserRole | None = None,
+    db: Session,
+    pod_lead_id: int,
+    role: UserRole | None = None,
 ) -> list[dict]:
     """Return each member with their current load counts — used by frontend."""
     members = _team(db, pod_lead_id, role)

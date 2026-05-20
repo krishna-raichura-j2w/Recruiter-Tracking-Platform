@@ -54,7 +54,8 @@ def current_slot_indices_completed(today_ist_now: datetime) -> list[int]:
 
 
 def cumulative_target(
-    targets_by_slot: dict[int, int], today_ist_now: datetime,
+    targets_by_slot: dict[int, int],
+    today_ist_now: datetime,
 ) -> tuple[int, int]:
     """Return (target_so_far, day_target) for a single user."""
     done_slots = set(current_slot_indices_completed(today_ist_now))
