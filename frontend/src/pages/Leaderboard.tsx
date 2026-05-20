@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Users, AlertTriangle, CheckCircle2, RefreshCw,
-  Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown,
+  Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Filter,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -13,6 +13,10 @@ import api from '../api/client';
 interface RecruiterRow {
   recruiter_id: number;
   recruiter_name: string;
+  dl_name:  string | null;
+  kam_name: string | null;
+  bh_name:  string | null;
+  pod_name: string | null;
   day_target: number;
   done: number;
   verified: number;
@@ -48,10 +52,29 @@ const PERF_STYLES: Record<RecruiterRow['performance'], string> = {
   'good performance':  'text-emerald-700 font-semibold',
 };
 
+const PERF_OPTIONS: RecruiterRow['performance'][] = [
+  'needs discussion', 'below average', 'average', 'high', 'good performance',
+];
+
+function uniq(values: (string | null | undefined)[]): string[] {
+  const out = new Set<string>();
+  for (const v of values) if (v) out.add(v);
+  return [...out].sort();
+}
+
 function RecruiterLeaderboardSection() {
   const [data, setData]       = useState<RecruiterApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+
+  // ── Filter state ──
+  const [search, setSearch]     = useState('');
+  const [fDl,  setFDl]          = useState('');
+  const [fKam, setFKam]         = useState('');
+  const [fBh,  setFBh]          = useState('');
+  const [fPod, setFPod]         = useState('');
+  const [fStatus, setFStatus]   = useState('');
+  const [fPerf,   setFPerf]     = useState('');
 
   const fetchData = () => {
     setLoading(true);
@@ -63,9 +86,55 @@ function RecruiterLeaderboardSection() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // ── Filter-option lists derived from the data ──
+  const dlOptions  = useMemo(() => uniq(data?.rows.map(r => r.dl_name)  ?? []), [data]);
+  const kamOptions = useMemo(() => uniq(data?.rows.map(r => r.kam_name) ?? []), [data]);
+  const bhOptions  = useMemo(() => uniq(data?.rows.map(r => r.bh_name)  ?? []), [data]);
+  const podOptions = useMemo(() => uniq(data?.rows.map(r => r.pod_name) ?? []), [data]);
+
+  // ── Apply filters ──
+  const filteredRows = useMemo(() => {
+    const rows = data?.rows ?? [];
+    const q = search.trim().toLowerCase();
+    return rows.filter(r => {
+      if (q && !r.recruiter_name.toLowerCase().includes(q)) return false;
+      if (fDl  && r.dl_name  !== fDl)  return false;
+      if (fKam && r.kam_name !== fKam) return false;
+      if (fBh  && r.bh_name  !== fBh)  return false;
+      if (fPod && r.pod_name !== fPod) return false;
+      if (fStatus && r.status      !== fStatus) return false;
+      if (fPerf   && r.performance !== fPerf)   return false;
+      return true;
+    });
+  }, [data, search, fDl, fKam, fBh, fPod, fStatus, fPerf]);
+
+  // ── Totals from the filtered rows so footer matches what user sees ──
+  const totals = useMemo(() => {
+    if (!data) return null;
+    const t = filteredRows.reduce(
+      (a, r) => {
+        a.day_target += r.day_target;
+        a.done       += r.done;
+        a.verified   += r.verified;
+        a.rejections += r.rejections;
+        a.ack_sent   += r.ack_sent;
+        return a;
+      },
+      { day_target: 0, done: 0, verified: 0, rejections: 0, ack_sent: 0 }
+    );
+    const pct = t.day_target ? Math.round((t.verified / t.day_target) * 100) : 0;
+    return { ...t, pct, status: pct >= 75 ? 'On Track' as const : 'Behind' as const };
+  }, [filteredRows, data]);
+
+  const activeFilters = [search, fDl, fKam, fBh, fPod, fStatus, fPerf].filter(Boolean).length;
+  const clearAll = () => { setSearch(''); setFDl(''); setFKam(''); setFBh(''); setFPod(''); setFStatus(''); setFPerf(''); };
+
+  const selectCls = "text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-28 max-w-44";
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-      <div className="flex items-center justify-between mb-4">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Users size={18} className="text-slate-500" />
           <h2 className="text-base font-bold text-slate-800">
@@ -85,39 +154,98 @@ function RecruiterLeaderboardSection() {
         </button>
       </div>
 
+      {/* ── Filter bar ── */}
+      <div className="flex items-center flex-wrap gap-2 mb-4 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+        <Filter size={13} className="text-slate-400 ml-1" />
+
+        <div className="relative">
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text" placeholder="Search recruiter…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-44"
+          />
+        </div>
+
+        <select value={fDl}  onChange={e => setFDl(e.target.value)}  className={selectCls}>
+          <option value="">All DLs</option>
+          {dlOptions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={fKam} onChange={e => setFKam(e.target.value)} className={selectCls}>
+          <option value="">All KAMs</option>
+          {kamOptions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={fBh}  onChange={e => setFBh(e.target.value)}  className={selectCls}>
+          <option value="">All BHs</option>
+          {bhOptions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={fPod} onChange={e => setFPod(e.target.value)} className={selectCls}>
+          <option value="">All Pods</option>
+          {podOptions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={fStatus} onChange={e => setFStatus(e.target.value)} className={selectCls}>
+          <option value="">Any status</option>
+          <option value="On Track">On Track</option>
+          <option value="Behind">Behind</option>
+        </select>
+        <select value={fPerf} onChange={e => setFPerf(e.target.value)} className={selectCls}>
+          <option value="">Any performance</option>
+          {PERF_OPTIONS.map(v => <option key={v} value={v} className="capitalize">{v}</option>)}
+        </select>
+
+        {activeFilters > 0 && (
+          <button
+            onClick={clearAll}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
+          >
+            <X size={11} /> Clear ({activeFilters})
+          </button>
+        )}
+      </div>
+
       {error && (
         <div className="text-sm text-red-600 py-8 text-center">{error}</div>
       )}
 
       {!error && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ minWidth: 1200 }}>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Recruiter</th>
+                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Delivery Lead</th>
+                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">KAM</th>
+                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">BH</th>
+                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pod</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Day target</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Done (subs)</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Verified by DL</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">% of target</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Rejections</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Acknowledgment sent</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Performance category</th>
+                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Ack sent</th>
+                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Performance</th>
               </tr>
             </thead>
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-sm text-slate-400">Loading…</td>
+                  <td colSpan={13} className="py-12 text-center text-sm text-slate-400">Loading…</td>
                 </tr>
-              ) : data?.rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-sm text-slate-400">No recruiters found.</td>
+                  <td colSpan={13} className="py-12 text-center text-sm text-slate-400">
+                    {activeFilters > 0 ? 'No recruiters match these filters.' : 'No recruiters found.'}
+                  </td>
                 </tr>
               ) : (
-                data?.rows.map((row) => (
+                filteredRows.map((row) => (
                   <tr key={row.recruiter_id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-2.5 px-3 font-medium text-slate-700">{row.recruiter_name}</td>
+                    <td className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">{row.recruiter_name}</td>
+                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.dl_name  ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.kam_name ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.bh_name  ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.pod_name ?? <span className="text-slate-300">—</span>}</td>
                     <td className="py-2.5 px-3 text-center text-slate-600">{row.day_target}</td>
                     <td className="py-2.5 px-3 text-center text-slate-700">{row.done || ''}</td>
                     <td className="py-2.5 px-3 text-center text-slate-700">{row.verified || ''}</td>
@@ -142,16 +270,18 @@ function RecruiterLeaderboardSection() {
                 ))
               )}
             </tbody>
-            {data && data.rows.length > 0 && (
+            {totals && filteredRows.length > 0 && (
               <tfoot>
                 <tr className="bg-slate-100 font-bold text-slate-700">
-                  <td className="py-2.5 px-3">POD TOTAL</td>
-                  <td className="py-2.5 px-3 text-center">{data.totals.day_target}</td>
-                  <td className="py-2.5 px-3 text-center">{data.totals.done}</td>
-                  <td className="py-2.5 px-3 text-center">{data.totals.verified}</td>
-                  <td className="py-2.5 px-3 text-center">{data.totals.pct}%</td>
+                  <td className="py-2.5 px-3" colSpan={5}>
+                    TOTAL ({filteredRows.length})
+                  </td>
+                  <td className="py-2.5 px-3 text-center">{totals.day_target}</td>
+                  <td className="py-2.5 px-3 text-center">{totals.done}</td>
+                  <td className="py-2.5 px-3 text-center">{totals.verified}</td>
+                  <td className="py-2.5 px-3 text-center">{totals.pct}%</td>
                   <td className="py-2.5 px-3 text-center">
-                    {data.totals.status === 'On Track' ? (
+                    {totals.status === 'On Track' ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600 text-xs">
                         <CheckCircle2 size={12} /> Pod on track
                       </span>
@@ -161,8 +291,8 @@ function RecruiterLeaderboardSection() {
                       </span>
                     )}
                   </td>
-                  <td className="py-2.5 px-3 text-center">{data.totals.rejections}</td>
-                  <td className="py-2.5 px-3 text-center">{data.totals.ack_sent}</td>
+                  <td className="py-2.5 px-3 text-center">{totals.rejections}</td>
+                  <td className="py-2.5 px-3 text-center">{totals.ack_sent}</td>
                   <td className="py-2.5 px-3"></td>
                 </tr>
               </tfoot>
@@ -610,15 +740,60 @@ function PipelineLeaderboardSection() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Page — stacks both sections
+//  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
+type LbTab = 'recruiter' | 'pipeline';
+
+const TABS: { key: LbTab; label: string }[] = [
+  { key: 'recruiter', label: 'Recruiter Dashboard' },
+  { key: 'pipeline',  label: 'BH Dashboard' },
+];
+
 export default function Leaderboard() {
+  const [tab, setTab] = useState<LbTab>('recruiter');
+  // Track which tabs the user has opened, so each fetches only once and
+  // preserves its internal state (search, sort, compare date) across switches.
+  const [visited, setVisited] = useState<Set<LbTab>>(() => new Set(['recruiter']));
+
+  const openTab = (k: LbTab) => {
+    setTab(k);
+    setVisited(prev => (prev.has(k) ? prev : new Set([...prev, k])));
+  };
+
   return (
     <Layout title="Leaderboard" subtitle="Recruiter activity and pipeline by Business Head & Client">
-      <div className="space-y-6">
-        <RecruiterLeaderboardSection />
-        <PipelineLeaderboardSection />
+      {/* Tab bar */}
+      <div className="border-b border-slate-200 mb-5">
+        <div className="flex gap-1">
+          {TABS.map(t => {
+            const active = t.key === tab;
+            return (
+              <button
+                key={t.key}
+                onClick={() => openTab(t.key)}
+                className="px-4 py-2.5 text-sm font-semibold transition-colors"
+                style={{
+                  color: active ? '#2563EB' : '#64748B',
+                  borderBottom: active ? '2px solid #2563EB' : '2px solid transparent',
+                  marginBottom: -1,
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Recruiter Dashboard — mounted on first load */}
+      <div style={{ display: tab === 'recruiter' ? 'block' : 'none' }}>
+        {visited.has('recruiter') && <RecruiterLeaderboardSection />}
+      </div>
+
+      {/* BH Dashboard — mounts (and fetches) only after user opens it */}
+      <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
+        {visited.has('pipeline') && <PipelineLeaderboardSection />}
       </div>
     </Layout>
   );

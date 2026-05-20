@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'kam' | 'recruiter' | 'delivery_lead' | 'coo';
+export type UserRole = 'admin' | 'bh' | 'kam' | 'recruiter' | 'delivery_lead' | 'coo';
 
 export interface AuthUser {
   user_id: number;

@@ -37,6 +37,7 @@ from features.form_config.routes import router as form_config_router, init_form_
 from features.probing.routes import router as probing_router
 from features.boolean_builder.routes import router as boolean_builder_router
 from features.coo.routes import router as coo_router
+from features.pods.routes import router as pods_router
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -108,7 +109,19 @@ def ensure_schema():
             # Allow 'coo' value in users.role CHECK constraint (SAEnum native_enum=False)
             "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
             "ALTER TABLE users DROP CONSTRAINT IF EXISTS userrole",
-            "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'kam', 'recruiter', 'delivery_lead', 'coo'))",
+            "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'bh', 'kam', 'recruiter', 'delivery_lead', 'coo'))",
+            # ── Pods (strict tree: BH → KAMs → DLs → Recruiters) ──────────────
+            """CREATE TABLE IF NOT EXISTS pods (
+                id         SERIAL PRIMARY KEY,
+                name       VARCHAR(120) NOT NULL UNIQUE,
+                bh_user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )""",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pod_id INTEGER REFERENCES pods(id) ON DELETE SET NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_user_id INTEGER REFERENCES users(id)",
+            "CREATE INDEX IF NOT EXISTS ix_users_pod_id         ON users(pod_id)",
+            "CREATE INDEX IF NOT EXISTS ix_users_parent_user_id ON users(parent_user_id)",
             # ── candidates: external-system / polymorphic-user columns ─────
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS first_name       VARCHAR(100)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_name        VARCHAR(100)",
@@ -144,6 +157,43 @@ def ensure_schema():
                 db.commit()
             except Exception:
                 db.rollback()
+
+        # Migrate legacy account_managers (Business Heads) into users with role='bh'.
+        # Old design: account_managers was a standalone table referenced by jobs.account_manager_id.
+        # New design: BHs are Users with role='bh' so they can log in and be placed in a pod.
+        # Steps: (1) insert a user row for each AM by email; (2) re-point jobs.account_manager_id
+        # at the new user.id; (3) drop the FK on jobs.account_manager_id so it can reference users.
+        try:
+            from core.security import hash_password
+            # 1) Idempotent user insert per AM (skip rows without email — can't create login).
+            ams = db.execute(text(
+                "SELECT id, name, email FROM account_managers WHERE email IS NOT NULL AND email <> ''"
+            )).fetchall()
+            for am in ams:
+                db.execute(
+                    text("""INSERT INTO users (name, email, password_hash, role, is_active, must_change_password)
+                            VALUES (:name, :email, :ph, 'bh', true, true)
+                            ON CONFLICT (email) DO NOTHING"""),
+                    {"name": am.name, "email": am.email, "ph": hash_password("joules@123")},
+                )
+            db.commit()
+            # 2) Drop the FK so jobs.account_manager_id can hold user IDs (different value range
+            #    after the swap below). Idempotent — does nothing if constraint already missing.
+            db.execute(text("ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_account_manager_id_fkey"))
+            db.commit()
+            # 3) Re-point existing jobs to the matching user (by email) when possible.
+            db.execute(text(
+                """UPDATE jobs j
+                       SET account_manager_id = u.id
+                      FROM account_managers am
+                      JOIN users u ON LOWER(u.email) = LOWER(am.email) AND u.role = 'bh'
+                     WHERE j.account_manager_id = am.id
+                       AND am.email IS NOT NULL AND am.email <> ''"""
+            ))
+            db.commit()
+        except Exception as _e:
+            db.rollback()
+            print(f"[ensure_schema] BH→user migration: {_e}")
 
         # Backfill existing pod_lead_id values into pod_memberships
         try:
@@ -241,6 +291,7 @@ app.include_router(form_config_router,      prefix="/api")
 app.include_router(probing_router,          prefix="/api")
 app.include_router(boolean_builder_router,  prefix="/api")
 app.include_router(coo_router,              prefix="/api")
+app.include_router(pods_router,             prefix="/api")
 
 
 def run_migrations(db):

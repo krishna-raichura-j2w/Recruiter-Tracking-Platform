@@ -319,6 +319,7 @@ def recruiter_leaderboard(
     from infra.models import (
         User, UserRole, Candidate, CandidateStatus,
         Validation, ValidationStatus, ConsultantMail,
+        Pod, PodMembership,
     )
     from sqlalchemy import func, or_
 
@@ -427,6 +428,73 @@ def recruiter_leaderboard(
     )
     ack_by_rec = {uid: int(cnt) for uid, cnt in ack_rows}
 
+    # ── Org chain (DL/KAM/BH/Pod) per recruiter ──
+    # Walk up users.parent_user_id from each recruiter to find their DL → KAM → BH.
+    # Fall back to legacy pod_memberships.pod_lead when parent_user_id is null,
+    # so existing data without populated pod trees still shows the DL.
+    pod_name_by_id: dict[int, str] = {p.id: p.name for p in db.query(Pod).all()}
+
+    # Gather every user id referenced anywhere in the chains we need to walk.
+    chain_ids = set(rec_ids)
+    for u in recruiters:
+        if u.parent_user_id:
+            chain_ids.add(u.parent_user_id)
+    # Walk up: collect parents-of-parents two more levels (KAM, BH).
+    if chain_ids:
+        more = db.query(User.id, User.parent_user_id).filter(User.id.in_(chain_ids)).all()
+        for _id, pid in more:
+            if pid:
+                chain_ids.add(pid)
+        more2 = db.query(User.id, User.parent_user_id).filter(User.id.in_(chain_ids)).all()
+        for _id, pid in more2:
+            if pid:
+                chain_ids.add(pid)
+
+    chain_users: dict[int, User] = {
+        u.id: u for u in db.query(User).filter(User.id.in_(chain_ids)).all()
+    } if chain_ids else {}
+
+    # Legacy fallback: a recruiter's first pod_lead (DL) from pod_memberships
+    legacy_dl_by_user: dict[int, str] = {}
+    if rec_ids:
+        legacy_rows = (
+            db.query(PodMembership.user_id, User.name)
+            .join(User, PodMembership.pod_lead_id == User.id)
+            .filter(PodMembership.user_id.in_(rec_ids))
+            .all()
+        )
+        for uid, name in legacy_rows:
+            legacy_dl_by_user.setdefault(uid, name)
+
+    def _role_value(u: User) -> str:
+        return u.role.value if hasattr(u.role, "value") else str(u.role)
+
+    def _chain_for(u: User) -> dict:
+        dl_name = kam_name = bh_name = None
+        cur: User | None = u
+        seen = set()
+        steps = 0
+        while cur and steps < 6 and cur.id not in seen:
+            seen.add(cur.id)
+            rv = _role_value(cur)
+            if rv == "delivery_lead" and dl_name is None and cur.id != u.id:
+                dl_name = cur.name
+            elif rv == "kam" and kam_name is None:
+                kam_name = cur.name
+            elif rv == "bh" and bh_name is None:
+                bh_name = cur.name
+            cur = chain_users.get(cur.parent_user_id) if cur.parent_user_id else None
+            steps += 1
+        # If user themselves IS a DL (DL sourcing directly), surface them as DL.
+        if dl_name is None and _role_value(u) == "delivery_lead":
+            dl_name = u.name
+        # Legacy fallback for DL if pod tree isn't populated yet.
+        if dl_name is None:
+            dl_name = legacy_dl_by_user.get(u.id)
+        # Pod name from User.pod_id, or via the BH-of-pod lookup.
+        pod_name = pod_name_by_id.get(u.pod_id) if u.pod_id else None
+        return {"dl": dl_name, "kam": kam_name, "bh": bh_name, "pod": pod_name}
+
     rows = []
     sum_done = sum_verified = sum_rejects = sum_ack = 0
     for u in recruiters:
@@ -436,9 +504,14 @@ def recruiter_leaderboard(
         ack      = ack_by_rec.get(u.id, 0)
         pct      = round((verified / RECRUITER_DAY_TARGET) * 100) if RECRUITER_DAY_TARGET else 0
         status   = "On Track" if pct >= ON_TRACK_THRESHOLD else "Behind"
+        chain    = _chain_for(u)
         rows.append({
             "recruiter_id":   u.id,
             "recruiter_name": u.name,
+            "dl_name":        chain["dl"],
+            "kam_name":       chain["kam"],
+            "bh_name":        chain["bh"],
+            "pod_name":       chain["pod"],
             "day_target":     RECRUITER_DAY_TARGET,
             "done":           done,
             "verified":       verified,
