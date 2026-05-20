@@ -319,8 +319,9 @@ def recruiter_leaderboard(
     from infra.models import (
         User, UserRole, Candidate, CandidateStatus,
         Validation, ValidationStatus, ConsultantMail,
-        Pod, PodMembership,
+        Pod, PodMembership, HourlyTarget,
     )
+    from features.targets.routes import TIME_SLOTS, current_slot_indices_completed
     from sqlalchemy import func, or_
 
     # IST today
@@ -428,6 +429,25 @@ def recruiter_leaderboard(
     )
     ack_by_rec = {uid: int(cnt) for uid, cnt in ack_rows}
 
+    # ── Hourly targets for today (per recruiter) ──
+    # Sum of slot_targets for slots that have already ended → "target_so_far".
+    # Sum of all slot_targets for today → "day_target".
+    completed_slots = set(current_slot_indices_completed(ist_now))
+    target_rows = (
+        db.query(HourlyTarget.user_id, HourlyTarget.slot_index, HourlyTarget.target_count)
+          .filter(HourlyTarget.user_id.in_(rec_ids), HourlyTarget.date == today_ist)
+          .all()
+    )
+    slots_by_user: dict[int, dict[int, int]] = {}
+    for uid, idx, cnt in target_rows:
+        slots_by_user.setdefault(uid, {})[idx] = int(cnt)
+
+    def _targets_for(uid: int) -> tuple[int, int]:
+        slots = slots_by_user.get(uid, {})
+        so_far = sum(c for idx, c in slots.items() if idx in completed_slots)
+        day    = sum(slots.values())
+        return so_far, day
+
     # ── Org chain per recruiter ──
     # New pod shape: KAMs and DLs are flat peers under the BH. A recruiter
     # rolls up to one DL; KAMs are not in the recruiter's direct chain. The
@@ -495,13 +515,16 @@ def recruiter_leaderboard(
 
     rows = []
     sum_done = sum_verified = sum_rejects = sum_ack = 0
+    sum_target_so_far = sum_day_target = 0
     for u in recruiters:
         done     = done_by_rec.get(u.id, 0)
         verified = verified_by_rec.get(u.id, 0)
         rejects  = reject_by_rec.get(u.id, 0)
         ack      = ack_by_rec.get(u.id, 0)
-        pct      = round((verified / RECRUITER_DAY_TARGET) * 100) if RECRUITER_DAY_TARGET else 0
-        status   = "On Track" if pct >= ON_TRACK_THRESHOLD else "Behind"
+        target_so_far, day_target = _targets_for(u.id)
+        # % against the cumulative target the recruiter SHOULD have hit by now.
+        pct      = round((verified / target_so_far) * 100) if target_so_far else 0
+        status   = "On Track" if (target_so_far == 0 or pct >= ON_TRACK_THRESHOLD) else "Behind"
         chain    = _chain_for(u)
         rows.append({
             "recruiter_id":   u.id,
@@ -510,7 +533,8 @@ def recruiter_leaderboard(
             "kam_names":      chain["kam_names"],
             "bh_name":        chain["bh"],
             "pod_name":       chain["pod"],
-            "day_target":     RECRUITER_DAY_TARGET,
+            "day_target":     day_target,
+            "target_so_far":  target_so_far,
             "done":           done,
             "verified":       verified,
             "pct":            pct,
@@ -523,22 +547,24 @@ def recruiter_leaderboard(
         sum_verified += verified
         sum_rejects  += rejects
         sum_ack      += ack
+        sum_target_so_far += target_so_far
+        sum_day_target    += day_target
 
-    total_target = RECRUITER_DAY_TARGET * len(recruiters)
-    total_pct = round((sum_verified / total_target) * 100) if total_target else 0
+    total_pct = round((sum_verified / sum_target_so_far) * 100) if sum_target_so_far else 0
     totals = {
-        "day_target": total_target,
-        "done":       sum_done,
-        "verified":   sum_verified,
-        "rejections": sum_rejects,
-        "ack_sent":   sum_ack,
-        "pct":        total_pct,
-        "status":     "On Track" if total_pct >= ON_TRACK_THRESHOLD else "Behind",
+        "day_target":    sum_day_target,
+        "target_so_far": sum_target_so_far,
+        "done":          sum_done,
+        "verified":      sum_verified,
+        "rejections":    sum_rejects,
+        "ack_sent":      sum_ack,
+        "pct":           total_pct,
+        "status":        "On Track" if (sum_target_so_far == 0 or total_pct >= ON_TRACK_THRESHOLD) else "Behind",
     }
 
     return {
-        "rows":       rows,
-        "totals":     totals,
-        "day_target": RECRUITER_DAY_TARGET,
-        "today":      today_ist.isoformat(),
+        "rows":   rows,
+        "totals": totals,
+        "today":  today_ist.isoformat(),
+        "slots":  TIME_SLOTS,
     }

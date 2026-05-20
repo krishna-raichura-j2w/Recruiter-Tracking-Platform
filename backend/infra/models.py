@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Float, DateTime,
+    Column, Integer, String, Boolean, Float, DateTime, Date,
     ForeignKey, Text, Enum as SAEnum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
@@ -210,6 +210,26 @@ class PodMembership(Base):
 
     user     = relationship("User", foreign_keys=[user_id],     back_populates="pod_memberships")
     pod_lead = relationship("User", foreign_keys=[pod_lead_id], back_populates="led_pod_memberships")
+
+
+class HourlyTarget(Base):
+    """Per-user, per-hour submission target for a given day.
+
+    Targets are set by admin/KAM (for DLs and recruiters) or KAM/DL (for
+    recruiters). The leaderboard reads these to compute cumulative target so
+    far based on the current time. `slot_index` references TIME_SLOTS in
+    features/targets/routes.py (the canonical slot definitions).
+    """
+    __tablename__ = "hourly_targets"
+    id            = Column(Integer, primary_key=True, index=True)
+    user_id       = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    date          = Column(Date, nullable=False, index=True)
+    slot_index    = Column(Integer, nullable=False)
+    target_count  = Column(Integer, nullable=False, default=0)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at    = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+    __table_args__ = (UniqueConstraint("user_id", "date", "slot_index", name="uq_hourly_target"),)
 
 
 class Pod(Base):

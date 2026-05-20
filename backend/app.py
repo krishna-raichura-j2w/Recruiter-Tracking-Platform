@@ -38,6 +38,7 @@ from features.probing.routes import router as probing_router
 from features.boolean_builder.routes import router as boolean_builder_router
 from features.coo.routes import router as coo_router
 from features.pods.routes import router as pods_router
+from features.targets.routes import router as targets_router
 
 from contextlib import asynccontextmanager
 from features.tasks import scheduler as task_scheduler
@@ -116,6 +117,18 @@ def ensure_schema():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_user_id INTEGER REFERENCES users(id)",
             "CREATE INDEX IF NOT EXISTS ix_users_pod_id         ON users(pod_id)",
             "CREATE INDEX IF NOT EXISTS ix_users_parent_user_id ON users(parent_user_id)",
+            # ── Hourly targets ────────────────────────────────────────────────
+            """CREATE TABLE IF NOT EXISTS hourly_targets (
+                id            SERIAL PRIMARY KEY,
+                user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                date          DATE    NOT NULL,
+                slot_index    INTEGER NOT NULL,
+                target_count  INTEGER NOT NULL DEFAULT 0,
+                created_by_id INTEGER REFERENCES users(id),
+                updated_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                CONSTRAINT uq_hourly_target UNIQUE (user_id, date, slot_index)
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_hourly_targets_user_date ON hourly_targets(user_id, date)",
             # ── candidates: external-system / polymorphic-user columns ─────
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS first_name       VARCHAR(100)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_name        VARCHAR(100)",
@@ -286,6 +299,7 @@ app.include_router(probing_router,          prefix="/api")
 app.include_router(boolean_builder_router,  prefix="/api")
 app.include_router(coo_router,              prefix="/api")
 app.include_router(pods_router,             prefix="/api")
+app.include_router(targets_router,          prefix="/api")
 
 
 def run_migrations(db):
