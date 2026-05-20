@@ -10,7 +10,9 @@ import re
 from datetime import timedelta, datetime, timezone
 from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from core.deps import require_roles
+from core.database import get_db
 
 router = APIRouter(prefix="/coo", tags=["coo"])
 
@@ -282,4 +284,172 @@ def coo_leaderboard(
         "compare_date": compare_date,
         "columns": [{"key": k, "label": lbl} for k, lbl in COLUMNS],
         "today":   today_d.isoformat(),
+    }
+
+
+# ── Recruiter leaderboard (local DB, today's metrics) ────────────────────────
+
+RECRUITER_DAY_TARGET = 4
+ON_TRACK_THRESHOLD   = 75  # % of target
+
+
+def _performance_category(verified: int) -> str:
+    if verified <= 0:
+        return "needs discussion"
+    if verified == 1:
+        return "below average"
+    if verified == 2:
+        return "average"
+    if verified in (3, 4):
+        return "high"
+    return "good performance"
+
+
+@router.get("/recruiter-leaderboard")
+def recruiter_leaderboard(
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("coo", "admin")),
+):
+    """Per-recruiter daily metrics for the COO dashboard.
+
+    All counts use today's IST calendar day. "Verified by DL" counts validations
+    completed today on candidates this recruiter sourced. Performance category
+    is derived from verified count only (per product spec).
+    """
+    from infra.models import (
+        User, UserRole, Candidate, CandidateStatus,
+        Validation, ValidationStatus, ConsultantMail,
+    )
+    from sqlalchemy import func, or_, and_, cast, Date
+
+    # IST today
+    ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    today_ist = ist_now.date()
+    # UTC range covering the IST day
+    day_start_utc = datetime(today_ist.year, today_ist.month, today_ist.day) - timedelta(hours=5, minutes=30)
+    day_end_utc   = day_start_utc + timedelta(days=1)
+
+    # All active recruiters (primary or secondary role)
+    recruiters = (
+        db.query(User)
+        .filter(
+            User.is_active == True,  # noqa: E712
+            or_(User.role == UserRole.recruiter, User.secondary_role == "recruiter"),
+        )
+        .order_by(User.name)
+        .all()
+    )
+    rec_ids = [u.id for u in recruiters]
+    if not rec_ids:
+        return {
+            "rows": [],
+            "totals": {"done": 0, "verified": 0, "rejections": 0, "ack_sent": 0, "pct": 0, "status": "Behind"},
+            "day_target": RECRUITER_DAY_TARGET,
+            "today": today_ist.isoformat(),
+        }
+
+    # Submissions done today, grouped by sourcing recruiter.
+    # We treat a candidate as "submitted today" when submission_time_ts (HH:MM
+    # string set the day the submission record was created) is non-null AND the
+    # candidate's updated_at falls inside today's IST day. This matches how
+    # other "today" widgets in the app are computed (call_time, validation_done_at).
+    done_rows = (
+        db.query(Candidate.sourced_by_id, func.count(Candidate.id))
+        .filter(
+            Candidate.sourced_by_id.in_(rec_ids),
+            Candidate.submission_time_ts.isnot(None),
+            Candidate.submission_time_ts != "",
+            Candidate.updated_at >= day_start_utc,
+            Candidate.updated_at <  day_end_utc,
+        )
+        .group_by(Candidate.sourced_by_id)
+        .all()
+    )
+    done_by_rec = {uid: int(cnt) for uid, cnt in done_rows}
+
+    # Verified by DL today — validations created/updated today with status=validated
+    verified_rows = (
+        db.query(Candidate.sourced_by_id, func.count(Validation.id))
+        .join(Validation, Validation.candidate_id == Candidate.id)
+        .filter(
+            Candidate.sourced_by_id.in_(rec_ids),
+            Validation.status == ValidationStatus.validated,
+            Validation.updated_at >= day_start_utc,
+            Validation.updated_at <  day_end_utc,
+        )
+        .group_by(Candidate.sourced_by_id)
+        .all()
+    )
+    verified_by_rec = {uid: int(cnt) for uid, cnt in verified_rows}
+
+    # Rejections today — candidates flipped to rejected with updated_at today
+    reject_rows = (
+        db.query(Candidate.sourced_by_id, func.count(Candidate.id))
+        .filter(
+            Candidate.sourced_by_id.in_(rec_ids),
+            Candidate.status == CandidateStatus.rejected,
+            Candidate.updated_at >= day_start_utc,
+            Candidate.updated_at <  day_end_utc,
+        )
+        .group_by(Candidate.sourced_by_id)
+        .all()
+    )
+    reject_by_rec = {uid: int(cnt) for uid, cnt in reject_rows}
+
+    # Acknowledgment-pending mails — recruiter sent the mail but no ack yet.
+    # Open-ended (not date-scoped) since the spec is "sent but not acknowledged".
+    ack_rows = (
+        db.query(ConsultantMail.sent_by_id, func.count(ConsultantMail.id))
+        .filter(
+            ConsultantMail.sent_by_id.in_(rec_ids),
+            ConsultantMail.acknowledgement_received == False,  # noqa: E712
+        )
+        .group_by(ConsultantMail.sent_by_id)
+        .all()
+    )
+    ack_by_rec = {uid: int(cnt) for uid, cnt in ack_rows}
+
+    rows = []
+    sum_done = sum_verified = sum_rejects = sum_ack = 0
+    for u in recruiters:
+        done     = done_by_rec.get(u.id, 0)
+        verified = verified_by_rec.get(u.id, 0)
+        rejects  = reject_by_rec.get(u.id, 0)
+        ack      = ack_by_rec.get(u.id, 0)
+        pct      = round((verified / RECRUITER_DAY_TARGET) * 100) if RECRUITER_DAY_TARGET else 0
+        status   = "On Track" if pct >= ON_TRACK_THRESHOLD else "Behind"
+        rows.append({
+            "recruiter_id":   u.id,
+            "recruiter_name": u.name,
+            "day_target":     RECRUITER_DAY_TARGET,
+            "done":           done,
+            "verified":       verified,
+            "pct":            pct,
+            "status":         status,
+            "rejections":     rejects,
+            "ack_sent":       ack,
+            "performance":    _performance_category(verified),
+        })
+        sum_done     += done
+        sum_verified += verified
+        sum_rejects  += rejects
+        sum_ack      += ack
+
+    total_target = RECRUITER_DAY_TARGET * len(recruiters)
+    total_pct = round((sum_verified / total_target) * 100) if total_target else 0
+    totals = {
+        "day_target": total_target,
+        "done":       sum_done,
+        "verified":   sum_verified,
+        "rejections": sum_rejects,
+        "ack_sent":   sum_ack,
+        "pct":        total_pct,
+        "status":     "On Track" if total_pct >= ON_TRACK_THRESHOLD else "Behind",
+    }
+
+    return {
+        "rows":       rows,
+        "totals":     totals,
+        "day_target": RECRUITER_DAY_TARGET,
+        "today":      today_ist.isoformat(),
     }
