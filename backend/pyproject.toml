@@ -26,3 +26,35 @@ dependencies = [
     "sqlalchemy>=2.0.49",
     "uvicorn[standard]>=0.46.0",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = [
+    "FAST002",   # FastAPI Annotated[..., Depends()] pattern — not required
+    "B008",      # FastAPI Depends() in default args — intentional
+    "BLE001",    # broad except Exception — intentional resilience pattern
+    "PLC0415",   # imports inside functions — used for circular import avoidance
+    "PLR0913",   # too many function args — API routes need many params
+    "C901",      # function complexity — working code, don't refactor
+    "PLR0912",   # too many branches — working code
+    "PLR0915",   # too many statements — working code
+    "D205",      # docstring blank line — cosmetic
+    "D400",      # docstring imperative mood — cosmetic
+    "D415",      # docstring punctuation — cosmetic
+    "RUF001",    # ambiguous unicode — intentional
+    "RUF002",    # ambiguous docstring — intentional
+    "RUF003",    # ambiguous comment — intentional
+    "FBT001",    # boolean positional arg — changing breaks API
+    "FBT002",    # boolean default arg — changing breaks API
+    "TC001",     # TYPE_CHECKING block — not needed
+    "SLF001",    # private member access — internal code
+    "ARG001",    # unused function arg — FastAPI dependency args
+    "TRY300",    # return in try — style preference
+    "PLW0603",   # global statement — intentional
+    "PLW0602",   # global statement — intentional
+    "PLR2004",   # magic value — acceptable in this codebase
+    "PLR1714",   # repeated equality — acceptable
+    "FURB162",   # modernize — acceptable
+]

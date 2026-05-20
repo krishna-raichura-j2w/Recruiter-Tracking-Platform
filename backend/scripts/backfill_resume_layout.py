@@ -1,4 +1,5 @@
-"""One-shot migration: copy legacy resume objects to the canonical
+"""
+One-shot migration: copy legacy resume objects to the canonical
 mrr_tracking/uploads/candidates/resumes/<id>/<filename> layout and rewrite
 the candidates.resume / candidates.resume_data columns to store filename only.
 
@@ -8,12 +9,14 @@ and skips S3 copies when the target key already exists.
 Run inside the app container:
     docker compose exec app python -m scripts.backfill_resume_layout
 """
+
 import sys
+
 from botocore.exceptions import ClientError
-from sqlalchemy import text
 from core.database import SessionLocal
 from core.sql_loader import load_sql
-from infra.s3 import _s3, _bucket, build_resume_key, copy_resume_to_canonical
+from infra.s3 import _bucket, _s3, build_resume_key, copy_resume_to_canonical
+from sqlalchemy import text
 
 
 def _object_exists(key: str) -> bool:
@@ -28,7 +31,9 @@ def _object_exists(key: str) -> bool:
 
 def main() -> int:
     db = SessionLocal()
-    rows = db.execute(text(load_sql("028-select_candidates_for_resume_backfill.sql"))).fetchall()
+    rows = db.execute(
+        text(load_sql("028-select_candidates_for_resume_backfill.sql")),
+    ).fetchall()
 
     total = len(rows)
     moved, skipped, errors = 0, 0, 0
@@ -53,7 +58,9 @@ def main() -> int:
             elif _object_exists(source_key):
                 copy_resume_to_canonical(source_key, cid)
             else:
-                print(f"[backfill]   id={cid} source missing in S3 ({source_key!r}) — rewriting DB only")
+                print(
+                    f"[backfill]   id={cid} source missing in S3 ({source_key!r}) — rewriting DB only",
+                )
             db.execute(
                 text(load_sql("029-update_candidate_resume_path.sql")),
                 {"f": filename, "id": cid},

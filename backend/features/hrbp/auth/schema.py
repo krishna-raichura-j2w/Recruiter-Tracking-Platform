@@ -1,17 +1,17 @@
 from __future__ import annotations
-from typing import Optional
+
 from pydantic import BaseModel, EmailStr
 
 
 class UserResponse(BaseModel):
-    id:                   int
-    name:                 str
-    email:                str
-    role:                 str
-    secondary_role:       Optional[str]
-    recruiter_type:       Optional[str]
-    phone:                Optional[str]
-    is_active:            bool
+    id: int
+    name: str
+    email: str
+    role: str
+    secondary_role: str | None
+    recruiter_type: str | None
+    phone: str | None
+    is_active: bool
     must_change_password: bool
 
     class Config:
@@ -19,12 +19,12 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    name:                 Optional[str]   = None
-    email:                Optional[EmailStr] = None
-    phone:                Optional[str]   = None
-    role:                 Optional[str]   = None
-    secondary_role:       Optional[str]   = None
-    recruiter_type:       Optional[str]   = None
-    is_active:            Optional[bool]  = None
-    must_change_password: Optional[bool]  = None
-    password:             Optional[str]   = None
+    name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    role: str | None = None
+    secondary_role: str | None = None
+    recruiter_type: str | None = None
+    is_active: bool | None = None
+    must_change_password: bool | None = None
+    password: str | None = None

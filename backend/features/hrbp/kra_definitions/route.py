@@ -1,10 +1,18 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user
-from core.response_format import success_response, success_response_with_pagination, error_response
-from features.hrbp.kra_definitions.schema import KraDefinitionCreate, KraDefinitionUpdate
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
+)
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
 from features.hrbp.kra_definitions import service
+from features.hrbp.kra_definitions.schema import (
+    KraDefinitionCreate,
+    KraDefinitionUpdate,
+)
 
 router = APIRouter(prefix="/kra-definitions", tags=["hrbp-kra-definitions"])
 
@@ -17,7 +25,9 @@ def create_kra(
 ):
     try:
         data = service.create(db, payload)
-        return success_response(data=data.__dict__, message="KRA definition created successfully")
+        return success_response(
+            data=data.__dict__, message="KRA definition created successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -48,7 +58,9 @@ def get_kra_by_id(
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(data=data.__dict__, message="KRA definition fetched successfully")
+        return success_response(
+            data=data.__dict__, message="KRA definition fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -61,7 +73,9 @@ def get_kra_by_code(
 ):
     try:
         data = service.get_by_code(db, kra_code)
-        return success_response(data=data.__dict__, message="KRA definition fetched successfully")
+        return success_response(
+            data=data.__dict__, message="KRA definition fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -75,7 +89,9 @@ def update_kra(
 ):
     try:
         data = service.update(db, id, payload)
-        return success_response(data=data.__dict__, message="KRA definition updated successfully")
+        return success_response(
+            data=data.__dict__, message="KRA definition updated successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 

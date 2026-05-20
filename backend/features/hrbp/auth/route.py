@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from core.database import get_db
-from core.response_format import success_response, error_response
+from core.response_format import error_response, success_response
+from fastapi import APIRouter, Depends
 from infra.models import User
-from features.hrbp.utils.auth import get_hrbp_user
-from features.hrbp.auth.schema import UserUpdate
+from sqlalchemy.orm import Session
+
 from features.hrbp.auth import service
+from features.hrbp.auth.schema import UserUpdate
+from features.hrbp.utils.auth import get_hrbp_user
 
 router = APIRouter(prefix="/users", tags=["hrbp-users"])
 

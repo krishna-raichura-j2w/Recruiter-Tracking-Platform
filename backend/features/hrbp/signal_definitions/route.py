@@ -1,10 +1,18 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user
-from core.response_format import success_response, success_response_with_pagination, error_response
-from features.hrbp.signal_definitions.schema import SignalDefinitionCreate, SignalDefinitionUpdate
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
+)
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
 from features.hrbp.signal_definitions import service
+from features.hrbp.signal_definitions.schema import (
+    SignalDefinitionCreate,
+    SignalDefinitionUpdate,
+)
 
 router = APIRouter(prefix="/signal-definitions", tags=["hrbp-signal-definitions"])
 
@@ -17,7 +25,9 @@ def create_signal(
 ):
     try:
         data = service.create(db, payload)
-        return success_response(data=data.__dict__, message="Signal definition created successfully")
+        return success_response(
+            data=data.__dict__, message="Signal definition created successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -47,7 +57,10 @@ def list_by_urgency(
     _: object = Depends(get_current_user),
 ):
     data = service.list_by_urgency(db, urgency_level)
-    return success_response(data=[r.__dict__ for r in data], message="Signal definitions fetched successfully")
+    return success_response(
+        data=[r.__dict__ for r in data],
+        message="Signal definitions fetched successfully",
+    )
 
 
 @router.get("/{id}")
@@ -58,7 +71,9 @@ def get_signal_by_id(
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(data=data.__dict__, message="Signal definition fetched successfully")
+        return success_response(
+            data=data.__dict__, message="Signal definition fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -71,7 +86,9 @@ def get_signal_by_code(
 ):
     try:
         data = service.get_by_code(db, signal_code)
-        return success_response(data=data.__dict__, message="Signal definition fetched successfully")
+        return success_response(
+            data=data.__dict__, message="Signal definition fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -85,7 +102,9 @@ def update_signal(
 ):
     try:
         data = service.update(db, id, payload)
-        return success_response(data=data.__dict__, message="Signal definition updated successfully")
+        return success_response(
+            data=data.__dict__, message="Signal definition updated successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -98,6 +117,8 @@ def delete_signal(
 ):
     try:
         service.delete(db, id)
-        return success_response(data={}, message="Signal definition deleted successfully")
+        return success_response(
+            data={}, message="Signal definition deleted successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))

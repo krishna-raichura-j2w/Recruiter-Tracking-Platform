@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user, require_roles
+from fastapi import APIRouter, Depends, HTTPException
 from infra.models import Client, isofy_datetimes
 from infra.s3 import to_viewable_url
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 

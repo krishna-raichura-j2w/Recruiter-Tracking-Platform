@@ -5,16 +5,18 @@ A target is one row per (user, date, slot_index). The leaderboard reads these
 rows to compute the cumulative target a user should have hit by the current
 time (sum of slot targets whose slot_end <= now).
 """
+
 from __future__ import annotations
-from datetime import date as _date, datetime, time, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+
+from datetime import date as _date
+from datetime import datetime, time, timedelta, timezone
 
 from core.database import get_db
 from core.deps import get_current_user
-from infra.models import HourlyTarget, Pod, PodMembership, User, UserRole
-
+from fastapi import APIRouter, Depends, HTTPException
+from infra.models import HourlyTarget, User, UserRole
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
@@ -51,22 +53,26 @@ def current_slot_indices_completed(today_ist_now: datetime) -> list[int]:
     return [s["index"] for s in TIME_SLOTS if _parse_hhmm(s["end"]) <= now_t]
 
 
-def cumulative_target(targets_by_slot: dict[int, int], today_ist_now: datetime) -> tuple[int, int]:
+def cumulative_target(
+    targets_by_slot: dict[int, int], today_ist_now: datetime,
+) -> tuple[int, int]:
     """Return (target_so_far, day_target) for a single user."""
     done_slots = set(current_slot_indices_completed(today_ist_now))
-    so_far  = sum(c for idx, c in targets_by_slot.items() if idx in done_slots)
+    so_far = sum(c for idx, c in targets_by_slot.items() if idx in done_slots)
     day_tot = sum(targets_by_slot.values())
     return so_far, day_tot
 
 
 # ── Permissions ───────────────────────────────────────────────────────────────
 
+
 def _role(u: User) -> str:
     return u.role.value if hasattr(u.role, "value") else str(u.role)
 
 
 def _editable_user_ids(db: Session, editor: User) -> set[int]:
-    """User IDs whose targets `editor` is allowed to set.
+    """
+    User IDs whose targets `editor` is allowed to set.
 
     - admin: everyone (returns a wildcard sentinel set with marker -1 in addition).
     - kam:   every DL and Recruiter in the same pod as the KAM.
@@ -76,25 +82,33 @@ def _editable_user_ids(db: Session, editor: User) -> set[int]:
     """
     role = _role(editor)
     if role == UserRole.admin.value:
-        return {-1}   # sentinel → "any"
+        return {-1}  # sentinel → "any"
 
     ids: set[int] = set()
     if role == UserRole.kam.value:
         if editor.pod_id:
-            rows = db.query(User.id).filter(
-                User.pod_id == editor.pod_id,
-                User.role.in_([UserRole.delivery_lead, UserRole.recruiter]),
-                User.is_active == True,  # noqa: E712
-            ).all()
+            rows = (
+                db.query(User.id)
+                .filter(
+                    User.pod_id == editor.pod_id,
+                    User.role.in_([UserRole.delivery_lead, UserRole.recruiter]),
+                    User.is_active == True,  # noqa: E712
+                )
+                .all()
+            )
             ids.update(r[0] for r in rows)
     elif role == UserRole.delivery_lead.value:
         # All recruiters in the same pod (the DL is who picks them into team).
         if editor.pod_id:
-            rows = db.query(User.id).filter(
-                User.pod_id == editor.pod_id,
-                User.role == UserRole.recruiter,
-                User.is_active == True,  # noqa: E712
-            ).all()
+            rows = (
+                db.query(User.id)
+                .filter(
+                    User.pod_id == editor.pod_id,
+                    User.role == UserRole.recruiter,
+                    User.is_active == True,  # noqa: E712
+                )
+                .all()
+            )
             ids.update(r[0] for r in rows)
     return ids
 
@@ -104,7 +118,8 @@ def _is_editable(editable: set[int], target_user_id: int) -> bool:
 
 
 def _visible_user_ids(db: Session, viewer: User, role_filter: str | None) -> list[User]:
-    """Users whose targets the viewer can see, optionally filtered by role.
+    """
+    Users whose targets the viewer can see, optionally filtered by role.
 
     Same scope as editing, plus the viewer themselves so they can see their
     own targets even if they aren't an editor of them.
@@ -143,6 +158,7 @@ def _visible_user_ids(db: Session, viewer: User, role_filter: str | None) -> lis
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/slots")
 def list_slots(_=Depends(get_current_user)):
     return {"slots": TIME_SLOTS}
@@ -150,13 +166,15 @@ def list_slots(_=Depends(get_current_user)):
 
 @router.get("")
 def list_targets(
-    date:  str | None = None,
-    role:  str | None = None,
-    db:    Session    = Depends(get_db),
-    current_user      = Depends(get_current_user),
+    date: str | None = None,
+    role: str | None = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    """Return targets for `date` (defaults to today in IST). Filter by role
-    of the target user (e.g. ?role=delivery_lead or ?role=recruiter)."""
+    """
+    Return targets for `date` (defaults to today in IST). Filter by role
+    of the target user (e.g. ?role=delivery_lead or ?role=recruiter).
+    """
     ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     if date:
         try:
@@ -173,8 +191,8 @@ def list_targets(
     user_ids = [u.id for u in users]
     rows = (
         db.query(HourlyTarget)
-          .filter(HourlyTarget.user_id.in_(user_ids), HourlyTarget.date == day)
-          .all()
+        .filter(HourlyTarget.user_id.in_(user_ids), HourlyTarget.date == day)
+        .all()
     )
     by_user: dict[int, dict[int, int]] = {uid: {} for uid in user_ids}
     for r in rows:
@@ -182,17 +200,22 @@ def list_targets(
 
     editable = _editable_user_ids(db, current_user)
     return {
-        "date":  day.isoformat(),
+        "date": day.isoformat(),
         "slots": TIME_SLOTS,
         "users": [
             {
-                "id":         u.id,
-                "name":       u.name,
-                "email":      u.email,
-                "role":       _role(u),
-                "editable":   _is_editable(editable, u.id),
-                "targets":    [{"slot_index": idx, "target_count": by_user.get(u.id, {}).get(idx, 0)}
-                               for idx in _VALID_SLOT_INDICES],
+                "id": u.id,
+                "name": u.name,
+                "email": u.email,
+                "role": _role(u),
+                "editable": _is_editable(editable, u.id),
+                "targets": [
+                    {
+                        "slot_index": idx,
+                        "target_count": by_user.get(u.id, {}).get(idx, 0),
+                    }
+                    for idx in _VALID_SLOT_INDICES
+                ],
                 "day_target": sum(by_user.get(u.id, {}).values()),
             }
             for u in users
@@ -201,21 +224,21 @@ def list_targets(
 
 
 class SlotValue(BaseModel):
-    slot_index:   int
+    slot_index: int
     target_count: int = Field(ge=0, le=999)
 
 
 class TargetsSave(BaseModel):
     user_id: int
-    date:    str
-    slots:   list[SlotValue]
+    date: str
+    slots: list[SlotValue]
 
 
 @router.put("")
 def save_targets(
     body: TargetsSave,
-    db:   Session = Depends(get_db),
-    current_user  = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Upsert hourly targets for a single user on a single day."""
     try:
@@ -236,20 +259,25 @@ def save_targets(
             raise HTTPException(400, f"Invalid slot_index {sv.slot_index}")
         existing = (
             db.query(HourlyTarget)
-              .filter(
-                  HourlyTarget.user_id == body.user_id,
-                  HourlyTarget.date == day,
-                  HourlyTarget.slot_index == sv.slot_index,
-              ).first()
+            .filter(
+                HourlyTarget.user_id == body.user_id,
+                HourlyTarget.date == day,
+                HourlyTarget.slot_index == sv.slot_index,
+            )
+            .first()
         )
         if existing:
             existing.target_count = sv.target_count
             existing.created_by_id = current_user.id
         else:
-            db.add(HourlyTarget(
-                user_id=body.user_id, date=day,
-                slot_index=sv.slot_index, target_count=sv.target_count,
-                created_by_id=current_user.id,
-            ))
+            db.add(
+                HourlyTarget(
+                    user_id=body.user_id,
+                    date=day,
+                    slot_index=sv.slot_index,
+                    target_count=sv.target_count,
+                    created_by_id=current_user.id,
+                ),
+            )
     db.commit()
     return {"saved": True, "user_id": body.user_id, "date": day.isoformat()}

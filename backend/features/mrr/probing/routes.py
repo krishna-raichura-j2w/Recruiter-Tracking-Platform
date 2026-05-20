@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
 from infra.models import ProbingData, to_iso_utc
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/probing", tags=["probing"])
 
@@ -38,7 +38,7 @@ def _to_dict(row: ProbingData) -> dict:
 def create_probing(
     body: ProbingCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     payload = body.model_dump()
     # job_id is intentionally never persisted — drop whatever the UI sent.

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Query, HTTPException, Depends
-from core.deps import require_roles
-from core.sql_loader import load_sql
-from datetime import datetime, timezone, timedelta
+import os
+from datetime import datetime, timedelta, timezone
+
 import pymysql
 import pymysql.cursors
-import os
+from core.deps import require_roles
+from core.sql_loader import load_sql
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/demand-status", tags=["demand-status"])
 
@@ -40,21 +41,20 @@ def get_demand_status(
 
     try:
         conn = _get_conn()
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(_SQL, {"year": y, "month": m})
-                rows = cur.fetchall()
+        with conn, conn.cursor() as cur:
+            cur.execute(_SQL, {"year": y, "month": m})
+            rows = cur.fetchall()
         data = [
             {
-                "company_name":                  r["company_name"],
-                "demand_id":                     r["demand_id"],
-                "last_demand_id":                r["last_demand_id"],
-                "job_title_name":                r["job_title_name"],
-                "no_of_positions":               r["no_of_positions"],
+                "company_name": r["company_name"],
+                "demand_id": r["demand_id"],
+                "last_demand_id": r["last_demand_id"],
+                "job_title_name": r["job_title_name"],
+                "no_of_positions": r["no_of_positions"],
                 "created_by_account_manager_id": r["created_by_account_manager_id"],
-                "account_manager_name":          r["account_manager_name"],
-                "delivery_lead":                 r["delivery_lead"],
-                "recruiter":                     r["recruiter"],
+                "account_manager_name": r["account_manager_name"],
+                "delivery_lead": r["delivery_lead"],
+                "recruiter": r["recruiter"],
             }
             for r in rows
         ]

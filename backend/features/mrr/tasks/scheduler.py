@@ -5,15 +5,17 @@ For each open job with a deadline set:
   • 15 min before deadline  → warn the assigned recruiter(s)
   • Past deadline           → alert DL + recruiter(s), mark as alerted
 """
+
 import json
 import logging
-from datetime import datetime, timezone, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy import text
+from datetime import datetime, timedelta, timezone
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from core.database import SessionLocal
 from core.sql_loader import load_sql
-from infra.models import Job, JobStatus, User, UserRole, NotifType
+from infra.models import Job, JobStatus, NotifType, User
+from sqlalchemy import text
+
 from features.mrr.notifications.service import push
 
 # Cluster-wide lock key — picked at random, must stay stable across versions.
@@ -69,8 +71,7 @@ def check_deadlines():
             db.query(Job)
             .filter(Job.status == JobStatus.open)
             .filter(
-                (Job.sourcing_deadline.isnot(None)) |
-                (Job.calling_deadline.isnot(None))
+                (Job.sourcing_deadline.isnot(None)) | (Job.calling_deadline.isnot(None)),
             )
             .all()
         )
@@ -87,22 +88,34 @@ def check_deadlines():
                 # 15-min warning (fire once)
                 if not job.sourcing_warned and now < sd <= warn_at:
                     for uid in sourcer_ids:
-                        push(db, uid,
+                        push(
+                            db,
+                            uid,
                             f"⏰ 15 minutes left to complete sourcing for {label}.",
-                            NotifType.general, entity_id=job.id)
+                            NotifType.general,
+                            entity_id=job.id,
+                        )
                     job.sourcing_warned = True
 
                 # Overdue alert (fire once)
                 if not job.sourcing_alerted and now > sd:
                     for uid in sourcer_ids:
-                        push(db, uid,
+                        push(
+                            db,
+                            uid,
                             f"🚨 Sourcing deadline passed for {label}. Please update your progress.",
-                            NotifType.general, entity_id=job.id)
+                            NotifType.general,
+                            entity_id=job.id,
+                        )
                     if dl_id:
                         names = _recruiter_names(db, sourcer_ids)
-                        push(db, dl_id,
+                        push(
+                            db,
+                            dl_id,
                             f"🚨 Sourcing overdue for {label}. Recruiter(s): {names}.",
-                            NotifType.general, entity_id=job.id)
+                            NotifType.general,
+                            entity_id=job.id,
+                        )
                     job.sourcing_alerted = True
 
             # ── Calling deadline ───────────────────────────────────────────
@@ -113,22 +126,34 @@ def check_deadlines():
                 # 15-min warning
                 if not job.calling_warned and now < cd <= warn_at:
                     for uid in caller_ids:
-                        push(db, uid,
+                        push(
+                            db,
+                            uid,
                             f"⏰ 15 minutes left to complete calling for {label}.",
-                            NotifType.general, entity_id=job.id)
+                            NotifType.general,
+                            entity_id=job.id,
+                        )
                     job.calling_warned = True
 
                 # Overdue alert
                 if not job.calling_alerted and now > cd:
                     for uid in caller_ids:
-                        push(db, uid,
+                        push(
+                            db,
+                            uid,
                             f"🚨 Calling deadline passed for {label}. Please update your progress.",
-                            NotifType.general, entity_id=job.id)
+                            NotifType.general,
+                            entity_id=job.id,
+                        )
                     if dl_id:
                         names = _recruiter_names(db, caller_ids)
-                        push(db, dl_id,
+                        push(
+                            db,
+                            dl_id,
                             f"🚨 Calling overdue for {label}. Caller(s): {names}.",
-                            NotifType.general, entity_id=job.id)
+                            NotifType.general,
+                            entity_id=job.id,
+                        )
                     job.calling_alerted = True
 
         # Always commit so the advisory_xact_lock releases. No-op if no rows
@@ -154,8 +179,14 @@ def start():
     if _scheduler and _scheduler.running:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
-    _scheduler.add_job(check_deadlines, "interval", minutes=1, id="deadline_check",
-                       max_instances=1, coalesce=True)
+    _scheduler.add_job(
+        check_deadlines,
+        "interval",
+        minutes=1,
+        id="deadline_check",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
     log.info("Deadline scheduler started.")
 

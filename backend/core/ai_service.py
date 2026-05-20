@@ -2,7 +2,9 @@
 
 import logging
 from enum import Enum
+
 from openai import AzureOpenAI
+
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ def call_ai(
 
     Returns:
         The model's text response as a plain string.
+
     """
     logger.info(f"AI call → provider={provider.value} | prompt_length={len(prompt)}")
 
@@ -47,13 +50,14 @@ def call_ai(
 # Private provider implementations
 # ---------------------------------------------------------------------------
 
+
 def _call_azure_openai(prompt: str, system_prompt: str) -> str:
     try:
         response = _azure_client.chat.completions.create(
             model=settings.azure_openai_deployment,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": prompt},
+                {"role": "user", "content": prompt},
             ],
         )
         return response.choices[0].message.content

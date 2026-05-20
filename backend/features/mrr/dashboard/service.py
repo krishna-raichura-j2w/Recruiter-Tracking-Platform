@@ -1,23 +1,30 @@
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from infra.models import Candidate, Job, Submission, CandidateStatus, User, Notification, isofy_datetimes
 
+from infra.models import (
+    Candidate,
+    Job,
+    Notification,
+    Submission,
+    User,
+    isofy_datetimes,
+)
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 PIPELINE_STAGES = [
-    ("sourced",              "Sourced"),
-    ("handed_to_recruiter",  "Handed to Recruiter"),
-    ("call_in_progress",     "Call in Progress"),
+    ("sourced", "Sourced"),
+    ("handed_to_recruiter", "Handed to Recruiter"),
+    ("call_in_progress", "Call in Progress"),
     ("ready_for_validation", "Ready for Validation"),
-    ("validated",            "Validated"),
-    ("needs_rework",         "Needs Rework"),
-    ("on_hold",              "On Hold"),
-    ("rejected",             "Rejected"),
-    ("submitted_to_client",  "Submitted to Client"),
-    ("interview_stage",      "Interview Stage"),
-    ("offer_rolled_out",     "Offer Rolled Out"),
-    ("joined",               "Joined"),
-    ("backed_out",           "Backed Out"),
+    ("validated", "Validated"),
+    ("needs_rework", "Needs Rework"),
+    ("on_hold", "On Hold"),
+    ("rejected", "Rejected"),
+    ("submitted_to_client", "Submitted to Client"),
+    ("interview_stage", "Interview Stage"),
+    ("offer_rolled_out", "Offer Rolled Out"),
+    ("joined", "Joined"),
+    ("backed_out", "Backed Out"),
 ]
 
 
@@ -37,43 +44,82 @@ def get_dashboard(db: Session, user_id: int, role: str) -> dict:
     total_jobs = db.query(func.count(Job.id)).filter(Job.status == "open").scalar() or 0
 
     submitted_q = db.query(func.count(Submission.id)).filter(
-        Submission.submitted_at >= month_start
+        Submission.submitted_at >= month_start,
     )
     if role == "delivery_lead":
         submitted_q = submitted_q.filter(Submission.delivery_lead_id == user_id)
     submitted_this_month = submitted_q.scalar() or 0
 
-    joined_this_month = db.query(func.count(Candidate.id)).filter(
-        Candidate.status == "joined",
-        Candidate.updated_at >= month_start,
-    ).scalar() or 0
+    joined_this_month = (
+        db.query(func.count(Candidate.id))
+        .filter(
+            Candidate.status == "joined",
+            Candidate.updated_at >= month_start,
+        )
+        .scalar()
+        or 0
+    )
 
     # Per-recruiter breakdown (pod lead only)
     recruiter_stats = []
     if role in ("delivery_lead", "admin"):
-        callers = db.query(User).filter(User.role == "recruiter", User.is_active == True).all()
+        callers = (
+            db.query(User)
+            .filter(User.role == "recruiter", User.is_active)
+            .all()
+        )
         for caller in callers:
-            sourced = db.query(func.count(Candidate.id)).filter(Candidate.assigned_to_id == caller.id).scalar() or 0
-            called = db.query(func.count(Candidate.id)).filter(
-                Candidate.assigned_to_id == caller.id,
-                Candidate.status.notin_(["sourced", "handed_to_recruiter"])
-            ).scalar() or 0
-            validated = db.query(func.count(Candidate.id)).filter(
-                Candidate.assigned_to_id == caller.id,
-                Candidate.status.in_(["validated", "submitted_to_client", "interview_stage", "offer_rolled_out", "joined"])
-            ).scalar() or 0
-            recruiter_stats.append({
-                "name": caller.name,
-                "assigned": sourced,
-                "called": called,
-                "validated": validated,
-            })
+            sourced = (
+                db.query(func.count(Candidate.id))
+                .filter(Candidate.assigned_to_id == caller.id)
+                .scalar()
+                or 0
+            )
+            called = (
+                db.query(func.count(Candidate.id))
+                .filter(
+                    Candidate.assigned_to_id == caller.id,
+                    Candidate.status.notin_(["sourced", "handed_to_recruiter"]),
+                )
+                .scalar()
+                or 0
+            )
+            validated = (
+                db.query(func.count(Candidate.id))
+                .filter(
+                    Candidate.assigned_to_id == caller.id,
+                    Candidate.status.in_(
+                        [
+                            "validated",
+                            "submitted_to_client",
+                            "interview_stage",
+                            "offer_rolled_out",
+                            "joined",
+                        ],
+                    ),
+                )
+                .scalar()
+                or 0
+            )
+            recruiter_stats.append(
+                {
+                    "name": caller.name,
+                    "assigned": sourced,
+                    "called": called,
+                    "validated": validated,
+                },
+            )
 
     # Unread notifications
-    unread_notifs = db.query(func.count(Notification.id)).filter(
-        Notification.user_id == user_id,
-        Notification.is_read == False,
-    ).scalar() or 0
+    unread_notifs = (
+        db.query(func.count(Notification.id))
+        .filter(
+            Notification.user_id == user_id,
+            not Notification.is_read,
+        )
+        .scalar()
+        or 0
+    )
 
     return {
         "pipeline": pipeline,
@@ -87,9 +133,13 @@ def get_dashboard(db: Session, user_id: int, role: str) -> dict:
 
 
 def get_notifications(db: Session, user_id: int) -> dict:
-    notifs = db.query(Notification).filter(
-        Notification.user_id == user_id
-    ).order_by(Notification.created_at.desc()).limit(50).all()
+    notifs = (
+        db.query(Notification)
+        .filter(Notification.user_id == user_id)
+        .order_by(Notification.created_at.desc())
+        .limit(50)
+        .all()
+    )
     rows = []
     for n in notifs:
         d = {col.name: getattr(n, col.name) for col in n.__table__.columns}
@@ -100,9 +150,11 @@ def get_notifications(db: Session, user_id: int) -> dict:
 
 
 def mark_read(db: Session, notif_id: int, user_id: int):
-    n = db.query(Notification).filter(
-        Notification.id == notif_id, Notification.user_id == user_id
-    ).first()
+    n = (
+        db.query(Notification)
+        .filter(Notification.id == notif_id, Notification.user_id == user_id)
+        .first()
+    )
     if n:
         n.is_read = True
         db.commit()

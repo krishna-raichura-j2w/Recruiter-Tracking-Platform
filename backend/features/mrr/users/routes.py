@@ -1,12 +1,13 @@
+from core.database import get_db
+from core.deps import require_roles
 from fastapi import APIRouter, Depends, HTTPException, Query
+from infra.models import UserRole
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from core.database import get_db
-from core.deps import get_current_user, require_roles
-from features.mrr.users.schema import UserCreate, UserUpdate, UserOut
-from features.mrr.users import service
+
 from features.mrr.allocation.service import team_loads
-from infra.models import UserRole
+from features.mrr.users import service
+from features.mrr.users.schema import UserCreate, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -15,47 +16,64 @@ def _out(user, db=None) -> dict:
     pod_lead_names: list[str] = []
     if db:
         pod_lead_names = service.get_pod_lead_names(db, user.id)
-    elif hasattr(user, 'pod_memberships') and user.pod_memberships:
+    elif hasattr(user, "pod_memberships") and user.pod_memberships:
         pod_lead_names = [m.pod_lead.name for m in user.pod_memberships if m.pod_lead]
     # Primary pod lead for backward compat
     pod_lead_name = pod_lead_names[0] if pod_lead_names else None
     return {
-        "id":             user.id,
-        "name":           user.name,
-        "email":          user.email,
-        "role":           user.role.value,
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role.value,
         "secondary_role": user.secondary_role,
         "recruiter_type": user.recruiter_type.value if user.recruiter_type else None,
-        "is_active":      user.is_active,
-        "pod_lead_id":    user.pod_lead_id,
-        "pod_lead_name":  pod_lead_name,
+        "is_active": user.is_active,
+        "pod_lead_id": user.pod_lead_id,
+        "pod_lead_name": pod_lead_name,
         "pod_lead_names": pod_lead_names,
     }
 
 
 @router.get("")
 def list_users(
-    role:      str | None = Query(None),
-    available: bool       = Query(False),
-    search:    str | None = Query(None),
-    skip:      int        = Query(0, ge=0),
-    limit:     int        = Query(0, ge=0, le=500),
-    db: Session           = Depends(get_db),
-    current_user          = Depends(require_roles("admin", "delivery_lead", "coo")),
+    role: str | None = Query(None),
+    available: bool = Query(False),
+    search: str | None = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(0, ge=0, le=500),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "delivery_lead", "coo")),
 ):
     """admin/coo: all users (paginated). delivery_lead: their team or ?available=true for unassigned."""
     is_dl = current_user.role.value == "delivery_lead"
     if available and is_dl:
         items, total = service.list_available_team(
-            db, dl_id=current_user.id,
-            role=role, search=search,
-            skip=skip, limit=limit if limit > 0 else 20,
+            db,
+            dl_id=current_user.id,
+            role=role,
+            search=search,
+            skip=skip,
+            limit=limit if limit > 0 else 20,
         )
-        return {"items": [_out(u, db) for u in items], "total": total, "skip": skip, "limit": limit}
-    elif is_dl:
-        users, total = service.list_users(db, role=role, pod_lead_id=current_user.id, search=search, skip=skip, limit=limit)
+        return {
+            "items": [_out(u, db) for u in items],
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+        }
+    if is_dl:
+        users, total = service.list_users(
+            db,
+            role=role,
+            pod_lead_id=current_user.id,
+            search=search,
+            skip=skip,
+            limit=limit,
+        )
     else:
-        users, total = service.list_users(db, role=role, search=search, skip=skip, limit=limit)
+        users, total = service.list_users(
+            db, role=role, search=search, skip=skip, limit=limit,
+        )
 
     items = [_out(u, db) for u in users]
     # If no limit requested (old callers like team-loads dropdown), return plain array for compat
@@ -89,8 +107,8 @@ def reset_password(
 def update_user(
     user_id: int,
     body: UserUpdate,
-    db: Session    = Depends(get_db),
-    current_user   = Depends(require_roles("admin", "delivery_lead")),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "delivery_lead")),
 ):
     data = body.model_dump(exclude_none=True)
     if current_user.role.value == "delivery_lead":
@@ -103,16 +121,16 @@ def update_user(
 
 
 class ReassignPodBody(BaseModel):
-    to_dl_id:   int
-    from_dl_id: int | None = None   # if None, just adds without removing another team
+    to_dl_id: int
+    from_dl_id: int | None = None  # if None, just adds without removing another team
 
 
 @router.post("/{user_id}/reassign-pod")
 def reassign_pod(
     user_id: int,
     body: ReassignPodBody,
-    db: Session  = Depends(get_db),
-    _            = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
 ):
     user = service.reassign_pod(db, user_id, body.from_dl_id, body.to_dl_id)
     if not user:
@@ -121,15 +139,15 @@ def reassign_pod(
 
 
 class AssignPodBody(BaseModel):
-    recruiter_type: str = "both"   # kept for backward compat; always "both" now
+    recruiter_type: str = "both"  # kept for backward compat; always "both" now
 
 
 @router.post("/{user_id}/assign-pod")
 def assign_pod(
     user_id: int,
     body: AssignPodBody,
-    db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "delivery_lead")),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "delivery_lead")),
 ):
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
     # Always assign as "both" — sourcer/caller distinction removed
@@ -141,11 +159,12 @@ def assign_pod(
 
 @router.get("/delivery-leads")
 def list_delivery_leads(
-    db: Session  = Depends(get_db),
-    _            = Depends(require_roles("admin", "kam")),
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin", "kam")),
 ):
     """KAM fetches active delivery leads; includes the clients each DL is currently handling."""
     from infra.models import Job, JobStatus
+
     users, _ = service.list_users(db, role=UserRole.delivery_lead)
     result = []
     for u in users:
@@ -165,8 +184,8 @@ def list_delivery_leads(
 
 @router.get("/kams")
 def list_kams(
-    db: Session  = Depends(get_db),
-    _            = Depends(require_roles("admin", "delivery_lead")),
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin", "delivery_lead")),
 ):
     """DL fetches active KAMs to assign as job owner when creating a JD."""
     users, _ = service.list_users(db, role=UserRole.kam)
@@ -175,21 +194,26 @@ def list_kams(
 
 @router.get("/team-assignments")
 def get_team_assignments(
-    db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "delivery_lead")),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "delivery_lead")),
 ):
     """Per-JD assignment progress for each DL's team member (target vs actual)."""
     import json as _json
-    from infra.models import Job, JobStatus, Candidate, CandidateStatus, User
+
+    from infra.models import Candidate, Job, JobStatus, User
+
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
     if dl_id is None:
         return []
 
-    closed = {CandidateStatus.joined, CandidateStatus.backed_out, CandidateStatus.rejected}
-    jobs = db.query(Job).filter(
-        Job.delivery_lead_id == dl_id,
-        Job.status.notin_([JobStatus.closed]),
-    ).all()
+    jobs = (
+        db.query(Job)
+        .filter(
+            Job.delivery_lead_id == dl_id,
+            Job.status.notin_([JobStatus.closed]),
+        )
+        .all()
+    )
 
     members: dict[int, dict] = {}
 
@@ -199,51 +223,76 @@ def get_team_assignments(
             if not u:
                 return False
             members[uid] = {
-                "id": u.id, "name": u.name,
-                "recruiter_type": u.recruiter_type.value if u.recruiter_type else role_type,
+                "id": u.id,
+                "name": u.name,
+                "recruiter_type": (
+                    u.recruiter_type.value if u.recruiter_type else role_type
+                ),
                 "jobs": [],
             }
         return True
 
     for job in jobs:
-        sourcer_ids = _json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else []
-        caller_ids  = _json.loads(job.caller_ids  or '[]') if isinstance(job.caller_ids,  str) else []
+        sourcer_ids = (
+            _json.loads(job.sourcer_ids or "[]")
+            if isinstance(job.sourcer_ids, str)
+            else []
+        )
+        caller_ids = (
+            _json.loads(job.caller_ids or "[]")
+            if isinstance(job.caller_ids, str)
+            else []
+        )
         # Unified recruiter list — deduped union so each person appears once per job
         recruiter_ids = list(dict.fromkeys(sourcer_ids + caller_ids))
 
         for uid in recruiter_ids:
             if not _ensure(uid, "recruiter"):
                 continue
-            sourced = db.query(Candidate).filter(
-                Candidate.job_id == job.id,
-                Candidate.sourced_by_id == uid,
-            ).count()
-            called = db.query(Candidate).filter(
-                Candidate.job_id == job.id,
-                Candidate.assigned_to_id == uid,
-            ).count()
-            members[uid]["jobs"].append({
-                "job_id": job.id,
-                "role_title": job.role_title,
-                "client_name": job.client_name,
-                "assignment_type": "recruiter",
-                "target": job.sourcing_target,
-                "actual": sourced + called,
-                "sourced": sourced,
-                "called": called,
-            })
+            sourced = (
+                db.query(Candidate)
+                .filter(
+                    Candidate.job_id == job.id,
+                    Candidate.sourced_by_id == uid,
+                )
+                .count()
+            )
+            called = (
+                db.query(Candidate)
+                .filter(
+                    Candidate.job_id == job.id,
+                    Candidate.assigned_to_id == uid,
+                )
+                .count()
+            )
+            members[uid]["jobs"].append(
+                {
+                    "job_id": job.id,
+                    "role_title": job.role_title,
+                    "client_name": job.client_name,
+                    "assignment_type": "recruiter",
+                    "target": job.sourcing_target,
+                    "actual": sourced + called,
+                    "sourced": sourced,
+                    "called": called,
+                },
+            )
 
     return list(members.values())
 
 
 @router.get("/team-loads")
 def get_team_loads(
-    dl_id: int | None = Query(None, description="DL user ID — admin can pass any DL's ID"),
-    db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "delivery_lead")),
+    dl_id: int | None = Query(
+        None, description="DL user ID — admin can pass any DL's ID",
+    ),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "delivery_lead")),
 ):
-    """Return per-role load counts for each DL's team.
-    DL users always see their own team. Admins may pass ?dl_id=<N> to see a specific DL's team."""
+    """
+    Return per-role load counts for each DL's team.
+    DL users always see their own team. Admins may pass ?dl_id=<N> to see a specific DL's team.
+    """
     is_admin = current_user.role.value == "admin"
     if is_admin:
         if dl_id is None:
@@ -254,17 +303,18 @@ def get_team_loads(
     members = team_loads(db, effective_dl_id)
     return {
         "sourcers": members,
-        "callers":  members,
+        "callers": members,
     }
 
 
 @router.get("/activity-summary")
 def activity_summary(
     db: Session = Depends(get_db),
-    _           = Depends(require_roles("admin", "delivery_lead", "kam")),
+    _=Depends(require_roles("admin", "delivery_lead", "kam")),
 ):
     """All users with last login + last action — for the leaderboard."""
     from features.mrr.activity.service import get_activity_summary
+
     return get_activity_summary(db)
 
 
@@ -272,8 +322,8 @@ def activity_summary(
 def get_activity(
     user_id: int,
     date: str | None = Query(None, description="YYYY-MM-DD filter"),
-    db: Session      = Depends(get_db),
-    _                = Depends(require_roles("admin", "delivery_lead")),
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin", "delivery_lead")),
 ):
     """Return sourced & called candidate lists for a team member, optionally filtered by date."""
     return service.get_user_activity(db, user_id, date)
@@ -285,8 +335,10 @@ def get_details(
     db: Session = Depends(get_db),
     _=Depends(require_roles("admin")),
 ):
-    """Full rollup of a user's identity + activity counts + recent items.
-    Powers the admin Users-page overlay; works for any role."""
+    """
+    Full rollup of a user's identity + activity counts + recent items.
+    Powers the admin Users-page overlay; works for any role.
+    """
     data = service.get_user_details(db, user_id)
     if data is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -294,15 +346,17 @@ def get_details(
 
 
 class RemovePodBody(BaseModel):
-    pod_lead_id: int | None = None  # which DL's team to remove from; defaults to current user if DL
+    pod_lead_id: int | None = (
+        None  # which DL's team to remove from; defaults to current user if DL
+    )
 
 
 @router.delete("/{user_id}/pod")
 def remove_from_pod(
     user_id: int,
     body: RemovePodBody = RemovePodBody(),
-    db: Session  = Depends(get_db),
-    current_user = Depends(require_roles("admin", "delivery_lead")),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "delivery_lead")),
 ):
     # Determine which DL's team to remove from
     if body.pod_lead_id:

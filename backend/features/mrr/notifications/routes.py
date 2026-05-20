@@ -1,12 +1,14 @@
 import asyncio
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from core.database import get_db, SessionLocal
+
+from core.database import SessionLocal, get_db
 from core.deps import get_current_user
 from core.security import decode_token
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from infra.models import Notification
+from sqlalchemy.orm import Session
+
 from features.mrr.notifications import service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -85,10 +87,14 @@ def mark_one_read(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    n = db.query(Notification).filter(
-        Notification.id == notif_id,
-        Notification.user_id == current_user.id,
-    ).first()
+    n = (
+        db.query(Notification)
+        .filter(
+            Notification.id == notif_id,
+            Notification.user_id == current_user.id,
+        )
+        .first()
+    )
     if n:
         n.is_read = True
         db.commit()

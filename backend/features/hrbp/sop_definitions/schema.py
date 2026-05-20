@@ -1,49 +1,51 @@
 from __future__ import annotations
-from typing import Any, Literal, Optional
+
 from datetime import datetime
+from typing import Any, Literal
+
 from pydantic import BaseModel
 
 ControlLevel = Literal["HIGH", "MEDIUM", "LOW"]
 
 
 class SopDefinitionCreate(BaseModel):
-    sop_type:          str
-    number:            str
-    name:              str
-    description:       Optional[str] = None
-    trigger_source:    str
-    kra_tags:          Optional[list[str]] = None
-    control_level:     ControlLevel
-    email_templates:   Optional[list[str]] = None
+    sop_type: str
+    number: str
+    name: str
+    description: str | None = None
+    trigger_source: str
+    kra_tags: list[str] | None = None
+    control_level: ControlLevel
+    email_templates: list[str] | None = None
     persons_hierarchy: Any
-    steps_definition:  Any
+    steps_definition: Any
 
 
 class SopDefinitionUpdate(BaseModel):
-    number:            Optional[str] = None
-    name:              Optional[str] = None
-    description:       Optional[str] = None
-    trigger_source:    Optional[str] = None
-    kra_tags:          Optional[list[str]] = None
-    control_level:     Optional[ControlLevel] = None
-    email_templates:   Optional[list[str]] = None
-    persons_hierarchy: Optional[Any] = None
-    steps_definition:  Optional[Any] = None
+    number: str | None = None
+    name: str | None = None
+    description: str | None = None
+    trigger_source: str | None = None
+    kra_tags: list[str] | None = None
+    control_level: ControlLevel | None = None
+    email_templates: list[str] | None = None
+    persons_hierarchy: Any | None = None
+    steps_definition: Any | None = None
 
 
 class SopDefinitionResponse(BaseModel):
-    id:                int
-    sop_type:          str
-    number:            str
-    name:              str
-    description:       Optional[str]
-    trigger_source:    str
-    kra_tags:          Optional[list[str]]
-    control_level:     str
-    email_templates:   Optional[list[str]]
+    id: int
+    sop_type: str
+    number: str
+    name: str
+    description: str | None
+    trigger_source: str
+    kra_tags: list[str] | None
+    control_level: str
+    email_templates: list[str] | None
     persons_hierarchy: Any
-    steps_definition:  Any
-    created_at:        Optional[datetime]
+    steps_definition: Any
+    created_at: datetime | None
 
     class Config:
         from_attributes = True

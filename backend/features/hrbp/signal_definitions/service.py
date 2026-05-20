@@ -1,13 +1,24 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPSignalDefinition
-from features.hrbp.signal_definitions.schema import SignalDefinitionCreate, SignalDefinitionUpdate
-from core.pagination import paginate, PageResult
+from sqlalchemy.orm import Session
+
+from features.hrbp.signal_definitions.schema import (
+    SignalDefinitionCreate,
+    SignalDefinitionUpdate,
+)
 
 
 def create(db: Session, payload: SignalDefinitionCreate) -> HRBPSignalDefinition:
-    if db.query(HRBPSignalDefinition).filter_by(signal_code=payload.signal_code).first():
-        raise HTTPException(status_code=409, detail=f"Signal code '{payload.signal_code}' already exists")
+    if (
+        db.query(HRBPSignalDefinition)
+        .filter_by(signal_code=payload.signal_code)
+        .first()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Signal code '{payload.signal_code}' already exists",
+        )
     record = HRBPSignalDefinition(**payload.model_dump())
     db.add(record)
     db.commit()
@@ -34,7 +45,9 @@ def get_by_id(db: Session, id: int) -> HRBPSignalDefinition:
 def get_by_code(db: Session, signal_code: str) -> HRBPSignalDefinition:
     record = db.query(HRBPSignalDefinition).filter_by(signal_code=signal_code).first()
     if not record:
-        raise HTTPException(status_code=404, detail=f"Signal code '{signal_code}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Signal code '{signal_code}' not found",
+        )
     return record
 
 
@@ -47,7 +60,9 @@ def list_by_urgency(db: Session, urgency: str) -> list[HRBPSignalDefinition]:
     )
 
 
-def update(db: Session, id: int, payload: SignalDefinitionUpdate) -> HRBPSignalDefinition:
+def update(
+    db: Session, id: int, payload: SignalDefinitionUpdate,
+) -> HRBPSignalDefinition:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)

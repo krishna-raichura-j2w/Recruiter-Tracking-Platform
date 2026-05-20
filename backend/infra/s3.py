@@ -1,10 +1,12 @@
+import mimetypes
 import os
 import time
-import mimetypes
+
 import boto3
 from botocore.exceptions import ClientError
 
 _client = None
+
 
 def _s3():
     global _client
@@ -28,7 +30,7 @@ PRESIGN_EXPIRY = 7 * 24 * 3600
 # Canonical S3 layout for candidate resumes:
 #   mrr_tracking/uploads/candidates/resumes/<candidate_id>/<filename>
 # The DB stores only <filename>; the prefix is constructed in code.
-RESUME_PREFIX  = "mrr_tracking/uploads/candidates/resumes"
+RESUME_PREFIX = "mrr_tracking/uploads/candidates/resumes"
 RESUME_PENDING = f"{RESUME_PREFIX}/_pending"
 
 
@@ -41,11 +43,15 @@ def build_resume_key(candidate_id: int, filename: str) -> str:
     return f"{RESUME_PREFIX}/{candidate_id}/{_safe_filename(filename)}"
 
 
-def upload_resume_pending(data: bytes, filename: str, content_type: str) -> tuple[str, str]:
-    """Upload a resume to the pending area before a candidate row exists.
+def upload_resume_pending(
+    data: bytes, filename: str, content_type: str,
+) -> tuple[str, str]:
+    """
+    Upload a resume to the pending area before a candidate row exists.
     Returns (pending_key, filename) — the filename component is what the DB
     will eventually store; the pending_key tells the candidate create flow
-    where to fetch the bytes from when finalizing."""
+    where to fetch the bytes from when finalizing.
+    """
     ts = int(time.time())
     safe = _safe_filename(filename)
     pending_key = f"{RESUME_PENDING}/{ts}_{safe}"
@@ -60,9 +66,11 @@ def upload_resume_pending(data: bytes, filename: str, content_type: str) -> tupl
 
 
 def finalize_resume(source_key: str, candidate_id: int) -> str:
-    """Move (copy + delete) a resume from any source key (pending or legacy)
+    """
+    Move (copy + delete) a resume from any source key (pending or legacy)
     to the canonical layout for this candidate. Returns the filename portion
-    that should be stored in the DB."""
+    that should be stored in the DB.
+    """
     filename = source_key.rsplit("/", 1)[-1]
     final_key = build_resume_key(candidate_id, filename)
     if source_key == final_key:
@@ -83,8 +91,10 @@ def finalize_resume(source_key: str, candidate_id: int) -> str:
 
 
 def copy_resume_to_canonical(source_key: str, candidate_id: int) -> str:
-    """Copy-only variant of finalize_resume — leaves the source object in place.
-    Used by the legacy backfill so existing files stay as a safety net."""
+    """
+    Copy-only variant of finalize_resume — leaves the source object in place.
+    Used by the legacy backfill so existing files stay as a safety net.
+    """
     filename = source_key.rsplit("/", 1)[-1]
     final_key = build_resume_key(candidate_id, filename)
     if source_key == final_key:
@@ -100,9 +110,11 @@ def copy_resume_to_canonical(source_key: str, candidate_id: int) -> str:
 
 
 def upload_file(data: bytes, folder: str, filename: str, content_type: str) -> str:
-    """Upload bytes to S3. Returns the S3 key.
+    """
+    Upload bytes to S3. Returns the S3 key.
     Resumes go to the pending area under the canonical prefix; everything else
-    keeps the historical flat-folder layout."""
+    keeps the historical flat-folder layout.
+    """
     safe = _safe_filename(filename)
     if folder == "resumes":
         pending_key, _ = upload_resume_pending(data, filename, content_type)
@@ -129,7 +141,9 @@ def get_presigned_url(key: str) -> str:
     }
     if ct:
         params["ResponseContentType"] = ct
-    return _s3().generate_presigned_url("get_object", Params=params, ExpiresIn=PRESIGN_EXPIRY)
+    return _s3().generate_presigned_url(
+        "get_object", Params=params, ExpiresIn=PRESIGN_EXPIRY,
+    )
 
 
 def to_viewable_url(value: str | None, candidate_id: int | None = None) -> str | None:

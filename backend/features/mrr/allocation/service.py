@@ -8,14 +8,28 @@ open items. Ties are broken by user ID (smallest ID = longest-tenured).
   Callers   → count active Candidates assigned to them
   Validators→ count Candidates pending validation assigned to them
 """
+
 import json
+
+from infra.models import (
+    Candidate,
+    CandidateStatus,
+    Job,
+    JobStatus,
+    PodMembership,
+    User,
+    UserRole,
+)
 from sqlalchemy.orm import Session
-from infra.models import User, Job, Candidate, UserRole, JobStatus, CandidateStatus, PodMembership
 
 
 def _team(db: Session, pod_lead_id: int, role: UserRole | None = None) -> list[User]:
     """All active team members for a given DL, optionally filtered by role."""
-    member_ids = db.query(PodMembership.user_id).filter(PodMembership.pod_lead_id == pod_lead_id).subquery()
+    member_ids = (
+        db.query(PodMembership.user_id)
+        .filter(PodMembership.pod_lead_id == pod_lead_id)
+        .subquery()
+    )
     q = db.query(User).filter(
         User.id.in_(member_ids),
         User.is_active == True,  # noqa: E712
@@ -32,7 +46,11 @@ def _sourcer_load(db: Session, user_id: int) -> int:
     open_jobs = db.query(Job).filter(Job.status != JobStatus.closed).all()
     count = 0
     for job in open_jobs:
-        ids = json.loads(job.sourcer_ids or '[]') if isinstance(job.sourcer_ids, str) else (job.sourcer_ids or [])
+        ids = (
+            json.loads(job.sourcer_ids or "[]")
+            if isinstance(job.sourcer_ids, str)
+            else (job.sourcer_ids or [])
+        )
         if user_id in ids:
             count += 1
     return count
@@ -44,10 +62,14 @@ def _caller_load(db: Session, user_id: int) -> int:
         CandidateStatus.backed_out,
         CandidateStatus.rejected,
     ]
-    return db.query(Candidate).filter(
-        Candidate.assigned_to_id == user_id,
-        ~Candidate.status.in_(closed),
-    ).count()
+    return (
+        db.query(Candidate)
+        .filter(
+            Candidate.assigned_to_id == user_id,
+            ~Candidate.status.in_(closed),
+        )
+        .count()
+    )
 
 
 def _validator_load(db: Session, user_id: int) -> int:
@@ -57,10 +79,14 @@ def _validator_load(db: Session, user_id: int) -> int:
         CandidateStatus.backed_out,
         CandidateStatus.rejected,
     ]
-    return db.query(Candidate).filter(
-        Candidate.assigned_validator_id == user_id,
-        ~Candidate.status.in_(done),
-    ).count()
+    return (
+        db.query(Candidate)
+        .filter(
+            Candidate.assigned_validator_id == user_id,
+            ~Candidate.status.in_(done),
+        )
+        .count()
+    )
 
 
 def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
@@ -69,7 +95,7 @@ def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
         return None
 
     load_fn = {
-        UserRole.recruiter:     _caller_load,
+        UserRole.recruiter: _caller_load,
         UserRole.delivery_lead: _validator_load,
     }.get(role)
 
@@ -79,21 +105,25 @@ def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
     return min(members, key=lambda m: load_fn(db, m.id))
 
 
-def team_loads(db: Session, pod_lead_id: int, role: UserRole | None = None) -> list[dict]:
+def team_loads(
+    db: Session, pod_lead_id: int, role: UserRole | None = None,
+) -> list[dict]:
     """Return each member with their current load counts — used by frontend."""
     members = _team(db, pod_lead_id, role)
     result = []
     for m in members:
         sourcing = _sourcer_load(db, m.id)
-        calling  = _caller_load(db, m.id)
-        result.append({
-            "id":             m.id,
-            "name":           m.name,
-            "email":          m.email,
-            "role":           m.role.value,
-            "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
-            "sourcing_load":  sourcing,
-            "calling_load":   calling,
-            "load":           sourcing + calling,
-        })
+        calling = _caller_load(db, m.id)
+        result.append(
+            {
+                "id": m.id,
+                "name": m.name,
+                "email": m.email,
+                "role": m.role.value,
+                "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
+                "sourcing_load": sourcing,
+                "calling_load": calling,
+                "load": sourcing + calling,
+            },
+        )
     return result

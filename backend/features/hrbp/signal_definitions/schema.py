@@ -1,49 +1,51 @@
 from __future__ import annotations
-from typing import Literal, Optional
+
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
 
 Urgency = Literal["immediate", "same_day", "monitor"]
 
 
 class SignalDefinitionCreate(BaseModel):
-    signal_code:      str
-    number:           str
-    name:             str
-    source:           str
-    description:      Optional[str] = None
-    indicators:       list[str]
-    auto_action:      Optional[str] = None
-    auto_sop_trigger: Optional[str] = None
-    threshold_count:  Optional[int] = None
-    urgency:          Optional[Urgency] = None
+    signal_code: str
+    number: str
+    name: str
+    source: str
+    description: str | None = None
+    indicators: list[str]
+    auto_action: str | None = None
+    auto_sop_trigger: str | None = None
+    threshold_count: int | None = None
+    urgency: Urgency | None = None
 
 
 class SignalDefinitionUpdate(BaseModel):
-    number:           Optional[str] = None
-    name:             Optional[str] = None
-    source:           Optional[str] = None
-    description:      Optional[str] = None
-    indicators:       Optional[list[str]] = None
-    auto_action:      Optional[str] = None
-    auto_sop_trigger: Optional[str] = None
-    threshold_count:  Optional[int] = None
-    urgency:          Optional[Urgency] = None
+    number: str | None = None
+    name: str | None = None
+    source: str | None = None
+    description: str | None = None
+    indicators: list[str] | None = None
+    auto_action: str | None = None
+    auto_sop_trigger: str | None = None
+    threshold_count: int | None = None
+    urgency: Urgency | None = None
 
 
 class SignalDefinitionResponse(BaseModel):
-    id:               int
-    signal_code:      str
-    number:           str
-    name:             str
-    source:           str
-    description:      Optional[str]
-    indicators:       list[str]
-    auto_action:      Optional[str]
-    auto_sop_trigger: Optional[str]
-    threshold_count:  Optional[int]
-    urgency:          Optional[str]
-    created_at:       Optional[datetime]
+    id: int
+    signal_code: str
+    number: str
+    name: str
+    source: str
+    description: str | None
+    indicators: list[str]
+    auto_action: str | None
+    auto_sop_trigger: str | None
+    threshold_count: int | None
+    urgency: str | None
+    created_at: datetime | None
 
     class Config:
         from_attributes = True

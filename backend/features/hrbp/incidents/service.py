@@ -1,8 +1,9 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPIncident
+from sqlalchemy.orm import Session
+
 from features.hrbp.incidents.schema import IncidentCreate, IncidentUpdate
-from core.pagination import paginate, PageResult
 
 
 def create(db: Session, payload: IncidentCreate) -> HRBPIncident:

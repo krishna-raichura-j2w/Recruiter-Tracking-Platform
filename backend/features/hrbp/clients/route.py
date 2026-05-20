@@ -1,12 +1,17 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+
 from core.database import get_db
 from core.deps import get_current_user
-from core.response_format import success_response, success_response_with_pagination, error_response
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
+)
+from fastapi import APIRouter, Depends, Query
 from infra.models import User
-from features.hrbp.clients.schema import ClientCreate, ClientUpdate
+from sqlalchemy.orm import Session
+
 from features.hrbp.clients import service
+from features.hrbp.clients.schema import ClientCreate, ClientUpdate
 
 router = APIRouter(prefix="/clients", tags=["hrbp-clients"])
 
@@ -19,19 +24,21 @@ def create_client(
 ):
     try:
         data = service.create(db, payload)
-        return success_response(data=data.__dict__, message="Client created successfully")
+        return success_response(
+            data=data.__dict__, message="Client created successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
 
 @router.get("")
 def list_clients(
-    page_no:   int            = Query(default=1,  ge=1),
-    per_page:  int            = Query(default=10, ge=-1),
-    hrbp_id:   Optional[int] = Query(default=None),
-    is_active: Optional[bool] = Query(default=None),
+    page_no: int = Query(default=1, ge=1),
+    per_page: int = Query(default=10, ge=-1),
+    hrbp_id: int | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     result = service.list_paginated(db, page_no, per_page, hrbp_id, is_active)
     return success_response_with_pagination(
@@ -48,11 +55,13 @@ def list_clients(
 def get_client(
     id: int,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(data=data.__dict__, message="Client fetched successfully")
+        return success_response(
+            data=data.__dict__, message="Client fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -62,11 +71,13 @@ def update_client(
     id: int,
     payload: ClientUpdate,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.update(db, id, payload)
-        return success_response(data=data.__dict__, message="Client updated successfully")
+        return success_response(
+            data=data.__dict__, message="Client updated successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -75,7 +86,7 @@ def update_client(
 def delete_client(
     id: int,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         service.delete(db, id)

@@ -1,5 +1,5 @@
-from pydantic import BaseModel
 from infra.models import InterviewStage
+from pydantic import BaseModel
 
 
 class SubmitToClient(BaseModel):
@@ -9,10 +9,10 @@ class SubmitToClient(BaseModel):
 
 class StageUpdate(BaseModel):
     current_stage: InterviewStage
-    notes: str                          # compulsory feedback/notes for every update
+    notes: str  # compulsory feedback/notes for every update
     # Timeline metadata
-    interview_date: str | None = None   # datetime string for scheduled stages
-    feedback: str | None = None         # Pass / Fail / Hold
+    interview_date: str | None = None  # datetime string for scheduled stages
+    feedback: str | None = None  # Pass / Fail / Hold
     # TA / HM
     ta_feedback: str | None = None
     hm_feedback: str | None = None

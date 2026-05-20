@@ -1,12 +1,18 @@
-from sqlalchemy.orm import Session, joinedload
+from infra.models import (
+    Candidate,
+    CandidateStatus,
+)
 from sqlalchemy import or_
-from infra.models import Candidate, CandidateStatus  # noqa: F401 — CandidateStatus used in list_candidates
+from sqlalchemy.orm import Session, joinedload
 
 
-def _apply_candidate_filters(q, job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search):
+def _apply_candidate_filters(
+    q, job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search,
+):
     """Apply all candidate filters to a query object. Used for both count and data queries."""
-    from sqlalchemy import or_, func
     from infra.models import Candidate
+    from sqlalchemy import func
+
     if job_ids is not None:
         if job_ids:
             q = q.filter(Candidate.job_id.in_(job_ids))
@@ -17,10 +23,12 @@ def _apply_candidate_filters(q, job_id, status, assigned_to, sourced_by, job_ids
     if status:
         q = q.filter(Candidate.status == status)
     if recruiter_id:
-        q = q.filter(or_(
-            Candidate.sourced_by_id == recruiter_id,
-            Candidate.assigned_to_id == recruiter_id,
-        ))
+        q = q.filter(
+            or_(
+                Candidate.sourced_by_id == recruiter_id,
+                Candidate.assigned_to_id == recruiter_id,
+            ),
+        )
     else:
         if assigned_to:
             q = q.filter(Candidate.assigned_to_id == assigned_to)
@@ -28,12 +36,14 @@ def _apply_candidate_filters(q, job_id, status, assigned_to, sourced_by, job_ids
             q = q.filter(Candidate.sourced_by_id == sourced_by)
     if search:
         s = f"%{search.lower()}%"
-        q = q.filter(or_(
-            func.lower(Candidate.full_name).like(s),
-            func.lower(Candidate.email).like(s),
-            func.lower(Candidate.mobile).like(s),
-            func.lower(Candidate.skills).like(s),
-        ))
+        q = q.filter(
+            or_(
+                func.lower(Candidate.full_name).like(s),
+                func.lower(Candidate.email).like(s),
+                func.lower(Candidate.mobile).like(s),
+                func.lower(Candidate.skills).like(s),
+            ),
+        )
     return q
 
 
@@ -50,12 +60,22 @@ def list_candidates(
     limit: int = 0,
     kam_order: bool = False,
 ) -> tuple[list[Candidate], int]:
-    """Returns (items, total). limit=0 means no pagination (return all).
-    kam_order=True sorts: validated first, then rejected, then rest."""
+    """
+    Returns (items, total). limit=0 means no pagination (return all).
+    kam_order=True sorts: validated first, then rejected, then rest.
+    """
     from sqlalchemy import case as sa_case
+
     # Count query — lightweight, no joins
     count_q = _apply_candidate_filters(
-        db.query(Candidate.id), job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search
+        db.query(Candidate.id),
+        job_id,
+        status,
+        assigned_to,
+        sourced_by,
+        job_ids,
+        recruiter_id,
+        search,
     )
     if count_q is None:
         return [], 0
@@ -72,7 +92,13 @@ def list_candidates(
             joinedload(Candidate.submission),
             joinedload(Candidate.job),
         ),
-        job_id, status, assigned_to, sourced_by, job_ids, recruiter_id, search,
+        job_id,
+        status,
+        assigned_to,
+        sourced_by,
+        job_ids,
+        recruiter_id,
+        search,
     )
     if data_q is None:
         return [], 0
@@ -80,13 +106,23 @@ def list_candidates(
     if kam_order:
         # Priority: validated/submitted → rejected (DL or KAM) → everything else
         priority = sa_case(
-            (Candidate.status.in_([
-                CandidateStatus.validated,
-                CandidateStatus.submitted_to_client,
-            ]), 0),
-            (Candidate.status.in_([
-                CandidateStatus.rejected,
-            ]), 1),
+            (
+                Candidate.status.in_(
+                    [
+                        CandidateStatus.validated,
+                        CandidateStatus.submitted_to_client,
+                    ],
+                ),
+                0,
+            ),
+            (
+                Candidate.status.in_(
+                    [
+                        CandidateStatus.rejected,
+                    ],
+                ),
+                1,
+            ),
             else_=2,
         )
         q = data_q.order_by(priority, Candidate.updated_at.desc())
@@ -99,19 +135,29 @@ def list_candidates(
 
 
 def get_candidate(db: Session, candidate_id: int) -> Candidate | None:
-    return db.query(Candidate).options(
-        joinedload(Candidate.assigned_to),
-        joinedload(Candidate.sourced_by),
-        joinedload(Candidate.assessment),
-        joinedload(Candidate.validation),
-        joinedload(Candidate.submission),
-        joinedload(Candidate.consultant_profile),
-        joinedload(Candidate.call_logs),
-        joinedload(Candidate.job),
-    ).filter(Candidate.id == candidate_id).first()
+    return (
+        db.query(Candidate)
+        .options(
+            joinedload(Candidate.assigned_to),
+            joinedload(Candidate.sourced_by),
+            joinedload(Candidate.assessment),
+            joinedload(Candidate.validation),
+            joinedload(Candidate.submission),
+            joinedload(Candidate.consultant_profile),
+            joinedload(Candidate.call_logs),
+            joinedload(Candidate.job),
+        )
+        .filter(Candidate.id == candidate_id)
+        .first()
+    )
 
 
-def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None, created_by_email: str | None = None) -> Candidate:
+def create_candidate(
+    db: Session,
+    data: dict,
+    sourced_by_id: int | None = None,
+    created_by_email: str | None = None,
+) -> Candidate:
     if sourced_by_id:
         data["sourced_by_id"] = sourced_by_id
     if created_by_email:
@@ -135,7 +181,11 @@ def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None, 
         mn, mx = data.get("min_experience"), data.get("max_experience")
         if mn is not None and mx is not None:
             data["total_experience"] = (float(mn) + float(mx)) / 2.0
-    if not data.get("exp_range") and data.get("min_experience") is not None and data.get("max_experience") is not None:
+    if (
+        not data.get("exp_range")
+        and data.get("min_experience") is not None
+        and data.get("max_experience") is not None
+    ):
         data["exp_range"] = f"{data['min_experience']}-{data['max_experience']} yrs"
 
     # The resume/resume_data fields may arrive as a pending S3 key
@@ -153,6 +203,7 @@ def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None, 
 
     if pending_resume_key:
         from infra.s3 import finalize_resume
+
         try:
             filename = finalize_resume(pending_resume_key, candidate.id)
             candidate.resume = filename

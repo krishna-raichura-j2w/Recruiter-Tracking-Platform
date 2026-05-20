@@ -1,39 +1,39 @@
-from pydantic import BaseModel, EmailStr
 from infra.models import CandidateStatus
+from pydantic import BaseModel, EmailStr
 
 
 class CandidateCreate(BaseModel):
     job_id: int
-    full_name: str   # legacy, still required (existing form sends it)
+    full_name: str  # legacy, still required (existing form sends it)
 
     # ── New required fields ──────────────────────────────────────────────────
-    first_name:       str
-    last_name:        str
-    email:            EmailStr
-    contact_phone:    str
-    gender:           str
-    location:         str
-    designation:      str
-    employer:         str
-    min_experience:   float
-    max_experience:   float
-    current_ctc:      float
-    expected_ctc:     float
-    resume:           str   # S3 key for the resume file
+    first_name: str
+    last_name: str
+    email: EmailStr
+    contact_phone: str
+    gender: str
+    location: str
+    designation: str
+    employer: str
+    min_experience: float
+    max_experience: float
+    current_ctc: float
+    expected_ctc: float
+    resume: str  # S3 key for the resume file
 
     # ── Optional legacy / helper fields (kept so existing form still works) ──
-    mobile:           str | None = None
-    linkedin_url:     str | None = None
-    education:        str | None = None
-    city:             str | None = None
-    exp_range:        str | None = None
-    current_company:  str | None = None
-    skills:           str | None = None
-    naukri_active:    str | None = None
+    mobile: str | None = None
+    linkedin_url: str | None = None
+    education: str | None = None
+    city: str | None = None
+    exp_range: str | None = None
+    current_company: str | None = None
+    skills: str | None = None
+    naukri_active: str | None = None
     immediate_joiner: str | None = None
-    lead_source:      str | None = None
-    sourcing_date:    str | None = None
-    resume_data:      str | None = None
+    lead_source: str | None = None
+    sourcing_date: str | None = None
+    resume_data: str | None = None
     total_experience: float | None = None
 
 

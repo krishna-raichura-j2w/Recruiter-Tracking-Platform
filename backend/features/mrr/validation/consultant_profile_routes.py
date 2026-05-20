@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from core.database import get_db
-from core.deps import get_current_user, require_roles
-from infra.models import ConsultantProfile, Candidate, isofy_datetimes
+from core.deps import require_roles
+from fastapi import APIRouter, Depends, HTTPException
+from infra.models import Candidate, ConsultantProfile, isofy_datetimes
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/consultant-profile", tags=["consultant-profile"])
 
@@ -39,12 +39,16 @@ def get_consultant_profile(
     db: Session = Depends(get_db),
     _=Depends(require_roles(*ALLOWED)),
 ):
-    profile = db.query(ConsultantProfile).filter(
-        ConsultantProfile.candidate_id == candidate_id
-    ).first()
+    profile = (
+        db.query(ConsultantProfile)
+        .filter(ConsultantProfile.candidate_id == candidate_id)
+        .first()
+    )
     if not profile:
         return {}
-    return isofy_datetimes({col.name: getattr(profile, col.name) for col in profile.__table__.columns})
+    return isofy_datetimes(
+        {col.name: getattr(profile, col.name) for col in profile.__table__.columns},
+    )
 
 
 @router.post("/{candidate_id}")
@@ -59,9 +63,11 @@ def upsert_consultant_profile(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    profile = db.query(ConsultantProfile).filter(
-        ConsultantProfile.candidate_id == candidate_id
-    ).first()
+    profile = (
+        db.query(ConsultantProfile)
+        .filter(ConsultantProfile.candidate_id == candidate_id)
+        .first()
+    )
 
     data = body.model_dump(exclude_none=True)
 
@@ -74,7 +80,9 @@ def upsert_consultant_profile(
 
     db.commit()
     db.refresh(profile)
-    return isofy_datetimes({col.name: getattr(profile, col.name) for col in profile.__table__.columns})
+    return isofy_datetimes(
+        {col.name: getattr(profile, col.name) for col in profile.__table__.columns},
+    )
 
 
 @router.patch("/{candidate_id}")

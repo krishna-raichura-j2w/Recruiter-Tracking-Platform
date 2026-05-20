@@ -1,52 +1,54 @@
 from __future__ import annotations
-from typing import Literal, Optional
+
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
 
-RiskLevel    = Literal["red", "amber", "green"]
+RiskLevel = Literal["red", "amber", "green"]
 IncidentStatus = Literal["open", "in_progress", "escalated", "resolved", "closed"]
 IncidentSource = Literal["email", "manual", "signal", "scheduler"]
 
 
 class IncidentCreate(BaseModel):
-    consultant_id:   int
-    client_id:       int
-    opened_by:       int
-    sop_type:        str
-    kra_tags:        Optional[list[str]]      = None
-    risk_level:      Optional[RiskLevel]      = None
-    description:     Optional[str]            = None
-    source:          Optional[IncidentSource] = None
-    source_email_id: Optional[int]           = None
+    consultant_id: int
+    client_id: int
+    opened_by: int
+    sop_type: str
+    kra_tags: list[str] | None = None
+    risk_level: RiskLevel | None = None
+    description: str | None = None
+    source: IncidentSource | None = None
+    source_email_id: int | None = None
 
 
 class IncidentUpdate(BaseModel):
-    status:          Optional[IncidentStatus] = None
-    risk_level:      Optional[RiskLevel]      = None
-    current_step:    Optional[int]            = None
-    description:     Optional[str]            = None
-    kra_tags:        Optional[list[str]]      = None
-    resolved_at:     Optional[datetime]       = None
+    status: IncidentStatus | None = None
+    risk_level: RiskLevel | None = None
+    current_step: int | None = None
+    description: str | None = None
+    kra_tags: list[str] | None = None
+    resolved_at: datetime | None = None
 
 
 class IncidentResponse(BaseModel):
-    id:              int
-    ticket_ref:      Optional[str]
-    consultant_id:   int
-    client_id:       int
-    opened_by:       int
-    sop_type:        str
-    kra_tags:        Optional[list[str]]
-    risk_level:      Optional[str]
-    status:          Optional[str]
-    current_step:    Optional[int]
-    description:     Optional[str]
-    source:          Optional[str]
-    source_email_id: Optional[int]
-    opened_at:       Optional[datetime]
-    resolved_at:     Optional[datetime]
-    created_at:      Optional[datetime]
-    updated_at:      Optional[datetime]
+    id: int
+    ticket_ref: str | None
+    consultant_id: int
+    client_id: int
+    opened_by: int
+    sop_type: str
+    kra_tags: list[str] | None
+    risk_level: str | None
+    status: str | None
+    current_step: int | None
+    description: str | None
+    source: str | None
+    source_email_id: int | None
+    opened_at: datetime | None
+    resolved_at: datetime | None
+    created_at: datetime | None
+    updated_at: datetime | None
 
     class Config:
         from_attributes = True

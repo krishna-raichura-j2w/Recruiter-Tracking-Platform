@@ -1,5 +1,5 @@
+from infra.models import CallOutcome
 from pydantic import BaseModel
-from infra.models import CallOutcome, AutoRecommendation
 
 
 class CallLogCreate(BaseModel):

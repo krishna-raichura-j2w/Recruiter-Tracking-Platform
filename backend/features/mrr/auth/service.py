@@ -1,10 +1,10 @@
-from sqlalchemy.orm import Session
+from core.security import create_access_token, verify_password
 from infra.models import User
-from core.security import verify_password, create_access_token
+from sqlalchemy.orm import Session
 
 
 def authenticate_user(db: Session, email: str, password: str) -> User | None:
-    user = db.query(User).filter(User.email == email, User.is_active == True).first()
+    user = db.query(User).filter(User.email == email, User.is_active).first()
     if not user or not verify_password(password, user.password_hash):
         return None
     return user

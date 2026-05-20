@@ -1,5 +1,5 @@
-from pydantic import BaseModel
 from infra.models import JobStatus, WorkMode
+from pydantic import BaseModel
 
 
 class JobCreate(BaseModel):

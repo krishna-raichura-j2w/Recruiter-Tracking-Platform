@@ -1,13 +1,19 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPKraDefinition
-from features.hrbp.kra_definitions.schema import KraDefinitionCreate, KraDefinitionUpdate
-from core.pagination import paginate, PageResult
+from sqlalchemy.orm import Session
+
+from features.hrbp.kra_definitions.schema import (
+    KraDefinitionCreate,
+    KraDefinitionUpdate,
+)
 
 
 def create(db: Session, payload: KraDefinitionCreate) -> HRBPKraDefinition:
     if db.query(HRBPKraDefinition).filter_by(kra_code=payload.kra_code).first():
-        raise HTTPException(status_code=409, detail=f"KRA code '{payload.kra_code}' already exists")
+        raise HTTPException(
+            status_code=409, detail=f"KRA code '{payload.kra_code}' already exists",
+        )
     record = HRBPKraDefinition(**payload.model_dump())
     db.add(record)
     db.commit()

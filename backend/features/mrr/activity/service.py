@@ -1,6 +1,7 @@
 """User activity logging — writes to the existing audit_logs table."""
-from sqlalchemy.orm import Session
+
 from infra.models import AuditLog, User, to_iso_utc
+from sqlalchemy.orm import Session
 
 
 def log(
@@ -28,32 +29,35 @@ def log(
 
 def get_activity_summary(db: Session) -> list[dict]:
     """Return every active user with their last activity log entry."""
-    users = db.query(User).filter(User.is_active == True).all()
+    users = db.query(User).filter(User.is_active).all()
 
     # Bulk: latest audit log per user
-    from sqlalchemy import text
     from core.sql_loader import load_sql
+    from sqlalchemy import text
+
     rows = db.execute(text(load_sql("003-latest_audit_log_per_user.sql"))).fetchall()
 
     last_act: dict[int, dict] = {}
     for r in rows:
         last_act[r.user_id] = {
-            "action":      r.action,
+            "action": r.action,
             "description": r.detail,
             "entity_type": r.entity_type,
-            "entity_id":   r.entity_id,
-            "at":          to_iso_utc(r.created_at),
+            "entity_id": r.entity_id,
+            "at": to_iso_utc(r.created_at),
         }
 
     result = []
     for u in users:
         act = last_act.get(u.id)
-        result.append({
-            "id":            u.id,
-            "name":          u.name,
-            "role":          u.role.value,
-            "secondary_role":u.secondary_role,
-            "last_login_at": to_iso_utc(u.last_login_at),
-            "last_action":   act,
-        })
+        result.append(
+            {
+                "id": u.id,
+                "name": u.name,
+                "role": u.role.value,
+                "secondary_role": u.secondary_role,
+                "last_login_at": to_iso_utc(u.last_login_at),
+                "last_action": act,
+            },
+        )
     return result

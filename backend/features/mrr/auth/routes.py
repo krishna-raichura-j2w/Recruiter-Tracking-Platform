@@ -1,8 +1,9 @@
+from core.database import get_db
+from core.deps import get_current_user
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from core.database import get_db
-from core.deps import get_current_user
+
 from features.mrr.auth.schema import LoginRequest, TokenResponse
 from features.mrr.auth.service import authenticate_user, build_token
 
@@ -17,14 +18,20 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     from datetime import datetime, timezone
+
     user = authenticate_user(db, body.email, body.password)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials",
+        )
     # Record login timestamp + activity log
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     from features.mrr.activity.service import log as log_activity
-    log_activity(db, user.id, "login", f"Logged in", entity_type="user", entity_id=user.id)
+
+    log_activity(
+        db, user.id, "login", "Logged in", entity_type="user", entity_id=user.id,
+    )
     return build_token(user)
 
 
@@ -45,13 +52,16 @@ def me(current_user=Depends(get_current_user)):
 def change_password(
     body: ChangePasswordRequest,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     if body.new_password != body.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
     if len(body.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 6 characters",
+        )
     from features.mrr.users.service import change_password as svc_change
+
     user = svc_change(db, current_user.id, body.new_password)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

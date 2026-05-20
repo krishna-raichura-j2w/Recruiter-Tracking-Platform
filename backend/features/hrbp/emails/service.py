@@ -1,8 +1,9 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPEmail
+from sqlalchemy.orm import Session
+
 from features.hrbp.emails.schema import EmailCreate, EmailUpdate
-from core.pagination import paginate, PageResult
 
 
 def create(db: Session, payload: EmailCreate) -> HRBPEmail:

@@ -1,7 +1,7 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPAuditLog
-from core.pagination import paginate, PageResult
+from sqlalchemy.orm import Session
 
 
 def list_paginated(

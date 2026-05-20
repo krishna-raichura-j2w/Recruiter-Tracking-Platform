@@ -1,13 +1,19 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPSopDefinition
-from features.hrbp.sop_definitions.schema import SopDefinitionCreate, SopDefinitionUpdate
-from core.pagination import paginate, PageResult
+from sqlalchemy.orm import Session
+
+from features.hrbp.sop_definitions.schema import (
+    SopDefinitionCreate,
+    SopDefinitionUpdate,
+)
 
 
 def create(db: Session, payload: SopDefinitionCreate) -> HRBPSopDefinition:
     if db.query(HRBPSopDefinition).filter_by(sop_type=payload.sop_type).first():
-        raise HTTPException(status_code=409, detail=f"SOP type '{payload.sop_type}' already exists")
+        raise HTTPException(
+            status_code=409, detail=f"SOP type '{payload.sop_type}' already exists",
+        )
     record = HRBPSopDefinition(**payload.model_dump())
     db.add(record)
     db.commit()

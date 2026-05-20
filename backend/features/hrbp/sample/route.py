@@ -1,6 +1,6 @@
+from core.response_format import error_response, success_response
 from fastapi import APIRouter
 from pydantic import BaseModel
-from core.response_format import success_response, error_response
 
 from features.hrbp.sample import service
 
@@ -15,7 +15,9 @@ class AIRequest(BaseModel):
 def get_sample_api():
     try:
         data = service.get_sample()
-        return success_response(data=data, message="Sample get API executed successfully")
+        return success_response(
+            data=data, message="Sample get API executed successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 

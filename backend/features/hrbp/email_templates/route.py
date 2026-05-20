@@ -1,12 +1,19 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user
-from core.response_format import success_response, success_response_with_pagination, error_response
-from features.hrbp.email_templates.schema import (
-    EmailTemplateCreate, EmailTemplateUpdate, RenderRequest,
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
 )
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
 from features.hrbp.email_templates import service
+from features.hrbp.email_templates.schema import (
+    EmailTemplateCreate,
+    EmailTemplateUpdate,
+    RenderRequest,
+)
 
 router = APIRouter(prefix="/email-templates", tags=["hrbp-email-templates"])
 
@@ -19,7 +26,9 @@ def create_template(
 ):
     try:
         data = service.create(db, payload)
-        return success_response(data=data.__dict__, message="Email template created successfully")
+        return success_response(
+            data=data.__dict__, message="Email template created successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -49,7 +58,9 @@ def list_by_group(
     _: object = Depends(get_current_user),
 ):
     data = service.list_by_group(db, group_name)
-    return success_response(data=[r.__dict__ for r in data], message="Email templates fetched successfully")
+    return success_response(
+        data=[r.__dict__ for r in data], message="Email templates fetched successfully",
+    )
 
 
 @router.get("/{id}")
@@ -60,7 +71,9 @@ def get_template(
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(data=data.__dict__, message="Email template fetched successfully")
+        return success_response(
+            data=data.__dict__, message="Email template fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -74,7 +87,9 @@ def update_template(
 ):
     try:
         data = service.update(db, id, payload)
-        return success_response(data=data.__dict__, message="Email template updated successfully")
+        return success_response(
+            data=data.__dict__, message="Email template updated successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -101,6 +116,8 @@ def render_template(
 ):
     try:
         data = service.render(db, id, payload.consultant_id)
-        return success_response(data=data.model_dump(), message="Template rendered successfully")
+        return success_response(
+            data=data.model_dump(), message="Template rendered successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))

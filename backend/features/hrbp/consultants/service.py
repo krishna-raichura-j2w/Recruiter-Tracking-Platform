@@ -1,13 +1,16 @@
-from sqlalchemy.orm import Session
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPConsultant
+from sqlalchemy.orm import Session
+
 from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
-from core.pagination import paginate, PageResult
 
 
 def create(db: Session, payload: ConsultantCreate) -> HRBPConsultant:
     if db.query(HRBPConsultant).filter_by(emp_id=payload.emp_id).first():
-        raise HTTPException(status_code=409, detail=f"Employee ID '{payload.emp_id}' already exists")
+        raise HTTPException(
+            status_code=409, detail=f"Employee ID '{payload.emp_id}' already exists",
+        )
     record = HRBPConsultant(**payload.model_dump())
     db.add(record)
     db.commit()

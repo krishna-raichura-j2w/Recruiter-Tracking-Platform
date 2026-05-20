@@ -1,6 +1,7 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.models import User
+from sqlalchemy.orm import Session
+
 from features.hrbp.auth.schema import UserUpdate
 
 
@@ -18,6 +19,7 @@ def update(db: Session, user_id: int, payload: UserUpdate) -> User:
     password = data.pop("password", None)
     if password:
         from core.security import hash_password
+
         user.password_hash = hash_password(password)
 
     for field, value in data.items():

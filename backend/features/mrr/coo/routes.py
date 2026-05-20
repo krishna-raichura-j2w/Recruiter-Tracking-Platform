@@ -5,36 +5,38 @@ total (all-time) and today counts.
 """
 
 from __future__ import annotations
+
 import os
 import re
-from datetime import timedelta, datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+
+from core.database import get_db
+from core.deps import get_current_user
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from core.deps import get_current_user
-from core.database import get_db
 
 router = APIRouter(prefix="/coo", tags=["coo"])
 
 # ── Fixed column definitions (order matches the spreadsheet) ─────────────────
 
 COLUMNS = [
-    ("submission",    "Submission"),
+    ("submission", "Submission"),
     ("screen_reject", "Screen Reject"),
-    ("l1_reject",     "L1 Reject"),
-    ("l1_accept",     "L1 Accept"),
-    ("l2_reject",     "L2 Reject"),
-    ("l2_accept",     "L2 Accept"),
-    ("l3_reject",     "L3 Reject"),
-    ("l3_accept",     "L3 Accept"),
-    ("selection",     "Selection"),
-    ("onboarding",    "Onboarding"),
+    ("l1_reject", "L1 Reject"),
+    ("l1_accept", "L1 Accept"),
+    ("l2_reject", "L2 Reject"),
+    ("l2_accept", "L2 Accept"),
+    ("l3_reject", "L3 Reject"),
+    ("l3_accept", "L3 Accept"),
+    ("selection", "Selection"),
+    ("onboarding", "Onboarding"),
 ]
 
 # step_id → leaderboard column key
 STEP_TO_COL: dict[int, str] = {
-    7:  "submission",
-    8:  "screen_reject",
+    7: "submission",
+    8: "screen_reject",
     11: "l1_reject",
     12: "l1_reject",
     13: "l1_accept",
@@ -57,17 +59,24 @@ STEP_IDS = tuple(STEP_TO_COL.keys())
 
 # ── Excel BH + AM mapping ─────────────────────────────────────────────────────
 
+
 def _resolve_excel_path() -> str:
-    """Locate Mehr.xlsx across local dev layout and deployed container layouts.
-    Allows an explicit override via COO_EXCEL_PATH for any other deploy shape."""
+    """
+    Locate Mehr.xlsx across local dev layout and deployed container layouts.
+    Allows an explicit override via COO_EXCEL_PATH for any other deploy shape.
+    """
     env_override = os.environ.get("COO_EXCEL_PATH")
     if env_override:
         return env_override
     base = os.path.dirname(__file__)
     candidates = [
-        os.path.normpath(os.path.join(base, "..", "..", "..", "Mehr.xlsx")),  # local repo: backend/features/coo → repo root
-        os.path.normpath(os.path.join(base, "..", "..", "Mehr.xlsx")),        # deployed: file copied next to backend root (/app/Mehr.xlsx)
-        "/Mehr.xlsx",                                                          # fallback: container root
+        os.path.normpath(
+            os.path.join(base, "..", "..", "..", "Mehr.xlsx"),
+        ),  # local repo: backend/features/coo → repo root
+        os.path.normpath(
+            os.path.join(base, "..", "..", "Mehr.xlsx"),
+        ),  # deployed: file copied next to backend root (/app/Mehr.xlsx)
+        "/Mehr.xlsx",  # fallback: container root
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -83,16 +92,21 @@ def _load_bh_am_map() -> dict[str, dict[str, str]]:
     """Returns {client_lower: {bh, am}} from Mehr.xlsx 'AM and BH' sheet."""
     try:
         import openpyxl
+
         wb = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
         ws = wb["AM and BH"]
         mapping: dict[str, dict[str, str]] = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            client = row[4]   # Column E
-            bh     = row[5]   # Column F
-            am     = row[6]   # Column G
-            if (client and bh
-                    and isinstance(client, str) and isinstance(bh, str)
-                    and bh.strip().lower() not in ("none", "")):
+            client = row[4]  # Column E
+            bh = row[5]  # Column F
+            am = row[6]  # Column G
+            if (
+                client
+                and bh
+                and isinstance(client, str)
+                and isinstance(bh, str)
+                and bh.strip().lower() not in ("none", "")
+            ):
                 mapping[client.strip().lower()] = {
                     "bh": bh.strip(),
                     "am": am.strip() if isinstance(am, str) and am.strip() else "",
@@ -128,22 +142,30 @@ def _lookup(client: str, bh_am_map: dict[str, dict[str, str]]) -> tuple[str, str
 
 # ── MySQL helpers ─────────────────────────────────────────────────────────────
 
+
 def _get_mysql_conn():
     import pymysql
     from core.config import settings
-    missing = [k for k, v in [
-        ("OL_REPLICA_HOST",     settings.ol_replica_host),
-        ("OL_REPLICA_USER",     settings.ol_replica_user),
-        ("OL_REPLICA_PASSWORD", settings.ol_replica_password),
-    ] if not v]
+
+    missing = [
+        k
+        for k, v in [
+            ("OL_REPLICA_HOST", settings.ol_replica_host),
+            ("OL_REPLICA_USER", settings.ol_replica_user),
+            ("OL_REPLICA_PASSWORD", settings.ol_replica_password),
+        ]
+        if not v
+    ]
     if missing:
-        raise HTTPException(status_code=503, detail=f"OL Replica not configured: {', '.join(missing)}")
+        raise HTTPException(
+            status_code=503, detail=f"OL Replica not configured: {', '.join(missing)}",
+        )
     return pymysql.connect(
         host=settings.ol_replica_host,
         port=settings.ol_replica_port,
         user=settings.ol_replica_user,
         password=settings.ol_replica_password,
-        database=settings.ol_replica_database,   # defaults to "offerletter"
+        database=settings.ol_replica_database,  # defaults to "offerletter"
         connect_timeout=10,
         cursorclass=pymysql.cursors.DictCursor,
         ssl_disabled=True,
@@ -152,11 +174,13 @@ def _get_mysql_conn():
 
 # ── SQL — uses UTC ranges (index-friendly, no per-row CONVERT_TZ) ────────────
 
-from core.sql_loader import load_sql
+from core.sql_loader import load_sql  # noqa: E402
+
 _SQL = load_sql("002-coo_leaderboard_pipeline.sql")
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
+
 
 def _zero():
     return {"total": 0, "today": 0, "compare": 0}
@@ -164,9 +188,8 @@ def _zero():
 
 def _utc_day_range(d) -> tuple[str, str]:
     """Return UTC start/end strings for one IST calendar day."""
-    from datetime import date as _date
     start = datetime(d.year, d.month, d.day) - timedelta(hours=5, minutes=30)
-    end   = datetime(d.year, d.month, d.day) + timedelta(hours=18, minutes=30)
+    end = datetime(d.year, d.month, d.day) + timedelta(hours=18, minutes=30)
     return start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -181,8 +204,8 @@ def coo_leaderboard(
     """
     from datetime import date as _date
 
-    ist_now  = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-    today_d  = ist_now.date()
+    ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    today_d = ist_now.date()
 
     today_utc_start, tomorrow_utc_start = _utc_day_range(today_d)
 
@@ -192,19 +215,21 @@ def coo_leaderboard(
         try:
             cmp_d = _date.fromisoformat(compare_date)
         except ValueError:
-            raise HTTPException(status_code=400, detail="compare_date must be YYYY-MM-DD")
+            raise HTTPException(
+                status_code=400, detail="compare_date must be YYYY-MM-DD",
+            )
         cmp_utc_start, cmp_utc_end = _utc_day_range(cmp_d)
     else:
         # Dead range → compare_cnt always 0
         cmp_utc_start = "1970-01-01 00:00:00"
-        cmp_utc_end   = "1970-01-01 00:00:01"
+        cmp_utc_end = "1970-01-01 00:00:01"
 
     params = {
-        "today_utc_start":    today_utc_start,
+        "today_utc_start": today_utc_start,
         "tomorrow_utc_start": tomorrow_utc_start,
-        "cmp_utc_start":      cmp_utc_start,
-        "cmp_utc_end":        cmp_utc_end,
-        "step_ids":           STEP_IDS,
+        "cmp_utc_start": cmp_utc_start,
+        "cmp_utc_end": cmp_utc_end,
+        "step_ids": STEP_IDS,
     }
 
     bh_am_map = _load_bh_am_map()
@@ -238,7 +263,7 @@ def coo_leaderboard(
         raw_client = r.get("client")
         if not raw_client:
             continue
-        client  = str(raw_client).strip()
+        client = str(raw_client).strip()
         step_id = int(float(r.get("step_id") or 0))
         col_key = STEP_TO_COL.get(step_id)
         if not col_key:
@@ -249,8 +274,8 @@ def coo_leaderboard(
         key = (bh, am, client)
         if key not in agg:
             agg[key] = {k: _zero() for k, _ in COLUMNS}
-        agg[key][col_key]["total"]   += int(r.get("total_cnt")   or 0)
-        agg[key][col_key]["today"]   += int(r.get("today_cnt")   or 0)
+        agg[key][col_key]["total"] += int(r.get("total_cnt") or 0)
+        agg[key][col_key]["today"] += int(r.get("today_cnt") or 0)
         agg[key][col_key]["compare"] += int(r.get("compare_cnt") or 0)
 
     rows = [
@@ -260,17 +285,17 @@ def coo_leaderboard(
     ]
 
     return {
-        "rows":        rows,
+        "rows": rows,
         "compare_date": compare_date,
         "columns": [{"key": k, "label": lbl} for k, lbl in COLUMNS],
-        "today":   today_d.isoformat(),
+        "today": today_d.isoformat(),
     }
 
 
 # ── Recruiter leaderboard (local DB, today's metrics) ────────────────────────
 
 RECRUITER_DAY_TARGET = 4
-ON_TRACK_THRESHOLD   = 75  # % of target
+ON_TRACK_THRESHOLD = 75  # % of target
 
 
 def _performance_category(verified: int) -> str:
@@ -290,26 +315,37 @@ def recruiter_leaderboard(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Per-recruiter daily metrics for the COO dashboard.
+    """
+    Per-recruiter daily metrics for the COO dashboard.
 
     All counts use today's IST calendar day. "Verified by DL" counts validations
     completed today on candidates this recruiter sourced. Performance category
     is derived from verified count only (per product spec).
     """
     from infra.models import (
-        User, UserRole, Candidate, CandidateStatus,
-        Validation, ValidationStatus, ConsultantMail,
-        Pod, PodMembership, HourlyTarget,
+        Candidate,
+        CandidateStatus,
+        ConsultantMail,
+        HourlyTarget,
+        Pod,
+        PodMembership,
+        User,
+        UserRole,
+        Validation,
+        ValidationStatus,
     )
-    from features.mrr.targets.routes import TIME_SLOTS, current_slot_indices_completed
     from sqlalchemy import func, or_
+
+    from features.mrr.targets.routes import TIME_SLOTS, current_slot_indices_completed
 
     # IST today
     ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     today_ist = ist_now.date()
     # UTC range covering the IST day
-    day_start_utc = datetime(today_ist.year, today_ist.month, today_ist.day) - timedelta(hours=5, minutes=30)
-    day_end_utc   = day_start_utc + timedelta(days=1)
+    day_start_utc = datetime(
+        today_ist.year, today_ist.month, today_ist.day,
+    ) - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(days=1)
 
     # All active recruiters (primary or secondary role)…
     recruiters = (
@@ -325,11 +361,12 @@ def recruiter_leaderboard(
     # as a recruiter (e.g. delivery leads who source directly). Without this,
     # POD TOTAL diverges from the candidates table.
     extra_sourcer_ids = [
-        row[0] for row in db.query(Candidate.sourced_by_id)
+        row[0]
+        for row in db.query(Candidate.sourced_by_id)
         .filter(
             Candidate.sourced_by_id.isnot(None),
             Candidate.sourced_at >= day_start_utc,
-            Candidate.sourced_at <  day_end_utc,
+            Candidate.sourced_at < day_end_utc,
         )
         .distinct()
         .all()
@@ -343,7 +380,14 @@ def recruiter_leaderboard(
     if not rec_ids:
         return {
             "rows": [],
-            "totals": {"done": 0, "verified": 0, "rejections": 0, "ack_sent": 0, "pct": 0, "status": "Behind"},
+            "totals": {
+                "done": 0,
+                "verified": 0,
+                "rejections": 0,
+                "ack_sent": 0,
+                "pct": 0,
+                "status": "Behind",
+            },
             "day_target": RECRUITER_DAY_TARGET,
             "today": today_ist.isoformat(),
         }
@@ -356,8 +400,9 @@ def recruiter_leaderboard(
         .filter(
             Candidate.sourced_by_id.in_(rec_ids),
             Candidate.sourced_at >= day_start_utc,
-            Candidate.sourced_at <  day_end_utc,
-        ).all()
+            Candidate.sourced_at < day_end_utc,
+        )
+        .all()
     )
     todays_candidate_ids: list[int] = [cid for cid, _ in todays_sourced_rows]
     done_by_rec: dict[int, int] = {}
@@ -385,7 +430,7 @@ def recruiter_leaderboard(
             Candidate.sourced_by_id.in_(rec_ids),
             Candidate.status == CandidateStatus.rejected,
             Candidate.updated_at >= day_start_utc,
-            Candidate.updated_at <  day_end_utc,
+            Candidate.updated_at < day_end_utc,
         )
         .group_by(Candidate.sourced_by_id)
         .all()
@@ -402,7 +447,7 @@ def recruiter_leaderboard(
             ConsultantMail.sent_by_id.in_(rec_ids),
             ConsultantMail.acknowledgement_received == False,  # noqa: E712
             ConsultantMail.sent_at >= day_start_utc,
-            ConsultantMail.sent_at <  day_end_utc,
+            ConsultantMail.sent_at < day_end_utc,
         )
         .group_by(ConsultantMail.sent_by_id)
         .all()
@@ -414,9 +459,11 @@ def recruiter_leaderboard(
     # Sum of all slot_targets for today → "day_target".
     completed_slots = set(current_slot_indices_completed(ist_now))
     target_rows = (
-        db.query(HourlyTarget.user_id, HourlyTarget.slot_index, HourlyTarget.target_count)
-          .filter(HourlyTarget.user_id.in_(rec_ids), HourlyTarget.date == today_ist)
-          .all()
+        db.query(
+            HourlyTarget.user_id, HourlyTarget.slot_index, HourlyTarget.target_count,
+        )
+        .filter(HourlyTarget.user_id.in_(rec_ids), HourlyTarget.date == today_ist)
+        .all()
     )
     slots_by_user: dict[int, dict[int, int]] = {}
     for uid, idx, cnt in target_rows:
@@ -425,7 +472,7 @@ def recruiter_leaderboard(
     def _targets_for(uid: int) -> tuple[int, int]:
         slots = slots_by_user.get(uid, {})
         so_far = sum(c for idx, c in slots.items() if idx in completed_slots)
-        day    = sum(slots.values())
+        day = sum(slots.values())
         return so_far, day
 
     # ── Org chain per recruiter ──
@@ -439,7 +486,9 @@ def recruiter_leaderboard(
     kams_by_pod: dict[int, list[str]] = {}
     for pid, name in (
         db.query(User.pod_id, User.name)
-        .filter(User.role == UserRole.kam, User.pod_id.isnot(None), User.is_active == True)  # noqa: E712
+        .filter(
+            User.role == UserRole.kam, User.pod_id.isnot(None), User.is_active,
+        )
         .order_by(User.name)
         .all()
     ):
@@ -457,7 +506,9 @@ def recruiter_leaderboard(
     parent_ids = {u.parent_user_id for u in recruiters if u.parent_user_id}
     parent_users: dict[int, User] = {}
     if parent_ids:
-        parent_users = {u.id: u for u in db.query(User).filter(User.id.in_(parent_ids)).all()}
+        parent_users = {
+            u.id: u for u in db.query(User).filter(User.id.in_(parent_ids)).all()
+        }
 
     # Legacy fallback: a recruiter's first pod_lead (DL) from pod_memberships
     legacy_dl_by_user: dict[int, str] = {}
@@ -489,7 +540,7 @@ def recruiter_leaderboard(
 
         pod = pods_by_id.get(u.pod_id) if u.pod_id else None
         pod_name = pod.name if pod else None
-        bh_name  = bh_by_pod.get(u.pod_id) if u.pod_id else None
+        bh_name = bh_by_pod.get(u.pod_id) if u.pod_id else None
         kam_names = kams_by_pod.get(u.pod_id, []) if u.pod_id else []
         return {"dl": dl_name, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
 
@@ -497,54 +548,66 @@ def recruiter_leaderboard(
     sum_done = sum_verified = sum_rejects = sum_ack = 0
     sum_target_so_far = sum_day_target = 0
     for u in recruiters:
-        done     = done_by_rec.get(u.id, 0)
+        done = done_by_rec.get(u.id, 0)
         verified = verified_by_rec.get(u.id, 0)
-        rejects  = reject_by_rec.get(u.id, 0)
-        ack      = ack_by_rec.get(u.id, 0)
+        rejects = reject_by_rec.get(u.id, 0)
+        ack = ack_by_rec.get(u.id, 0)
         target_so_far, day_target = _targets_for(u.id)
         # % against the cumulative target the recruiter SHOULD have hit by now.
-        pct      = round((verified / target_so_far) * 100) if target_so_far else 0
-        status   = "On Track" if (target_so_far == 0 or pct >= ON_TRACK_THRESHOLD) else "Behind"
-        chain    = _chain_for(u)
-        rows.append({
-            "recruiter_id":   u.id,
-            "recruiter_name": u.name,
-            "dl_name":        chain["dl"],
-            "kam_names":      chain["kam_names"],
-            "bh_name":        chain["bh"],
-            "pod_name":       chain["pod"],
-            "day_target":     day_target,
-            "target_so_far":  target_so_far,
-            "done":           done,
-            "verified":       verified,
-            "pct":            pct,
-            "status":         status,
-            "rejections":     rejects,
-            "ack_sent":       ack,
-            "performance":    _performance_category(verified),
-        })
-        sum_done     += done
+        pct = round((verified / target_so_far) * 100) if target_so_far else 0
+        status = (
+            "On Track"
+            if (target_so_far == 0 or pct >= ON_TRACK_THRESHOLD)
+            else "Behind"
+        )
+        chain = _chain_for(u)
+        rows.append(
+            {
+                "recruiter_id": u.id,
+                "recruiter_name": u.name,
+                "dl_name": chain["dl"],
+                "kam_names": chain["kam_names"],
+                "bh_name": chain["bh"],
+                "pod_name": chain["pod"],
+                "day_target": day_target,
+                "target_so_far": target_so_far,
+                "done": done,
+                "verified": verified,
+                "pct": pct,
+                "status": status,
+                "rejections": rejects,
+                "ack_sent": ack,
+                "performance": _performance_category(verified),
+            },
+        )
+        sum_done += done
         sum_verified += verified
-        sum_rejects  += rejects
-        sum_ack      += ack
+        sum_rejects += rejects
+        sum_ack += ack
         sum_target_so_far += target_so_far
-        sum_day_target    += day_target
+        sum_day_target += day_target
 
-    total_pct = round((sum_verified / sum_target_so_far) * 100) if sum_target_so_far else 0
+    total_pct = (
+        round((sum_verified / sum_target_so_far) * 100) if sum_target_so_far else 0
+    )
     totals = {
-        "day_target":    sum_day_target,
+        "day_target": sum_day_target,
         "target_so_far": sum_target_so_far,
-        "done":          sum_done,
-        "verified":      sum_verified,
-        "rejections":    sum_rejects,
-        "ack_sent":      sum_ack,
-        "pct":           total_pct,
-        "status":        "On Track" if (sum_target_so_far == 0 or total_pct >= ON_TRACK_THRESHOLD) else "Behind",
+        "done": sum_done,
+        "verified": sum_verified,
+        "rejections": sum_rejects,
+        "ack_sent": sum_ack,
+        "pct": total_pct,
+        "status": (
+            "On Track"
+            if (sum_target_so_far == 0 or total_pct >= ON_TRACK_THRESHOLD)
+            else "Behind"
+        ),
     }
 
     return {
-        "rows":   rows,
+        "rows": rows,
         "totals": totals,
-        "today":  today_ist.isoformat(),
-        "slots":  TIME_SLOTS,
+        "today": today_ist.isoformat(),
+        "slots": TIME_SLOTS,
     }

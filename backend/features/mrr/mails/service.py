@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session, joinedload
-from infra.models import ConsultantMail, Candidate, CandidateStatus, to_iso_utc, isofy_datetimes
+
+from infra.models import (
+    Candidate,
+    CandidateStatus,
+    ConsultantMail,
+    isofy_datetimes,
+    to_iso_utc,
+)
 from infra.s3 import to_viewable_url
+from sqlalchemy.orm import Session, joinedload
 
 # Statuses that are "past" ready_for_validation — don't rewind them
 _POST_VALIDATION_STATUSES = {
@@ -33,10 +40,14 @@ def _enrich(m: ConsultantMail) -> dict:
         d["consultant_profile"] = None
         if c.assessment:
             a = c.assessment
-            d["assessment"] = isofy_datetimes({col.name: getattr(a, col.name) for col in a.__table__.columns})
+            d["assessment"] = isofy_datetimes(
+                {col.name: getattr(a, col.name) for col in a.__table__.columns},
+            )
         if c.consultant_profile:
             cp = c.consultant_profile
-            d["consultant_profile"] = isofy_datetimes({col.name: getattr(cp, col.name) for col in cp.__table__.columns})
+            d["consultant_profile"] = isofy_datetimes(
+                {col.name: getattr(cp, col.name) for col in cp.__table__.columns},
+            )
     d["sent_by_name"] = m.sent_by.name if m.sent_by else None
     d["exit_proof"] = to_viewable_url(d.get("exit_proof"))
     return d
@@ -52,7 +63,11 @@ def _load(db: Session):
 
 
 def mark_sent(db: Session, candidate_id: int, sent_by_id: int) -> dict:
-    mail = db.query(ConsultantMail).filter(ConsultantMail.candidate_id == candidate_id).first()
+    mail = (
+        db.query(ConsultantMail)
+        .filter(ConsultantMail.candidate_id == candidate_id)
+        .first()
+    )
     if not mail:
         mail = ConsultantMail(candidate_id=candidate_id, sent_by_id=sent_by_id)
         db.add(mail)
@@ -60,23 +75,39 @@ def mark_sent(db: Session, candidate_id: int, sent_by_id: int) -> dict:
         mail.sent_at = datetime.now(timezone.utc)
         mail.sent_by_id = sent_by_id
     db.commit()
-    return _enrich(_load(db).filter(ConsultantMail.candidate_id == candidate_id).first())
+    return _enrich(
+        _load(db).filter(ConsultantMail.candidate_id == candidate_id).first(),
+    )
 
 
-def list_mails(db: Session, sent_by_id: int | None = None, search: str | None = None, skip: int = 0, limit: int = 0) -> tuple[list, int]:
+def list_mails(
+    db: Session,
+    sent_by_id: int | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 0,
+) -> tuple[list, int]:
     mails = _load(db).order_by(ConsultantMail.sent_at.desc()).all()
     if sent_by_id:
         mails = [m for m in mails if m.sent_by_id == sent_by_id]
     if search:
         q = search.lower()
-        mails = [m for m in mails if q in (m.candidate_name or '').lower() or q in (m.client_name or '').lower() or q in (m.job_title or '').lower()]
+        mails = [
+            m
+            for m in mails
+            if q in (m.candidate_name or "").lower()
+            or q in (m.client_name or "").lower()
+            or q in (m.job_title or "").lower()
+        ]
     total = len(mails)
     if limit > 0:
-        mails = mails[skip:skip + limit]
+        mails = mails[skip : skip + limit]
     return [_enrich(m) for m in mails], total
 
 
-def update_mail(db: Session, mail_id: int, data: dict, updated_by_role: str) -> dict | None:
+def update_mail(
+    db: Session, mail_id: int, data: dict, updated_by_role: str,
+) -> dict | None:
     mail = _load(db).filter(ConsultantMail.id == mail_id).first()
     if not mail:
         return None
@@ -87,35 +118,52 @@ def update_mail(db: Session, mail_id: int, data: dict, updated_by_role: str) -> 
         mail.acknowledgement_received = True
         mail.acknowledgement_at = now
         # Move candidate into validation queue so DL can review
-        candidate = db.query(Candidate).filter(Candidate.id == mail.candidate_id).first()
+        candidate = (
+            db.query(Candidate).filter(Candidate.id == mail.candidate_id).first()
+        )
         if candidate and candidate.status not in _POST_VALIDATION_STATUSES:
             candidate.status = CandidateStatus.ready_for_validation
             # The validator is the JOB's delivery lead. Fall back to sender's
             # pod allocation only when the job has no DL assigned.
             if not candidate.assigned_validator_id:
                 from infra.models import User, UserRole
+
                 validator = None
                 job = candidate.job
                 if job and job.delivery_lead_id:
-                    validator = db.query(User).filter(
-                        User.id == job.delivery_lead_id,
-                        User.role == UserRole.delivery_lead,
-                        User.is_active == True,  # noqa: E712
-                    ).first()
+                    validator = (
+                        db.query(User)
+                        .filter(
+                            User.id == job.delivery_lead_id,
+                            User.role == UserRole.delivery_lead,
+                            User.is_active == True,  # noqa: E712
+                        )
+                        .first()
+                    )
                 if not validator and mail.sent_by_id:
                     sender = db.query(User).filter(User.id == mail.sent_by_id).first()
                     pod_lead_id = sender.pod_lead_id if sender else None
                     if pod_lead_id:
                         from features.mrr.allocation.service import get_min_load
-                        validator = get_min_load(db, pod_lead_id, UserRole.delivery_lead)
+
+                        validator = get_min_load(
+                            db, pod_lead_id, UserRole.delivery_lead,
+                        )
                         if not validator:
-                            validator = db.query(User).filter(
-                                User.id == pod_lead_id,
-                                User.role == UserRole.delivery_lead,
-                            ).first()
+                            validator = (
+                                db.query(User)
+                                .filter(
+                                    User.id == pod_lead_id,
+                                    User.role == UserRole.delivery_lead,
+                                )
+                                .first()
+                            )
                 if validator:
                     candidate.assigned_validator_id = validator.id
-    if data.get("dl_verified") is True and updated_by_role in ("delivery_lead", "admin"):
+    if data.get("dl_verified") is True and updated_by_role in (
+        "delivery_lead",
+        "admin",
+    ):
         mail.dl_verified = True
         mail.dl_verified_at = now
     if "exit_proof" in data and data["exit_proof"] is not None:

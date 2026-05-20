@@ -1,16 +1,22 @@
 import re
-from sqlalchemy.orm import Session
+
+from core.pagination import PageResult, paginate
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPEmailTemplate
+from sqlalchemy.orm import Session
+
 from features.hrbp.email_templates.schema import (
-    EmailTemplateCreate, EmailTemplateUpdate, RenderResponse,
+    EmailTemplateCreate,
+    EmailTemplateUpdate,
+    RenderResponse,
 )
-from core.pagination import paginate, PageResult
 
 
 def create(db: Session, payload: EmailTemplateCreate) -> HRBPEmailTemplate:
     if db.query(HRBPEmailTemplate).filter_by(id=payload.id).first():
-        raise HTTPException(status_code=409, detail=f"Template id '{payload.id}' already exists")
+        raise HTTPException(
+            status_code=409, detail=f"Template id '{payload.id}' already exists",
+        )
     record = HRBPEmailTemplate(**payload.model_dump())
     db.add(record)
     db.commit()
@@ -65,10 +71,15 @@ def render(db: Session, id: str, consultant_id: str) -> RenderResponse:
     consultant: dict = {}
     try:
         from sqlalchemy import text
-        row = db.execute(
-            text("SELECT * FROM hrbp_consultants WHERE id = :cid LIMIT 1"),
-            {"cid": consultant_id},
-        ).mappings().first()
+
+        row = (
+            db.execute(
+                text("SELECT * FROM hrbp_consultants WHERE id = :cid LIMIT 1"),
+                {"cid": consultant_id},
+            )
+            .mappings()
+            .first()
+        )
         if row:
             consultant = dict(row)
     except Exception:
@@ -77,29 +88,34 @@ def render(db: Session, id: str, consultant_id: str) -> RenderResponse:
     def _fill(text_tpl: str | None) -> str | None:
         if not text_tpl:
             return text_tpl
+
         def replacer(match: re.Match) -> str:
             key = match.group(1).strip()
             return str(consultant.get(key, match.group(0)))  # keep {{var}} if not found
+
         return re.sub(r"\{\{(.+?)\}\}", replacer, text_tpl)
 
     rendered_subject = _fill(template.subject_tpl)
-    rendered_body    = _fill(template.body_tpl)
+    rendered_body = _fill(template.body_tpl)
 
     # Forbidden word check
     forbidden = template.forbidden_words or []
     if forbidden and rendered_body:
-        body_lower   = rendered_body.lower()
+        body_lower = rendered_body.lower()
         found = [w for w in forbidden if w.lower() in body_lower]
         if found:
             raise HTTPException(
                 status_code=400,
-                detail={"message": "Forbidden words detected in rendered body", "words": found},
+                detail={
+                    "message": "Forbidden words detected in rendered body",
+                    "words": found,
+                },
             )
 
     return RenderResponse(
-        subject   = rendered_subject,
-        body      = rendered_body or "",
-        to        = consultant.get("email"),
-        cc        = [],
-        locked_cc = template.locked_cc or [],
+        subject=rendered_subject,
+        body=rendered_body or "",
+        to=consultant.get("email"),
+        cc=[],
+        locked_cc=template.locked_cc or [],
     )

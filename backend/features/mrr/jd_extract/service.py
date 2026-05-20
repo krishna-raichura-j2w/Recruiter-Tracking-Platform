@@ -18,14 +18,14 @@ client = AzureOpenAI(
 DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
 
 _MODEL_RATES: dict[str, dict[str, float]] = {
-    "gpt-4o-mini": {"input": 0.15  / 1_000_000, "output": 0.60  / 1_000_000},
-    "gpt-4o":      {"input": 2.50  / 1_000_000, "output": 10.00 / 1_000_000},
+    "gpt-4o-mini": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
+    "gpt-4o": {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
 }
 
 
 def _calc_cost(model: str, inp_tok: int, out_tok: int) -> tuple[float, float, float]:
     rates = _MODEL_RATES.get(model, _MODEL_RATES["gpt-4o-mini"])
-    inp = round(inp_tok * rates["input"],  8)
+    inp = round(inp_tok * rates["input"], 8)
     out = round(out_tok * rates["output"], 8)
     return inp, out, round(inp + out, 8)
 
@@ -68,23 +68,25 @@ def _call_azure(content: list) -> tuple[ParsedJD, dict]:
         model=DEPLOYMENT,
         messages=[
             {"role": "system", "content": JD_SYSTEM_PROMPT},
-            {"role": "user",   "content": content},
+            {"role": "user", "content": content},
         ],
         temperature=0,
         response_format={"type": "json_object"},
     )
-    raw    = json.loads(response.choices[0].message.content)
+    raw = json.loads(response.choices[0].message.content)
     parsed = ParsedJD(**raw)
-    usage  = response.usage
-    inp, out, total = _calc_cost(DEPLOYMENT, usage.prompt_tokens, usage.completion_tokens)
+    usage = response.usage
+    inp, out, total = _calc_cost(
+        DEPLOYMENT, usage.prompt_tokens, usage.completion_tokens,
+    )
     cost_info = {
-        "model":           DEPLOYMENT,
-        "input_tokens":    usage.prompt_tokens,
-        "output_tokens":   usage.completion_tokens,
-        "total_tokens":    usage.total_tokens,
-        "input_cost_usd":  inp,
+        "model": DEPLOYMENT,
+        "input_tokens": usage.prompt_tokens,
+        "output_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+        "input_cost_usd": inp,
         "output_cost_usd": out,
-        "total_cost_usd":  total,
+        "total_cost_usd": total,
     }
     return parsed, cost_info
 

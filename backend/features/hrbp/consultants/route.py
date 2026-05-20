@@ -1,12 +1,17 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+
 from core.database import get_db
 from core.deps import get_current_user
-from core.response_format import success_response, success_response_with_pagination, error_response
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
+)
+from fastapi import APIRouter, Depends, Query
 from infra.models import User
-from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
+from sqlalchemy.orm import Session
+
 from features.hrbp.consultants import service
+from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
 
 router = APIRouter(prefix="/consultants", tags=["hrbp-consultants"])
 
@@ -15,28 +20,32 @@ router = APIRouter(prefix="/consultants", tags=["hrbp-consultants"])
 def create_consultant(
     payload: ConsultantCreate,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.create(db, payload)
-        return success_response(data=data.__dict__, message="Consultant created successfully")
+        return success_response(
+            data=data.__dict__, message="Consultant created successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
 
 @router.get("")
 def list_consultants(
-    page_no:   int            = Query(default=1,   ge=1),
-    per_page:  int            = Query(default=10, ge=-1),
-    hrbp_id:   Optional[int] = Query(default=None),
-    client_id: Optional[int] = Query(default=None),
-    cohort:    Optional[str]  = Query(default=None),
-    perf_tier: Optional[str]  = Query(default=None),
-    is_active: Optional[bool] = Query(default=None),
+    page_no: int = Query(default=1, ge=1),
+    per_page: int = Query(default=10, ge=-1),
+    hrbp_id: int | None = Query(default=None),
+    client_id: int | None = Query(default=None),
+    cohort: str | None = Query(default=None),
+    perf_tier: str | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
-    result = service.list_paginated(db, page_no, per_page, hrbp_id, client_id, cohort, perf_tier, is_active)
+    result = service.list_paginated(
+        db, page_no, per_page, hrbp_id, client_id, cohort, perf_tier, is_active,
+    )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
         message="Consultants fetched successfully",
@@ -51,11 +60,13 @@ def list_consultants(
 def get_consultant_by_emp_id(
     emp_id: str,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.get_by_emp_id(db, emp_id)
-        return success_response(data=data.__dict__, message="Consultant fetched successfully")
+        return success_response(
+            data=data.__dict__, message="Consultant fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -64,11 +75,13 @@ def get_consultant_by_emp_id(
 def get_consultant(
     id: int,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(data=data.__dict__, message="Consultant fetched successfully")
+        return success_response(
+            data=data.__dict__, message="Consultant fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -78,11 +91,13 @@ def update_consultant(
     id: int,
     payload: ConsultantUpdate,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.update(db, id, payload)
-        return success_response(data=data.__dict__, message="Consultant updated successfully")
+        return success_response(
+            data=data.__dict__, message="Consultant updated successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -91,7 +106,7 @@ def update_consultant(
 def delete_consultant(
     id: int,
     db: Session = Depends(get_db),
-    _: User     = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         service.delete(db, id)

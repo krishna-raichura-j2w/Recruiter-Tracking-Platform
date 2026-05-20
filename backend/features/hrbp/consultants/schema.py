@@ -1,87 +1,99 @@
 from __future__ import annotations
-from decimal import Decimal
-from typing import Literal, Optional
+
 from datetime import date, datetime
+from decimal import Decimal
+from typing import Literal
+
 from pydantic import BaseModel
 
-CohortType   = Literal["star","high_performer","rising","bedrock","new_joiner","watch_exit","watch_rate_rev","watch_general","rescue"]
-PerfTierType = Literal["top_20","mid_60","bottom_20","unrated"]
-BhFeedback   = Literal["great","good","mediocre","bad","not_given"]
-LDStatus     = Literal["enrolled","not_started","completed","pending"]
+CohortType = Literal[
+    "star",
+    "high_performer",
+    "rising",
+    "bedrock",
+    "new_joiner",
+    "watch_exit",
+    "watch_rate_rev",
+    "watch_general",
+    "rescue",
+]
+PerfTierType = Literal["top_20", "mid_60", "bottom_20", "unrated"]
+BhFeedback = Literal["great", "good", "mediocre", "bad", "not_given"]
+LDStatus = Literal["enrolled", "not_started", "completed", "pending"]
 
 
 class ConsultantCreate(BaseModel):
-    emp_id:         str
-    name:           str
-    client_id:      int
-    hrbp_id:        int
-    email:          Optional[str]         = None
-    phone:          Optional[str]         = None
-    manager_name:   Optional[str]         = None
-    modality:       Optional[str]         = None
-    skill:          Optional[str]         = None
-    cohort:         Optional[CohortType]  = None
-    perf_tier:      Optional[PerfTierType]= None
-    monthly_po:     Optional[Decimal]     = None
-    monthly_ctc:    Optional[Decimal]     = None
-    po_end_date:    Optional[date]        = None
-    join_date:      Optional[date]        = None
-    bh_feedback:    Optional[BhFeedback]  = None
-    nps_score:      Optional[int]         = None
-    last_hike_date: Optional[date]        = None
-    last_hike_pct:  Optional[Decimal]     = None
-    l_d_status:     Optional[LDStatus]    = None
-    is_active:      bool                  = True
+    emp_id: str
+    name: str
+    client_id: int
+    hrbp_id: int
+    email: str | None = None
+    phone: str | None = None
+    manager_name: str | None = None
+    modality: str | None = None
+    skill: str | None = None
+    cohort: CohortType | None = None
+    perf_tier: PerfTierType | None = None
+    monthly_po: Decimal | None = None
+    monthly_ctc: Decimal | None = None
+    po_end_date: date | None = None
+    join_date: date | None = None
+    bh_feedback: BhFeedback | None = None
+    nps_score: int | None = None
+    last_hike_date: date | None = None
+    last_hike_pct: Decimal | None = None
+    l_d_status: LDStatus | None = None
+    is_active: bool = True
 
 
 class ConsultantUpdate(BaseModel):
-    name:           Optional[str]         = None
-    client_id:      Optional[int]        = None
-    hrbp_id:        Optional[int]        = None
-    email:          Optional[str]         = None
-    phone:          Optional[str]         = None
-    manager_name:   Optional[str]         = None
-    modality:       Optional[str]         = None
-    skill:          Optional[str]         = None
-    cohort:         Optional[CohortType]  = None
-    perf_tier:      Optional[PerfTierType]= None
-    monthly_po:     Optional[Decimal]     = None
-    monthly_ctc:    Optional[Decimal]     = None
-    po_end_date:    Optional[date]        = None
-    join_date:      Optional[date]        = None
-    bh_feedback:    Optional[BhFeedback]  = None
-    nps_score:      Optional[int]         = None
-    last_hike_date: Optional[date]        = None
-    last_hike_pct:  Optional[Decimal]     = None
-    l_d_status:     Optional[LDStatus]    = None
-    is_active:      Optional[bool]        = None
+    name: str | None = None
+    client_id: int | None = None
+    hrbp_id: int | None = None
+    email: str | None = None
+    phone: str | None = None
+    manager_name: str | None = None
+    modality: str | None = None
+    skill: str | None = None
+    cohort: CohortType | None = None
+    perf_tier: PerfTierType | None = None
+    monthly_po: Decimal | None = None
+    monthly_ctc: Decimal | None = None
+    po_end_date: date | None = None
+    join_date: date | None = None
+    bh_feedback: BhFeedback | None = None
+    nps_score: int | None = None
+    last_hike_date: date | None = None
+    last_hike_pct: Decimal | None = None
+    l_d_status: LDStatus | None = None
+    is_active: bool | None = None
 
 
 class ConsultantResponse(BaseModel):
-    id:             int
-    emp_id:         str
-    name:           str
-    email:          Optional[str]
-    phone:          Optional[str]
-    client_id:      int
-    hrbp_id:        int
-    manager_name:   Optional[str]
-    modality:       Optional[str]
-    skill:          Optional[str]
-    cohort:         Optional[str]
-    perf_tier:      Optional[str]
-    monthly_po:     Optional[Decimal]
-    monthly_ctc:    Optional[Decimal]
-    po_end_date:    Optional[date]
-    join_date:      Optional[date]
-    bh_feedback:    Optional[str]
-    nps_score:      Optional[int]
-    last_hike_date: Optional[date]
-    last_hike_pct:  Optional[Decimal]
-    l_d_status:     Optional[str]
-    is_active:      bool
-    created_at:     Optional[datetime]
-    updated_at:     Optional[datetime]
+    id: int
+    emp_id: str
+    name: str
+    email: str | None
+    phone: str | None
+    client_id: int
+    hrbp_id: int
+    manager_name: str | None
+    modality: str | None
+    skill: str | None
+    cohort: str | None
+    perf_tier: str | None
+    monthly_po: Decimal | None
+    monthly_ctc: Decimal | None
+    po_end_date: date | None
+    join_date: date | None
+    bh_feedback: str | None
+    nps_score: int | None
+    last_hike_date: date | None
+    last_hike_pct: Decimal | None
+    l_d_status: str | None
+    is_active: bool
+    created_at: datetime | None
+    updated_at: datetime | None
 
     class Config:
         from_attributes = True

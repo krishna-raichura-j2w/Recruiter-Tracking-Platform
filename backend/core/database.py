@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
 from core.config import settings
 
 _url = settings.active_db_url
@@ -31,4 +32,5 @@ def get_db():
 
 def create_tables():
     from infra import models  # noqa: F401 — triggers model registration
+
     Base.metadata.create_all(bind=engine)

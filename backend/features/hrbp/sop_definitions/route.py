@@ -1,10 +1,18 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user
-from core.response_format import success_response, success_response_with_pagination, error_response
-from features.hrbp.sop_definitions.schema import SopDefinitionCreate, SopDefinitionUpdate
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
+)
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
 from features.hrbp.sop_definitions import service
+from features.hrbp.sop_definitions.schema import (
+    SopDefinitionCreate,
+    SopDefinitionUpdate,
+)
 
 router = APIRouter(prefix="/sop-definitions", tags=["hrbp-sop-definitions"])
 
@@ -17,7 +25,9 @@ def create_sop(
 ):
     try:
         data = service.create(db, payload)
-        return success_response(data=data.__dict__, message="SOP definition created successfully")
+        return success_response(
+            data=data.__dict__, message="SOP definition created successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -48,7 +58,9 @@ def get_sop_by_id(
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(data=data.__dict__, message="SOP definition fetched successfully")
+        return success_response(
+            data=data.__dict__, message="SOP definition fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -61,7 +73,9 @@ def get_sop_by_type(
 ):
     try:
         data = service.get_by_type(db, sop_type)
-        return success_response(data=data.__dict__, message="SOP definition fetched successfully")
+        return success_response(
+            data=data.__dict__, message="SOP definition fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -74,7 +88,9 @@ def get_sop_steps(
 ):
     try:
         data = service.get_by_type(db, sop_type)
-        return success_response(data=data.steps_definition, message="SOP steps fetched successfully")
+        return success_response(
+            data=data.steps_definition, message="SOP steps fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -87,7 +103,9 @@ def get_sop_hierarchy(
 ):
     try:
         data = service.get_by_type(db, sop_type)
-        return success_response(data=data.persons_hierarchy, message="SOP hierarchy fetched successfully")
+        return success_response(
+            data=data.persons_hierarchy, message="SOP hierarchy fetched successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -101,7 +119,9 @@ def update_sop(
 ):
     try:
         data = service.update(db, id, payload)
-        return success_response(data=data.__dict__, message="SOP definition updated successfully")
+        return success_response(
+            data=data.__dict__, message="SOP definition updated successfully",
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 

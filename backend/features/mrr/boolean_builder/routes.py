@@ -1,7 +1,9 @@
 import asyncio
+
+from core.deps import require_roles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from core.deps import require_roles
+
 from features.mrr.boolean_builder import service
 
 router = APIRouter(prefix="/skills", tags=["boolean-builder"])
@@ -53,14 +55,18 @@ async def extract_from_file(
         elif mime in DOCX_MIMES or fname.endswith((".docx", ".doc")):
             jd_text = await asyncio.to_thread(service.extract_text_from_docx, data)
         else:
-            raise HTTPException(status_code=400, detail="Unsupported file. Upload PDF/DOC/DOCX.")
+            raise HTTPException(
+                status_code=400, detail="Unsupported file. Upload PDF/DOC/DOCX.",
+            )
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not read file: {e}")
 
     if not jd_text:
-        raise HTTPException(status_code=422, detail="No readable text in the uploaded file.")
+        raise HTTPException(
+            status_code=422, detail="No readable text in the uploaded file.",
+        )
 
     try:
         result = await asyncio.to_thread(service.build_boolean, jd_text, strictness)

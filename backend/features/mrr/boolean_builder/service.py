@@ -1,9 +1,11 @@
-"""Boolean-string builder for Naukri sourcing.
+"""
+Boolean-string builder for Naukri sourcing.
 
 Reuses the platform's existing Azure OpenAI client (configured via the same
 env vars as features/jd_extract). The system prompt + strictness instructions
 are adapted from the standalone Naukri Boolean Builder tool.
 """
+
 import io
 import json
 import os
@@ -13,7 +15,6 @@ from typing import Any
 from docx import Document
 from openai import AzureOpenAI
 from pypdf import PdfReader
-
 
 _client = AzureOpenAI(
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -192,14 +193,16 @@ def _normalize_skills(raw: list) -> list[dict[str, Any]]:
         if not isinstance(syns, list):
             syns = []
         syns = [str(x).strip() for x in syns if str(x).strip()]
-        out.append({
-            "name": name,
-            "type": st,
-            "rarity": rar,
-            "coverage": cov,
-            "synonyms": syns,
-            "evidence": str(item.get("evidence", "")).strip(),
-        })
+        out.append(
+            {
+                "name": name,
+                "type": st,
+                "rarity": rar,
+                "coverage": cov,
+                "synonyms": syns,
+                "evidence": str(item.get("evidence", "")).strip(),
+            },
+        )
     out.sort(key=lambda s: (0 if s["type"] == "must" else 1, s["name"].lower()))
     return out
 
@@ -227,7 +230,7 @@ def _clean_title(title: str) -> str:
                 break
         if not match:
             break
-        v = (v[: match.start()] + " " + v[match.end():]).strip()
+        v = (v[: match.start()] + " " + v[match.end() :]).strip()
         v = re.sub(r"\s+", " ", v)
     v = re.sub(r"\b(?:experience|exp)\b\s*[:\-]?", "", v, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", v).strip(" -|:,;")
@@ -237,14 +240,21 @@ def _title_fallback(jd_text: str) -> str:
     lines = [ln.strip() for ln in jd_text.splitlines() if ln.strip()]
     if not lines:
         return ""
-    pat = re.compile(r"^(?:job\s*title|position|role)\s*[:\-]\s*(.+)$", flags=re.IGNORECASE)
+    pat = re.compile(
+        r"^(?:job\s*title|position|role)\s*[:\-]\s*(.+)$", flags=re.IGNORECASE,
+    )
     for line in lines[:12]:
         m = pat.match(line)
         if m:
             return _clean_title(m.group(1).strip())[:80]
     for line in lines[:8]:
         low = line.lower()
-        if len(line) <= 80 and not line.endswith(":") and "experience" not in low and "years" not in low:
+        if (
+            len(line) <= 80
+            and not line.endswith(":")
+            and "experience" not in low
+            and "years" not in low
+        ):
             return _clean_title(line)
     return _clean_title(lines[0])[:80]
 
@@ -281,8 +291,12 @@ def build_boolean(jd_text: str, strictness: int = 3) -> dict[str, Any]:
 
     skills = _normalize_skills(payload.get("skills", []))
     job_title = str(payload.get("job_title", "")).strip() or _title_fallback(jd_text)
-    experience_required = str(payload.get("experience_required", "")).strip() or _find_experience(jd_text)
-    boolean_string = _enforce_500_char_limit(str(payload.get("boolean_string", "")).strip())
+    experience_required = str(
+        payload.get("experience_required", ""),
+    ).strip() or _find_experience(jd_text)
+    boolean_string = _enforce_500_char_limit(
+        str(payload.get("boolean_string", "")).strip(),
+    )
     job_title = _clean_title(job_title)
 
     return {
