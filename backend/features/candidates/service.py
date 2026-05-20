@@ -138,8 +138,31 @@ def create_candidate(db: Session, data: dict, sourced_by_id: int | None = None, 
     if not data.get("exp_range") and data.get("min_experience") is not None and data.get("max_experience") is not None:
         data["exp_range"] = f"{data['min_experience']}-{data['max_experience']} yrs"
 
+    # The resume/resume_data fields may arrive as a pending S3 key
+    # (mrr_tracking/uploads/candidates/resumes/_pending/...) from the upload
+    # endpoint. The DB should only ever store the filename — the canonical
+    # path is constructed from candidate.id + filename. We strip them from the
+    # initial INSERT, then finalize after we have an id.
+    pending_resume_key = data.pop("resume", None) or data.pop("resume_data", None)
+    if pending_resume_key == "None":
+        pending_resume_key = None
+
     candidate = Candidate(**data, status=CandidateStatus.sourced)
     db.add(candidate)
+    db.flush()  # assign candidate.id without committing yet
+
+    if pending_resume_key:
+        from infra.s3 import finalize_resume
+        try:
+            filename = finalize_resume(pending_resume_key, candidate.id)
+            candidate.resume = filename
+            candidate.resume_data = filename
+        except Exception:
+            # Don't block candidate creation if S3 move fails — keep the
+            # original key so the file is still reachable.
+            candidate.resume = pending_resume_key
+            candidate.resume_data = pending_resume_key
+
     db.commit()
     db.refresh(candidate)
     return candidate
