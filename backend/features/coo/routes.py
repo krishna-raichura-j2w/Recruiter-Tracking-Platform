@@ -392,13 +392,17 @@ def recruiter_leaderboard(
     )
     reject_by_rec = {uid: int(cnt) for uid, cnt in reject_rows}
 
-    # Acknowledgment-pending mails — recruiter sent the mail but no ack yet.
-    # Open-ended (not date-scoped) since the spec is "sent but not acknowledged".
+    # Acknowledgment-pending mails — mails the recruiter sent TODAY whose
+    # acknowledgement hasn't come back yet. Date-scoped so the row stays
+    # internally consistent: a recruiter with no sourcing activity today
+    # also has no ack activity today.
     ack_rows = (
         db.query(ConsultantMail.sent_by_id, func.count(ConsultantMail.id))
         .filter(
             ConsultantMail.sent_by_id.in_(rec_ids),
             ConsultantMail.acknowledgement_received == False,  # noqa: E712
+            ConsultantMail.sent_at >= day_start_utc,
+            ConsultantMail.sent_at <  day_end_utc,
         )
         .group_by(ConsultantMail.sent_by_id)
         .all()
