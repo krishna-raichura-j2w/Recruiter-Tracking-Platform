@@ -170,6 +170,7 @@ def validate_candidate(db: Session, data: dict, validator_id: int, validator_nam
     if candidate:
         if vstatus == ValidationStatus.validated:
             candidate.status = CandidateStatus.validated
+            candidate.dl_verified = True
             # Mark consultant mail as DL-verified if a mail record exists
             mail = db.query(ConsultantMail).filter(ConsultantMail.candidate_id == candidate_id).first()
             if mail and not mail.dl_verified:

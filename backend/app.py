@@ -123,11 +123,14 @@ def ensure_schema():
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS role_id          INTEGER     NOT NULL DEFAULT 4",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS type             VARCHAR(50) NOT NULL DEFAULT 'UserCandidate'",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS created_by       VARCHAR(200)",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS dl_verified      BOOLEAN NOT NULL DEFAULT FALSE",
             # Backfill defaults for any rows the DEFAULT didn't catch (e.g. column pre-existed without default)
             "UPDATE candidates SET role_id = 4              WHERE role_id IS NULL",
             "UPDATE candidates SET type    = 'UserCandidate' WHERE type    IS NULL",
             # Backfill created_by with the sourcer's email so historical rows attribute correctly
             "UPDATE candidates SET created_by = u.email FROM users u WHERE candidates.created_by IS NULL AND candidates.sourced_by_id = u.id",
+            # Backfill dl_verified from existing validations so historical rows reflect the same flag
+            "UPDATE candidates SET dl_verified = TRUE FROM validations v WHERE v.candidate_id = candidates.id AND v.status = 'validated' AND candidates.dl_verified IS DISTINCT FROM TRUE",
         ]
         for sql in stmts:
             try:
