@@ -5,7 +5,6 @@ import { NavCountsProvider } from './context/NavCountsContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
 import CooDashboard from './pages/CooDashboard';
 import CooUsers from './pages/CooUsers';
 import CooLeaderboard from './pages/CooLeaderboard';
@@ -36,7 +35,13 @@ function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
 
 function DashboardRouter() {
   const { user } = useAuth();
-  return user?.role === 'coo' ? <CooDashboard /> : <Dashboard />;
+  // Only COO has a dashboard now. Every other role lands on /jobs.
+  return user?.role === 'coo' ? <CooDashboard /> : <Navigate to="/jobs" replace />;
+}
+
+function HomeRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={user?.role === 'coo' ? '/dashboard' : '/jobs'} replace />;
 }
 
 function UsersRouter() {
@@ -56,7 +61,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
 
           {/* Root redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
 
           {/* Protected: All roles */}
           <Route
@@ -217,7 +222,7 @@ export default function App() {
           />
 
           {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<HomeRedirect />} />
           </Routes>
         </ForceChangePasswordGate>
       </BrowserRouter>
