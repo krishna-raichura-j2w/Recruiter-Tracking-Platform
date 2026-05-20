@@ -14,35 +14,35 @@ from core.security import hash_password
 from infra.models import User, UserRole, Job, JobStatus, WorkMode, PodMembership
 # Remove KAM imports (role no longer exists)
 
-from features.auth.routes import router as auth_router
-from features.users.routes import router as users_router
-from features.jobs.routes import router as jobs_router
-from features.candidates.routes import router as candidates_router
-from features.calls.routes import router as calls_router
-from features.validation.routes import router as validation_router
-from features.validation.consultant_profile_routes import router as consultant_profile_router
-from features.submissions.routes import router as submissions_router
-from features.dashboard.routes import router as dashboard_router
-from features.resume_extract.routes import router as resume_extract_router
-from features.jd_extract.routes import router as jd_extract_router
-from features.mails.routes import router as mails_router
-from features.clients.routes import router as clients_router
-from features.account_managers.routes import router as business_heads_router
-from features.export.routes import router as export_router
-from features.followup.routes import router as followup_router
-from features.notifications.routes import router as notifications_router
-from features.demand_status.routes import router as demand_status_router
-from features.upload.routes import router as upload_router
-from features.form_config.routes import router as form_config_router, init_form_templates
-from features.probing.routes import router as probing_router
-from features.boolean_builder.routes import router as boolean_builder_router
-from features.coo.routes import router as coo_router
-from features.pods.routes import router as pods_router
-from features.targets.routes import router as targets_router
+from features.mrr.auth.routes import router as auth_router
+from features.mrr.users.routes import router as users_router
+from features.mrr.jobs.routes import router as jobs_router
+from features.mrr.candidates.routes import router as candidates_router
+from features.mrr.calls.routes import router as calls_router
+from features.mrr.validation.routes import router as validation_router
+from features.mrr.validation.consultant_profile_routes import router as consultant_profile_router
+from features.mrr.submissions.routes import router as submissions_router
+from features.mrr.dashboard.routes import router as dashboard_router
+from features.mrr.resume_extract.routes import router as resume_extract_router
+from features.mrr.jd_extract.routes import router as jd_extract_router
+from features.mrr.mails.routes import router as mails_router
+from features.mrr.clients.routes import router as clients_router
+from features.mrr.account_managers.routes import router as business_heads_router
+from features.mrr.export.routes import router as export_router
+from features.mrr.followup.routes import router as followup_router
+from features.mrr.notifications.routes import router as notifications_router
+from features.mrr.demand_status.routes import router as demand_status_router
+from features.mrr.upload.routes import router as upload_router
+from features.mrr.form_config.routes import router as form_config_router, init_form_templates
+from features.mrr.probing.routes import router as probing_router
+from features.mrr.boolean_builder.routes import router as boolean_builder_router
+from features.mrr.coo.routes import router as coo_router
+from features.mrr.pods.routes import router as pods_router
+from features.mrr.targets.routes import router as targets_router
 from features.hrbp.router import hrbp_router
 
 from contextlib import asynccontextmanager
-from features.tasks import scheduler as task_scheduler
+from features.mrr.tasks import scheduler as task_scheduler
 
 def ensure_schema():
     """Always-on DDL: create tables/columns that must exist before any request is served.
