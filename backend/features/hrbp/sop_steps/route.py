@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -27,8 +26,8 @@ def create_sop_step(
 @router.get("")
 def list_sop_steps(
     page_no:     int            = Query(default=1,  ge=1),
-    per_page:    int            = Query(default=10, ge=1, le=100),
-    incident_id: Optional[UUID] = Query(default=None),
+    per_page:    int            = Query(default=10, ge=-1),
+    incident_id: Optional[int] = Query(default=None),
     status:      Optional[str]  = Query(default=None),
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -46,7 +45,7 @@ def list_sop_steps(
 
 @router.get("/{id}")
 def get_sop_step(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -59,7 +58,7 @@ def get_sop_step(
 
 @router.put("/{id}")
 def update_sop_step(
-    id: UUID,
+    id: int,
     payload: SopStepUpdate,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -73,7 +72,7 @@ def update_sop_step(
 
 @router.delete("/{id}")
 def delete_sop_step(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

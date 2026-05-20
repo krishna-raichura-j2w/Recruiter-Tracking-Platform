@@ -1,4 +1,3 @@
-from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPIncident
@@ -20,8 +19,8 @@ def list_paginated(
     per_page: int,
     status: str | None = None,
     risk_level: str | None = None,
-    consultant_id: UUID | None = None,
-    client_id: UUID | None = None,
+    consultant_id: int | None = None,
+    client_id: int | None = None,
 ) -> PageResult:
     q = db.query(HRBPIncident)
     if status is not None:
@@ -36,7 +35,7 @@ def list_paginated(
     return paginate(q, page_no, per_page)
 
 
-def get_by_id(db: Session, id: UUID) -> HRBPIncident:
+def get_by_id(db: Session, id: int) -> HRBPIncident:
     record = db.query(HRBPIncident).filter_by(id=id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -50,7 +49,7 @@ def get_by_ticket_ref(db: Session, ticket_ref: str) -> HRBPIncident:
     return record
 
 
-def update(db: Session, id: UUID, payload: IncidentUpdate) -> HRBPIncident:
+def update(db: Session, id: int, payload: IncidentUpdate) -> HRBPIncident:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -59,7 +58,7 @@ def update(db: Session, id: UUID, payload: IncidentUpdate) -> HRBPIncident:
     return record
 
 
-def delete(db: Session, id: UUID) -> None:
+def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()

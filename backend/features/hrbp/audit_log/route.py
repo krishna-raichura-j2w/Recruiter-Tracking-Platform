@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -13,10 +12,10 @@ router = APIRouter(prefix="/audit-log", tags=["hrbp-audit-log"])
 @router.get("")
 def list_audit_log(
     page_no:     int            = Query(default=1,  ge=1),
-    per_page:    int            = Query(default=10, ge=1, le=100),
+    per_page:    int            = Query(default=10, ge=-1),
     entity_type: Optional[str]  = Query(default=None),
-    entity_id:   Optional[UUID] = Query(default=None),
-    actor_id:    Optional[UUID] = Query(default=None),
+    entity_id:   Optional[int] = Query(default=None),
+    actor_id:    Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -33,7 +32,7 @@ def list_audit_log(
 
 @router.get("/{id}")
 def get_audit_entry(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

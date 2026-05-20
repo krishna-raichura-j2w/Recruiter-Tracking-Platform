@@ -1,177 +1,142 @@
 -- ============================================================
--- SEED: hrbp_consultants
--- 94 GEHC consultants
--- Cohort breakdown:
---   rescue         =  9
---   star           =  8
---   watch_exit     =  3
---   watch_rate_rev =  2
---   watch_general  =  5
---   high_performer = 28
---   rising         = 13
---   bedrock        = 10
---   new_joiner     = 16
--- Total = 94
--- Prerequisite: run 006_seed_hrbp_clients.sql first
+-- SEED: hrbp_clients (GE Healthcare + 3 more) + hrbp_consultants
+-- Source: GEHC_HRBP_Tracker_1.xlsx → "Consultant Performance" tab
+-- 89 unique consultants, all under GE Healthcare, all tagged to
+-- sara.thomas@joulestowatts.com (HRBP).
+-- Prerequisite: 005_seed_hrbp_users.sql
 -- ============================================================
 
 DO $$
 DECLARE
-    v_client_id UUID;
-    v_hrbp_id   UUID;
+    v_client_id  INTEGER;
+    v_hrbp_id    INTEGER;
+    v_bh_id      INTEGER;
 BEGIN
-    SELECT id INTO v_client_id
-    FROM hrbp_clients WHERE name = 'GE Healthcare' LIMIT 1;
+    SELECT id INTO v_bh_id   FROM users WHERE email = 'bollama@joulestowatts.com'          LIMIT 1;
+    SELECT id INTO v_hrbp_id FROM users WHERE email = 'sara.thomas@joulestowatts.com'       LIMIT 1;
 
-    SELECT id INTO v_hrbp_id
-    FROM users WHERE email = 'sara.thomas@joulestowatts.com' LIMIT 1;
+    -- ── Clients ──────────────────────────────────────────────
+    INSERT INTO hrbp_clients (name, industry, bh_id, hrbp_id, is_active) VALUES
+        ('GE Healthcare',    'Medical Devices',   v_bh_id, v_hrbp_id, true),
+        ('Lowes',            'Retail / E-Commerce',v_bh_id, v_hrbp_id, true),
+        ('Flipkart',         'E-Commerce',        v_bh_id, v_hrbp_id, true),
+        ('Bread Financial',  'Financial Services', v_bh_id, v_hrbp_id, true)
+    ON CONFLICT DO NOTHING;
 
+    SELECT id INTO v_client_id FROM hrbp_clients WHERE name = 'GE Healthcare' LIMIT 1;
+
+    -- ── Consultants (89 unique from spreadsheet) ─────────────
     INSERT INTO hrbp_consultants (
         emp_id, name, client_id, hrbp_id,
         manager_name, modality, skill,
         cohort, perf_tier,
         monthly_po, monthly_ctc,
         po_end_date, join_date,
-        bh_feedback, nps_score,
-        last_hike_pct, l_d_status, is_active
+        nps_score, last_hike_pct, last_hike_date,
+        l_d_status, is_active
     ) VALUES
-
-    -- =============================================
-    -- RESCUE COHORT — 9 consultants
-    -- =============================================
-    ('O36250096','Gaurav Khandelwal',      v_client_id,v_hrbp_id,'Shanthalakshmi',     'PCS',    'Automation Testing','rescue','bottom_20', 437000,328000,'2026-08-05','2025-05-01','bad',  NULL,0, 'not_started',true),
-    ('C36242615','Pratik Ghosh',           v_client_id,v_hrbp_id,'Prasad Kevin',        'Design Studio','UI Developer',   'rescue','bottom_20', 386000,290000,'2026-12-31','2025-03-01','bad',  NULL,0, 'not_started',true),
-    ('C36241753','Sushma V B',             v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'SDET',              'rescue','bottom_20', 336000,252000,'2026-12-31','2024-12-01','bad',  NULL,0, 'not_started',true),
-    ('C36237186','G R Mamatha',            v_client_id,v_hrbp_id,'Prasad Kevin',        'Design Studio','QA',            'rescue','bottom_20', 336000,252000,NULL,        '2023-01-01','bad',  NULL,3, 'not_started',true),
-    ('C36244444','Gouri Vivek Patil',      v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Java',               'rescue','bottom_20', 311000,233000,NULL,        '2025-05-01','bad',  NULL,0, 'not_started',true),
-    ('C36243721','Mohan Kumar M N',        v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Embedded C++',       'rescue','bottom_20', 263000,197000,'2026-12-31','2024-12-01','bad',  NULL,0, 'not_started',true),
-    ('C36242001','Hariom Singh',           v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Java',               'rescue','bottom_20', 235000,176000,'2027-04-01','2024-04-01','bad',  NULL,0, 'not_started',true),
-    ('C36236799','Vaishnavi R',            v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Java',               'rescue','bottom_20', 202000,151000,'2026-06-15','2022-06-01','bad',  NULL,2, 'not_started',true),
-    ('C36245001','K Hari Prasad',          v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Linux',              'rescue','bottom_20', 100000,75000, NULL,        '2025-05-01','bad',  NULL,0, 'not_started',true),
-
-    -- =============================================
-    -- STAR COHORT — 8 consultants
-    -- =============================================
-    ('C36243501','Neeraj Mehra',           v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Core Java',         'star',  'top_20',    454000,295000,'2026-08-05','2024-08-01','great',9,   0,  'enrolled',   true),
-    ('C36242301','Dev Drone Bhowmik',      v_client_id,v_hrbp_id,'Keerthi',             'Imaging','ASP.NET',           'star',  'top_20',    428000,278000,'2026-12-15','2024-05-01','great',8,   0,  'enrolled',   true),
-    ('C36241901','Kaushik Ganeshbhai Vas', v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','C++',               'star',  'top_20',    386000,251000,'2026-08-01','2023-08-01','great',9,   0,  'enrolled',   true),
-    ('C36239501','Subashchandrabose M',    v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Java',              'star',  'top_20',    311000,202000,'2026-12-31','2022-12-01','great',8,   32, 'enrolled',   true),
-    ('C36236501','Afridi Ismail Attar',    v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Java Dev',          'star',  'top_20',    294000,191000,'2027-05-01','2022-05-01','great',9,   6,  'enrolled',   true),
-    ('C36243801','Keval Mahendra Dholaki', v_client_id,v_hrbp_id,'Manoj Daniel',        'Imaging','C++',               'star',  'top_20',    286000,186000,'2026-12-31','2024-11-01','great',8,   0,  'enrolled',   true),
-    ('C36244001','Mohammad Anas',          v_client_id,v_hrbp_id,'Rashmi Prakash',      'PCS',    'Java',              'star',  'top_20',    286000,186000,'2026-12-31','2024-12-01','great',9,   0,  'enrolled',   true),
-    ('C36240501','Srinitha S',             v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Embedded',          'star',  'top_20',    294000,191000,'2026-08-12','2024-02-01','great',7,   10, 'enrolled',   true),
-
-    -- =============================================
-    -- WATCH_EXIT COHORT — 3 consultants
-    -- =============================================
-    ('C36242801','Bhabani Sankar Panigrahi',v_client_id,v_hrbp_id,'Maximus Mary',       'PCS',    'Python',            'watch_exit','mid_60', 412000,309000,'2026-06-05','2024-07-01','not_given',NULL,0, 'pending',    true),
-    ('C36239801','Badavath Prathap',       v_client_id,v_hrbp_id,'Rohith Karanavor',    'PCS',    'Application Dev',   'watch_exit','mid_60', 403000,302000,'2026-06-18','2022-06-01','not_given',NULL,0, 'pending',    true),
-    ('C36239601','Prem Kumar M',           v_client_id,v_hrbp_id,'Rohith Karanavor',    'PCS',    'Application Dev',   'watch_exit','mid_60', 395000,296000,'2026-06-19','2022-06-01','not_given',NULL,0, 'pending',    true),
-
-    -- =============================================
-    -- WATCH_RATE_REV COHORT — 2 consultants
-    -- =============================================
-    ('C36240201','Swati',                  v_client_id,v_hrbp_id,'Rajni Mishra',        'PCS',    'QA',                'watch_rate_rev','mid_60', 370000,277000,'2026-09-06','2022-09-01','not_given',5, 4,  'pending',    true),
-    ('C36241201','Chirapureddy Vijaya Bh', v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Python',            'watch_rate_rev','mid_60', 361000,270000,'2027-01-01','2023-01-01','good',     6, 0,  'pending',    true),
-
-    -- =============================================
-    -- WATCH_GENERAL COHORT — 5 consultants
-    -- =============================================
-    ('C36242101','Sunil Kumar Saini',      v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'QA Manual',         'watch_general','mid_60', 311000,233000,'2026-12-31','2024-05-01','mediocre',6, 0,  'pending',    true),
-    ('C36241401','Farheen Banu B',         v_client_id,v_hrbp_id,'Shanthalakshmi',      'PCS',    'QA',                'watch_general','mid_60', 286000,214000,'2026-12-31','2023-11-01','mediocre',6, 0,  'pending',    true),
-    ('C36240801','Akhil R',                v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Java',              'watch_general','mid_60', 252000,189000,'2026-12-31','2023-09-01','mediocre',6, 0,  'pending',    true),
-    ('C36243101','Chandrasekhar Reddy',    v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','C++',               'watch_general','mid_60', 235000,176000,'2026-12-31','2024-09-01','mediocre',6, 0,  'pending',    true),
-    ('C36241601','Chittibomma Mahesh',     v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Embedded',          'watch_general','mid_60', 219000,164000,'2026-12-31','2023-09-01','mediocre',6, 0,  'pending',    true),
-
-    -- =============================================
-    -- HIGH PERFORMER COHORT — 28 consultants
-    -- =============================================
-    ('C36238001','Ankit Kapadia',          v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Java',              'high_performer','mid_60', 336000,218000,'2026-12-31','2025-01-01','good',8,   0,  'enrolled',   true),
-    ('C36237501','Deepika Sharma',         v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Business Analyst',  'high_performer','mid_60', 320000,208000,'2026-12-31','2024-11-01','good',7,   5,  'enrolled',   true),
-    ('C36238201','Rahul Verma',            v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Python',            'high_performer','mid_60', 311000,202000,'2026-12-31','2024-06-01','good',8,   0,  'enrolled',   true),
-    ('C36238401','Priya Nair',             v_client_id,v_hrbp_id,'Keerthi',             'Imaging','ML Engineer',       'high_performer','mid_60', 303000,197000,'2026-12-31','2024-08-01','good',8,   0,  'enrolled',   true),
-    ('C36238601','Arun Kumar',             v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Java',              'high_performer','mid_60', 294000,191000,'2026-12-31','2024-03-01','good',7,   8,  'enrolled',   true),
-    ('C36238801','Sneha Patil',            v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','C++',               'high_performer','mid_60', 286000,186000,'2026-12-31','2024-05-01','good',8,   0,  'enrolled',   true),
-    ('C36239001','Vikram Singh',           v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Embedded C',        'high_performer','mid_60', 278000,181000,'2026-12-31','2024-01-01','good',7,   5,  'enrolled',   true),
-    ('C36239201','Meera Krishnan',         v_client_id,v_hrbp_id,'Rajni Mishra',        'PCS',    'Scrum Master',      'high_performer','mid_60', 270000,175000,'2026-12-31','2024-02-01','good',8,   0,  'enrolled',   true),
-    ('C36239401','Rohit Joshi',            v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','DevOps',            'high_performer','mid_60', 261000,170000,'2026-12-31','2023-10-01','good',7,   7,  'enrolled',   true),
-    ('C36240001','Kavitha R',              v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'QA Automation',     'high_performer','mid_60', 252000,164000,'2026-12-31','2023-07-01','good',8,   5,  'enrolled',   true),
-    ('C36240401','Sanjay Gupta',           v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'Java',              'high_performer','mid_60', 244000,159000,'2026-12-31','2023-08-01','good',7,   0,  'enrolled',   true),
-    ('C36240601','Divya Menon',            v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Product Owner',     'high_performer','mid_60', 336000,218000,'2026-12-31','2023-05-01','good',8,   12, 'enrolled',   true),
-    ('C36240701','Amit Sharma',            v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Salesforce',        'high_performer','mid_60', 320000,208000,'2026-12-31','2023-06-01','good',7,   8,  'enrolled',   true),
-    ('C36241001','Pooja Iyer',             v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Data Engineer',     'high_performer','mid_60', 303000,197000,'2026-12-31','2023-08-01','good',8,   0,  'enrolled',   true),
-    ('C36241101','Karthik S',              v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','C++',               'high_performer','mid_60', 294000,191000,'2026-12-31','2023-09-01','good',7,   10, 'enrolled',   true),
-    ('C36241301','Neha Kapoor',            v_client_id,v_hrbp_id,'Keerthi',             'Imaging','ASP.NET',           'high_performer','mid_60', 278000,181000,'2026-12-31','2023-11-01','good',8,   0,  'enrolled',   true),
-    ('C36241501','Suresh Babu',            v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Linux Kernel',      'high_performer','mid_60', 270000,175000,'2026-12-31','2023-09-01','good',7,   6,  'enrolled',   true),
-    ('C36241701','Ravi Teja',              v_client_id,v_hrbp_id,'Manoj Daniel',        'Imaging','Firmware',          'high_performer','mid_60', 261000,170000,'2026-12-31','2023-08-01','good',8,   0,  'enrolled',   true),
-    ('C36241801','Lakshmi Prasad',         v_client_id,v_hrbp_id,'Rajni Mishra',        'PCS',    'BA',                'high_performer','mid_60', 252000,164000,'2026-12-31','2023-07-01','good',7,   8,  'enrolled',   true),
-    ('C36242201','Santosh Kumar',          v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Java',              'high_performer','mid_60', 244000,159000,'2026-12-31','2024-04-01','good',8,   0,  'enrolled',   true),
-    ('C36242401','Bhavana S',              v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Embedded',          'high_performer','mid_60', 235000,153000,'2026-12-31','2024-04-01','good',7,   0,  'enrolled',   true),
-    ('C36242501','Manohar K',              v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'QA',                'high_performer','mid_60', 227000,148000,'2026-12-31','2024-06-01','good',8,   0,  'enrolled',   true),
-    ('C36242701','Pavithra M',             v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Python',            'high_performer','mid_60', 219000,143000,'2026-12-31','2024-07-01','good',7,   0,  'enrolled',   true),
-    ('C36242901','Harish Babu',            v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Java',              'high_performer','mid_60', 210000,137000,'2026-12-31','2024-08-01','good',8,   0,  'enrolled',   true),
-    ('C36243001','Shruti Verma',           v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','C++',               'high_performer','mid_60', 202000,131000,'2026-12-31','2024-09-01','good',7,   0,  'enrolled',   true),
-    ('C36243201','Prashanth G',            v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Java',              'high_performer','mid_60', 194000,126000,'2026-12-31','2024-10-01','good',8,   0,  'enrolled',   true),
-    ('C36243301','Vinitha R',              v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Embedded',          'high_performer','mid_60', 185000,120000,'2026-12-31','2024-11-01','good',7,   0,  'enrolled',   true),
-    ('C36243401','Kishore Kumar',          v_client_id,v_hrbp_id,'Manoj Daniel',        'Imaging','Firmware',          'high_performer','mid_60', 177000,115000,'2026-12-31','2024-12-01','good',8,   0,  'enrolled',   true),
-
-    -- =============================================
-    -- RISING COHORT — 13 consultants
-    -- =============================================
-    ('C36244101','Aishwarya K',            v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Java',              'rising','mid_60', 252000,164000,'2026-12-31','2025-01-01','good',8,   0,  'enrolled',   true),
-    ('C36244201','Tushar Mehta',           v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Python',            'rising','mid_60', 235000,153000,'2026-12-31','2025-02-01','good',7,   0,  'enrolled',   true),
-    ('C36244301','Keerthana S',            v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'QA',                'rising','mid_60', 219000,142000,'2026-12-31','2025-02-01','good',8,   0,  'enrolled',   true),
-    ('C36244501','Ranjith Kumar',          v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Embedded C++',      'rising','mid_60', 210000,137000,'2026-12-31','2025-03-01','good',7,   0,  'enrolled',   true),
-    ('C36244601','Soumya Ghosh',           v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','C++',               'rising','mid_60', 202000,131000,'2026-12-31','2025-03-01','good',8,   0,  'enrolled',   true),
-    ('C36244701','Ajay Reddy',             v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Java',              'rising','mid_60', 194000,126000,'2026-12-31','2025-04-01','good',7,   0,  'enrolled',   true),
-    ('C36244801','Preethi Nair',           v_client_id,v_hrbp_id,'Rajni Mishra',        'PCS',    'Scrum',             'rising','mid_60', 185000,120000,'2026-12-31','2025-04-01','good',8,   0,  'enrolled',   true),
-    ('C36244901','Ramesh S',               v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Salesforce',        'rising','mid_60', 177000,115000,'2026-12-31','2025-04-01','good',7,   0,  'enrolled',   true),
-    ('C36245101','Sunita Kumari',          v_client_id,v_hrbp_id,'Keerthi',             'Imaging','DevOps',            'rising','mid_60', 168000,109000,'2026-12-31','2025-05-01','good',8,   0,  'enrolled',   true),
-    ('C36245201','Arjun Pillai',           v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Linux',             'rising','mid_60', 160000,104000,'2026-12-31','2025-05-01','good',7,   0,  'enrolled',   true),
-    ('C36245301','Vidya Lakshmi',          v_client_id,v_hrbp_id,'Manoj Daniel',        'Imaging','Firmware',          'rising','mid_60', 152000,99000, '2026-12-31','2025-05-01','good',8,   0,  'enrolled',   true),
-    ('C36245401','Naveen Raj',             v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Java',              'rising','mid_60', 143000,93000, '2026-12-31','2025-05-01','good',7,   0,  'enrolled',   true),
-    ('C36245501','Pallavi Singh',          v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Embedded',          'rising','mid_60', 135000,88000, '2026-12-31','2025-05-01','good',8,   0,  'enrolled',   true),
-
-    -- =============================================
-    -- BEDROCK COHORT — 10 consultants
-    -- =============================================
-    ('C36235001','V Sudhakar',             v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Java',              'bedrock','mid_60', 311000,202000,'2026-12-31','2021-06-01','good',7,   15, 'completed',  true),
-    ('C36235201','Mahesh R',               v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Python',            'bedrock','mid_60', 294000,191000,'2026-12-31','2021-08-01','good',7,   12, 'completed',  true),
-    ('C36235401','Ramya S',                v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'QA',                'bedrock','mid_60', 278000,181000,'2026-12-31','2021-10-01','good',8,   10, 'completed',  true),
-    ('C36235601','Ganesh Kumar',           v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','C++',               'bedrock','mid_60', 261000,170000,'2026-12-31','2021-12-01','good',7,   8,  'completed',  true),
-    ('C36235801','Jayanthi K',             v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','Embedded',          'bedrock','mid_60', 244000,159000,'2026-12-31','2022-01-01','good',8,   8,  'completed',  true),
-    ('C36236001','Muthukumar P',           v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Java',              'bedrock','mid_60', 227000,148000,'2026-12-31','2022-02-01','good',7,   6,  'completed',  true),
-    ('C36236201','Saravanan R',            v_client_id,v_hrbp_id,'Manoj Daniel',        'Imaging','Linux',             'bedrock','mid_60', 210000,137000,'2026-12-31','2022-03-01','good',8,   6,  'completed',  true),
-    ('C36236401','Usha Rani',              v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'QA Manual',         'bedrock','mid_60', 194000,126000,'2026-12-31','2022-04-01','good',7,   5,  'completed',  true),
-    ('C36236601','Venkatesh N',            v_client_id,v_hrbp_id,'Rajni Mishra',        'PCS',    'BA',                'bedrock','mid_60', 177000,115000,'2026-12-31','2022-05-01','good',8,   5,  'completed',  true),
-    ('C36236801','Yogesh P',               v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','Firmware',          'bedrock','mid_60', 168000,109000,'2026-12-31','2022-06-01','good',7,   4,  'completed',  true),
-
-    -- =============================================
-    -- NEW JOINER COHORT — 16 consultants
-    -- =============================================
-    ('C36246001','Aarav Mehta',            v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Java',              'new_joiner','unrated', 252000,164000,'2026-12-31','2025-04-01', 'not_given',NULL,0,'not_started',true),
-    ('C36246101','Priyanka Das',           v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Python',            'new_joiner','unrated', 235000,153000,'2026-12-31','2025-04-01', 'not_given',NULL,0,'not_started',true),
-    ('C36246201','Vivek Anand',            v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Salesforce',        'new_joiner','unrated', 219000,142000,'2026-12-31','2025-04-15','not_given',NULL,0,'not_started',true),
-    ('C36246301','Shreya Jain',            v_client_id,v_hrbp_id,'Keerthi',             'Imaging','ML Engineer',       'new_joiner','unrated', 303000,197000,'2026-12-31','2025-04-15','not_given',NULL,0,'not_started',true),
-    ('C36246401','Rohan Pillai',           v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','Java',              'new_joiner','unrated', 202000,131000,'2026-12-31','2025-04-20','not_given',NULL,0,'not_started',true),
-    ('C36246501','Ananya Rao',             v_client_id,v_hrbp_id,'Kranthi A',           'Imaging','C++',               'new_joiner','unrated', 185000,120000,'2026-12-31','2025-04-20','not_given',NULL,0,'not_started',true),
-    ('C36246601','Kiran Kumar B',          v_client_id,v_hrbp_id,'Shravan Boppanna',    'Imaging','Embedded',          'new_joiner','unrated', 168000,109000,'2026-12-31','2025-05-01', 'not_given',NULL,0,'not_started',true),
-    ('C36246701','Divyanshu Tiwari',       v_client_id,v_hrbp_id,'Rajni Mishra',        'PCS',    'QA',                'new_joiner','unrated', 160000,104000,'2026-12-31','2025-05-01', 'not_given',NULL,0,'not_started',true),
-    ('C36246801','Nandini Bose',           v_client_id,v_hrbp_id,'Lokesh Shanbhag',     'PCS',    'BA',                'new_joiner','unrated', 244000,159000,'2026-12-31','2025-05-05','not_given',NULL,0,'not_started',true),
-    ('C36246901','Abhishek Sinha',         v_client_id,v_hrbp_id,'Sumit Sinha',         'Imaging','DevOps',            'new_joiner','unrated', 227000,148000,'2026-12-31','2025-05-05','not_given',NULL,0,'not_started',true),
-    ('C36247001','Tanvi Shah',             v_client_id,v_hrbp_id,'Manoj Daniel',        'Imaging','Firmware',          'new_joiner','unrated', 210000,137000,'2026-12-31','2025-05-08','not_given',NULL,0,'not_started',true),
-    ('C36247101','Harshit Goel',           v_client_id,v_hrbp_id,'Rajnish Singhal',     'PCS',    'Java',              'new_joiner','unrated', 194000,126000,'2026-12-31','2025-05-08','not_given',NULL,0,'not_started',true),
-    ('C36247201','Swapna Reddy',           v_client_id,v_hrbp_id,'Maximus Mary',        'PCS',    'Python',            'new_joiner','unrated', 177000,115000,'2026-12-31','2025-05-10','not_given',NULL,0,'not_started',true),
-    ('C36247301','Bharat Patel',           v_client_id,v_hrbp_id,'Prakash Borah',       'Imaging','C++',               'new_joiner','unrated', 160000,104000,'2026-12-31','2025-05-10','not_given',NULL,0,'not_started',true),
-    ('C36247401','Ishaan Chandra',         v_client_id,v_hrbp_id,'Aashish Desai',       'SEI',    'Salesforce',        'new_joiner','unrated', 252000,164000,'2026-12-31','2025-05-12','not_given',NULL,0,'not_started',true),
-    ('C36247501','Lavanya M',              v_client_id,v_hrbp_id,'Keerthi',             'Imaging','ML Engineer',       'new_joiner','unrated', 286000,186000,'2026-12-31','2025-05-12','not_given',NULL,0,'not_started',true)
-
+    -- RESCUE (9)
+    ('C362801','Gaurav Khandelwal',         v_client_id,v_hrbp_id,'Shanthalakshmi',         'PCS',          'Automation Testing',     'rescue',          'bottom_20', 436800,318864,'2026-08-06','2025-05-20',NULL,  NULL, NULL,         'not_started',true),
+    ('C362802','Pratik Ghosh',              v_client_id,v_hrbp_id,'Prasad / Kevin',          'Design Studio','UI Developer',           'rescue',          'bottom_20', 386400,282072,'2027-01-06','2025-03-20',NULL,  NULL, NULL,         'not_started',true),
+    ('C362803','Sushma V B',               v_client_id,v_hrbp_id,'Lokesh Shanbhag',         'PCS',          'SDET',                   'rescue',          'bottom_20', 336000,245280,'2027-01-06','2024-12-20',NULL,  NULL, NULL,         'not_started',true),
+    ('C362804','G R Mamatha',              v_client_id,v_hrbp_id,'Prasad / Kevin',          'Design Studio','QA',                     'rescue',          'bottom_20', 336000,245280,NULL,        '2023-05-20',NULL,  3.0,  '2024-11-20', 'not_started',true),
+    ('C362805','Gouri Vivek Patil',        v_client_id,v_hrbp_id,'Prakash Borah',           'Imaging',      'Java',                   'rescue',          'bottom_20', 310800,226884,NULL,        '2026-05-01',NULL,  NULL, NULL,         'not_started',true),
+    ('C362806','Mohan Kumar M N',          v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'Embedded C++',           'rescue',          'bottom_20', 263424,192299,'2027-01-06','2025-12-20',NULL,  NULL, NULL,         'not_started',true),
+    ('C362807','Hariom Singh',             v_client_id,v_hrbp_id,'Shravan Boppanna',        'Imaging',      'Java',                   'rescue',          'bottom_20', 235200,171696,'2027-04-06','2025-04-20',NULL,  NULL, NULL,         'not_started',true),
+    ('C362808','Vaishnavi R',              v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'Java',                   'rescue',          'bottom_20', 201600,147168,'2026-07-06','2023-06-20',NULL,  2.0,  '2024-12-20', 'not_started',true),
+    ('C362809','K Hari Prasad',            v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'Linux',                  'rescue',          'bottom_20', 100000,73000, NULL,        '2026-05-01',NULL,  NULL, NULL,         'not_started',true),
+    -- NEW JOINER (17)
+    ('C362810','Ankit Kapadia',            v_client_id,v_hrbp_id,'Ananth V',                'Imaging',      'HL7',                    'new_joiner',      'mid_60',    487200,355656,'2027-04-06','2026-03-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362811','Harisha D M',              v_client_id,v_hrbp_id,'Rithesh Sridhar',         'STO',          'QA Automation',          'new_joiner',      'unrated',   470400,343392,'2027-02-06','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362816','Kanak Ranjan',             v_client_id,v_hrbp_id,'Aradhya Sreeshly',        'SEI',          'UI Developer',           'new_joiner',      'mid_60',    428400,312732,'2027-01-06','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362827','Vatsalya S',               v_client_id,v_hrbp_id,'Aradhya Sreeshly',        'SEI',          'Technical Writer',       'new_joiner',      'mid_60',    369600,269808,'2027-01-06','2026-03-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362835','Karthik M',               v_client_id,v_hrbp_id,'Rithesh Sridhar',         'STO',          'QA Automation',          'new_joiner',      'unrated',   319200,233016,'2027-02-24','2026-03-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362838','Mula Sreedhar Reddy',      v_client_id,v_hrbp_id,'Prakash Borah',           'Imaging',      'Java',                   'new_joiner',      'mid_60',    310800,226884,NULL,        '2026-05-01',NULL,  NULL, NULL,         'pending',    true),
+    ('C362841','Anurag Pandey',            v_client_id,v_hrbp_id,'Rithesh Sridhar',         'STO',          'AI Engineer',            'new_joiner',      'mid_60',    310800,226884,'2027-04-06','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362847','Meghana Reddy B',          v_client_id,v_hrbp_id,'Nishant Ranjan',          'Imaging',      'Angular',                'new_joiner',      'mid_60',    268800,196224,'2027-02-06','2026-03-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362848','Tarigonda Sravani',        v_client_id,v_hrbp_id,'Gangavarupu Chandra',     'Imaging',      'C++',                    'new_joiner',      'unrated',   268800,196224,'2027-01-06','2026-03-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362850','Raj Abhishek',             v_client_id,v_hrbp_id,'Soumik',                  'SEI',          'Network Security',       'new_joiner',      'mid_60',    268800,196224,'2027-03-28','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362852','Srinivasan Manokaran',     v_client_id,v_hrbp_id,'Maximus Mary',            'PCS',          'Automation Testing',     'new_joiner',      'unrated',   252000,183960,'2027-01-21','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362854','Kavya K',                  v_client_id,v_hrbp_id,'Anantha Krishna',         'Imaging',      'AI Engineer',            'new_joiner',      'mid_60',    201600,147168,'2026-07-06','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362857','Sharad S Chavan',          v_client_id,v_hrbp_id,'Mahendra Yewale',         'PCS',          'EMI/EMC',                'new_joiner',      'unrated',   NULL,  NULL,  '2026-09-06','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362876','Malasani Raykanth Reddy',  v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'C++',                    'new_joiner',      'mid_60',    235200,171696,'2027-02-10','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    ('C362888','Arindam Dutta',            v_client_id,v_hrbp_id,'Rithesh Sridhar',         'STO',          'UI Developer',           'new_joiner',      'mid_60',    NULL,  NULL,  '2027-05-06','2026-05-01',NULL,  NULL, NULL,         'pending',    true),
+    ('C362889','Varshith Vijaykumar',      v_client_id,v_hrbp_id,'Rithesh Sridhar',         'STO',          'AI Fullstack Dev',       'new_joiner',      'mid_60',    NULL,  NULL,  '2027-04-06','2026-04-20',NULL,  NULL, NULL,         'pending',    true),
+    -- STAR (8)
+    ('C362812','Neeraj Mehra',             v_client_id,v_hrbp_id,'Maximus Mary',            'PCS',          'Core Java',              'star',            'top_20',    453600,331128,'2026-08-06','2025-08-20',9,     NULL, NULL,         'enrolled',   true),
+    ('C362815','Dev Drone Bhowmik',        v_client_id,v_hrbp_id,'Keerthi',                 'Imaging',      'ASP.NET',                'star',            'top_20',    428400,312732,'2027-01-02','2025-05-20',9,     NULL, NULL,         'enrolled',   true),
+    ('C362821','Kaushik Ganeshbhai Vasava',v_client_id,v_hrbp_id,'Kranthi A',               'Imaging',      'C++',                    'star',            'top_20',    386400,282072,'2026-07-31','2024-11-20',9,     NULL, NULL,         'enrolled',   true),
+    ('C362843','Keval Mahendra Dholakia',  v_client_id,v_hrbp_id,'Manoj Daniel',            'Imaging',      'C++',                    'star',            'top_20',    285600,208488,'2027-01-06','2025-11-20',9,     NULL, NULL,         'enrolled',   true),
+    ('C362845','Mohammad Anas',            v_client_id,v_hrbp_id,'Rashmi Prakash',          'PCS',          'Java',                   'star',            'top_20',    285600,208488,'2027-01-06','2025-12-20',9,     NULL, NULL,         'enrolled',   true),
+    ('C362856','Srinitha S',               v_client_id,v_hrbp_id,'Rajnish Singhal',         'PCS',          'Embedded',               'star',            'top_20',    294000,214620,'2026-08-27','2024-10-20',9,     10.0, '2025-08-20', 'enrolled',   true),
+    ('C362868','Subashchandrabose M',      v_client_id,v_hrbp_id,'Aashish Desai',           'SEI',          'Java',                   'star',            'top_20',    310800,226884,'2027-01-06','2024-04-20',9,     32.0, '2025-05-20', 'enrolled',   true),
+    ('C362870','Afridi Ismail Attar',      v_client_id,v_hrbp_id,'Rajnish Singhal',         'PCS',          'Java Development',       'star',            'top_20',    294000,214620,'2027-07-06','2023-06-20',9,     6.0,  '2024-12-20', 'enrolled',   true),
+    -- HIGH PERFORMER (24)
+    ('C362813','Veeresh Kaladagi',         v_client_id,v_hrbp_id,'Rashmi Prakash',          'PCS',          'Java',                   'high_performer',  'top_20',    441667,322416,'2027-01-06','2025-12-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362814','Anjaly C Gopi',            v_client_id,v_hrbp_id,'Kranthi A',               'Imaging',      'C++',                    'high_performer',  'top_20',    436800,318864,'2026-07-31','2025-10-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362822','Dhananjaya B N',           v_client_id,v_hrbp_id,'Saptorishi Kar',          'PCS',          'Automation (Load)',      'high_performer',  'top_20',    386400,282072,'2027-01-06','2024-07-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362823','Rintu Sahu',               v_client_id,v_hrbp_id,'Vidyashree Urs',          'PCS',          'Network Security',       'high_performer',  'top_20',    386400,282072,'2027-01-06','2024-12-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362831','Siva Prasad Peruri',       v_client_id,v_hrbp_id,'Shivashankar Ganesan',    'SEI',          '.NET',                   'high_performer',  'top_20',    336000,245280,'2027-01-06','2025-09-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362832','Sanjay S',                 v_client_id,v_hrbp_id,'Rohith Karanavor',        'PCS',          'DevOps Engineering',     'high_performer',  'top_20',    336000,245280,'2027-01-06','2023-07-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362839','Akshay Shetty',            v_client_id,v_hrbp_id,'Prakash Borah',           'Imaging',      'Java',                   'high_performer',  'top_20',    310800,226884,'2027-01-06','2025-11-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362853','Pulicherla Somasekhar',    v_client_id,v_hrbp_id,'Sowmik',                  'Imaging',      'Java',                   'high_performer',  'top_20',    230000,167900,'2026-08-06','2024-08-20',8,     21.0, '2025-07-20', 'enrolled',   true),
+    ('C362855','Likith Krishna S G',       v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'C++',                    'high_performer',  'top_20',    125000,91250, '2026-07-06','2025-07-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362861','Ajay Gupta',               v_client_id,v_hrbp_id,'Balaji Sundaresan',       'STO',          'Backend Development',    'high_performer',  'top_20',    386400,282072,'2027-01-06','2023-05-20',8,     8.0,  '2024-11-20', 'enrolled',   true),
+    ('C362862','Nalinikanta Sahoo',        v_client_id,v_hrbp_id,'Mahesh Bhuvanagiri',      'Imaging',      'Java',                   'high_performer',  'top_20',    350000,255500,'2027-03-06','2023-12-20',8,     6.0,  '2025-03-20', 'enrolled',   true),
+    ('C362864','Srikanth Vejandla',        v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'Linux',                  'high_performer',  'top_20',    336000,245280,'2027-02-06','2022-09-20',8,     25.0, '2024-07-20', 'enrolled',   true),
+    ('C362866','Mahmadmustafa M Kaladagi', v_client_id,v_hrbp_id,'Lokesh Shanbhag',         'PCS',          'Angular',                'high_performer',  'top_20',    336000,245280,'2027-01-06','2024-07-20',8,     5.0,  '2025-06-20', 'enrolled',   true),
+    ('C362869','Praveen K',                v_client_id,v_hrbp_id,'Aashish Desai',           'SEI',          'DevOps Engineering',     'high_performer',  'top_20',    302400,220752,NULL,        '2023-05-20',8,     10.0, '2024-11-20', 'enrolled',   true),
+    ('C362871','Bhutkuri Jyothi',          v_client_id,v_hrbp_id,'Manoj Daniel',            'Imaging',      'C++',                    'high_performer',  'top_20',    285600,208488,'2027-01-06','2024-05-20',8,     5.0,  '2025-05-20', 'enrolled',   true),
+    ('C362872','Shakti Prasad Behura',     v_client_id,v_hrbp_id,'Madhusudan Kanna',        'Imaging',      'Java',                   'high_performer',  'top_20',    252000,183960,'2027-01-06','2024-10-20',8,     4.0,  '2025-08-20', 'enrolled',   true),
+    ('C362873','Ragaventhran A',           v_client_id,v_hrbp_id,'Madhusudan Kanna',        'Imaging',      'TypeScript',             'high_performer',  'top_20',    250000,182500,'2027-01-06','2024-12-20',8,     4.0,  '2025-09-20', 'enrolled',   true),
+    ('C362880','Akash Kumar Gupta',        v_client_id,v_hrbp_id,'Madhusudan Kanna',        'Imaging',      'Automation Testing',     'high_performer',  'top_20',    201000,146730,'2027-01-06','2025-07-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362881','Syed Shah Faisal',         v_client_id,v_hrbp_id,'Mahesh Bhuvanagiri',      'Imaging',      'Java',                   'high_performer',  'top_20',    201000,146730,'2027-03-06','2025-03-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362883','Anil Kumar Reddy S',       v_client_id,v_hrbp_id,'Srinath Acharya',         'PCS',          'Java',                   'high_performer',  'top_20',    169720,123895,'2027-04-06','2024-12-20',8,     NULL, NULL,         'enrolled',   true),
+    ('C362884','Subham Singh',             v_client_id,v_hrbp_id,'Srinath Acharya',         'PCS',          'Python',                 'high_performer',  'top_20',    169720,123895,'2027-04-06','2024-12-20',8,     5.0,  '2025-09-20', 'enrolled',   true),
+    ('C362885','Ankit Kumar',              v_client_id,v_hrbp_id,'Mahesh Bhuvanagiri',      'Imaging',      'Java',                   'high_performer',  'top_20',    157600,115048,NULL,        '2024-06-20',8,     33.0, '2025-06-20', 'enrolled',   true),
+    ('C362886','Amarendra Tripathi',       v_client_id,v_hrbp_id,'Nirmala',                 'Imaging',      'C++',                    'high_performer',  'top_20',    151200,110376,'2027-01-06','2026-01-20',8,     NULL, NULL,         'enrolled',   true),
+    -- WATCH — EXIT RISK (4)
+    ('C362819','Bhabani Sankar Panigrahi', v_client_id,v_hrbp_id,'Maximus Mary',            'PCS',          'Python',                 'watch_exit',      'mid_60',    411600,300468,'2026-06-06','2025-07-20',6,     NULL, NULL,         'pending',    true),
+    ('C362820','Badavath Prathap',         v_client_id,v_hrbp_id,'Rohith Karanavor',        'PCS',          'Application Dev',        'watch_exit',      'mid_60',    403200,294336,'2026-06-19','2024-09-20',6,     NULL, NULL,         'pending',    true),
+    ('C362826','Swati',                    v_client_id,v_hrbp_id,'Rajni Mishra',            'PCS',          'QA',                     'watch_exit',      'mid_60',    370000,270100,'2026-09-06','2024-09-20',6,     4.0,  '2025-07-20', 'pending',    true),
+    ('C362828','Prem Kumar M',             v_client_id,v_hrbp_id,'Namrata Mishra',          'Imaging',      'Python',                 'watch_exit',      'unrated',   362208,264411,'2026-06-20','2025-07-20',6,     NULL, NULL,         'pending',    true),
+    -- WATCH — RATE REV (3)
+    ('C362817','Chirapureddy Vijaya Bhaskar',v_client_id,v_hrbp_id,'Sumit Sinha',           'Imaging',      'C++',                    'watch_rate_rev',  'mid_60',    420000,306600,'2026-12-10','2025-02-20',6,     NULL, NULL,         'pending',    true),
+    ('C362830','Vamshi Krishna',           v_client_id,v_hrbp_id,'Madhusudan Kanna',        'Imaging',      'Python',                 'watch_rate_rev',  'mid_60',    336000,245280,'2027-01-06','2022-08-20',6,     NULL, NULL,         'pending',    true),
+    ('C362833','Panchani Jaydeep Kishorchandra',v_client_id,v_hrbp_id,'Gopalkrishna',       'PCS',          'AWS',                    'watch_rate_rev',  'mid_60',    336000,245280,'2027-01-06','2025-04-20',6,     NULL, NULL,         'pending',    true),
+    -- WATCH — GENERAL (3)
+    ('C362818','Veeresh Hiremath',         v_client_id,v_hrbp_id,'Aashish Desai',           'SEI',          'Performance Testing',    'watch_general',   'unrated',   420000,306600,'2027-01-06','2025-05-20',5,     NULL, NULL,         'pending',    true),
+    ('C362836','Adarsha S',               v_client_id,v_hrbp_id,'Abul Fazal',              'Cyber',        'Cybersecurity',          'watch_general',   'unrated',   319200,233016,'2027-02-06','2026-02-20',5,     NULL, NULL,         'pending',    true),
+    ('C362837','Guru Basavaraj B V',       v_client_id,v_hrbp_id,'Abul Fazal',              'Cyber',        'Cybersecurity',          'watch_general',   'unrated',   319200,233016,'2027-02-06','2026-02-20',5,     NULL, NULL,         'pending',    true),
+    -- RISING (12)
+    ('C362825','Amit Arun Patil',          v_client_id,v_hrbp_id,'Prasad / Kevin',          'Design Studio','React.js',               'rising',          'mid_60',    386400,282072,'2027-01-06','2025-08-20',7,     NULL, NULL,         'pending',    true),
+    ('C362829','Kumar Charan Swain',       v_client_id,v_hrbp_id,'Gangavarupu Chandra',     'Imaging',      'Java',                   'rising',          'mid_60',    341666,249416,'2027-01-06','2025-10-20',7,     NULL, NULL,         'pending',    true),
+    ('C362840','Basavaraj Chougala',       v_client_id,v_hrbp_id,'Ravindra Rathi',          'Imaging',      'Angular',                'rising',          'mid_60',    310800,226884,'2027-02-06','2025-10-20',7,     NULL, NULL,         'pending',    true),
+    ('C362844','Indirajith S',             v_client_id,v_hrbp_id,'Rithesh Sridhar',         'STO',          'AI Engineer',            'rising',          'mid_60',    285600,208488,'2027-04-06','2025-06-20',7,     NULL, NULL,         'pending',    true),
+    ('C362846','K Ashok',                  v_client_id,v_hrbp_id,'Anantha Krishna',         'Imaging',      'Angular',                'rising',          'mid_60',    275000,200750,'2026-10-06','2025-09-20',7,     NULL, NULL,         'pending',    true),
+    ('C362851','Aruna L K',                v_client_id,v_hrbp_id,'Shanthalakshmi',          'PCS',          'DevOps Engineering',     'rising',          'mid_60',    263424,192299,'2027-01-06','2025-06-20',7,     NULL, NULL,         'pending',    true),
+    ('C362874','Shruthi H R',              v_client_id,v_hrbp_id,'Aravinda H B',            'PCS',          'DevOps Engineering',     'rising',          'mid_60',    250000,182500,'2027-01-06','2026-01-20',7,     NULL, NULL,         'pending',    true),
+    ('C362875','Chethan M P',              v_client_id,v_hrbp_id,'Aravinda H B',            'PCS',          'DevOps Engineering',     'rising',          'mid_60',    250000,182500,'2027-01-06','2026-01-20',7,     NULL, NULL,         'pending',    true),
+    ('C362877','Praveen Malakapure',       v_client_id,v_hrbp_id,'Manoj Daniel',            'Imaging',      'C++',                    'rising',          'mid_60',    214032,156243,'2027-01-06','2026-02-20',7,     NULL, NULL,         'pending',    true),
+    ('C362878','Ekta Sharma',              v_client_id,v_hrbp_id,'Manoj Daniel',            'Imaging',      'C++',                    'rising',          'mid_60',    214032,156243,'2027-01-06','2025-11-20',7,     NULL, NULL,         'pending',    true),
+    ('C362879','Kushal Raj',               v_client_id,v_hrbp_id,'Prakash Borah',           'Imaging',      'Java',                   'rising',          'mid_60',    201600,147168,'2027-03-06','2025-07-20',7,     NULL, NULL,         'pending',    true),
+    ('C362882','Srikanth P',               v_client_id,v_hrbp_id,'Balamurugan',             'SEI',          'Core Java',              'rising',          'mid_60',    200000,146000,'2027-01-06','2025-08-20',7,     NULL, NULL,         'pending',    true),
+    ('C362887','Ritika Putlur Dhanaraj',   v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'C++',                    'rising',          'mid_60',     60000, 43800,'2027-02-06','2026-02-20',7,     NULL, NULL,         'pending',    true),
+    -- BEDROCK (10)
+    ('C362824','Anindita Bhattacharyya',   v_client_id,v_hrbp_id,'Prasad / Kevin',          'Design Studio','Product Owner',          'bedrock',         'mid_60',    386400,282072,'2027-01-06','2025-05-20',7,     NULL, NULL,         'pending',    true),
+    ('C362834','Kiran Mohan',              v_client_id,v_hrbp_id,'Abul Fazal',              'Cyber',        'Python',                 'bedrock',         'mid_60',    327600,239148,'2026-10-06','2024-09-20',7,     3.0,  '2025-07-20', 'pending',    true),
+    ('C362842','Yarrasani Venkatesh Yadav',v_client_id,v_hrbp_id,'Sumit Sinha',             'Imaging',      'Linux',                  'bedrock',         'mid_60',    302400,220752,'2026-11-06','2023-08-20',7,     5.0,  '2025-01-20', 'pending',    true),
+    ('C362849','Sajjanapu Sujith',         v_client_id,v_hrbp_id,'Aashish Desai',           'SEI',          'JMeter',                 'bedrock',         'mid_60',    268800,196224,'2027-01-06','2025-05-20',7,     NULL, NULL,         'pending',    true),
+    ('C362858','Thejaswi S',               v_client_id,v_hrbp_id,'Ranganath Halegowda',     'Imaging',      'DevOps Engineering',     'bedrock',         'mid_60',    436800,318864,'2027-01-06','2024-12-20',7,     4.0,  '2025-09-20', 'pending',    true),
+    ('C362859','Aditya Kumar',             v_client_id,v_hrbp_id,'Ravindra Rathi',          'Imaging',      'Golang',                 'bedrock',         'mid_60',    386400,282072,'2027-03-06','2024-01-20',7,     5.0,  '2025-03-20', 'pending',    true),
+    ('C362860','Yasmin Dhal',              v_client_id,v_hrbp_id,'Ravindra Rathi',          'Imaging',      'Golang',                 'bedrock',         'mid_60',    386400,282072,'2027-01-06','2024-02-20',7,     5.0,  '2025-04-20', 'pending',    true),
+    ('C362863','V Sudhakar',               v_client_id,v_hrbp_id,'Gangavarupu Chandra',     'Imaging',      'Java',                   'bedrock',         'mid_60',    341666,249416,'2027-01-06','2025-02-20',7,     1.0,  '2025-10-20', 'pending',    true),
+    ('C362865','Lohith Kumar R',           v_client_id,v_hrbp_id,'Aashish Desai',           'SEI',          'Angular',                'bedrock',         'mid_60',    336000,245280,'2027-01-06','2022-12-20',7,     16.0, '2024-09-20', 'pending',    true),
+    ('C362867','Narashimha Reddy P',       v_client_id,v_hrbp_id,'Prakash Borah',           'Imaging',      'Java',                   'bedrock',         'mid_60',    310800,226884,'2027-01-06','2023-04-20',7,     8.0,  '2024-11-20', 'pending',    true)
     ON CONFLICT (emp_id) DO NOTHING;
 
 END $$;
 
--- Verify counts by cohort
-SELECT cohort, COUNT(*) AS total
-FROM hrbp_consultants
-GROUP BY cohort
-ORDER BY cohort;
+-- Verify
+SELECT cohort, COUNT(*) AS total FROM hrbp_consultants GROUP BY cohort ORDER BY cohort;
+SELECT name, industry, is_active FROM hrbp_clients ORDER BY name;

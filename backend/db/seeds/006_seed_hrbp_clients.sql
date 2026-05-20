@@ -1,43 +1,38 @@
 -- ============================================================
--- SEED: hrbp_clients
--- Prerequisite: run 003_fix_hrbp_user_fks.sql and 005_seed_hrbp_users.sql first
--- Uses DELETE + INSERT so bh_id/hrbp_id are always populated with
--- real integer user IDs on every run.
+-- SEED: users (additional HRBP/BH) + hrbp_clients
+-- Prerequisite: 000_create_all_localhost.sql
 -- ============================================================
 
-DELETE FROM hrbp_clients
-WHERE name IN ('GE Healthcare','Deloitte','Boston Scientific','Accenture');
-
-INSERT INTO hrbp_clients (name, industry, bh_id, hrbp_id, is_active)
+-- Users (no id column — SERIAL auto-assigns)
+INSERT INTO users (name, email, password_hash, role, is_active, must_change_password)
 VALUES
-(
-    'GE Healthcare',
-    'Medical Devices',
-    (SELECT id FROM users WHERE email = 'bollama@joulestowatts.com'),
-    (SELECT id FROM users WHERE email = 'sara.thomas@joulestowatts.com'),
+  ('Priya Sharma', 'priya.sharma@j2w.com', crypt('Hrbp@1234', gen_salt('bf')), 'hrbp', true, false),
+  ('Arjun Mehta',  'arjun.mehta@j2w.com',  crypt('Hrbp@1234', gen_salt('bf')), 'hrbp', true, false),
+  ('Sneha Kapoor', 'sneha.kapoor@j2w.com',  crypt('Hrbp@1234', gen_salt('bf')), 'bh',  true, false),
+  ('Ravi Nair',    'ravi.nair@j2w.com',     crypt('Hrbp@1234', gen_salt('bf')), 'bh',  true, false)
+ON CONFLICT (email) DO NOTHING;
+
+-- Clients (no id column — GENERATED ALWAYS AS IDENTITY)
+INSERT INTO hrbp_clients (name, industry, hrbp_id, bh_id, is_active)
+VALUES
+  (
+    'TechCorp Solutions', 'IT Services',
+    (SELECT id FROM users WHERE email = 'priya.sharma@j2w.com'),
+    (SELECT id FROM users WHERE email = 'sneha.kapoor@j2w.com'),
     true
-),
-(
-    'Deloitte',
-    'Consulting',
-    (SELECT id FROM users WHERE email = 'bollama@joulestowatts.com'),
-    (SELECT id FROM users WHERE email = 'sara.thomas@joulestowatts.com'),
-    false
-),
-(
-    'Boston Scientific',
-    'Medical Devices',
-    (SELECT id FROM users WHERE email = 'bollama@joulestowatts.com'),
-    (SELECT id FROM users WHERE email = 'sara.thomas@joulestowatts.com'),
-    false
-),
-(
-    'Accenture',
-    'IT Services',
-    (SELECT id FROM users WHERE email = 'bollama@joulestowatts.com'),
-    (SELECT id FROM users WHERE email = 'sara.thomas@joulestowatts.com'),
-    false
-);
+  ),
+  (
+    'FinServe Global', 'Banking & Finance',
+    (SELECT id FROM users WHERE email = 'arjun.mehta@j2w.com'),
+    (SELECT id FROM users WHERE email = 'ravi.nair@j2w.com'),
+    true
+  )
+ON CONFLICT DO NOTHING;
 
 -- Verify
-SELECT id, name, industry, bh_id, hrbp_id, is_active FROM hrbp_clients ORDER BY name;
+SELECT id, name, email, role FROM users
+WHERE email IN ('priya.sharma@j2w.com','arjun.mehta@j2w.com','sneha.kapoor@j2w.com','ravi.nair@j2w.com')
+ORDER BY role, name;
+
+SELECT id, name, industry, hrbp_id, bh_id, is_active FROM hrbp_clients
+WHERE name IN ('TechCorp Solutions','FinServe Global');

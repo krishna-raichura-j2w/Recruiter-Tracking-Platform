@@ -27,7 +27,7 @@ def create_template(
 @router.get("")
 def list_templates(
     page_no: int = Query(default=1, ge=1),
-    per_page: int = Query(default=10, ge=1, le=100),
+    per_page: int = Query(default=10, ge=-1),
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):

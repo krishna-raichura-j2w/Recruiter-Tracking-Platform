@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Literal, Optional
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -27,7 +26,7 @@ class KraDefinitionUpdate(BaseModel):
 
 
 class KraDefinitionResponse(BaseModel):
-    id:                  UUID
+    id:                  int
     kra_code:            str
     name:                str
     description:         Optional[str]

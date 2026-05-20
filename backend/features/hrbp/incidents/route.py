@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -27,11 +26,11 @@ def create_incident(
 @router.get("")
 def list_incidents(
     page_no:       int            = Query(default=1,   ge=1),
-    per_page:      int            = Query(default=10,  ge=1, le=100),
+    per_page:      int            = Query(default=10, ge=-1),
     status:        Optional[str]  = Query(default=None),
     risk_level:    Optional[str]  = Query(default=None),
-    consultant_id: Optional[UUID] = Query(default=None),
-    client_id:     Optional[UUID] = Query(default=None),
+    consultant_id: Optional[int] = Query(default=None),
+    client_id:     Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -61,7 +60,7 @@ def get_incident_by_ticket(
 
 @router.get("/{id}")
 def get_incident(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -74,7 +73,7 @@ def get_incident(
 
 @router.put("/{id}")
 def update_incident(
-    id: UUID,
+    id: int,
     payload: IncidentUpdate,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -88,7 +87,7 @@ def update_incident(
 
 @router.delete("/{id}")
 def delete_incident(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

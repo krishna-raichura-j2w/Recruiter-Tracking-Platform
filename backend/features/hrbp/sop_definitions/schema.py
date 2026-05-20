@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Any, Literal, Optional
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -33,7 +32,7 @@ class SopDefinitionUpdate(BaseModel):
 
 
 class SopDefinitionResponse(BaseModel):
-    id:                UUID
+    id:                int
     sop_type:          str
     number:            str
     name:              str

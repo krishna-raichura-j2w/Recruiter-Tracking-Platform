@@ -1,7 +1,6 @@
-import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, Text, SmallInteger, Integer, DateTime, Boolean, Numeric, Date, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
+from sqlalchemy import Column, Text, SmallInteger, Integer, DateTime, Boolean, Numeric, Date, Time, ForeignKey
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from core.database import Base
 
 
@@ -12,7 +11,7 @@ def _now():
 class HRBPKraDefinition(Base):
     __tablename__ = "hrbp_kra_definitions"
 
-    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
     kra_code            = Column(Text, unique=True, nullable=False)
     name                = Column(Text, nullable=False)
     description         = Column(Text)
@@ -46,7 +45,7 @@ class HRBPEmailTemplate(Base):
 class HRBPSopDefinition(Base):
     __tablename__ = "hrbp_sop_definitions"
 
-    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id                = Column(Integer, primary_key=True, autoincrement=True)
     sop_type          = Column(Text, unique=True, nullable=False)
     number            = Column(Text, nullable=False)
     name              = Column(Text, nullable=False)
@@ -63,7 +62,7 @@ class HRBPSopDefinition(Base):
 class HRBPSignalDefinition(Base):
     __tablename__ = "hrbp_signal_definitions"
 
-    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id               = Column(Integer, primary_key=True, autoincrement=True)
     signal_code      = Column(Text, unique=True, nullable=False)
     number           = Column(Text, nullable=False)
     name             = Column(Text, nullable=False)
@@ -80,11 +79,11 @@ class HRBPSignalDefinition(Base):
 class HRBPClient(Base):
     __tablename__ = "hrbp_clients"
 
-    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id         = Column(Integer, primary_key=True, autoincrement=True)
     name       = Column(Text, nullable=False)
     industry   = Column(Text)
-    bh_id      = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    hrbp_id    = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    bh_id      = Column(Integer, ForeignKey("users.id"))
+    hrbp_id    = Column(Integer, ForeignKey("users.id"))
     is_active  = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -93,13 +92,13 @@ class HRBPClient(Base):
 class HRBPConsultant(Base):
     __tablename__ = "hrbp_consultants"
 
-    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
     emp_id         = Column(Text, unique=True, nullable=False)
     name           = Column(Text, nullable=False)
     email          = Column(Text)
     phone          = Column(Text)
-    client_id      = Column(UUID(as_uuid=True), ForeignKey("hrbp_clients.id"), nullable=False)
-    hrbp_id        = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    client_id      = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
+    hrbp_id        = Column(Integer, ForeignKey("users.id"), nullable=False)
     manager_name   = Column(Text)
     modality       = Column(Text)
     skill          = Column(Text)
@@ -122,11 +121,11 @@ class HRBPConsultant(Base):
 class HRBPIncident(Base):
     __tablename__ = "hrbp_incidents"
 
-    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id              = Column(Integer, primary_key=True, autoincrement=True)
     ticket_ref      = Column(Text, unique=True)
-    consultant_id   = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
-    client_id       = Column(UUID(as_uuid=True), ForeignKey("hrbp_clients.id"), nullable=False)
-    opened_by       = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    consultant_id   = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
+    client_id       = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
+    opened_by       = Column(Integer, ForeignKey("users.id"), nullable=False)
     sop_type        = Column(Text, ForeignKey("hrbp_sop_definitions.sop_type"), nullable=False)
     kra_tags        = Column(ARRAY(Text))
     risk_level      = Column(Text)
@@ -134,7 +133,7 @@ class HRBPIncident(Base):
     current_step    = Column(SmallInteger, default=1)
     description     = Column(Text)
     source          = Column(Text)
-    source_email_id = Column(UUID(as_uuid=True))
+    source_email_id = Column(Integer)
     opened_at       = Column(DateTime(timezone=True), default=_now)
     resolved_at     = Column(DateTime(timezone=True))
     created_at      = Column(DateTime(timezone=True), default=_now)
@@ -144,23 +143,23 @@ class HRBPIncident(Base):
 class HRBPSopStep(Base):
     __tablename__ = "hrbp_sop_steps"
 
-    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    incident_id         = Column(UUID(as_uuid=True), ForeignKey("hrbp_incidents.id", ondelete="CASCADE"), nullable=False)
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    incident_id         = Column(Integer, ForeignKey("hrbp_incidents.id", ondelete="CASCADE"), nullable=False)
     step_number         = Column(SmallInteger, nullable=False)
     action_label        = Column(Text, nullable=False)
     action_detail       = Column(Text)
     owner_role          = Column(Text, nullable=False)
-    owner_user_id       = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    owner_user_id       = Column(Integer, ForeignKey("users.id"))
     sla_working_hours   = Column(SmallInteger, nullable=False)
     due_at              = Column(DateTime(timezone=True))
     started_at          = Column(DateTime(timezone=True))
     completed_at        = Column(DateTime(timezone=True))
     escalated_at        = Column(DateTime(timezone=True))
     escalated_to_role   = Column(Text)
-    escalated_to_user   = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    escalated_to_user   = Column(Integer, ForeignKey("users.id"))
     status              = Column(Text, default="pending")
     completion_notes    = Column(Text)
-    completed_by        = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    completed_by        = Column(Integer, ForeignKey("users.id"))
     email_template_id   = Column(Text, ForeignKey("hrbp_email_templates.id"))
     hard_gate           = Column(Text)
     hard_gate_cleared   = Column(Boolean, default=False)
@@ -172,10 +171,10 @@ class HRBPSopStep(Base):
 class HRBPEmail(Base):
     __tablename__ = "hrbp_emails"
 
-    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id              = Column(Integer, primary_key=True, autoincrement=True)
     direction       = Column(Text, nullable=False)
-    consultant_id   = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"))
-    incident_id     = Column(UUID(as_uuid=True), ForeignKey("hrbp_incidents.id"))
+    consultant_id   = Column(Integer, ForeignKey("hrbp_consultants.id"))
+    incident_id     = Column(Integer, ForeignKey("hrbp_incidents.id"))
     from_address    = Column(Text, nullable=False)
     to_addresses    = Column(ARRAY(Text), nullable=False)
     cc_addresses    = Column(ARRAY(Text))
@@ -195,30 +194,30 @@ class HRBPEmail(Base):
 class HRBPSignal(Base):
     __tablename__ = "hrbp_signals"
 
-    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    consultant_id = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
-    logged_by     = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
+    logged_by     = Column(Integer, ForeignKey("users.id"), nullable=False)
     signal_type   = Column(Text, nullable=False)
     description   = Column(Text, nullable=False)
     risk_score    = Column(SmallInteger)
     action_taken  = Column(Text)
-    incident_id   = Column(UUID(as_uuid=True), ForeignKey("hrbp_incidents.id"))
+    incident_id   = Column(Integer, ForeignKey("hrbp_incidents.id"))
     logged_at     = Column(DateTime(timezone=True), default=_now)
 
 
 class HRBPRoutineSchedule(Base):
     __tablename__ = "hrbp_routine_schedules"
 
-    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    consultant_id     = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
-    assigned_to       = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id     = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
+    assigned_to       = Column(Integer, ForeignKey("users.id"), nullable=False)
     task_type         = Column(Text, nullable=False)
     sop_ref           = Column(Text)
     kra_ref           = Column(Text)
     email_template_id = Column(Text, ForeignKey("hrbp_email_templates.id"))
     due_at            = Column(DateTime(timezone=True), nullable=False)
     completed_at      = Column(DateTime(timezone=True))
-    completed_by      = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    completed_by      = Column(Integer, ForeignKey("users.id"))
     status            = Column(Text, default="pending")
     recurrence_days   = Column(SmallInteger)
     next_due_at       = Column(DateTime(timezone=True))
@@ -229,8 +228,8 @@ class HRBPRoutineSchedule(Base):
 class HRBPNpsSurvey(Base):
     __tablename__ = "hrbp_nps_surveys"
 
-    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    consultant_id    = Column(UUID(as_uuid=True), ForeignKey("hrbp_consultants.id"), nullable=False)
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id    = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
     survey_type      = Column(Text)
     q1_project_score = Column(SmallInteger)
     q2_changes       = Column(Text)
@@ -245,11 +244,48 @@ class HRBPNpsSurvey(Base):
 class HRBPAuditLog(Base):
     __tablename__ = "hrbp_audit_log"
 
-    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id          = Column(Integer, primary_key=True, autoincrement=True)
     entity_type = Column(Text, nullable=False)
-    entity_id   = Column(UUID(as_uuid=True), nullable=False)
+    entity_id   = Column(Integer, nullable=False)
     action      = Column(Text, nullable=False)
-    actor_id    = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    actor_id    = Column(Integer, ForeignKey("users.id"))
     old_value   = Column(JSONB)
     new_value   = Column(JSONB)
     ts          = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPCadenceSchedule(Base):
+    __tablename__ = "hrbp_cadence_schedules"
+
+    id                   = Column(Integer, primary_key=True, autoincrement=True)
+    client_id            = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
+    consultant_id        = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
+    hrbp_id              = Column(Integer, ForeignKey("users.id"), nullable=False)
+    meeting_type         = Column(Text, nullable=False)           # "one_time" | "recurring"
+    project_name         = Column(Text)
+    meeting_time         = Column(Time)
+    duration_minutes     = Column(SmallInteger, default=30)
+    start_date           = Column(Date, nullable=False)
+    end_date             = Column(Date)                           # required for recurring
+    frequency_weeks      = Column(SmallInteger, default=1)
+    status               = Column(Text, default="not_started")   # not_started | in_progress | completed | cancelled
+    supporting_documents = Column(ARRAY(Text), default=list)
+    created_at           = Column(DateTime(timezone=True), default=_now)
+    updated_at           = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPCadenceSession(Base):
+    __tablename__ = "hrbp_cadence_sessions"
+
+    id                   = Column(Integer, primary_key=True, autoincrement=True)
+    schedule_id          = Column(Integer, ForeignKey("hrbp_cadence_schedules.id", ondelete="CASCADE"), nullable=False)
+    cadence_number       = Column(SmallInteger, nullable=False)
+    scheduled_date       = Column(Date, nullable=False)
+    status               = Column(Text, default="not_started")   # not_started | completed | cancelled
+    comments             = Column(Text)
+    rca_status           = Column(Text)
+    supporting_documents = Column(ARRAY(Text), default=list)
+    completed_at         = Column(DateTime(timezone=True))
+    completed_by         = Column(Integer, ForeignKey("users.id"))
+    created_at           = Column(DateTime(timezone=True), default=_now)
+    updated_at           = Column(DateTime(timezone=True), default=_now, onupdate=_now)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Literal, Optional
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -10,15 +9,15 @@ IncidentSource = Literal["email", "manual", "signal", "scheduler"]
 
 
 class IncidentCreate(BaseModel):
-    consultant_id:   UUID
-    client_id:       UUID
-    opened_by:       UUID
+    consultant_id:   int
+    client_id:       int
+    opened_by:       int
     sop_type:        str
     kra_tags:        Optional[list[str]]      = None
     risk_level:      Optional[RiskLevel]      = None
     description:     Optional[str]            = None
     source:          Optional[IncidentSource] = None
-    source_email_id: Optional[UUID]           = None
+    source_email_id: Optional[int]           = None
 
 
 class IncidentUpdate(BaseModel):
@@ -31,11 +30,11 @@ class IncidentUpdate(BaseModel):
 
 
 class IncidentResponse(BaseModel):
-    id:              UUID
+    id:              int
     ticket_ref:      Optional[str]
-    consultant_id:   UUID
-    client_id:       UUID
-    opened_by:       UUID
+    consultant_id:   int
+    client_id:       int
+    opened_by:       int
     sop_type:        str
     kra_tags:        Optional[list[str]]
     risk_level:      Optional[str]
@@ -43,7 +42,7 @@ class IncidentResponse(BaseModel):
     current_step:    Optional[int]
     description:     Optional[str]
     source:          Optional[str]
-    source_email_id: Optional[UUID]
+    source_email_id: Optional[int]
     opened_at:       Optional[datetime]
     resolved_at:     Optional[datetime]
     created_at:      Optional[datetime]

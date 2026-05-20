@@ -49,11 +49,16 @@ def ensure_schema():
     from sqlalchemy import text
     from core.database import engine, SessionLocal as _SL
 
-    # Let SQLAlchemy create ALL ORM-defined tables (no-ops for existing ones)
+    # Let SQLAlchemy create ALL ORM-defined tables (no-ops for existing ones).
+    # try/except: users.id is UUID in Supabase but Integer in ORM — causes FK
+    # type mismatch on pod_memberships. All tables are managed via SQL migrations.
     from core.database import Base
     from infra import models as _m        # noqa: F401 — registers all models
     from infra import hrbp_models as _hm  # noqa: F401 — registers HRBP models
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as _cae:
+        print(f"[ensure_schema] create_all skipped (use SQL migrations): {_cae}")
 
     # Belt-and-suspenders: also create via raw DDL (catches edge-cases where
     # create_all silently skips due to partial metadata load)

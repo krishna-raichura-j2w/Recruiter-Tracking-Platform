@@ -1,4 +1,3 @@
-from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPSignalDefinition
@@ -25,7 +24,7 @@ def list_paginated(db: Session, page_no: int, per_page: int) -> PageResult:
     return paginate(q, page_no, per_page)
 
 
-def get_by_id(db: Session, id: UUID) -> HRBPSignalDefinition:
+def get_by_id(db: Session, id: int) -> HRBPSignalDefinition:
     record = db.query(HRBPSignalDefinition).filter_by(id=id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Signal definition not found")
@@ -48,7 +47,7 @@ def list_by_urgency(db: Session, urgency: str) -> list[HRBPSignalDefinition]:
     )
 
 
-def update(db: Session, id: UUID, payload: SignalDefinitionUpdate) -> HRBPSignalDefinition:
+def update(db: Session, id: int, payload: SignalDefinitionUpdate) -> HRBPSignalDefinition:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -57,7 +56,7 @@ def update(db: Session, id: UUID, payload: SignalDefinitionUpdate) -> HRBPSignal
     return record
 
 
-def delete(db: Session, id: UUID) -> None:
+def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()

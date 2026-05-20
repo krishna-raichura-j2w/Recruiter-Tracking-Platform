@@ -1,10 +1,10 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.deps import get_current_user
 from core.response_format import success_response, success_response_with_pagination, error_response
+from infra.models import User
 from features.hrbp.clients.schema import ClientCreate, ClientUpdate
 from features.hrbp.clients import service
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/clients", tags=["hrbp-clients"])
 def create_client(
     payload: ClientCreate,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ):
     try:
         data = service.create(db, payload)
@@ -27,12 +27,13 @@ def create_client(
 @router.get("")
 def list_clients(
     page_no:   int            = Query(default=1,  ge=1),
-    per_page:  int            = Query(default=10, ge=1, le=100),
+    per_page:  int            = Query(default=10, ge=-1),
+    hrbp_id:   Optional[int] = Query(default=None),
     is_active: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
-    _: object   = Depends(get_current_user),
+    _: User     = Depends(get_current_user),
 ):
-    result = service.list_paginated(db, page_no, per_page, is_active)
+    result = service.list_paginated(db, page_no, per_page, hrbp_id, is_active)
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
         message="Clients fetched successfully",
@@ -45,9 +46,9 @@ def list_clients(
 
 @router.get("/{id}")
 def get_client(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
-    _: object   = Depends(get_current_user),
+    _: User     = Depends(get_current_user),
 ):
     try:
         data = service.get_by_id(db, id)
@@ -58,10 +59,10 @@ def get_client(
 
 @router.put("/{id}")
 def update_client(
-    id: UUID,
+    id: int,
     payload: ClientUpdate,
     db: Session = Depends(get_db),
-    _: object   = Depends(get_current_user),
+    _: User     = Depends(get_current_user),
 ):
     try:
         data = service.update(db, id, payload)
@@ -72,9 +73,9 @@ def update_client(
 
 @router.delete("/{id}")
 def delete_client(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
-    _: object   = Depends(get_current_user),
+    _: User     = Depends(get_current_user),
 ):
     try:
         service.delete(db, id)

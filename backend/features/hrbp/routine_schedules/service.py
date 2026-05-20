@@ -1,4 +1,3 @@
-from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPRoutineSchedule
@@ -18,8 +17,8 @@ def list_paginated(
     db: Session,
     page_no: int,
     per_page: int,
-    consultant_id: UUID | None = None,
-    assigned_to: UUID | None = None,
+    consultant_id: int | None = None,
+    assigned_to: int | None = None,
     task_type: str | None = None,
     status: str | None = None,
 ) -> PageResult:
@@ -36,14 +35,14 @@ def list_paginated(
     return paginate(q, page_no, per_page)
 
 
-def get_by_id(db: Session, id: UUID) -> HRBPRoutineSchedule:
+def get_by_id(db: Session, id: int) -> HRBPRoutineSchedule:
     record = db.query(HRBPRoutineSchedule).filter_by(id=id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Routine schedule not found")
     return record
 
 
-def update(db: Session, id: UUID, payload: RoutineScheduleUpdate) -> HRBPRoutineSchedule:
+def update(db: Session, id: int, payload: RoutineScheduleUpdate) -> HRBPRoutineSchedule:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -52,7 +51,7 @@ def update(db: Session, id: UUID, payload: RoutineScheduleUpdate) -> HRBPRoutine
     return record
 
 
-def delete(db: Session, id: UUID) -> None:
+def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()

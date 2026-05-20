@@ -1,7 +1,6 @@
 from __future__ import annotations
 from decimal import Decimal
 from typing import Literal, Optional
-from uuid import UUID
 from datetime import date, datetime
 from pydantic import BaseModel
 
@@ -14,8 +13,8 @@ LDStatus     = Literal["enrolled","not_started","completed","pending"]
 class ConsultantCreate(BaseModel):
     emp_id:         str
     name:           str
-    client_id:      UUID
-    hrbp_id:        UUID
+    client_id:      int
+    hrbp_id:        int
     email:          Optional[str]         = None
     phone:          Optional[str]         = None
     manager_name:   Optional[str]         = None
@@ -37,8 +36,8 @@ class ConsultantCreate(BaseModel):
 
 class ConsultantUpdate(BaseModel):
     name:           Optional[str]         = None
-    client_id:      Optional[UUID]        = None
-    hrbp_id:        Optional[UUID]        = None
+    client_id:      Optional[int]        = None
+    hrbp_id:        Optional[int]        = None
     email:          Optional[str]         = None
     phone:          Optional[str]         = None
     manager_name:   Optional[str]         = None
@@ -59,13 +58,13 @@ class ConsultantUpdate(BaseModel):
 
 
 class ConsultantResponse(BaseModel):
-    id:             UUID
+    id:             int
     emp_id:         str
     name:           str
     email:          Optional[str]
     phone:          Optional[str]
-    client_id:      UUID
-    hrbp_id:        UUID
+    client_id:      int
+    hrbp_id:        int
     manager_name:   Optional[str]
     modality:       Optional[str]
     skill:          Optional[str]

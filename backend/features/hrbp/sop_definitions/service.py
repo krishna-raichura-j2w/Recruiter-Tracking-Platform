@@ -1,4 +1,3 @@
-from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPSopDefinition
@@ -25,7 +24,7 @@ def list_paginated(db: Session, page_no: int, per_page: int) -> PageResult:
     return paginate(q, page_no, per_page)
 
 
-def get_by_id(db: Session, id: UUID) -> HRBPSopDefinition:
+def get_by_id(db: Session, id: int) -> HRBPSopDefinition:
     record = db.query(HRBPSopDefinition).filter_by(id=id).first()
     if not record:
         raise HTTPException(status_code=404, detail="SOP definition not found")
@@ -39,7 +38,7 @@ def get_by_type(db: Session, sop_type: str) -> HRBPSopDefinition:
     return record
 
 
-def update(db: Session, id: UUID, payload: SopDefinitionUpdate) -> HRBPSopDefinition:
+def update(db: Session, id: int, payload: SopDefinitionUpdate) -> HRBPSopDefinition:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -48,7 +47,7 @@ def update(db: Session, id: UUID, payload: SopDefinitionUpdate) -> HRBPSopDefini
     return record
 
 
-def delete(db: Session, id: UUID) -> None:
+def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()

@@ -1,4 +1,3 @@
-from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from core.database import get_db
@@ -26,7 +25,7 @@ def create_kra(
 @router.get("")
 def list_kras(
     page_no: int = Query(default=1, ge=1),
-    per_page: int = Query(default=10, ge=1, le=100),
+    per_page: int = Query(default=10, ge=-1),
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):
@@ -43,7 +42,7 @@ def list_kras(
 
 @router.get("/{id}")
 def get_kra_by_id(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):
@@ -69,7 +68,7 @@ def get_kra_by_code(
 
 @router.put("/{id}")
 def update_kra(
-    id: UUID,
+    id: int,
     payload: KraDefinitionUpdate,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
@@ -83,7 +82,7 @@ def update_kra(
 
 @router.delete("/{id}")
 def delete_kra(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):

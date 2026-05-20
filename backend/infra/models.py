@@ -43,6 +43,9 @@ class UserRole(str, enum.Enum):
     recruiter     = "recruiter"
     delivery_lead = "delivery_lead"
     coo           = "coo"
+    hrbp          = "hrbp"
+    bh            = "bh"
+    ops_head      = "ops_head"
 
 
 class RecruiterType(str, enum.Enum):

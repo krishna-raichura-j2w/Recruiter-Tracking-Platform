@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Literal, Optional
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -13,8 +12,8 @@ ScheduleStatus = Literal["pending", "done", "overdue", "skipped"]
 
 
 class RoutineScheduleCreate(BaseModel):
-    consultant_id:     UUID
-    assigned_to:       UUID
+    consultant_id:     int
+    assigned_to:       int
     task_type:         TaskType
     due_at:            datetime
     sop_ref:           Optional[str]            = None
@@ -27,22 +26,22 @@ class RoutineScheduleCreate(BaseModel):
 class RoutineScheduleUpdate(BaseModel):
     status:          Optional[ScheduleStatus] = None
     completed_at:    Optional[datetime]       = None
-    completed_by:    Optional[UUID]           = None
+    completed_by:    Optional[int]           = None
     next_due_at:     Optional[datetime]       = None
     recurrence_days: Optional[int]            = None
 
 
 class RoutineScheduleResponse(BaseModel):
-    id:                UUID
-    consultant_id:     UUID
-    assigned_to:       UUID
+    id:                int
+    consultant_id:     int
+    assigned_to:       int
     task_type:         str
     sop_ref:           Optional[str]
     kra_ref:           Optional[str]
     email_template_id: Optional[str]
     due_at:            datetime
     completed_at:      Optional[datetime]
-    completed_by:      Optional[UUID]
+    completed_by:      Optional[int]
     status:            Optional[str]
     recurrence_days:   Optional[int]
     next_due_at:       Optional[datetime]

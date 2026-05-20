@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -27,10 +26,10 @@ def create_signal(
 @router.get("")
 def list_signals(
     page_no:       int            = Query(default=1,  ge=1),
-    per_page:      int            = Query(default=10, ge=1, le=100),
-    consultant_id: Optional[UUID] = Query(default=None),
+    per_page:      int            = Query(default=10, ge=-1),
+    consultant_id: Optional[int] = Query(default=None),
     signal_type:   Optional[str]  = Query(default=None),
-    incident_id:   Optional[UUID] = Query(default=None),
+    incident_id:   Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -47,7 +46,7 @@ def list_signals(
 
 @router.get("/{id}")
 def get_signal(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -60,7 +59,7 @@ def get_signal(
 
 @router.put("/{id}")
 def update_signal(
-    id: UUID,
+    id: int,
     payload: SignalUpdate,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -74,7 +73,7 @@ def update_signal(
 
 @router.delete("/{id}")
 def delete_signal(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

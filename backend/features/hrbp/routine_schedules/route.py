@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -27,9 +26,9 @@ def create_schedule(
 @router.get("")
 def list_schedules(
     page_no:       int            = Query(default=1,  ge=1),
-    per_page:      int            = Query(default=10, ge=1, le=100),
-    consultant_id: Optional[UUID] = Query(default=None),
-    assigned_to:   Optional[UUID] = Query(default=None),
+    per_page:      int            = Query(default=10, ge=-1),
+    consultant_id: Optional[int] = Query(default=None),
+    assigned_to:   Optional[int] = Query(default=None),
     task_type:     Optional[str]  = Query(default=None),
     status:        Optional[str]  = Query(default=None),
     db: Session = Depends(get_db),
@@ -48,7 +47,7 @@ def list_schedules(
 
 @router.get("/{id}")
 def get_schedule(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -61,7 +60,7 @@ def get_schedule(
 
 @router.put("/{id}")
 def update_schedule(
-    id: UUID,
+    id: int,
     payload: RoutineScheduleUpdate,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -75,7 +74,7 @@ def update_schedule(
 
 @router.delete("/{id}")
 def delete_schedule(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

@@ -1,4 +1,3 @@
-from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPConsultant
@@ -20,12 +19,15 @@ def list_paginated(
     db: Session,
     page_no: int,
     per_page: int,
-    client_id: UUID | None = None,
+    hrbp_id: int | None = None,
+    client_id: int | None = None,
     cohort: str | None = None,
     perf_tier: str | None = None,
     is_active: bool | None = None,
 ) -> PageResult:
     q = db.query(HRBPConsultant)
+    if hrbp_id is not None:
+        q = q.filter(HRBPConsultant.hrbp_id == hrbp_id)
     if client_id is not None:
         q = q.filter(HRBPConsultant.client_id == client_id)
     if cohort is not None:
@@ -38,7 +40,7 @@ def list_paginated(
     return paginate(q, page_no, per_page)
 
 
-def get_by_id(db: Session, id: UUID) -> HRBPConsultant:
+def get_by_id(db: Session, id: int) -> HRBPConsultant:
     record = db.query(HRBPConsultant).filter_by(id=id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Consultant not found")
@@ -52,7 +54,7 @@ def get_by_emp_id(db: Session, emp_id: str) -> HRBPConsultant:
     return record
 
 
-def update(db: Session, id: UUID, payload: ConsultantUpdate) -> HRBPConsultant:
+def update(db: Session, id: int, payload: ConsultantUpdate) -> HRBPConsultant:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -61,7 +63,7 @@ def update(db: Session, id: UUID, payload: ConsultantUpdate) -> HRBPConsultant:
     return record
 
 
-def delete(db: Session, id: UUID) -> None:
+def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()

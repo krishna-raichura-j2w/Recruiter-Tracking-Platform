@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -27,8 +26,8 @@ def create_survey(
 @router.get("")
 def list_surveys(
     page_no:       int            = Query(default=1,  ge=1),
-    per_page:      int            = Query(default=10, ge=1, le=100),
-    consultant_id: Optional[UUID] = Query(default=None),
+    per_page:      int            = Query(default=10, ge=-1),
+    consultant_id: Optional[int] = Query(default=None),
     survey_type:   Optional[str]  = Query(default=None),
     responded:     Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
@@ -47,7 +46,7 @@ def list_surveys(
 
 @router.get("/{id}")
 def get_survey(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -60,7 +59,7 @@ def get_survey(
 
 @router.put("/{id}")
 def update_survey(
-    id: UUID,
+    id: int,
     payload: NpsSurveyUpdate,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -74,7 +73,7 @@ def update_survey(
 
 @router.delete("/{id}")
 def delete_survey(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

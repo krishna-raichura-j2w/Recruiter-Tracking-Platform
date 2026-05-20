@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Literal, Optional
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -11,8 +10,8 @@ class EmailCreate(BaseModel):
     direction:       EmailDirection
     from_address:    str
     to_addresses:    list[str]
-    consultant_id:   Optional[UUID]      = None
-    incident_id:     Optional[UUID]      = None
+    consultant_id:   Optional[int]      = None
+    incident_id:     Optional[int]      = None
     cc_addresses:    Optional[list[str]] = None
     subject:         Optional[str]       = None
     body_raw:        Optional[str]       = None
@@ -29,16 +28,16 @@ class EmailUpdate(BaseModel):
     processed:       Optional[bool]  = None
     intent:          Optional[str]   = None
     sop_type_mapped: Optional[str]   = None
-    incident_id:     Optional[UUID]  = None
-    consultant_id:   Optional[UUID]  = None
+    incident_id:     Optional[int]  = None
+    consultant_id:   Optional[int]  = None
     body_parsed:     Optional[str]   = None
 
 
 class EmailResponse(BaseModel):
-    id:              UUID
+    id:              int
     direction:       str
-    consultant_id:   Optional[UUID]
-    incident_id:     Optional[UUID]
+    consultant_id:   Optional[int]
+    incident_id:     Optional[int]
     from_address:    str
     to_addresses:    list[str]
     cc_addresses:    Optional[list[str]]

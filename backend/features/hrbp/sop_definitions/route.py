@@ -1,4 +1,3 @@
-from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from core.database import get_db
@@ -26,7 +25,7 @@ def create_sop(
 @router.get("")
 def list_sops(
     page_no: int = Query(default=1, ge=1),
-    per_page: int = Query(default=10, ge=1, le=100),
+    per_page: int = Query(default=10, ge=-1),
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):
@@ -43,7 +42,7 @@ def list_sops(
 
 @router.get("/{id}")
 def get_sop_by_id(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):
@@ -95,7 +94,7 @@ def get_sop_hierarchy(
 
 @router.put("/{id}")
 def update_sop(
-    id: UUID,
+    id: int,
     payload: SopDefinitionUpdate,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
@@ -109,7 +108,7 @@ def update_sop(
 
 @router.delete("/{id}")
 def delete_sop(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ):

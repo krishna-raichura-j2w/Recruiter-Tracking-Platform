@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Literal, Optional
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -8,7 +7,7 @@ SurveyType = Literal["monthly_pulse", "quarterly_deep_dive"]
 
 
 class NpsSurveyCreate(BaseModel):
-    consultant_id:    UUID
+    consultant_id:    int
     survey_type:      Optional[SurveyType] = None
     q1_project_score: Optional[int]        = None
     q2_changes:       Optional[str]        = None
@@ -28,8 +27,8 @@ class NpsSurveyUpdate(BaseModel):
 
 
 class NpsSurveyResponse(BaseModel):
-    id:               UUID
-    consultant_id:    UUID
+    id:               int
+    consultant_id:    int
     survey_type:      Optional[str]
     q1_project_score: Optional[int]
     q2_changes:       Optional[str]

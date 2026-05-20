@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -27,10 +26,10 @@ def create_email(
 @router.get("")
 def list_emails(
     page_no:       int            = Query(default=1,  ge=1),
-    per_page:      int            = Query(default=10, ge=1, le=100),
+    per_page:      int            = Query(default=10, ge=-1),
     direction:     Optional[str]  = Query(default=None),
-    consultant_id: Optional[UUID] = Query(default=None),
-    incident_id:   Optional[UUID] = Query(default=None),
+    consultant_id: Optional[int] = Query(default=None),
+    incident_id:   Optional[int] = Query(default=None),
     processed:     Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -48,7 +47,7 @@ def list_emails(
 
 @router.get("/{id}")
 def get_email(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):
@@ -61,7 +60,7 @@ def get_email(
 
 @router.put("/{id}")
 def update_email(
-    id: UUID,
+    id: int,
     payload: EmailUpdate,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
@@ -75,7 +74,7 @@ def update_email(
 
 @router.delete("/{id}")
 def delete_email(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _: object   = Depends(get_current_user),
 ):

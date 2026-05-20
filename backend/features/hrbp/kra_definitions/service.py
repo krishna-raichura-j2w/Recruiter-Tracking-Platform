@@ -1,4 +1,3 @@
-from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPKraDefinition
@@ -25,7 +24,7 @@ def list_paginated(db: Session, page_no: int, per_page: int) -> PageResult:
     return paginate(q, page_no, per_page)
 
 
-def get_by_id(db: Session, id: UUID) -> HRBPKraDefinition:
+def get_by_id(db: Session, id: int) -> HRBPKraDefinition:
     record = db.query(HRBPKraDefinition).filter_by(id=id).first()
     if not record:
         raise HTTPException(status_code=404, detail="KRA definition not found")
@@ -39,7 +38,7 @@ def get_by_code(db: Session, kra_code: str) -> HRBPKraDefinition:
     return record
 
 
-def update(db: Session, id: UUID, payload: KraDefinitionUpdate) -> HRBPKraDefinition:
+def update(db: Session, id: int, payload: KraDefinitionUpdate) -> HRBPKraDefinition:
     record = get_by_id(db, id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
@@ -48,7 +47,7 @@ def update(db: Session, id: UUID, payload: KraDefinitionUpdate) -> HRBPKraDefini
     return record
 
 
-def delete(db: Session, id: UUID) -> None:
+def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()
