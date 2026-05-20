@@ -41,7 +41,7 @@ interface CandidateForm {
   last_name: string;
   contact_phone: string;
   gender: string;
-  location_id: number | string;
+  location: string;
   designation: string;
   employer: string;
   min_experience: number | string;
@@ -171,7 +171,6 @@ export default function Candidates() {
       await api.post('/candidates', {
         ...data,
         job_id:           Number(data.job_id),
-        location_id:      Number(data.location_id),
         min_experience:   Number(data.min_experience),
         max_experience:   Number(data.max_experience),
         current_ctc:      Number(data.current_ctc),
@@ -809,9 +808,9 @@ export default function Candidates() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location ID *</label>
-                  <input type="number" placeholder="1" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('location_id', { required: true, valueAsNumber: true })} />
-                  {errors.location_id && <p className="text-red-500 text-xs mt-1">Required</p>}
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location *</label>
+                  <input type="text" placeholder="Bangalore" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('location', { required: true })} />
+                  {errors.location && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
 
                 <div>

@@ -107,7 +107,10 @@ def ensure_schema():
             # ── candidates: external-system / polymorphic-user columns ─────
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS first_name       VARCHAR(100)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_name        VARCHAR(100)",
-            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS location_id      INTEGER",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS location         VARCHAR(200)",
+            # Migrate legacy integer location_id → string location, then drop the old column
+            "UPDATE candidates SET location = location_id::text WHERE location IS NULL AND location_id IS NOT NULL",
+            "ALTER TABLE candidates DROP COLUMN IF EXISTS location_id",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS contact_phone    VARCHAR(30)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS gender           VARCHAR(20)",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS designation      VARCHAR(200)",

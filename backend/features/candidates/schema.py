@@ -12,7 +12,7 @@ class CandidateCreate(BaseModel):
     email:            EmailStr
     contact_phone:    str
     gender:           str
-    location_id:      int
+    location:         str
     designation:      str
     employer:         str
     min_experience:   float
@@ -64,7 +64,7 @@ class CandidateUpdate(BaseModel):
     last_name: str | None = None
     contact_phone: str | None = None
     gender: str | None = None
-    location_id: int | None = None
+    location: str | None = None
     designation: str | None = None
     employer: str | None = None
     total_experience: float | None = None
