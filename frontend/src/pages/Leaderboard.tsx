@@ -24,7 +24,7 @@ interface HourlySlot {
 interface RecruiterRow {
   recruiter_id: number;
   recruiter_name: string;
-  dl_name:   string | null;
+  dl_names:  string[];           // all DLs this recruiter rolls up to (multi-team support)
   kam_names: string[];           // pod's KAMs — any of them may work with this recruiter's DL
   bh_name:   string | null;
   pod_name:  string | null;
@@ -69,6 +69,97 @@ function uniq(values: (string | null | undefined)[]): string[] {
   const out = new Set<string>();
   for (const v of values) if (v) out.add(v);
   return [...out].sort();
+}
+
+// ── MultiSelect filter — searchable, with select-all / clear ──
+function MultiSelectFilter({
+  label, options, selected, onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const filtered = useMemo(
+    () => q.trim() ? options.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : options,
+    [q, options]
+  );
+
+  const toggle = (v: string) => {
+    const next = new Set(selected);
+    next.has(v) ? next.delete(v) : next.add(v);
+    onChange(next);
+  };
+
+  const summary = selected.size === 0
+    ? `All ${label}`
+    : selected.size === 1
+      ? [...selected][0]
+      : `${selected.size} ${label}`;
+
+  return (
+    <div className="relative" ref={boxRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-32 max-w-44 flex items-center justify-between gap-1 hover:bg-slate-50"
+      >
+        <span className={`truncate ${selected.size > 0 ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>{summary}</span>
+        <ChevronDown size={11} className="text-slate-400 flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 left-0 w-60 bg-white rounded-xl border border-slate-200 shadow-lg p-2">
+          <div className="relative mb-1.5">
+            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Search…"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              className="w-full pl-6 pr-2 py-1.5 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-400"
+            />
+          </div>
+          <div className="flex items-center justify-between px-1 mb-1">
+            <button
+              onClick={() => onChange(new Set(options))}
+              className="text-[11px] font-semibold text-blue-600 hover:underline"
+            >Select all ({options.length})</button>
+            <button
+              onClick={() => onChange(new Set())}
+              className="text-[11px] font-semibold text-slate-500 hover:underline"
+            >Clear</button>
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-center text-xs text-slate-400 py-3">No matches.</p>
+            ) : filtered.map(o => (
+              <label
+                key={o}
+                className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-slate-50"
+              >
+                <input type="checkbox" checked={selected.has(o)} onChange={() => toggle(o)} className="accent-blue-500" />
+                <span className="text-xs text-slate-700 truncate">{o}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Funnel visual: small horizontal stack showing Ack → Submissions → Verified.
@@ -163,12 +254,12 @@ function RecruiterLeaderboardSection() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [allCollapsed, setAllCollapsed] = useState(false);
 
-  // ── Filter state ──
+  // ── Filter state — multi-select where it matters ──
   const [search, setSearch]     = useState('');
-  const [fDl,  setFDl]          = useState('');
-  const [fKam, setFKam]         = useState('');
-  const [fBh,  setFBh]          = useState('');
-  const [fPod, setFPod]         = useState('');
+  const [fDl,  setFDl]          = useState<Set<string>>(new Set());
+  const [fKam, setFKam]         = useState<Set<string>>(new Set());
+  const [fBh,  setFBh]          = useState<Set<string>>(new Set());
+  const [fPod, setFPod]         = useState<Set<string>>(new Set());
   const [fStatus, setFStatus]   = useState('');
   const [fPerf,   setFPerf]     = useState('');
 
@@ -208,21 +299,23 @@ function RecruiterLeaderboardSection() {
   };
 
   // ── Filter-option lists derived from the data ──
-  const dlOptions  = useMemo(() => uniq(data?.rows.map(r => r.dl_name)  ?? []), [data]);
+  const dlOptions  = useMemo(() => uniq((data?.rows ?? []).flatMap(r => r.dl_names)),  [data]);
   const kamOptions = useMemo(() => uniq((data?.rows ?? []).flatMap(r => r.kam_names)), [data]);
   const bhOptions  = useMemo(() => uniq(data?.rows.map(r => r.bh_name)  ?? []), [data]);
   const podOptions = useMemo(() => uniq(data?.rows.map(r => r.pod_name) ?? []), [data]);
 
   // ── Apply filters ──
+  // Multi-select filters match if ANY of the row's values is selected — so
+  // a recruiter on two DL teams shows up when either DL is picked.
   const filteredRows = useMemo(() => {
     const rows = data?.rows ?? [];
     const q = search.trim().toLowerCase();
     return rows.filter(r => {
       if (q && !r.recruiter_name.toLowerCase().includes(q)) return false;
-      if (fDl  && r.dl_name  !== fDl)  return false;
-      if (fKam && !r.kam_names.includes(fKam)) return false;
-      if (fBh  && r.bh_name  !== fBh)  return false;
-      if (fPod && r.pod_name !== fPod) return false;
+      if (fDl.size  && !r.dl_names.some(n => fDl.has(n)))  return false;
+      if (fKam.size && !r.kam_names.some(n => fKam.has(n))) return false;
+      if (fBh.size  && !(r.bh_name  && fBh.has(r.bh_name)))  return false;
+      if (fPod.size && !(r.pod_name && fPod.has(r.pod_name))) return false;
       if (fStatus && r.status      !== fStatus) return false;
       if (fPerf   && r.performance !== fPerf)   return false;
       return true;
@@ -250,8 +343,16 @@ function RecruiterLeaderboardSection() {
     return { ...t, pct, status };
   }, [filteredRows, data]);
 
-  const activeFilters = [search, fDl, fKam, fBh, fPod, fStatus, fPerf].filter(Boolean).length;
-  const clearAll = () => { setSearch(''); setFDl(''); setFKam(''); setFBh(''); setFPod(''); setFStatus(''); setFPerf(''); };
+  const activeFilters =
+    (search ? 1 : 0)
+    + (fDl.size ? 1 : 0) + (fKam.size ? 1 : 0)
+    + (fBh.size ? 1 : 0) + (fPod.size ? 1 : 0)
+    + (fStatus ? 1 : 0) + (fPerf ? 1 : 0);
+  const clearAll = () => {
+    setSearch('');
+    setFDl(new Set()); setFKam(new Set()); setFBh(new Set()); setFPod(new Set());
+    setFStatus(''); setFPerf('');
+  };
 
   const selectCls = "text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-28 max-w-44";
 
@@ -329,22 +430,10 @@ function RecruiterLeaderboardSection() {
           />
         </div>
 
-        <select value={fDl}  onChange={e => setFDl(e.target.value)}  className={selectCls}>
-          <option value="">All DLs</option>
-          {dlOptions.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={fKam} onChange={e => setFKam(e.target.value)} className={selectCls}>
-          <option value="">All KAMs</option>
-          {kamOptions.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={fBh}  onChange={e => setFBh(e.target.value)}  className={selectCls}>
-          <option value="">All BHs</option>
-          {bhOptions.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={fPod} onChange={e => setFPod(e.target.value)} className={selectCls}>
-          <option value="">All Pods</option>
-          {podOptions.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
+        <MultiSelectFilter label="DLs"  options={dlOptions}  selected={fDl}  onChange={setFDl} />
+        <MultiSelectFilter label="KAMs" options={kamOptions} selected={fKam} onChange={setFKam} />
+        <MultiSelectFilter label="BHs"  options={bhOptions}  selected={fBh}  onChange={setFBh} />
+        <MultiSelectFilter label="Pods" options={podOptions} selected={fPod} onChange={setFPod} />
         <select value={fStatus} onChange={e => setFStatus(e.target.value)} className={selectCls}>
           <option value="">Any status</option>
           <option value="On Track">On Track</option>
@@ -419,7 +508,18 @@ function RecruiterLeaderboardSection() {
                         {open ? <ChevronDown size={14} className="inline" /> : <ChevronRight size={14} className="inline" />}
                       </td>
                       <td className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">{row.recruiter_name}</td>
-                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.dl_name  ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 px-3 text-slate-600 text-xs">
+                        {row.dl_names.length === 0
+                          ? <span className="text-slate-300">—</span>
+                          : row.dl_names.length === 1
+                            ? row.dl_names[0]
+                            : (
+                              <span title={row.dl_names.join(', ')}>
+                                {row.dl_names.join(', ')}
+                                <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700">×{row.dl_names.length}</span>
+                              </span>
+                            )}
+                      </td>
                       <td className="py-2.5 px-3 text-slate-600 text-xs">{row.kam_names.length > 0 ? row.kam_names.join(', ') : <span className="text-slate-300">—</span>}</td>
                       <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-xs">
                         {row.bh_name  ?? <span className="text-slate-300">—</span>}
@@ -563,6 +663,10 @@ function PipelineLeaderboardSection() {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [search, setSearch]           = useState('');
+  const [fBh,  setFBh]                = useState<Set<string>>(new Set());
+  const [fAm,  setFAm]                = useState<Set<string>>(new Set());
+  const [fClient, setFClient]         = useState<Set<string>>(new Set());
+  const [onlyActive, setOnlyActive]   = useState(false);
   const [compareDate, setCompareDate] = useState('');
   const [pickerOpen, setPickerOpen]   = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -617,6 +721,18 @@ function PipelineLeaderboardSection() {
     return 0;
   };
 
+  // Filter-option lists derived from the data.
+  const bhOptions     = useMemo(() => uniq((data?.rows ?? []).map(r => r.bh_name)),     [data]);
+  const amOptions     = useMemo(() => uniq((data?.rows ?? []).map(r => r.am_name)),     [data]);
+  const clientOptions = useMemo(() => uniq((data?.rows ?? []).map(r => r.client_name)), [data]);
+
+  const rowHasTodayActivity = (r: PipelineRow): boolean => {
+    for (const col of data?.columns ?? []) {
+      if ((r.cols[col.key]?.today ?? 0) > 0) return true;
+    }
+    return false;
+  };
+
   const filteredRows = useMemo(() => {
     if (!data) return [];
     let rows = data.rows;
@@ -628,6 +744,10 @@ function PipelineLeaderboardSection() {
         r.client_name.toLowerCase().includes(q)
       );
     }
+    if (fBh.size)     rows = rows.filter(r => fBh.has(r.bh_name));
+    if (fAm.size)     rows = rows.filter(r => r.am_name && fAm.has(r.am_name));
+    if (fClient.size) rows = rows.filter(r => fClient.has(r.client_name));
+    if (onlyActive)   rows = rows.filter(rowHasTodayActivity);
     if (sortKey) {
       rows = [...rows].sort((a, b) => {
         const av = rowValue(a, sortKey);
@@ -639,7 +759,17 @@ function PipelineLeaderboardSection() {
       });
     }
     return rows;
-  }, [data, search, sortKey, sortDir, compareDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, search, fBh, fAm, fClient, onlyActive, sortKey, sortDir, compareDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeFilters =
+    (search ? 1 : 0)
+    + (fBh.size ? 1 : 0) + (fAm.size ? 1 : 0) + (fClient.size ? 1 : 0)
+    + (onlyActive ? 1 : 0);
+  const clearAllFilters = () => {
+    setSearch('');
+    setFBh(new Set()); setFAm(new Set()); setFClient(new Set());
+    setOnlyActive(false);
+  };
 
   const totals = useMemo(() => {
     const t: Record<string, ColCounts> = {};
@@ -671,26 +801,53 @@ function PipelineLeaderboardSection() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search BH, AM or client…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white w-52"
-            />
-          </div>
-          <button
-            onClick={() => fetchData()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+        <button
+          onClick={() => fetchData()}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className="flex items-center flex-wrap gap-2 mb-4 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+        <Filter size={13} className="text-slate-400 ml-1" />
+
+        <div className="relative">
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search BH, AM or client…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-52"
+          />
         </div>
+
+        <MultiSelectFilter label="BHs"       options={bhOptions}     selected={fBh}     onChange={setFBh} />
+        <MultiSelectFilter label="AMs"       options={amOptions}     selected={fAm}     onChange={setFAm} />
+        <MultiSelectFilter label="Customers" options={clientOptions} selected={fClient} onChange={setFClient} />
+
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-100">
+          <input
+            type="checkbox"
+            checked={onlyActive}
+            onChange={e => setOnlyActive(e.target.checked)}
+            className="accent-blue-500"
+          />
+          Active today only
+        </label>
+
+        {activeFilters > 0 && (
+          <button
+            onClick={clearAllFilters}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
+          >
+            <X size={11} /> Clear ({activeFilters})
+          </button>
+        )}
       </div>
 
       {error && (

@@ -576,39 +576,45 @@ def recruiter_leaderboard(
             u.id: u for u in db.query(User).filter(User.id.in_(parent_ids)).all()
         }
 
-    # Legacy fallback: a recruiter's first pod_lead (DL) from pod_memberships
-    legacy_dl_by_user: dict[int, str] = {}
+    # Collect ALL DLs a recruiter rolls up to. A recruiter can sit on multiple
+    # DL teams via pod_memberships; that has to be reflected in the leaderboard
+    # so multi-team recruiters are visible everywhere they report.
+    dls_by_user: dict[int, list[str]] = {}
     if rec_ids:
         legacy_rows = (
             db.query(PodMembership.user_id, User.name)
             .join(User, PodMembership.pod_lead_id == User.id)
             .filter(PodMembership.user_id.in_(rec_ids))
+            .order_by(User.name)
             .all()
         )
         for uid, name in legacy_rows:
-            legacy_dl_by_user.setdefault(uid, name)
+            if name:
+                dls_by_user.setdefault(uid, [])
+                if name not in dls_by_user[uid]:
+                    dls_by_user[uid].append(name)
 
     def _role_value(u: User) -> str:
         return u.role.value if hasattr(u.role, "value") else str(u.role)
 
     def _chain_for(u: User) -> dict:
-        dl_name = None
-        # Direct parent → DL?
-        parent = parent_users.get(u.parent_user_id) if u.parent_user_id else None
-        if parent and _role_value(parent) == "delivery_lead":
-            dl_name = parent.name
-        # User themselves is a DL (sourcing directly).
-        if dl_name is None and _role_value(u) == "delivery_lead":
-            dl_name = u.name
-        # Legacy fallback when pod tree isn't populated yet.
-        if dl_name is None:
-            dl_name = legacy_dl_by_user.get(u.id)
+        names: list[str] = list(dls_by_user.get(u.id, []))
 
+        # New-model: direct parent in the pod tree (if it's a DL).
+        parent = parent_users.get(u.parent_user_id) if u.parent_user_id else None
+        if parent and _role_value(parent) == "delivery_lead" and parent.name not in names:
+            names.insert(0, parent.name)
+
+        # User themselves IS a DL (sourcing directly).
+        if _role_value(u) == "delivery_lead" and u.name not in names:
+            names.insert(0, u.name)
+
+        names.sort()
         pod = pods_by_id.get(u.pod_id) if u.pod_id else None
         pod_name = pod.name if pod else None
         bh_name = bh_by_pod.get(u.pod_id) if u.pod_id else None
         kam_names = kams_by_pod.get(u.pod_id, []) if u.pod_id else []
-        return {"dl": dl_name, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
+        return {"dl_names": names, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
 
     rows = []
     sum_done = sum_ack = sum_subs = sum_verified = sum_rejects = 0
@@ -665,7 +671,7 @@ def recruiter_leaderboard(
             {
                 "recruiter_id":   u.id,
                 "recruiter_name": u.name,
-                "dl_name":        chain["dl"],
+                "dl_names":       chain["dl_names"],
                 "kam_names":      chain["kam_names"],
                 "bh_name":        chain["bh"],
                 "pod_name":       chain["pod"],
