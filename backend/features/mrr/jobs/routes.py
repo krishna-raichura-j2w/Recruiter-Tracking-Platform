@@ -102,6 +102,9 @@ def create_job(
     from datetime import datetime
 
     data = body.model_dump()
+    data.pop("ol_job_type", None)   # UI-only field — not stored in DB
+    if not data.get("job_id"):
+        data["job_id"] = None       # clear if new job selected
     kam_id = data.pop("kam_id", None)
     # Merge delivery_lead_ids with legacy delivery_lead_id
     dl_ids: list[int] = data.pop("delivery_lead_ids", []) or []

@@ -5,7 +5,8 @@ from pydantic import BaseModel
 class JobCreate(BaseModel):
     client_name: str
     role_title: str
-    # job_id intentionally not accepted — column stays empty in DB.
+    job_id: int | None = None        # offer-letter job ID (only when existing OL job)
+    ol_job_type: str | None = None   # "new" or "existing" — UI-only, not persisted
     probing_id: int | None = None
     client_job_id: str | None = None
     demand_source: str | None = None
@@ -33,7 +34,7 @@ class JobCreate(BaseModel):
 
 class JobUpdate(BaseModel):
     role_title: str | None = None
-    # job_id intentionally not accepted — column stays empty in DB.
+    job_id: int | None = None
     probing_id: int | None = None
     client_job_id: str | None = None
     demand_source: str | None = None
@@ -61,6 +62,7 @@ class JobOut(BaseModel):
     id: int
     client_name: str
     role_title: str
+    job_id: int | None = None
     skill_stack: str | None
     work_mode: str | None
     work_auth: str | None

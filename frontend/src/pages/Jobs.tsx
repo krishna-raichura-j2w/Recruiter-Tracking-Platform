@@ -45,6 +45,8 @@ type ExtractTab = 'text' | 'image' | 'pdf';
 interface JobForm {
   client_name:        string;
   client_job_id:      string;
+  ol_job_type:        'new' | 'existing';
+  ol_job_id:          string;
   demand_source:      string;
   demand_type:        string;
   demand_exclusivity: string;
@@ -195,8 +197,10 @@ export default function Jobs() {
   const [jobPerPage, setJobPerPage] = useState(50);
   const [jobTotal,   setJobTotal]   = useState(0);
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } =
-    useForm<JobForm>({ defaultValues: { headcount: 1 } });
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
+    useForm<JobForm>({ defaultValues: { headcount: 1, ol_job_type: 'new', ol_job_id: '' } });
+
+  const olJobType = watch('ol_job_type');
 
   const fetchJobs = useCallback(() => {
     setLoading(true);
@@ -345,6 +349,8 @@ export default function Jobs() {
       min_experience:job.min_experience != null ? String(job.min_experience) : '',
       max_experience:job.max_experience != null ? String(job.max_experience) : '',
       salary_range:  job.salary_range  ?? '',
+      ol_job_type:   job.job_id != null ? 'existing' : 'new',
+      ol_job_id:     job.job_id != null ? String(job.job_id) : '',
     });
     // Pre-select current delivery leads so admin can change them
     setSelectedDeliveryLeadIds(
@@ -411,6 +417,9 @@ export default function Jobs() {
   const buildPayload = (data: JobForm) => ({
     ...data,
     probing_id:         probingId,
+    job_id:             data.ol_job_type === 'existing' && data.ol_job_id ? Number(data.ol_job_id) : null,
+    ol_job_type:        undefined,   // UI-only, strip before sending
+    ol_job_id:          undefined,   // UI-only, strip before sending
     client_job_id:      data.client_job_id      || null,
     demand_source:      data.demand_source      || null,
     demand_type:        data.demand_type        || null,
@@ -1256,6 +1265,32 @@ export default function Jobs() {
                     {...register('role_title', { required: true })} />
                   {errors.role_title && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
+                {/* ── Offer Letter Job Type ─────────────────────────────── */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Job in Offer Letter *
+                  </label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('ol_job_type', { required: true })}>
+                    <option value="new">New Job</option>
+                    <option value="existing">Existing Job</option>
+                  </select>
+                </div>
+                {olJobType === 'existing' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                      Offer Letter Job ID *
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Enter OL Job ID"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
+                      {...register('ol_job_id', { required: olJobType === 'existing' })}
+                    />
+                    {errors.ol_job_id && <p className="text-red-500 text-xs mt-1">Required for existing job</p>}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                     Client Job ID <span className="text-slate-400 font-normal">(optional)</span>
