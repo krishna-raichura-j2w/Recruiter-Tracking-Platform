@@ -16,6 +16,9 @@ interface UserTargets {
   email:      string;
   role:       string;
   editable:   boolean;
+  is_default: boolean;            // true if these are role defaults (no save yet)
+  is_carried_forward?: boolean;   // true if values came from an earlier saved date
+  source_date?: string | null;    // YYYY-MM-DD of the save these values came from
   targets:    TargetCell[];
   day_target: number;
 }
@@ -54,8 +57,8 @@ export default function Targets() {
   const [error, setError]             = useState('');
   const [search, setSearch]           = useState('');
 
-  // Local edits: { userId → { slotIndex → value } }. Only stored when changed.
-  const [edits, setEdits] = useState<Record<number, Record<number, number>>>({});
+  // Local edits: { userId → new daily-target number }. Only present when changed.
+  const [edits, setEdits] = useState<Record<number, number>>({});
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
 
@@ -85,18 +88,17 @@ export default function Targets() {
     );
   }, [data, search]);
 
-  const valueFor = (uid: number, slotIdx: number): number => {
-    const edit = edits[uid]?.[slotIdx];
-    if (edit !== undefined) return edit;
+  // Resolve the current daily target for a user: pending edit takes precedence,
+  // otherwise the server-side day_target (which already accounts for default /
+  // carried-forward values).
+  const valueFor = (uid: number): number => {
+    if (edits[uid] !== undefined) return edits[uid];
     const u = data?.users.find(x => x.id === uid);
-    return u?.targets.find(t => t.slot_index === slotIdx)?.target_count ?? 0;
+    return u?.day_target ?? 0;
   };
 
-  const setEdit = (uid: number, slotIdx: number, val: number) => {
-    setEdits(prev => ({
-      ...prev,
-      [uid]: { ...(prev[uid] ?? {}), [slotIdx]: val },
-    }));
+  const setEdit = (uid: number, val: number) => {
+    setEdits(prev => ({ ...prev, [uid]: val }));
   };
 
   const dirtyUserIds = useMemo(() => Object.keys(edits).map(Number), [edits]);
@@ -113,9 +115,14 @@ export default function Targets() {
       const u = data?.users.find(x => x.id === uid);
       if (!u) continue;
       if (!u.editable) { skipped.push(u.name); continue; }
+      // Daily-target model: one number per user per day. Persisted in the
+      // backend as slot_index=0 carrying the value, every other slot 0.
+      // (The existing API already accepts a per-slot list; we just zero out
+      // the rest so the leaderboard sum matches the user's intent.)
+      const dayTarget = valueFor(uid);
       const slots = (data?.slots ?? []).map(s => ({
         slot_index: s.index,
-        target_count: valueFor(uid, s.index),
+        target_count: s.index === 0 ? dayTarget : 0,
       }));
       try {
         await api.put('/targets', { user_id: uid, date, slots });
@@ -138,7 +145,6 @@ export default function Targets() {
     fetchData();
   };
 
-  const slots = data?.slots ?? [];
   const subtitle = `Set hourly submission targets — cumulative target is what the user should reach by the end of each slot`;
 
   return (
@@ -216,49 +222,57 @@ export default function Targets() {
               No {roleTab === 'delivery_lead' ? 'Delivery Leads' : 'recruiters'} visible.
             </div>
           ) : (
-            <table className="w-full text-sm border-collapse" style={{ minWidth: 200 + slots.length * 100 }}>
+            <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-yellow-300">
-                  <th className="text-left py-2.5 px-3 text-xs font-bold text-slate-800 border border-slate-300 sticky left-0 bg-yellow-300 z-10" style={{ minWidth: 200 }}>
+                <tr className="bg-slate-100">
+                  <th className="text-left py-2.5 px-4 text-xs font-bold text-slate-700 border-b border-slate-200 uppercase tracking-wider">
                     {roleTab === 'delivery_lead' ? 'Delivery Lead' : 'Recruiter'}
                   </th>
-                  {slots.map(s => (
-                    <th key={s.index} className="text-center py-2.5 px-3 text-[11px] font-bold text-slate-800 border border-slate-300 whitespace-nowrap">
-                      {s.label}
-                    </th>
-                  ))}
-                  <th className="text-center py-2.5 px-3 text-xs font-bold text-slate-800 border border-slate-300" style={{ minWidth: 80 }}>
-                    Day total
+                  <th className="text-center py-2.5 px-4 text-xs font-bold text-slate-700 border-b border-slate-200 uppercase tracking-wider" style={{ width: 180 }}>
+                    Daily target
+                  </th>
+                  <th className="text-left py-2.5 px-4 text-xs font-bold text-slate-700 border-b border-slate-200 uppercase tracking-wider" style={{ width: 180 }}>
+                    Status
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredUsers.map(u => {
-                  const dayTotal = slots.reduce((s, sl) => s + valueFor(u.id, sl.index), 0);
+                  const v = valueFor(u.id);
+                  const dirty = edits[u.id] !== undefined;
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 border border-slate-200 sticky left-0 bg-white z-10">
+                    <tr key={u.id} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                      <td className="py-3 px-4">
                         <div className="font-semibold text-slate-800">{u.name}</div>
                         <div className="text-[10px] text-slate-400">{u.email}</div>
                       </td>
-                      {slots.map(s => {
-                        const v = valueFor(u.id, s.index);
-                        return (
-                          <td key={s.index} className="border border-slate-200 p-0 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              max={999}
-                              value={v}
-                              disabled={!u.editable}
-                              onChange={e => setEdit(u.id, s.index, Math.max(0, Math.min(999, parseInt(e.target.value || '0', 10))))}
-                              className={`w-full py-2 px-2 text-center text-sm focus:outline-none focus:bg-blue-50 ${u.editable ? '' : 'bg-slate-50 text-slate-400 cursor-not-allowed'}`}
-                            />
-                          </td>
-                        );
-                      })}
-                      <td className="text-center py-2 px-3 border border-slate-200 font-bold text-slate-700 bg-slate-50">
-                        {dayTotal}
+                      <td className="py-3 px-4 text-center">
+                        <input
+                          type="number"
+                          min={0}
+                          max={999}
+                          value={v}
+                          disabled={!u.editable}
+                          onChange={e => setEdit(u.id, Math.max(0, Math.min(999, parseInt(e.target.value || '0', 10))))}
+                          className={`w-24 py-2 px-3 text-center text-base font-semibold rounded-lg border ${dirty ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200'} focus:outline-none focus:border-blue-400 ${u.editable ? '' : 'bg-slate-50 text-slate-400 cursor-not-allowed'}`}
+                        />
+                      </td>
+                      <td className="py-3 px-4 text-xs">
+                        {dirty ? (
+                          <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">Unsaved change</span>
+                        ) : u.is_default ? (
+                          <span className="px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-700 border border-amber-200" title="Role default — no save on file yet">
+                            Default ({v})
+                          </span>
+                        ) : u.is_carried_forward && u.source_date ? (
+                          <span className="text-slate-500" title="Carried forward from a prior save; still active until you change it">
+                            Carried from {u.source_date}
+                          </span>
+                        ) : v === 0 ? (
+                          <span className="text-slate-400">No target</span>
+                        ) : (
+                          <span className="text-slate-500">Saved today</span>
+                        )}
                       </td>
                     </tr>
                   );

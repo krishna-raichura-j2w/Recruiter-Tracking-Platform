@@ -328,7 +328,6 @@ def recruiter_leaderboard(
         Candidate,
         CandidateStatus,
         ConsultantMail,
-        HourlyTarget,
         Pod,
         PodMembership,
         Submission,
@@ -339,7 +338,12 @@ def recruiter_leaderboard(
     )
     from sqlalchemy import or_
 
-    from features.mrr.targets.routes import TIME_SLOTS, current_slot_indices_completed
+    from features.mrr.targets.routes import (
+        TIME_SLOTS,
+        current_slot_indices_completed,
+        default_targets_for_user,
+        latest_targets_for_users,
+    )
 
     # IST today
     ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
@@ -516,25 +520,27 @@ def recruiter_leaderboard(
         ):
             reject_by_rec[uid] = reject_by_rec.get(uid, 0) + 1
 
-    # ── Hourly targets for today (per recruiter) ──
+    # ── Hourly targets ──
     # Sum of slot_targets for slots that have already ended → "target_so_far".
     # Sum of all slot_targets for today → "day_target".
     completed_slots = set(current_slot_indices_completed(ist_now))
-    target_rows = (
-        db.query(
-            HourlyTarget.user_id,
-            HourlyTarget.slot_index,
-            HourlyTarget.target_count,
-        )
-        .filter(HourlyTarget.user_id.in_(rec_ids), HourlyTarget.date == today_ist)
-        .all()
-    )
-    slots_by_user: dict[int, dict[int, int]] = {}
-    for uid, idx, cnt in target_rows:
-        slots_by_user.setdefault(uid, {})[idx] = int(cnt)
+    # Resolve targets per recruiter using the same logic the Targets page
+    # uses: exact-date save → carry-forward from the latest prior save →
+    # role default. This guarantees that once a recruiter has any saved
+    # targets, the leaderboard keeps using them on every subsequent day
+    # until the next save overrides them.
+    resolved = latest_targets_for_users(db, rec_ids, today_ist)
+    slots_by_user: dict[int, dict[int, int]] = {
+        uid: slot_map for uid, (slot_map, _) in resolved.items()
+    }
+    # Quick role lookup for the default fallback when nothing is saved.
+    rec_by_id: dict[int, User] = {u.id: u for u in recruiters}
 
     def _targets_for(uid: int) -> tuple[int, int]:
-        slots = slots_by_user.get(uid, {})
+        slots = slots_by_user.get(uid)
+        if not slots:
+            user = rec_by_id.get(uid)
+            slots = default_targets_for_user(user) if user is not None else {}
         so_far = sum(c for idx, c in slots.items() if idx in completed_slots)
         day = sum(slots.values())
         return so_far, day

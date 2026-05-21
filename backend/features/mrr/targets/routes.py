@@ -41,6 +41,93 @@ TIME_SLOTS: list[dict] = [
 
 _VALID_SLOT_INDICES = {s["index"] for s in TIME_SLOTS}
 
+# Default hourly split for recruiters when no targets are saved for the day:
+# day_total = 4, distributed as the first four "productive" slots (after a
+# warmup) each get 1, everything else 0. Slot 0 (09:30-10:30 IST) is intentionally
+# empty so the recruiter has a setup hour. DLs have no default — empty stays empty.
+RECRUITER_DEFAULT_HOURLY: dict[int, int] = {1: 1, 2: 1, 3: 1, 4: 1}
+
+
+def _role_value(u) -> str:
+    return u.role.value if hasattr(u.role, "value") else str(u.role)
+
+
+def default_targets_for_user(user) -> dict[int, int]:
+    """Per-role default slot map. Empty {} means no default (DLs, KAMs, etc.)."""
+    if _role_value(user) == "recruiter" or (
+        getattr(user, "secondary_role", None) == "recruiter"
+    ):
+        return dict(RECRUITER_DEFAULT_HOURLY)
+    return {}
+
+
+def latest_targets_for_users(
+    db,
+    user_ids: list[int],
+    on_date,
+) -> dict[int, tuple[dict[int, int], object]]:
+    """For each user, return (slot_map, source_date).
+
+    Resolution order, per user:
+      1. Rows for `on_date` exactly → use them. source_date == on_date.
+      2. Else: rows for the most recent saved date ≤ on_date → carry them
+         forward. source_date is that earlier date.
+      3. Else: empty map + source_date None. Caller can fall back to role
+         defaults.
+
+    This is what makes a save "permanent" — once a recruiter has rows for
+    any date, those values apply to every later date until the next save
+    overrides them.
+    """
+    if not user_ids:
+        return {}
+    from sqlalchemy import func as _f
+
+    out: dict[int, tuple[dict[int, int], object]] = {}
+
+    # 1. Exact-date matches.
+    same_day = (
+        db.query(
+            HourlyTarget.user_id,
+            HourlyTarget.slot_index,
+            HourlyTarget.target_count,
+        )
+        .filter(HourlyTarget.user_id.in_(user_ids), HourlyTarget.date == on_date)
+        .all()
+    )
+    for uid, idx, cnt in same_day:
+        slot_map, _ = out.get(uid, ({}, on_date))
+        slot_map[idx] = int(cnt)
+        out[uid] = (slot_map, on_date)
+
+    # 2. For users with no same-day rows, find their most recent date ≤ on_date.
+    missing = [uid for uid in user_ids if uid not in out]
+    if missing:
+        latest_per_user = (
+            db.query(HourlyTarget.user_id, _f.max(HourlyTarget.date).label("d"))
+            .filter(
+                HourlyTarget.user_id.in_(missing),
+                HourlyTarget.date <= on_date,
+            )
+            .group_by(HourlyTarget.user_id)
+            .all()
+        )
+        # Map → user_id : carry_date.
+        carry_dates: dict[int, object] = {uid: d for uid, d in latest_per_user if d is not None}
+        if carry_dates:
+            # Bulk-fetch the carry-forward rows (one query per distinct date).
+            for uid, d in carry_dates.items():
+                rows = (
+                    db.query(HourlyTarget.slot_index, HourlyTarget.target_count)
+                    .filter(HourlyTarget.user_id == uid, HourlyTarget.date == d)
+                    .all()
+                )
+                slot_map = {idx: int(cnt) for idx, cnt in rows}
+                if slot_map:
+                    out[uid] = (slot_map, d)
+
+    return out
+
 
 def _parse_hhmm(s: str) -> time:
     hh, mm = s.split(":")
@@ -190,37 +277,53 @@ def list_targets(
         return {"date": day.isoformat(), "users": [], "slots": TIME_SLOTS}
 
     user_ids = [u.id for u in users]
-    rows = (
-        db.query(HourlyTarget)
-        .filter(HourlyTarget.user_id.in_(user_ids), HourlyTarget.date == day)
-        .all()
-    )
-    by_user: dict[int, dict[int, int]] = {uid: {} for uid in user_ids}
-    for r in rows:
-        by_user.setdefault(r.user_id, {})[r.slot_index] = r.target_count
+
+    # Resolution: exact-date rows → carry-forward from latest save → role default.
+    resolved = latest_targets_for_users(db, user_ids, day)
+
+    def _slots_and_source(user) -> tuple[dict[int, int], str | None]:
+        entry = resolved.get(user.id)
+        if entry is not None:
+            slot_map, src_date = entry
+            # `src_date` is a date object; emit ISO string for the UI.
+            return slot_map, (src_date.isoformat() if hasattr(src_date, "isoformat") else None)
+        # No saved rows ever → role default (virtual; persisted only when saved).
+        return default_targets_for_user(user), None
 
     editable = _editable_user_ids(db, current_user)
+    users_out = []
+    for u in users:
+        slot_map, src_date = _slots_and_source(u)
+        is_for_today = src_date == day.isoformat()
+        # is_default: TRUE only when there are no saved rows anywhere — i.e.,
+        # we're showing the role default. A "carried-forward" save is real,
+        # just from a prior date.
+        is_default = src_date is None and bool(slot_map)  # default values present
+        # If there's nothing at all (DL with no save), is_default is False but
+        # all targets are 0 — that's the natural "empty" state.
+        users_out.append({
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": _role(u),
+            "editable": _is_editable(editable, u.id),
+            "is_default": is_default,
+            "is_carried_forward": (src_date is not None) and (not is_for_today),
+            "source_date": src_date,
+            "targets": [
+                {
+                    "slot_index": idx,
+                    "target_count": slot_map.get(idx, 0),
+                }
+                for idx in _VALID_SLOT_INDICES
+            ],
+            "day_target": sum(slot_map.values()),
+        })
+
     return {
         "date": day.isoformat(),
         "slots": TIME_SLOTS,
-        "users": [
-            {
-                "id": u.id,
-                "name": u.name,
-                "email": u.email,
-                "role": _role(u),
-                "editable": _is_editable(editable, u.id),
-                "targets": [
-                    {
-                        "slot_index": idx,
-                        "target_count": by_user.get(u.id, {}).get(idx, 0),
-                    }
-                    for idx in _VALID_SLOT_INDICES
-                ],
-                "day_target": sum(by_user.get(u.id, {}).values()),
-            }
-            for u in users
-        ],
+        "users": users_out,
     }
 
 
