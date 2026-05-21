@@ -1,5 +1,6 @@
 from core.database import get_db
 from core.deps import get_current_user, require_roles
+from core.sql_loader import load_sql
 from fastapi import APIRouter, Depends, HTTPException, Query
 from infra.models import (
     Candidate,
@@ -190,6 +191,44 @@ def get_candidate(
     # Include mail-sent flag so frontend can disable Generate Email once sent
     result["mail_sent"] = c.consultant_mail is not None
     return result
+
+
+@router.get("/check-email")
+def check_email_onboarded(
+    email: str = Query(...),
+    _=Depends(get_current_user),
+):
+    """Check via OL Replica if a candidate email is already onboarded."""
+    import os
+    import pymysql
+    import pymysql.cursors
+
+    host = os.getenv("OL_REPLICA_HOST", "")
+    if not host:
+        # OL Replica not configured — skip the check, allow candidate creation
+        return {"onboarded": False, "checked": False}
+
+    try:
+        conn = pymysql.connect(
+            host=host,
+            port=int(os.getenv("OL_REPLICA_PORT", "3306")),
+            db=os.getenv("OL_REPLICA_DATABASE", "offerletter"),
+            user=os.getenv("OL_REPLICA_USER", ""),
+            password=os.getenv("OL_REPLICA_PASSWORD", ""),
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor,
+            connect_timeout=10,
+            read_timeout=10,
+            autocommit=True,
+        )
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(load_sql("035-check_candidate_onboarded.sql"), {"email": email})
+                rows = cur.fetchall()
+        return {"onboarded": len(rows) > 0, "checked": True}
+    except Exception:
+        # If OL Replica is unreachable, don't block the recruiter
+        return {"onboarded": False, "checked": False}
 
 
 @router.post("")

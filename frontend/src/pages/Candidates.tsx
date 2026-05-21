@@ -71,6 +71,8 @@ export default function Candidates() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [emailCheckError, setEmailCheckError] = useState('');
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [assignModal, setAssignModal] = useState<{ candidateId: number } | null>(null);
   const [memberPanel, setMemberPanel] = useState<{
     id: number; name: string; role: string; filterType: 'sourced' | 'assigned';
@@ -150,6 +152,8 @@ export default function Candidates() {
     setShowAddModal(false);
     reset();
     setApiError('');
+    setEmailCheckError('');
+    setCheckingEmail(false);
     setExtractTab('text');
     setExtractText('');
     setExtractFile(null);
@@ -162,6 +166,10 @@ export default function Candidates() {
 
   const onSubmit = async (data: CandidateForm) => {
     setApiError('');
+    if (emailCheckError) {
+      setApiError('Cannot add this candidate — they are already onboarded in the Offer Letter system.');
+      return;
+    }
     if (!resumeKey) {
       setApiError('Resume is required. Please upload a PDF or Word document.');
       return;
@@ -788,8 +796,45 @@ export default function Candidates() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email *</label>
-                  <input type="email" placeholder="priya@example.com" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('email', { required: true })} />
+                  <div className="relative">
+                    <input
+                      type="email"
+                      placeholder="priya@example.com"
+                      className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 ${
+                        emailCheckError
+                          ? 'border-red-400 focus:border-red-400 focus:ring-red-50'
+                          : 'border-slate-200 focus:border-blue-400 focus:ring-blue-50'
+                      }`}
+                      {...register('email', { required: true })}
+                      onBlur={async (e) => {
+                        const email = e.target.value.trim();
+                        setEmailCheckError('');
+                        if (!email || !email.includes('@')) return;
+                        setCheckingEmail(true);
+                        try {
+                          const res = await api.get<{ onboarded: boolean; checked: boolean }>(
+                            `/candidates/check-email?email=${encodeURIComponent(email)}`
+                          );
+                          if (res.data.checked && res.data.onboarded) {
+                            setEmailCheckError('This candidate is already onboarded in the Offer Letter system and cannot be added to this job.');
+                          }
+                        } catch {
+                          // silently ignore check failures
+                        } finally {
+                          setCheckingEmail(false);
+                        }
+                      }}
+                    />
+                    {checkingEmail && (
+                      <span className="absolute right-3 top-2.5 text-xs text-slate-400 animate-pulse">Checking…</span>
+                    )}
+                  </div>
                   {errors.email && <p className="text-red-500 text-xs mt-1">Required</p>}
+                  {emailCheckError && (
+                    <p className="text-red-600 text-xs mt-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5 flex items-center gap-1">
+                      🚫 {emailCheckError}
+                    </p>
+                  )}
                 </div>
 
                 <div>
