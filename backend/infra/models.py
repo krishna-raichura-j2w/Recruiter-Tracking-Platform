@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -373,6 +374,30 @@ class Job(Base):
     min_experience = Column(Integer)
     max_experience = Column(Integer)
     salary_range = Column(String(100))
+    # ── OL-mapped fields ──────────────────────────────────────────────────────
+    designation           = Column(String(200), nullable=True)
+    walkin                = Column(Boolean, default=False)
+    drive                 = Column(Boolean, default=False)
+    start_time            = Column(String(20), nullable=True)   # walkin time from
+    end_time              = Column(String(20), nullable=True)   # walkin time to
+    date_from             = Column(Date, nullable=True)         # walkin date from
+    date_upto             = Column(Date, nullable=True)         # walkin date to
+    salary_from           = Column(Numeric(10, 2), default=0.0)
+    salary_to             = Column(Numeric(10, 2), default=0.0)
+    key_string            = Column(Text, nullable=True)
+    maximum_submission    = Column(Integer, nullable=True)
+    referral_amount       = Column(Integer, nullable=True)
+    requested_date        = Column(Date, nullable=True)
+    requested_by          = Column(String(200), nullable=True)
+    expected_submission   = Column(Text, nullable=True)
+    requirement_type      = Column(String(50), nullable=True)
+    job_responsibilities  = Column(Text, nullable=True)
+    billable_leaves       = Column(Boolean, nullable=True)
+    is_vip                = Column(Boolean, default=False)
+    po_opportunity_mrr    = Column(String(200), nullable=True)
+    potential_gm          = Column(String(50), nullable=True)
+    group_name            = Column(String(100), nullable=True)
+    sub_group             = Column(String(100), nullable=True)
     assigned_sourcer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_caller_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sourcer_ids = Column(Text, default="[]")  # JSON array e.g. "[9,6]"

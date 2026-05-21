@@ -43,24 +43,57 @@ type JobStatus  = 'all' | 'pending_review' | 'open' | 'on_hold' | 'closed';
 type ExtractTab = 'text' | 'image' | 'pdf';
 
 interface JobForm {
-  client_name:        string;
-  client_job_id:      string;
-  ol_job_type:        'new' | 'existing';
-  ol_job_id:          string;
-  demand_source:      string;
-  demand_type:        string;
-  demand_exclusivity: string;
-  role_title:         string;
-  skill_stack:   string;
-  work_mode:     string;
-  work_auth:     string;
-  headcount:     number;
-  location:      string;
-  jd_summary:    string;
-  min_experience:string;
-  max_experience:string;
-  salary_range:  string;
-  deadline:      string;
+  // Basic
+  client_name:          string;
+  role_title:           string;
+  designation:          string;
+  work_mode:            string;
+  work_auth:            string;
+  requirement_type:     string;
+  // OL link
+  ol_job_type:          'new' | 'existing';
+  ol_job_id:            string;
+  client_job_id:        string;
+  // Walkin / Drive
+  walkin:               boolean;
+  drive:                boolean;
+  start_time:           string;
+  end_time:             string;
+  date_from:            string;
+  date_upto:            string;
+  // Grouping
+  group_name:           string;
+  sub_group:            string;
+  // Skills & Experience & Location
+  skill_stack:          string;
+  min_experience:       string;
+  max_experience:       string;
+  location:             string;
+  // Salary
+  salary_from:          string;
+  salary_to:            string;
+  salary_range:         string;
+  // Demand (MRR)
+  demand_source:        string;
+  demand_type:          string;
+  demand_exclusivity:   string;
+  // Positions & Submission
+  headcount:            number;
+  expected_submission:  string;
+  maximum_submission:   string;
+  referral_amount:      string;
+  requested_date:       string;
+  requested_by:         string;
+  deadline:             string;
+  // Flags
+  billable_leaves:      string;
+  is_vip:               string;
+  po_opportunity_mrr:   string;
+  potential_gm:         string;
+  key_string:           string;
+  // JD Content
+  jd_summary:           string;
+  job_responsibilities: string;
 }
 
 interface ProbingForm {
@@ -198,9 +231,17 @@ export default function Jobs() {
   const [jobTotal,   setJobTotal]   = useState(0);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
-    useForm<JobForm>({ defaultValues: { headcount: 1, ol_job_type: 'new', ol_job_id: '' } });
+    useForm<JobForm>({
+      defaultValues: {
+        headcount: 1, ol_job_type: 'new', ol_job_id: '',
+        walkin: false, drive: false,
+        billable_leaves: '', is_vip: 'No',
+        salary_from: '0', salary_to: '0',
+      },
+    });
 
-  const olJobType = watch('ol_job_type');
+  const olJobType  = watch('ol_job_type');
+  const isWalkin   = watch('walkin');
 
   const fetchJobs = useCallback(() => {
     setLoading(true);
@@ -334,23 +375,47 @@ export default function Jobs() {
     setProbingId(job.probing_id ?? null);
     setProbingForm(emptyProbing());
     reset({
-      client_name:        job.client_name,
-      client_job_id:      job.client_job_id      ?? '',
-      demand_source:      job.demand_source      ?? '',
-      demand_type:        job.demand_type        ?? '',
-      demand_exclusivity: job.demand_exclusivity ?? '',
-      role_title:         job.role_title,
-      skill_stack:   job.skill_stack   ?? '',
-      work_mode:     job.work_mode     ?? '',
-      work_auth:     job.work_auth     ?? '',
-      headcount:     job.headcount,
-      location:      job.location      ?? '',
-      jd_summary:    job.jd_summary    ?? '',
-      min_experience:job.min_experience != null ? String(job.min_experience) : '',
-      max_experience:job.max_experience != null ? String(job.max_experience) : '',
-      salary_range:  job.salary_range  ?? '',
-      ol_job_type:   job.job_id != null ? 'existing' : 'new',
-      ol_job_id:     job.job_id != null ? String(job.job_id) : '',
+      client_name:          job.client_name,
+      role_title:           job.role_title,
+      designation:          (job as any).designation          ?? '',
+      client_job_id:        job.client_job_id                 ?? '',
+      demand_source:        job.demand_source                 ?? '',
+      demand_type:          job.demand_type                   ?? '',
+      demand_exclusivity:   job.demand_exclusivity            ?? '',
+      skill_stack:          job.skill_stack                   ?? '',
+      work_mode:            job.work_mode                     ?? '',
+      work_auth:            job.work_auth                     ?? '',
+      headcount:            job.headcount,
+      location:             job.location                      ?? '',
+      jd_summary:           job.jd_summary                   ?? '',
+      job_responsibilities: (job as any).job_responsibilities ?? '',
+      min_experience:       job.min_experience != null ? String(job.min_experience) : '',
+      max_experience:       job.max_experience != null ? String(job.max_experience) : '',
+      salary_range:         job.salary_range                  ?? '',
+      salary_from:          (job as any).salary_from != null ? String((job as any).salary_from) : '0',
+      salary_to:            (job as any).salary_to   != null ? String((job as any).salary_to)   : '0',
+      ol_job_type:          job.job_id != null ? 'existing' : 'new',
+      ol_job_id:            job.job_id != null ? String(job.job_id) : '',
+      walkin:               (job as any).walkin  ?? false,
+      drive:                (job as any).drive   ?? false,
+      start_time:           (job as any).start_time ?? '',
+      end_time:             (job as any).end_time   ?? '',
+      date_from:            (job as any).date_from  ?? '',
+      date_upto:            (job as any).date_upto  ?? '',
+      group_name:           (job as any).group_name ?? '',
+      sub_group:            (job as any).sub_group  ?? '',
+      key_string:           (job as any).key_string ?? '',
+      maximum_submission:   (job as any).maximum_submission != null ? String((job as any).maximum_submission) : '',
+      referral_amount:      (job as any).referral_amount    != null ? String((job as any).referral_amount)    : '',
+      requested_date:       (job as any).requested_date  ?? '',
+      requested_by:         (job as any).requested_by    ?? '',
+      expected_submission:  (job as any).expected_submission ?? '',
+      requirement_type:     (job as any).requirement_type    ?? '',
+      billable_leaves:      (job as any).billable_leaves === true ? 'yes' : (job as any).billable_leaves === false ? 'no' : '',
+      is_vip:               (job as any).is_vip ? 'yes' : 'no',
+      po_opportunity_mrr:   (job as any).po_opportunity_mrr ?? '',
+      potential_gm:         (job as any).potential_gm       ?? '',
+      deadline:             job.deadline                     ?? '',
     });
     // Pre-select current delivery leads so admin can change them
     setSelectedDeliveryLeadIds(
@@ -416,34 +481,54 @@ export default function Jobs() {
 
   const buildPayload = (data: JobForm) => ({
     ...data,
-    probing_id:         probingId,
-    job_id:             data.ol_job_type === 'existing' && data.ol_job_id ? Number(data.ol_job_id) : null,
-    ol_job_type:        undefined,   // UI-only, strip before sending
-    ol_job_id:          undefined,   // UI-only, strip before sending
-    client_job_id:      data.client_job_id      || null,
-    demand_source:      data.demand_source      || null,
-    demand_type:        data.demand_type        || null,
-    demand_exclusivity: data.demand_exclusivity || null,
-    work_mode:          data.work_mode          || null,
-    work_auth:        data.work_auth      || null,
-    skill_stack:      data.skill_stack    || null,
-    location:         data.location       || null,
-    jd_summary:       data.jd_summary     || null,
-    salary_range:     data.salary_range   || null,
-    headcount:        Number(data.headcount),
-    min_experience:   data.min_experience ? Number(data.min_experience) : null,
-    max_experience:   data.max_experience ? Number(data.max_experience) : null,
-    jd_parsed:        parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
-    jd_raw_text:      rawJdText ?? (editJob?.jd_raw_text ?? null),
-    // Admin editing: can change DLs. Creating: KAM/Admin pick DLs; DL optionally delegates.
+    probing_id:           probingId,
+    job_id:               data.ol_job_type === 'existing' && data.ol_job_id ? Number(data.ol_job_id) : null,
+    ol_job_type:          undefined,
+    ol_job_id:            undefined,
+    client_job_id:        data.client_job_id        || null,
+    demand_source:        data.demand_source         || null,
+    demand_type:          data.demand_type           || null,
+    demand_exclusivity:   data.demand_exclusivity    || null,
+    work_mode:            data.work_mode             || null,
+    work_auth:            data.work_auth             || null,
+    skill_stack:          data.skill_stack           || null,
+    location:             data.location              || null,
+    jd_summary:           data.jd_summary            || null,
+    salary_range:         data.salary_range          || null,
+    headcount:            Number(data.headcount),
+    min_experience:       data.min_experience  ? Number(data.min_experience)  : null,
+    max_experience:       data.max_experience  ? Number(data.max_experience)  : null,
+    salary_from:          data.salary_from     ? Number(data.salary_from)     : null,
+    salary_to:            data.salary_to       ? Number(data.salary_to)       : null,
+    maximum_submission:   data.maximum_submission ? Number(data.maximum_submission) : null,
+    referral_amount:      data.referral_amount  ? Number(data.referral_amount)  : null,
+    designation:          data.designation          || null,
+    group_name:           data.group_name           || null,
+    sub_group:            data.sub_group            || null,
+    key_string:           data.key_string           || null,
+    expected_submission:  data.expected_submission  || null,
+    requirement_type:     data.requirement_type     || null,
+    job_responsibilities: data.job_responsibilities || null,
+    requested_date:       data.requested_date       || null,
+    requested_by:         data.requested_by         || null,
+    po_opportunity_mrr:   data.po_opportunity_mrr   || null,
+    potential_gm:         data.potential_gm         || null,
+    start_time:           data.start_time || null,
+    end_time:             data.end_time   || null,
+    date_from:            data.date_from  || null,
+    date_upto:            data.date_upto  || null,
+    billable_leaves:      data.billable_leaves === 'yes' ? true : data.billable_leaves === 'no' ? false : null,
+    is_vip:               data.is_vip === 'yes',
+    jd_parsed:            parsedResult ? JSON.stringify(parsedResult) : (editJob?.jd_parsed ?? null),
+    jd_raw_text:          rawJdText ?? (editJob?.jd_raw_text ?? null),
     delivery_lead_ids: editJob
       ? ((isAdmin || isKam) ? selectedDeliveryLeadIds : undefined)
       : ((isKam || isAdmin) && !(isKam && isDeliveryLead)
           ? selectedDeliveryLeadIds
           : (isDeliveryLead && selectedAssignDlId ? [Number(selectedAssignDlId)] : undefined)),
-    kam_id: !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
+    kam_id:           !editJob && isDeliveryLead && selectedKamId ? Number(selectedKamId) : undefined,
     business_head_id: !editJob && selectedBhId ? Number(selectedBhId) : undefined,
-    deadline:         data.deadline ? new Date(data.deadline).toISOString() : null,
+    deadline:          data.deadline ? new Date(data.deadline).toISOString() : null,
   });
 
   const onSubmit = async (data: JobForm) => {
@@ -1231,166 +1316,343 @@ export default function Jobs() {
               )}
 
               {/* ── Job fields ── */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                {/* ── SECTION: Basic Info ─────────────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Basic Info</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client *</label>
                   {clientOptions.length > 0 ? (
-                    <select
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                      {...register('client_name', { required: true })}
-                    >
+                    <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('client_name', { required: true })}>
                       <option value="">Select client…</option>
-                      {clientOptions.map(c => (
-                        <option key={c.id} value={c.name}>{c.name}{c.short_name ? ` — ${c.short_name}` : ''}</option>
-                      ))}
+                      {clientOptions.map(c => <option key={c.id} value={c.name}>{c.name}{c.short_name ? ` — ${c.short_name}` : ''}</option>)}
                     </select>
                   ) : (
-                    <input type="text" placeholder="e.g. Sony"
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                      {...register('client_name', { required: true })} />
+                    <input type="text" placeholder="e.g. Sony" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('client_name', { required: true })} />
                   )}
                   {errors.client_name && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Work Mode</label>
-                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('work_mode', { required: true })}>
-                    <option value="">Select</option>
-                    {WORK_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('work_mode')}>
+                    <option value="">Select…</option>
+                    {WORK_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Role Title *</label>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Heading / Role Title *</label>
                   <input type="text" placeholder="e.g. Senior Software Engineer"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('role_title', { required: true })} />
                   {errors.role_title && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
-                {/* ── Offer Letter Job Type ─────────────────────────────── */}
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Job in Offer Letter *
-                  </label>
-                  <select
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation *</label>
+                  <input type="text" placeholder="e.g. SSE, TL, Architect"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('ol_job_type', { required: true })}>
+                    {...register('designation', { required: true })} />
+                  {errors.designation && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requirement Type</label>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('requirement_type')}>
+                    <option value="">Select…</option>
+                    {['Contract', 'Permanent', 'Contract-to-Hire', 'Freelance', 'Internship'].map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job in Offer Letter</label>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('ol_job_type')}>
                     <option value="new">New Job</option>
                     <option value="existing">Existing Job</option>
                   </select>
                 </div>
+
                 {olJobType === 'existing' && (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      Offer Letter Job ID *
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="Enter OL Job ID"
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">OL Job ID *</label>
+                    <input type="number" placeholder="Enter OL Job ID"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
-                      {...register('ol_job_id', { required: olJobType === 'existing' })}
-                    />
+                      {...register('ol_job_id', { required: olJobType === 'existing' })} />
                     {errors.ol_job_id && <p className="text-red-500 text-xs mt-1">Required for existing job</p>}
                   </div>
                 )}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Client Job ID <span className="text-slate-400 font-normal">(optional)</span>
+
+                {/* ── SECTION: Walkin / Drive ─────────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Walkin / Drive</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
+                <div className="col-span-2 flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 rounded accent-blue-500" {...register('walkin')} />
+                    <span className="text-sm font-medium text-slate-700">Walkin</span>
                   </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 rounded accent-blue-500" {...register('drive')} />
+                    <span className="text-sm font-medium text-slate-700">Drive</span>
+                  </label>
+                </div>
+
+                {isWalkin && (<>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Interview Time From</label>
+                    <input type="time" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('start_time')} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Interview Time To</label>
+                    <input type="time" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('end_time')} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Interview Date From</label>
+                    <input type="date" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('date_from')} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Interview Date Upto</label>
+                    <input type="date" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('date_upto')} />
+                  </div>
+                </>)}
+
+                {/* ── SECTION: Identification ─────────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identification</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client Job ID</label>
                   <input type="text" placeholder="e.g. JD-2026-001"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 font-mono"
                     {...register('client_job_id')} />
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Group</label>
+                  <input type="text" placeholder="Enter group" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('group_name')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Sub Group</label>
+                  <input type="text" placeholder="Enter sub group" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('sub_group')} />
+                </div>
+
+                {/* ── SECTION: Demand (MRR) ───────────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Demand</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Demand Source *</label>
-                  <select
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('demand_source', { required: true })}>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('demand_source', { required: true })}>
                     <option value="">Select source…</option>
-                    {['Customer Tool', 'Email', 'WhatsApp', 'Phone Call', 'Portal', 'Referral', 'Other'].map(o => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
+                    {['Customer Tool','Email','WhatsApp','Phone Call','Portal','Referral','Other'].map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                   {errors.demand_source && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Demand Type *</label>
-                  <select
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('demand_type', { required: true })}>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('demand_type', { required: true })}>
                     <option value="">Select type…</option>
-                    {['New', 'Backfill', 'Replacement'].map(o => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
+                    {['New','Backfill','Replacement'].map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                   {errors.demand_type && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Exclusivity *</label>
-                  <select
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('demand_exclusivity', { required: true })}>
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('demand_exclusivity', { required: true })}>
                     <option value="">Select…</option>
-                    {['Exclusive', 'Open'].map(o => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
+                    {['Exclusive','Open'].map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                   {errors.demand_exclusivity && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location *</label>
-                  <input type="text" placeholder="e.g. Chennai, Bangalore"
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('location', { required: true })} />
-                  {errors.location && <p className="text-red-500 text-xs mt-1">Required</p>}
+
+                {/* ── SECTION: Skills & Experience ────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Skills & Experience</span>
+                  <div className="flex-1 h-px bg-slate-100" />
                 </div>
+
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Skill Stack *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key Skills *</label>
                   <input type="text" placeholder="e.g. React, TypeScript, Node.js"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('skill_stack', { required: true })} />
                   {errors.skill_stack && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Min Exp (yrs) *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Experience From (yrs) *</label>
                   <input type="number" min={0} placeholder="e.g. 2"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('min_experience', { required: true })} />
                   {errors.min_experience && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Max Exp (yrs) *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Experience To (yrs) *</label>
                   <input type="number" min={0} placeholder="e.g. 5"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('max_experience', { required: true })} />
                   {errors.max_experience && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Location *</label>
+                  <input type="text" placeholder="e.g. Chennai, Bangalore"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('location', { required: true })} />
+                  {errors.location && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                {/* ── SECTION: Salary ─────────────────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salary</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Headcount *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary From *</label>
+                  <input type="number" min={0} step="0.01" placeholder="e.g. 250000"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('salary_from', { required: true })} />
+                  {errors.salary_from && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary To *</label>
+                  <input type="number" min={0} step="0.01" placeholder="e.g. 500000"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('salary_to', { required: true })} />
+                  {errors.salary_to && <p className="text-red-500 text-xs mt-1">Required</p>}
+                </div>
+
+                {/* ── SECTION: Positions & Scheduling ────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Positions & Scheduling</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">No. of Positions *</label>
                   <input type="number" min={1}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                     {...register('headcount', { required: true, min: 1 })} />
                   {errors.headcount && <p className="text-red-500 text-xs mt-1">Required (min 1)</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary / CTC Range</label>
-                  <input type="text" placeholder="e.g. 8-12 LPA"
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Expected Submission</label>
+                  <input type="text" placeholder="e.g. 3 days / 2026-06-01"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('salary_range')} />
+                    {...register('expected_submission')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Maximum Submission</label>
+                  <input type="number" min={0} placeholder="Max profiles to submit"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('maximum_submission')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount</label>
+                  <input type="number" min={500} placeholder="Min 500"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('referral_amount')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Date</label>
+                  <input type="date" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('requested_date')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Name</label>
+                  <input type="text" placeholder="Requested by"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('requested_by')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1">
-                    <Clock size={12} className="text-red-400" /> Deadline
+                    <Clock size={12} className="text-red-400" /> Expected Client Closure Date
                   </label>
                   <input type="datetime-local"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50"
                     {...register('deadline')} />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key String</label>
+                  <input type="text" placeholder="Boolean / recruiter key string"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('key_string')} />
+                </div>
+
+                {/* ── SECTION: Flags & Commercial ─────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Flags & Commercial</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Billable Leaves *</label>
+                  <div className="flex items-center gap-5">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" value="yes" className="accent-blue-500" {...register('billable_leaves')} />
+                      <span className="text-sm text-slate-700">Yes</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" value="no" className="accent-blue-500" {...register('billable_leaves')} />
+                      <span className="text-sm text-slate-700">No</span>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">High Priority (VIP) *</label>
+                  <div className="flex items-center gap-5">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" value="yes" className="accent-blue-500" {...register('is_vip')} />
+                      <span className="text-sm text-slate-700">Yes</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" value="no" className="accent-blue-500" {...register('is_vip')} />
+                      <span className="text-sm text-slate-700">No</span>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">PO Opportunity (MRR) *</label>
+                  <input type="text" placeholder="Enter MRR"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('po_opportunity_mrr')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Potential GM% *</label>
+                  <input type="text" placeholder="e.g. 25%"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('potential_gm')} />
+                </div>
+
+                {/* ── SECTION: Job Description ─────────────────────────────── */}
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Job Description</span>
+                  <div className="flex-1 h-px bg-slate-100" />
+                </div>
+
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">JD Summary / Notes</label>
-                  <textarea rows={5}
-                    placeholder="Role summary, key responsibilities, what to look for in candidates…"
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Description</label>
+                  <textarea rows={4}
+                    placeholder="Role summary, key highlights…"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-none"
                     {...register('jd_summary')} />
                 </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Responsibilities</label>
+                  <textarea rows={4}
+                    placeholder="Key responsibilities and duties…"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-none"
+                    {...register('job_responsibilities')} />
+                </div>
+
               </div>
               {apiError && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">{apiError}</p>}
               <div className="flex gap-3 pt-2">

@@ -85,6 +85,13 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for sql in load_sql_list("033-add_job_ol_fields.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         # Legacy BH → user migration (idempotent)
         try:
             ams = db.execute(
