@@ -24,7 +24,29 @@ from sqlalchemy.orm import Session
 
 
 def _team(db: Session, pod_lead_id: int, role: UserRole | None = None) -> list[User]:
-    """All active team members for a given DL, optionally filtered by role."""
+    """All active team members for a given DL, optionally filtered by role.
+
+    Preferred (new pod model): every recruiter and DL in the same pod as the
+    anchor, excluding the anchor themselves. KAMs/BH are excluded — they
+    aren't work allocators. This means the JD-reassign picker sees the FULL
+    pod regardless of which DL hand-picked which recruiters into their
+    pod_memberships team.
+
+    Legacy fallback: when the anchor has no `pod_id` yet, read the
+    pod_memberships table so existing teams (pre-pods migration) stay visible.
+    """
+    anchor = db.query(User).filter(User.id == pod_lead_id).first()
+    if anchor and anchor.pod_id:
+        q = db.query(User).filter(
+            User.pod_id == anchor.pod_id,
+            User.is_active == True,  # noqa: E712
+            User.id != pod_lead_id,
+            User.role.in_([UserRole.recruiter, UserRole.delivery_lead]),
+        )
+        if role is not None:
+            q = q.filter(User.role == role)
+        return q.order_by(User.id).all()
+
     member_ids = (
         db.query(PodMembership.user_id)
         .filter(PodMembership.pod_lead_id == pod_lead_id)

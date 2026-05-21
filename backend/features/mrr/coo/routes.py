@@ -331,12 +331,13 @@ def recruiter_leaderboard(
         HourlyTarget,
         Pod,
         PodMembership,
+        Submission,
         User,
         UserRole,
         Validation,
         ValidationStatus,
     )
-    from sqlalchemy import func, or_
+    from sqlalchemy import or_
 
     from features.mrr.targets.routes import TIME_SLOTS, current_slot_indices_completed
 
@@ -396,9 +397,14 @@ def recruiter_leaderboard(
             "today": today_ist.isoformat(),
         }
 
-    # Done = candidates this recruiter SOURCED today (Candidate.sourced_at in
-    # today's IST window). Verified = of THOSE same candidates, how many the
-    # DL has validated. Verified is a subset of Done by construction.
+    # ── Cumulative funnel: Ack Sent ≥ Submissions ≥ DL Verified ──
+    #
+    # Scope: candidates this recruiter SOURCED today (so the row stays
+    # internally consistent — every later-stage candidate also went through
+    # the earlier stages on this day). A verified candidate adds +1 to all
+    # three columns; that's the "if dl verified is 1, submissions and
+    # acknowledgment also 1" rule from product.
+
     todays_sourced_rows = (
         db.query(Candidate.id, Candidate.sourced_by_id)
         .filter(
@@ -408,55 +414,107 @@ def recruiter_leaderboard(
         )
         .all()
     )
-    todays_candidate_ids: list[int] = [cid for cid, _ in todays_sourced_rows]
+    cand_to_rec: dict[int, int] = {cid: uid for cid, uid in todays_sourced_rows}
+    todays_candidate_ids: list[int] = list(cand_to_rec.keys())
     done_by_rec: dict[int, int] = {}
     for _cid, uid in todays_sourced_rows:
         done_by_rec[uid] = done_by_rec.get(uid, 0) + 1
 
-    verified_by_rec: dict[int, int] = {}
+    # ── Per-slot bucketing helpers ──
+    # Each event has a UTC timestamp; convert to IST and find which TIME_SLOTS
+    # bucket it falls into. Lunch (13:30-14:30 IST) has no slot → None.
+    _slot_bounds = [
+        (
+            s["index"],
+            int(s["start"].split(":")[0]) * 60 + int(s["start"].split(":")[1]),
+            int(s["end"].split(":")[0]) * 60 + int(s["end"].split(":")[1]),
+        )
+        for s in TIME_SLOTS
+    ]
+
+    def _slot_for_utc(utc_dt):
+        if utc_dt is None:
+            return None
+        if utc_dt.tzinfo is None:
+            ist = utc_dt + timedelta(hours=5, minutes=30)
+        else:
+            ist = utc_dt.astimezone(timezone.utc) + timedelta(hours=5, minutes=30)
+            ist = ist.replace(tzinfo=None)
+        m = ist.hour * 60 + ist.minute
+        for idx, sm, em in _slot_bounds:
+            if sm <= m < em:
+                return idx
+        return None
+
+    # ack_sent: today's sourced candidates that have a ConsultantMail row.
+    # Counts on the candidate (not the mail) so each candidate adds at most 1.
+    ack_by_rec: dict[int, int] = {}
+    ack_hourly: dict[int, dict[int, int]] = {}   # rec_id → {slot_idx → count}
     if todays_candidate_ids:
-        verified_rows = (
-            db.query(Candidate.sourced_by_id, func.count(Validation.id))
-            .join(Validation, Validation.candidate_id == Candidate.id)
+        for cid, sent_at in (
+            db.query(ConsultantMail.candidate_id, ConsultantMail.sent_at)
+            .filter(ConsultantMail.candidate_id.in_(todays_candidate_ids))
+            .all()
+        ):
+            rec_id = cand_to_rec.get(cid)
+            if rec_id is None:
+                continue
+            ack_by_rec[rec_id] = ack_by_rec.get(rec_id, 0) + 1
+            slot = _slot_for_utc(sent_at)
+            if slot is not None:
+                ack_hourly.setdefault(rec_id, {})[slot] = ack_hourly.get(rec_id, {}).get(slot, 0) + 1
+
+    # submissions: today's sourced candidates that have a Submission row.
+    sub_by_rec: dict[int, int] = {}
+    sub_hourly: dict[int, dict[int, int]] = {}
+    if todays_candidate_ids:
+        for cid, submitted_at in (
+            db.query(Submission.candidate_id, Submission.submitted_at)
+            .filter(Submission.candidate_id.in_(todays_candidate_ids))
+            .all()
+        ):
+            rec_id = cand_to_rec.get(cid)
+            if rec_id is None:
+                continue
+            sub_by_rec[rec_id] = sub_by_rec.get(rec_id, 0) + 1
+            slot = _slot_for_utc(submitted_at)
+            if slot is not None:
+                sub_hourly.setdefault(rec_id, {})[slot] = sub_hourly.get(rec_id, {}).get(slot, 0) + 1
+
+    # dl_verified: today's sourced candidates that have a Validation(validated).
+    verified_by_rec: dict[int, int] = {}
+    verified_hourly: dict[int, dict[int, int]] = {}
+    if todays_candidate_ids:
+        for cid, validated_at in (
+            db.query(Validation.candidate_id, Validation.created_at)
             .filter(
-                Candidate.id.in_(todays_candidate_ids),
+                Validation.candidate_id.in_(todays_candidate_ids),
                 Validation.status == ValidationStatus.validated,
             )
-            .group_by(Candidate.sourced_by_id)
             .all()
-        )
-        verified_by_rec = {uid: int(cnt) for uid, cnt in verified_rows}
+        ):
+            rec_id = cand_to_rec.get(cid)
+            if rec_id is None:
+                continue
+            verified_by_rec[rec_id] = verified_by_rec.get(rec_id, 0) + 1
+            slot = _slot_for_utc(validated_at)
+            if slot is not None:
+                verified_hourly.setdefault(rec_id, {})[slot] = verified_hourly.get(rec_id, {}).get(slot, 0) + 1
 
-    # Rejections today — candidates flipped to rejected with updated_at today
-    reject_rows = (
-        db.query(Candidate.sourced_by_id, func.count(Candidate.id))
-        .filter(
-            Candidate.sourced_by_id.in_(rec_ids),
-            Candidate.status == CandidateStatus.rejected,
-            Candidate.updated_at >= day_start_utc,
-            Candidate.updated_at < day_end_utc,
-        )
-        .group_by(Candidate.sourced_by_id)
-        .all()
-    )
-    reject_by_rec = {uid: int(cnt) for uid, cnt in reject_rows}
-
-    # Acknowledgment-pending mails — mails the recruiter sent TODAY whose
-    # acknowledgement hasn't come back yet. Date-scoped so the row stays
-    # internally consistent: a recruiter with no sourcing activity today
-    # also has no ack activity today.
-    ack_rows = (
-        db.query(ConsultantMail.sent_by_id, func.count(ConsultantMail.id))
-        .filter(
-            ConsultantMail.sent_by_id.in_(rec_ids),
-            ConsultantMail.acknowledgement_received == False,  # noqa: E712
-            ConsultantMail.sent_at >= day_start_utc,
-            ConsultantMail.sent_at < day_end_utc,
-        )
-        .group_by(ConsultantMail.sent_by_id)
-        .all()
-    )
-    ack_by_rec = {uid: int(cnt) for uid, cnt in ack_rows}
+    # Rejections today (kept for footer compat but not in main funnel UI).
+    reject_by_rec: dict[int, int] = {}
+    if rec_ids:
+        for uid, in (
+            db.query(Candidate.sourced_by_id)
+            .filter(
+                Candidate.sourced_by_id.in_(rec_ids),
+                Candidate.status == CandidateStatus.rejected,
+                Candidate.updated_at >= day_start_utc,
+                Candidate.updated_at < day_end_utc,
+            )
+            .all()
+        ):
+            reject_by_rec[uid] = reject_by_rec.get(uid, 0) + 1
 
     # ── Hourly targets for today (per recruiter) ──
     # Sum of slot_targets for slots that have already ended → "target_so_far".
@@ -553,69 +611,120 @@ def recruiter_leaderboard(
         return {"dl": dl_name, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
 
     rows = []
-    sum_done = sum_verified = sum_rejects = sum_ack = 0
+    sum_done = sum_ack = sum_subs = sum_verified = sum_rejects = 0
     sum_target_so_far = sum_day_target = 0
+    sum_hourly_target = [0] * len(TIME_SLOTS)
+    sum_hourly_ack    = [0] * len(TIME_SLOTS)
+    sum_hourly_sub    = [0] * len(TIME_SLOTS)
+    sum_hourly_ver    = [0] * len(TIME_SLOTS)
     for u in recruiters:
-        done = done_by_rec.get(u.id, 0)
-        verified = verified_by_rec.get(u.id, 0)
-        rejects = reject_by_rec.get(u.id, 0)
-        ack = ack_by_rec.get(u.id, 0)
+        done       = done_by_rec.get(u.id, 0)
+        ack        = ack_by_rec.get(u.id, 0)
+        subs       = sub_by_rec.get(u.id, 0)
+        verified   = verified_by_rec.get(u.id, 0)
+        rejects    = reject_by_rec.get(u.id, 0)
         target_so_far, day_target = _targets_for(u.id)
-        # % against the cumulative target the recruiter SHOULD have hit by now.
+        # % against the cumulative target the recruiter SHOULD have hit by now,
+        # measured on the DL-verified count (the bottom of the funnel).
         pct = round((verified / target_so_far) * 100) if target_so_far else 0
         status = (
             "On Track"
             if (target_so_far == 0 or pct >= ON_TRACK_THRESHOLD)
             else "Behind"
         )
+
+        # Per-slot view: target + actual at each level. Frontend renders the
+        # hourly drill-down from this list.
+        target_slots = slots_by_user.get(u.id, {})
+        a_h = ack_hourly.get(u.id, {})
+        s_h = sub_hourly.get(u.id, {})
+        v_h = verified_hourly.get(u.id, {})
+        hourly = []
+        for s in TIME_SLOTS:
+            idx = s["index"]
+            t   = int(target_slots.get(idx, 0))
+            a   = int(a_h.get(idx, 0))
+            sb  = int(s_h.get(idx, 0))
+            vr  = int(v_h.get(idx, 0))
+            hourly.append({
+                "slot_index":  idx,
+                "label":       s["label"],
+                "target":      t,
+                "ack_sent":    a,
+                "submissions": sb,
+                "dl_verified": vr,
+                "completed":   idx in completed_slots,
+            })
+            sum_hourly_target[idx] += t
+            sum_hourly_ack[idx]    += a
+            sum_hourly_sub[idx]    += sb
+            sum_hourly_ver[idx]    += vr
+
         chain = _chain_for(u)
         rows.append(
             {
-                "recruiter_id": u.id,
+                "recruiter_id":   u.id,
                 "recruiter_name": u.name,
-                "dl_name": chain["dl"],
-                "kam_names": chain["kam_names"],
-                "bh_name": chain["bh"],
-                "pod_name": chain["pod"],
-                "day_target": day_target,
-                "target_so_far": target_so_far,
-                "done": done,
-                "verified": verified,
-                "pct": pct,
-                "status": status,
-                "rejections": rejects,
-                "ack_sent": ack,
-                "performance": _performance_category(verified),
+                "dl_name":        chain["dl"],
+                "kam_names":      chain["kam_names"],
+                "bh_name":        chain["bh"],
+                "pod_name":       chain["pod"],
+                "day_target":     day_target,
+                "target_so_far":  target_so_far,
+                "done":           done,
+                "ack_sent":       ack,
+                "submissions":    subs,
+                "dl_verified":    verified,
+                "pct":            pct,
+                "status":         status,
+                "rejections":     rejects,
+                "performance":    _performance_category(verified),
+                "hourly":         hourly,
             },
         )
-        sum_done += done
+        sum_done     += done
+        sum_ack      += ack
+        sum_subs     += subs
         sum_verified += verified
-        sum_rejects += rejects
-        sum_ack += ack
+        sum_rejects  += rejects
         sum_target_so_far += target_so_far
-        sum_day_target += day_target
+        sum_day_target    += day_target
 
     total_pct = (
         round((sum_verified / sum_target_so_far) * 100) if sum_target_so_far else 0
     )
+    totals_hourly = [
+        {
+            "slot_index":  s["index"],
+            "label":       s["label"],
+            "target":      sum_hourly_target[s["index"]],
+            "ack_sent":    sum_hourly_ack[s["index"]],
+            "submissions": sum_hourly_sub[s["index"]],
+            "dl_verified": sum_hourly_ver[s["index"]],
+            "completed":   s["index"] in completed_slots,
+        }
+        for s in TIME_SLOTS
+    ]
     totals = {
-        "day_target": sum_day_target,
+        "day_target":    sum_day_target,
         "target_so_far": sum_target_so_far,
-        "done": sum_done,
-        "verified": sum_verified,
-        "rejections": sum_rejects,
-        "ack_sent": sum_ack,
-        "pct": total_pct,
+        "done":          sum_done,
+        "ack_sent":      sum_ack,
+        "submissions":   sum_subs,
+        "dl_verified":   sum_verified,
+        "rejections":    sum_rejects,
+        "pct":           total_pct,
         "status": (
             "On Track"
             if (sum_target_so_far == 0 or total_pct >= ON_TRACK_THRESHOLD)
             else "Behind"
         ),
+        "hourly": totals_hourly,
     }
 
     return {
-        "rows": rows,
+        "rows":   rows,
         "totals": totals,
-        "today": today_ist.isoformat(),
-        "slots": TIME_SLOTS,
+        "today":  today_ist.isoformat(),
+        "slots":  TIME_SLOTS,
     }

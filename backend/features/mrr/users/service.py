@@ -11,6 +11,7 @@ from infra.models import (
     PodMembership,
     Submission,
     User,
+    UserRole,
     to_iso_utc,
 )
 from sqlalchemy import or_
@@ -31,13 +32,23 @@ def list_users(
     if role:
         q = q.filter(User.role == role)
     if pod_lead_id is not None:
-        # Use pod_memberships junction table so multi-team users appear under every DL
-        member_ids = (
-            db.query(PodMembership.user_id)
-            .filter(PodMembership.pod_lead_id == pod_lead_id)
-            .subquery()
-        )
-        q = q.filter(User.id.in_(member_ids))
+        # New pod model: a DL's "team" is every recruiter+DL in the same pod,
+        # not just their hand-picked pod_memberships rows. Legacy fallback to
+        # pod_memberships if the anchor isn't placed in a pod yet.
+        anchor = db.query(User).filter(User.id == pod_lead_id).first()
+        if anchor and anchor.pod_id:
+            q = q.filter(
+                User.pod_id == anchor.pod_id,
+                User.id != pod_lead_id,
+                User.role.in_([UserRole.recruiter, UserRole.delivery_lead]),
+            )
+        else:
+            member_ids = (
+                db.query(PodMembership.user_id)
+                .filter(PodMembership.pod_lead_id == pod_lead_id)
+                .subquery()
+            )
+            q = q.filter(User.id.in_(member_ids))
     if search:
         s = f"%{search.lower()}%"
         q = q.filter(func.lower(User.name).like(s) | func.lower(User.email).like(s))
@@ -68,7 +79,12 @@ def list_available_team(
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list[User], int]:
-    """Active users NOT already in this DL's team (any role can be added)."""
+    """Active users NOT already in this DL's team (any role can be added).
+
+    New pod model: scope candidates to recruiters in the same pod as the DL,
+    minus those already in the DL's pod_memberships team. Legacy fallback when
+    the DL isn't in a pod yet: any active user not already on the team.
+    """
     from sqlalchemy import func
 
     already_in_team = (
@@ -76,11 +92,17 @@ def list_available_team(
         .filter(PodMembership.pod_lead_id == dl_id)
         .subquery()
     )
+    anchor = db.query(User).filter(User.id == dl_id).first()
     q = db.query(User).filter(
         User.is_active == True,  # noqa: E712
         User.id != dl_id,
         ~User.id.in_(already_in_team),
     )
+    if anchor and anchor.pod_id:
+        q = q.filter(
+            User.pod_id == anchor.pod_id,
+            User.role == UserRole.recruiter,
+        )
     if role:
         q = q.filter(User.role == role)
     if search:

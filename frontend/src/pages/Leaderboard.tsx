@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, Fragment } from 'react';
 import {
   Users, AlertTriangle, CheckCircle2, RefreshCw,
   Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Filter,
+  Mail, Send, ShieldCheck, ChevronRight,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -9,6 +10,16 @@ import api from '../api/client';
 // ════════════════════════════════════════════════════════════════════════════
 //  Section 1 — Recruiter Leaderboard (per-recruiter daily metrics)
 // ════════════════════════════════════════════════════════════════════════════
+
+interface HourlySlot {
+  slot_index:  number;
+  label:       string;
+  target:      number;
+  ack_sent:    number;
+  submissions: number;
+  dl_verified: number;
+  completed:   boolean;
+}
 
 interface RecruiterRow {
   recruiter_id: number;
@@ -19,24 +30,29 @@ interface RecruiterRow {
   pod_name:  string | null;
   day_target:    number;         // sum of all hourly slot targets for today
   target_so_far: number;         // cumulative target the user should have reached by now
-  done: number;
-  verified: number;
-  pct: number;                   // verified / target_so_far × 100
+  done:        number;
+  // Funnel (cumulative on today's sourced candidates): ack_sent ≥ submissions ≥ dl_verified
+  ack_sent:    number;
+  submissions: number;
+  dl_verified: number;
+  pct: number;                   // dl_verified / target_so_far × 100
   status: 'On Track' | 'Behind';
   rejections: number;
-  ack_sent: number;
   performance: 'needs discussion' | 'below average' | 'average' | 'high' | 'good performance';
+  hourly: HourlySlot[];
 }
 
 interface RecruiterTotals {
   day_target:    number;
   target_so_far: number;
   done:          number;
-  verified:      number;
-  rejections:    number;
   ack_sent:      number;
+  submissions:   number;
+  dl_verified:   number;
+  rejections:    number;
   pct:           number;
   status:       'On Track' | 'Behind';
+  hourly:       HourlySlot[];
 }
 
 interface RecruiterApiResponse {
@@ -44,14 +60,6 @@ interface RecruiterApiResponse {
   totals: RecruiterTotals;
   today:  string;
 }
-
-const PERF_STYLES: Record<RecruiterRow['performance'], string> = {
-  'needs discussion':  'text-red-600',
-  'below average':     'text-orange-600',
-  'average':           'text-slate-600',
-  'high':              'text-emerald-600',
-  'good performance':  'text-emerald-700 font-semibold',
-};
 
 const PERF_OPTIONS: RecruiterRow['performance'][] = [
   'needs discussion', 'below average', 'average', 'high', 'good performance',
@@ -63,10 +71,97 @@ function uniq(values: (string | null | undefined)[]): string[] {
   return [...out].sort();
 }
 
+// Funnel visual: small horizontal stack showing Ack → Submissions → Verified.
+function FunnelBar({ ack, sub, ver }: { ack: number; sub: number; ver: number }) {
+  const total = Math.max(ack, 1);
+  const wAck = 100;
+  const wSub = Math.round((sub / total) * 100);
+  const wVer = Math.round((ver / total) * 100);
+  return (
+    <div className="flex items-center gap-0.5 h-2 w-24" title={`Ack ${ack} · Subs ${sub} · Verified ${ver}`}>
+      <div className="rounded-l-sm bg-amber-200" style={{ width: `${wAck}%` }} />
+      <div className="bg-violet-300" style={{ width: `${wSub}%`, marginLeft: '-100%' }} />
+      <div className="rounded-r-sm bg-emerald-500" style={{ width: `${wVer}%`, marginLeft: '-100%' }} />
+    </div>
+  );
+}
+
+// One-row hourly drill-down rendered as a nested table.
+function HourlyDrillDown({ hourly }: { hourly: HourlySlot[] }) {
+  return (
+    <div className="bg-slate-50 px-6 py-3">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="text-slate-500">
+            <th className="text-left py-1 px-2 font-semibold">Hour</th>
+            {hourly.map(s => (
+              <th key={s.slot_index}
+                  className={`text-center py-1 px-2 font-semibold whitespace-nowrap ${s.completed ? '' : 'text-slate-300'}`}>
+                {s.label.replace(' AM', '').replace(' PM', '').replace(' – ', '–')}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="py-1 px-2 font-semibold text-slate-600 whitespace-nowrap">Target</td>
+            {hourly.map(s => (
+              <td key={s.slot_index} className="text-center py-1 px-2 text-slate-500">{s.target || '—'}</td>
+            ))}
+          </tr>
+          <tr title="Acknowledgment sent — mails sent to consultants this hour">
+            <td className="py-1 px-2 font-semibold whitespace-nowrap" style={{ color: '#B45309' }}>
+              <Mail size={11} className="inline mr-1" /> Ack sent
+            </td>
+            {hourly.map(s => (
+              <td key={s.slot_index} className="text-center py-1 px-2"
+                  style={{ background: s.ack_sent > 0 ? '#FEF3C7' : undefined }}>
+                {s.ack_sent || ''}
+              </td>
+            ))}
+          </tr>
+          <tr title="Submissions — candidates submitted to client this hour">
+            <td className="py-1 px-2 font-semibold whitespace-nowrap" style={{ color: '#6D28D9' }}>
+              <Send size={11} className="inline mr-1" /> Submissions
+            </td>
+            {hourly.map(s => (
+              <td key={s.slot_index} className="text-center py-1 px-2"
+                  style={{ background: s.submissions > 0 ? '#EDE9FE' : undefined }}>
+                {s.submissions || ''}
+              </td>
+            ))}
+          </tr>
+          <tr title="DL verified — validations completed this hour">
+            <td className="py-1 px-2 font-semibold whitespace-nowrap" style={{ color: '#047857' }}>
+              <ShieldCheck size={11} className="inline mr-1" /> DL verified
+            </td>
+            {hourly.map(s => {
+              const met = s.target > 0 && s.dl_verified >= s.target;
+              return (
+                <td key={s.slot_index} className="text-center py-1 px-2 font-semibold"
+                    style={{
+                      background: s.dl_verified > 0 ? (met ? '#D1FAE5' : '#FEE2E2') : undefined,
+                      color:      s.dl_verified > 0 ? (met ? '#047857' : '#B91C1C') : undefined,
+                    }}>
+                  {s.dl_verified || ''}
+                </td>
+              );
+            })}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function RecruiterLeaderboardSection() {
   const [data, setData]       = useState<RecruiterApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+  // Hourly view: collapsed = unique IDs that were closed.  All rows are
+  // EXPANDED by default so the hourly grid is visible immediately.
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [allCollapsed, setAllCollapsed] = useState(false);
 
   // ── Filter state ──
   const [search, setSearch]     = useState('');
@@ -86,6 +181,31 @@ function RecruiterLeaderboardSection() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const isOpen = (id: number) => !allCollapsed && !collapsed.has(id);
+
+  const toggleRow = (id: number) => {
+    if (allCollapsed) {
+      // Coming out of "collapse all" — open just this one and clear the master.
+      setAllCollapsed(false);
+      setCollapsed(prev => {
+        const next = new Set(prev);
+        (data?.rows ?? []).forEach(r => { if (r.recruiter_id !== id) next.add(r.recruiter_id); });
+        return next;
+      });
+      return;
+    }
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setAllCollapsed(v => !v);
+    setCollapsed(new Set());
+  };
 
   // ── Filter-option lists derived from the data ──
   const dlOptions  = useMemo(() => uniq(data?.rows.map(r => r.dl_name)  ?? []), [data]);
@@ -116,15 +236,15 @@ function RecruiterLeaderboardSection() {
       (a, r) => {
         a.day_target    += r.day_target;
         a.target_so_far += r.target_so_far;
-        a.done          += r.done;
-        a.verified      += r.verified;
-        a.rejections    += r.rejections;
         a.ack_sent      += r.ack_sent;
+        a.submissions   += r.submissions;
+        a.dl_verified   += r.dl_verified;
+        a.rejections    += r.rejections;
         return a;
       },
-      { day_target: 0, target_so_far: 0, done: 0, verified: 0, rejections: 0, ack_sent: 0 }
+      { day_target: 0, target_so_far: 0, ack_sent: 0, submissions: 0, dl_verified: 0, rejections: 0 }
     );
-    const pct = t.target_so_far ? Math.round((t.verified / t.target_so_far) * 100) : 0;
+    const pct = t.target_so_far ? Math.round((t.dl_verified / t.target_so_far) * 100) : 0;
     const status: 'On Track' | 'Behind' =
       t.target_so_far === 0 || pct >= 75 ? 'On Track' : 'Behind';
     return { ...t, pct, status };
@@ -135,6 +255,9 @@ function RecruiterLeaderboardSection() {
 
   const selectCls = "text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-28 max-w-44";
 
+  // Column count for spanning loading/empty rows (must match the header count).
+  const COL_COUNT = 14;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
       {/* ── Header ── */}
@@ -142,20 +265,55 @@ function RecruiterLeaderboardSection() {
         <div className="flex items-center gap-2">
           <Users size={18} className="text-slate-500" />
           <h2 className="text-base font-bold text-slate-800">
-            Recruiter Leaderboard — submissions today (live)
+            Recruiter Leaderboard
           </h2>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">
+            Ack → Submissions → DL Verified
+          </span>
           {data && (
             <span className="ml-2 text-xs text-slate-400">{data.today}</span>
           )}
         </div>
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold"
+            title="Show or hide the hourly split for all recruiters"
+          >
+            {allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            {allCollapsed ? 'Show hourly' : 'Hide hourly'}
+          </button>
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ── Legend ── */}
+      <div className="flex items-center flex-wrap gap-3 mb-3 text-[11px] text-slate-500">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-300" />
+          <Mail size={11} /> Ack sent
+          <span className="text-slate-400">— mail sent to consultant</span>
+        </span>
+        <span className="text-slate-300">›</span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400" />
+          <Send size={11} /> Submissions
+          <span className="text-slate-400">— sent to client, DL verification pending or done</span>
+        </span>
+        <span className="text-slate-300">›</span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+          <ShieldCheck size={11} /> DL verified
+          <span className="text-slate-400">— validated by Delivery Lead</span>
+        </span>
+        <span className="ml-auto text-slate-400">Click a row to see the hourly split.</span>
       </div>
 
       {/* ── Filter bar ── */}
@@ -213,79 +371,115 @@ function RecruiterLeaderboardSection() {
 
       {!error && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: 1300 }}>
+          <table className="w-full text-sm" style={{ minWidth: 1400 }}>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
+                <th className="w-6 py-2.5 px-2" />
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Recruiter</th>
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Delivery Lead</th>
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">KAM</th>
-                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">BH</th>
-                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pod</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider" title="Cumulative target the user should have hit by now">Target so far</th>
+                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">BH / Pod</th>
+                <th className="text-center py-2.5 px-3 text-xs font-bold uppercase tracking-wider" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                  <Mail size={11} className="inline mr-1" /> Ack sent
+                </th>
+                <th className="text-center py-2.5 px-3 text-xs font-bold uppercase tracking-wider" style={{ background: '#EDE9FE', color: '#5B21B6' }}>
+                  <Send size={11} className="inline mr-1" /> Submissions
+                </th>
+                <th className="text-center py-2.5 px-3 text-xs font-bold uppercase tracking-wider" style={{ background: '#D1FAE5', color: '#065F46' }}>
+                  <ShieldCheck size={11} className="inline mr-1" /> DL verified
+                </th>
+                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Funnel</th>
+                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider" title="Cumulative hourly target the user should have hit by now">Target so far</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Day target</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Done (subs)</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Verified by DL</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">% so far</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Rejections</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Ack sent</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Performance</th>
               </tr>
             </thead>
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={14} className="py-12 text-center text-sm text-slate-400">Loading…</td>
+                  <td colSpan={COL_COUNT} className="py-12 text-center text-sm text-slate-400">Loading…</td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="py-12 text-center text-sm text-slate-400">
+                  <td colSpan={COL_COUNT} className="py-12 text-center text-sm text-slate-400">
                     {activeFilters > 0 ? 'No recruiters match these filters.' : 'No recruiters found.'}
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
-                  <tr key={row.recruiter_id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">{row.recruiter_name}</td>
-                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.dl_name  ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-slate-600">{row.kam_names.length > 0 ? row.kam_names.join(', ') : <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.bh_name  ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.pod_name ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center font-semibold text-slate-800">{row.target_so_far || <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-500">{row.day_target || <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-700">{row.done || ''}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-700">{row.verified || ''}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-600">{row.target_so_far ? `${row.pct}%` : <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      {row.status === 'On Track' ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
-                          <CheckCircle2 size={12} /> On Track
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-red-600 font-semibold text-xs">
-                          <AlertTriangle size={12} /> Behind
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-slate-700">{row.rejections || ''}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-700">{row.ack_sent || ''}</td>
-                    <td className={`py-2.5 px-3 text-center text-xs capitalize ${PERF_STYLES[row.performance]}`}>
-                      {row.performance}
-                    </td>
-                  </tr>
-                ))
+                filteredRows.map((row) => {
+                  const open = isOpen(row.recruiter_id);
+                  return (
+                  <Fragment key={row.recruiter_id}>
+                    <tr
+                        onClick={() => toggleRow(row.recruiter_id)}
+                        className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
+                      <td className="py-2.5 px-2 text-center text-slate-400">
+                        {open ? <ChevronDown size={14} className="inline" /> : <ChevronRight size={14} className="inline" />}
+                      </td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">{row.recruiter_name}</td>
+                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{row.dl_name  ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 px-3 text-slate-600 text-xs">{row.kam_names.length > 0 ? row.kam_names.join(', ') : <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-xs">
+                        {row.bh_name  ?? <span className="text-slate-300">—</span>}
+                        {row.pod_name && <span className="text-slate-400"> · {row.pod_name}</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-bold" style={{ background: row.ack_sent > 0 ? '#FFFBEB' : undefined, color: '#92400E' }}>
+                        {row.ack_sent || <span className="text-slate-300 font-normal">—</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-bold" style={{ background: row.submissions > 0 ? '#F5F3FF' : undefined, color: '#5B21B6' }}>
+                        {row.submissions || <span className="text-slate-300 font-normal">—</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-bold" style={{ background: row.dl_verified > 0 ? '#ECFDF5' : undefined, color: '#065F46' }}>
+                        {row.dl_verified || <span className="text-slate-300 font-normal">—</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <FunnelBar ack={row.ack_sent} sub={row.submissions} ver={row.dl_verified} />
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-semibold text-slate-800">{row.target_so_far || <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 px-3 text-center text-slate-500">{row.day_target || <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 px-3 text-center text-slate-700 font-semibold">{row.target_so_far ? `${row.pct}%` : <span className="text-slate-300 font-normal">—</span>}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        {row.status === 'On Track' ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
+                            <CheckCircle2 size={12} /> On Track
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-red-600 font-semibold text-xs">
+                            <AlertTriangle size={12} /> Behind
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-slate-700">{row.rejections || ''}</td>
+                    </tr>
+                    {open && (
+                      <tr>
+                        <td colSpan={COL_COUNT} className="p-0">
+                          <HourlyDrillDown hourly={row.hourly} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                  );
+                })
               )}
             </tbody>
             {totals && filteredRows.length > 0 && (
               <tfoot>
                 <tr className="bg-slate-100 font-bold text-slate-700">
-                  <td className="py-2.5 px-3" colSpan={5}>
+                  <td className="py-2.5 px-2" />
+                  <td className="py-2.5 px-3" colSpan={4}>
                     TOTAL ({filteredRows.length})
+                  </td>
+                  <td className="py-2.5 px-3 text-center" style={{ color: '#92400E' }}>{totals.ack_sent}</td>
+                  <td className="py-2.5 px-3 text-center" style={{ color: '#5B21B6' }}>{totals.submissions}</td>
+                  <td className="py-2.5 px-3 text-center" style={{ color: '#065F46' }}>{totals.dl_verified}</td>
+                  <td className="py-2.5 px-3 text-center">
+                    <FunnelBar ack={totals.ack_sent} sub={totals.submissions} ver={totals.dl_verified} />
                   </td>
                   <td className="py-2.5 px-3 text-center">{totals.target_so_far}</td>
                   <td className="py-2.5 px-3 text-center text-slate-500">{totals.day_target}</td>
-                  <td className="py-2.5 px-3 text-center">{totals.done}</td>
-                  <td className="py-2.5 px-3 text-center">{totals.verified}</td>
                   <td className="py-2.5 px-3 text-center">{totals.target_so_far ? `${totals.pct}%` : '—'}</td>
                   <td className="py-2.5 px-3 text-center">
                     {totals.status === 'On Track' ? (
@@ -299,8 +493,6 @@ function RecruiterLeaderboardSection() {
                     )}
                   </td>
                   <td className="py-2.5 px-3 text-center">{totals.rejections}</td>
-                  <td className="py-2.5 px-3 text-center">{totals.ack_sent}</td>
-                  <td className="py-2.5 px-3"></td>
                 </tr>
               </tfoot>
             )}
