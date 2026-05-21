@@ -37,6 +37,9 @@ def _serialize(c):
         base["overall_score"] = None
         base["auto_recommendation"] = None
     base["resume_data"] = to_viewable_url(base.get("resume_data"), candidate_id=c.id)
+    # applied_by is the email of the recruiter who applied this candidate to
+    # THIS candidate row's job. One row per (person × job).
+    base["applied_by"] = c.applied_by
     return base
 
 

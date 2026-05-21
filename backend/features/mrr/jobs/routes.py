@@ -3,6 +3,7 @@ from core.deps import get_current_user, require_roles, user_has_role
 from fastapi import APIRouter, Depends, HTTPException, Query
 from infra.models import Client, JobStatus, NotifType, PodMembership, User
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from features.mrr.jobs import service

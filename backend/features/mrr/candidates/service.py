@@ -1,9 +1,18 @@
 from infra.models import (
     Candidate,
     CandidateStatus,
+    User,
 )
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
+
+
+def _recruiter_email(db: Session, user_id) -> str | None:
+    """Look up a recruiter's email by user id. Returns None on a bad id."""
+    if user_id is None:
+        return None
+    u = db.query(User).filter(User.id == int(user_id)).first()
+    return u.email if u else None
 
 
 def _apply_candidate_filters(
@@ -203,6 +212,13 @@ def create_candidate(
     pending_resume_key = data.pop("resume", None) or data.pop("resume_data", None)
     if pending_resume_key == "None":
         pending_resume_key = None
+
+    # applied_by = the email of the recruiter applying this candidate. Each
+    # candidate row represents one (person × job) application, so this stays
+    # a single email — no dedup, no array. Same person → different job means
+    # another candidate row gets created with its own applied_by.
+    if not data.get("applied_by"):
+        data["applied_by"] = _recruiter_email(db, data.get("sourced_by_id"))
 
     candidate = Candidate(**data, status=CandidateStatus.sourced)
     db.add(candidate)

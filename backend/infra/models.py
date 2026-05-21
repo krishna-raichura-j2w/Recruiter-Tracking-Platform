@@ -468,6 +468,10 @@ class Candidate(Base):
     __tablename__ = "candidates"
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
+    # Email of the recruiter who applied this candidate to this job. A single
+    # value (not an array) — same person applying to two different jobs is two
+    # candidate rows, each with its own applied_by.
+    applied_by = Column(String(200), nullable=True)
     full_name = Column(String(200), nullable=False)
     mobile = Column(String(20))
     email = Column(String(200))

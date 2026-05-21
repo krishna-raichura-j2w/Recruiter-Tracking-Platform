@@ -3,6 +3,7 @@ import json as _json
 from core.database import get_db
 from core.deps import get_current_user
 from fastapi import APIRouter, Depends
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from features.mrr.dashboard import service

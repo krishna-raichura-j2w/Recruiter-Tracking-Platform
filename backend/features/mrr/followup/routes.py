@@ -12,6 +12,7 @@ from infra.models import (
     Validation,
     to_iso_utc,
 )
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 router = APIRouter(prefix="/followup", tags=["followup"])
