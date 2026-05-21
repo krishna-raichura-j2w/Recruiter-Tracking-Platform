@@ -42,12 +42,12 @@ def list_clients(
 ):
     result = service.list_paginated(db, page_no, per_page, hrbp_id, is_active)
     return success_response_with_pagination(
-        data=[r.__dict__ for r in result.items],
+        data=result["items"],
         message="Clients fetched successfully",
-        page_no=result.page_no,
-        per_page=result.per_page,
-        total=result.total,
-        total_pages=result.total_pages,
+        page_no=result["page_no"],
+        per_page=result["per_page"],
+        total=result["total"],
+        total_pages=result["total_pages"],
     )
 
 

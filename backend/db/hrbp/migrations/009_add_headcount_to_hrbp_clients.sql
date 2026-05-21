@@ -1,0 +1,2 @@
+ALTER TABLE hrbp_clients
+    ADD COLUMN IF NOT EXISTS headcount INTEGER DEFAULT 0;

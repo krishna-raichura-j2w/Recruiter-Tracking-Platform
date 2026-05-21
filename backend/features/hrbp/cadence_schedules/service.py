@@ -86,6 +86,9 @@ def create(
         consultant_id=payload.consultant_id,
         hrbp_id=hrbp_id,
         meeting_type=payload.meeting_type,
+        project_name=payload.project_name,
+        meeting_time=payload.meeting_time,
+        duration_minutes=payload.duration_minutes,
         start_date=payload.start_date,
         end_date=payload.end_date,
         frequency_weeks=payload.frequency_weeks,
@@ -109,6 +112,8 @@ def list_paginated(
     consultant_id: int | None = None,
     hrbp_id: int | None = None,
     status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> PageResult:
     q = db.query(HRBPCadenceSchedule)
     if client_id is not None:
@@ -119,6 +124,10 @@ def list_paginated(
         q = q.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
     if status is not None:
         q = q.filter(HRBPCadenceSchedule.status == status)
+    if date_from is not None:
+        q = q.filter(HRBPCadenceSchedule.start_date >= date_from)
+    if date_to is not None:
+        q = q.filter(HRBPCadenceSchedule.start_date <= date_to)
     q = q.order_by(HRBPCadenceSchedule.created_at.desc())
     return paginate(q, page_no, per_page)
 
