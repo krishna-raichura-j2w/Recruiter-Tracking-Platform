@@ -82,11 +82,16 @@ interface JobForm {
   requested_date:       string;
   requested_by:         string;
   deadline:             string;
+  // Grouping
+  group_name:           string;
+  sub_group:            string;
   // Flags
   billable_leaves:      string;
   is_vip:               string;
   po_opportunity_mrr:   string;
   potential_gm:         string;
+  key_string:           string;
+  referral_amount:      string;
   // JD Content
   jd_summary:           string;
   job_responsibilities: string;
@@ -140,12 +145,7 @@ const MODE_COLORS: Record<string, string> = {
   'Hybrid (3 days)':'bg-blue-100 text-blue-700',
   Flexible:         'bg-violet-100 text-violet-700',
 };
-const STATUS_COLORS: Record<string, string> = {
-  pending_review: 'bg-yellow-100 text-yellow-700',
-  open:           'bg-emerald-100 text-emerald-700',
-  on_hold:        'bg-amber-100 text-amber-700',
-  closed:         'bg-slate-100 text-slate-500',
-};
+
 
 function normalizeWorkMode(raw: string | null | undefined): string {
   if (!raw) return '';
@@ -407,6 +407,10 @@ export default function Jobs() {
       is_vip:               (job as any).is_vip ? 'yes' : 'no',
       po_opportunity_mrr:   (job as any).po_opportunity_mrr ?? '',
       potential_gm:         (job as any).potential_gm       ?? '',
+      key_string:           (job as any).key_string         ?? '',
+      referral_amount:      (job as any).referral_amount != null ? String((job as any).referral_amount) : '',
+      group_name:           (job as any).group_name         ?? '',
+      sub_group:            (job as any).sub_group          ?? '',
       deadline:             job.deadline                     ?? '',
     });
     // Pre-select current delivery leads so admin can change them
@@ -501,6 +505,10 @@ export default function Jobs() {
     requested_by:         data.requested_by         || null,
     po_opportunity_mrr:   data.po_opportunity_mrr   || null,
     potential_gm:         data.potential_gm         || null,
+    key_string:           data.key_string           || null,
+    referral_amount:      data.referral_amount ? Number(data.referral_amount) : null,
+    group_name:           data.group_name           || null,
+    sub_group:            data.sub_group            || null,
     start_time:           data.start_time || null,
     end_time:             data.end_time   || null,
     date_from:            data.date_from  || null,
@@ -1424,9 +1432,15 @@ export default function Jobs() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Group</label>
+                  <input type="text" placeholder="Enter group"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('group_name')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Sub Group</label>
+                  <input type="text" placeholder="Enter sub group"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('sub_group')} />
                 </div>
 
                 {/* ── SECTION: Demand (MRR) ───────────────────────────────── */}
@@ -1541,8 +1555,15 @@ export default function Jobs() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount</label>
-                  <input type="number" min={500} placeholder="Min 500"
+                  <input type="number" min={0} placeholder="e.g. 500"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('referral_amount')} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key String</label>
+                  <input type="text" placeholder="Boolean / key string"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
+                    {...register('key_string')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Date</label>
@@ -1561,11 +1582,6 @@ export default function Jobs() {
                   <input type="datetime-local"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50"
                     {...register('deadline')} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key String</label>
-                  <input type="text" placeholder="Boolean / recruiter key string"
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
                 </div>
 
                 {/* ── SECTION: Flags & Commercial ─────────────────────────── */}

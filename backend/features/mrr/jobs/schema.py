@@ -50,6 +50,10 @@ class JobCreate(BaseModel):
     is_vip:               bool = False
     po_opportunity_mrr:   str | None = None
     potential_gm:         str | None = None
+    key_string:           str | None = None
+    referral_amount:      int | None = None
+    group_name:           str | None = None
+    sub_group:            str | None = None
 
 
 class JobUpdate(BaseModel):
@@ -96,6 +100,10 @@ class JobUpdate(BaseModel):
     is_vip:               bool | None = None
     po_opportunity_mrr:   str | None = None
     potential_gm:         str | None = None
+    key_string:           str | None = None
+    referral_amount:      int | None = None
+    group_name:           str | None = None
+    sub_group:            str | None = None
 
 
 class JobOut(BaseModel):
@@ -135,6 +143,10 @@ class JobOut(BaseModel):
     is_vip:               bool = False
     po_opportunity_mrr:   str | None = None
     potential_gm:         str | None = None
+    key_string:           str | None = None
+    referral_amount:      int | None = None
+    group_name:           str | None = None
+    sub_group:            str | None = None
     client_job_id:        str | None = None
 
     model_config = {"from_attributes": True}

@@ -394,6 +394,10 @@ class Job(Base):
     is_vip                = Column(Boolean, default=False)
     po_opportunity_mrr    = Column(String(200), nullable=True)
     potential_gm          = Column(String(50), nullable=True)
+    key_string            = Column(Text, nullable=True)
+    referral_amount       = Column(Integer, nullable=True)
+    group_name            = Column(String(100), nullable=True)
+    sub_group             = Column(String(100), nullable=True)
     assigned_sourcer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_caller_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sourcer_ids = Column(Text, default="[]")  # JSON array e.g. "[9,6]"
