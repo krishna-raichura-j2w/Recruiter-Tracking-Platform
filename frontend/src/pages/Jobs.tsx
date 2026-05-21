@@ -1354,11 +1354,10 @@ export default function Jobs() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation</label>
                   <input type="text" placeholder="e.g. SSE, TL, Architect"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('designation', { required: true })} />
-                  {errors.designation && <p className="text-red-500 text-xs mt-1">Required</p>}
+                    {...register('designation')} />
                 </div>
 
                 <div>
@@ -1517,18 +1516,16 @@ export default function Jobs() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary From *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary From</label>
                   <input type="number" min={0} step="0.01" placeholder="e.g. 250000"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('salary_from', { required: true })} />
-                  {errors.salary_from && <p className="text-red-500 text-xs mt-1">Required</p>}
+                    {...register('salary_from')} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary To *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Salary To</label>
                   <input type="number" min={0} step="0.01" placeholder="e.g. 500000"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('salary_to', { required: true })} />
-                  {errors.salary_to && <p className="text-red-500 text-xs mt-1">Required</p>}
+                    {...register('salary_to')} />
                 </div>
 
                 {/* ── SECTION: Positions & Scheduling ────────────────────── */}
