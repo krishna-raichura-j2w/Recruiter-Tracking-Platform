@@ -62,8 +62,6 @@ interface JobForm {
   date_from:            string;
   date_upto:            string;
   // Grouping
-  group_name:           string;
-  sub_group:            string;
   // Skills & Experience & Location
   skill_stack:          string;
   min_experience:       string;
@@ -81,7 +79,6 @@ interface JobForm {
   headcount:            number;
   expected_submission:  string;
   maximum_submission:   string;
-  referral_amount:      string;
   requested_date:       string;
   requested_by:         string;
   deadline:             string;
@@ -90,7 +87,6 @@ interface JobForm {
   is_vip:               string;
   po_opportunity_mrr:   string;
   potential_gm:         string;
-  key_string:           string;
   // JD Content
   jd_summary:           string;
   job_responsibilities: string;
@@ -402,11 +398,7 @@ export default function Jobs() {
       end_time:             (job as any).end_time   ?? '',
       date_from:            (job as any).date_from  ?? '',
       date_upto:            (job as any).date_upto  ?? '',
-      group_name:           (job as any).group_name ?? '',
-      sub_group:            (job as any).sub_group  ?? '',
-      key_string:           (job as any).key_string ?? '',
       maximum_submission:   (job as any).maximum_submission != null ? String((job as any).maximum_submission) : '',
-      referral_amount:      (job as any).referral_amount    != null ? String((job as any).referral_amount)    : '',
       requested_date:       (job as any).requested_date  ?? '',
       requested_by:         (job as any).requested_by    ?? '',
       expected_submission:  (job as any).expected_submission ?? '',
@@ -501,11 +493,7 @@ export default function Jobs() {
     salary_from:          data.salary_from     ? Number(data.salary_from)     : null,
     salary_to:            data.salary_to       ? Number(data.salary_to)       : null,
     maximum_submission:   data.maximum_submission ? Number(data.maximum_submission) : null,
-    referral_amount:      data.referral_amount  ? Number(data.referral_amount)  : null,
     designation:          data.designation          || null,
-    group_name:           data.group_name           || null,
-    sub_group:            data.sub_group            || null,
-    key_string:           data.key_string           || null,
     expected_submission:  data.expected_submission  || null,
     requirement_type:     data.requirement_type     || null,
     job_responsibilities: data.job_responsibilities || null,
@@ -1436,11 +1424,9 @@ export default function Jobs() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Group</label>
-                  <input type="text" placeholder="Enter group" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('group_name')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Sub Group</label>
-                  <input type="text" placeholder="Enter sub group" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('sub_group')} />
                 </div>
 
                 {/* ── SECTION: Demand (MRR) ───────────────────────────────── */}
@@ -1557,7 +1543,6 @@ export default function Jobs() {
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount</label>
                   <input type="number" min={500} placeholder="Min 500"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('referral_amount')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Date</label>
@@ -1581,7 +1566,6 @@ export default function Jobs() {
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key String</label>
                   <input type="text" placeholder="Boolean / recruiter key string"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('key_string')} />
                 </div>
 
                 {/* ── SECTION: Flags & Commercial ─────────────────────────── */}

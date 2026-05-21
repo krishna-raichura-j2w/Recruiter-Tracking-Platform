@@ -40,9 +40,7 @@ class JobCreate(BaseModel):
     date_upto:            str | None = None
     salary_from:          float | None = None
     salary_to:            float | None = None
-    key_string:           str | None = None
     maximum_submission:   int | None = None
-    referral_amount:      int | None = None
     requested_date:       str | None = None
     requested_by:         str | None = None
     expected_submission:  str | None = None
@@ -52,8 +50,6 @@ class JobCreate(BaseModel):
     is_vip:               bool = False
     po_opportunity_mrr:   str | None = None
     potential_gm:         str | None = None
-    group_name:           str | None = None
-    sub_group:            str | None = None
 
 
 class JobUpdate(BaseModel):
@@ -90,9 +86,7 @@ class JobUpdate(BaseModel):
     date_upto:            str | None = None
     salary_from:          float | None = None
     salary_to:            float | None = None
-    key_string:           str | None = None
     maximum_submission:   int | None = None
-    referral_amount:      int | None = None
     requested_date:       str | None = None
     requested_by:         str | None = None
     expected_submission:  str | None = None
@@ -102,8 +96,6 @@ class JobUpdate(BaseModel):
     is_vip:               bool | None = None
     po_opportunity_mrr:   str | None = None
     potential_gm:         str | None = None
-    group_name:           str | None = None
-    sub_group:            str | None = None
 
 
 class JobOut(BaseModel):
@@ -133,9 +125,7 @@ class JobOut(BaseModel):
     end_time:             str | None = None
     date_from:            str | None = None
     date_upto:            str | None = None
-    key_string:           str | None = None
     maximum_submission:   int | None = None
-    referral_amount:      int | None = None
     requested_date:       str | None = None
     requested_by:         str | None = None
     expected_submission:  str | None = None
@@ -145,8 +135,6 @@ class JobOut(BaseModel):
     is_vip:               bool = False
     po_opportunity_mrr:   str | None = None
     potential_gm:         str | None = None
-    group_name:           str | None = None
-    sub_group:            str | None = None
     client_job_id:        str | None = None
 
     model_config = {"from_attributes": True}
