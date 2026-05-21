@@ -18,6 +18,10 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class RefreshTokenRequest(BaseModel):
+    token: str
+
+
 class UserUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None

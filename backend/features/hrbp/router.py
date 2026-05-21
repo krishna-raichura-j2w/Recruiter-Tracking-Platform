@@ -16,6 +16,7 @@ from features.hrbp.signal_definitions.route import router as signal_router
 from features.hrbp.signals.route import router as signals_router
 from features.hrbp.sop_definitions.route import router as sop_router
 from features.hrbp.sop_steps.route import router as sop_steps_router
+from features.hrbp.storage.route import router as storage_router
 
 hrbp_router = APIRouter(prefix="/hrbp")
 
@@ -35,3 +36,4 @@ hrbp_router.include_router(routine_schedules_router)
 hrbp_router.include_router(nps_surveys_router)
 hrbp_router.include_router(audit_log_router)
 hrbp_router.include_router(cadence_schedules_router)
+hrbp_router.include_router(storage_router)

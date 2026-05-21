@@ -1,14 +1,41 @@
+from core.config import settings
 from core.database import get_db
 from core.response_format import error_response, success_response
-from fastapi import APIRouter, Depends
+from core.security import create_access_token
+from fastapi import APIRouter, Depends, HTTPException, status
 from infra.models import User
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from features.hrbp.auth import service
-from features.hrbp.auth.schema import UserUpdate
+from features.hrbp.auth.schema import RefreshTokenRequest, UserUpdate
 from features.hrbp.utils.auth import get_hrbp_user
 
 router = APIRouter(prefix="/users", tags=["hrbp-users"])
+
+
+@router.post("/refresh_token")
+def refresh_token(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
+    try:
+        data = jwt.decode(
+            payload.token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            options={"verify_exp": False},
+        )
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user_id = data.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+    user = db.query(User).filter(User.id == int(user_id), User.is_active).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    new_token = create_access_token({"sub": str(user.id), "role": user.role.value})
+    return success_response(data={"access_token": new_token, "token_type": "bearer"}, message="Token refreshed successfully")
 
 
 @router.get("/{user_id}")

@@ -30,14 +30,21 @@ def success_response_with_pagination(
     message: str = "Success",
     page_no: int = 1,
     per_page: int = 10,
+    total: int | None = None,
+    total_pages: int | None = None,
 ) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "status": True,
+        "message": message,
+        "page_no": page_no,
+        "per_page": per_page,
+    }
+    if total is not None:
+        meta["total"] = total
+    if total_pages is not None:
+        meta["total_pages"] = total_pages
     return {
-        "meta": {
-            "status": True,
-            "message": message,
-            "page_no": page_no,
-            "per_page": per_page,
-        },
+        "meta": meta,
         "data": _make_json_safe(data),
     }
 

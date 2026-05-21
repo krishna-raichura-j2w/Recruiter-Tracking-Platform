@@ -12,6 +12,7 @@ from infra.models import User
 from sqlalchemy.orm import Session
 
 from features.hrbp.cadence_schedules import service
+from features.hrbp.cadence_schedules.export import build_and_upload
 from features.hrbp.cadence_schedules.schema import (
     CadenceScheduleCreate,
     CadenceScheduleUpdate,
@@ -33,6 +34,34 @@ def create_cadence_schedule(
             data=data.__dict__,
             message="Cadence schedule created successfully",
         )
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.get("/sessions/export")
+def export_sessions(
+    hrbp_id: int | None = Query(default=None),
+    client_id: int | None = Query(default=None),
+    consultant_id: int | None = Query(default=None),
+    status: str | None = Query(default=None),
+    scheduled_date: date | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        url = build_and_upload(
+            db,
+            hrbp_id=hrbp_id,
+            client_id=client_id,
+            consultant_id=consultant_id,
+            status=status,
+            scheduled_date=scheduled_date,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return success_response(data={"url": url}, message="Excel exported successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -94,6 +123,8 @@ def list_cadence_schedules(
     consultant_id: int | None = Query(default=None),
     hrbp_id: int | None = Query(default=None),
     status: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -105,6 +136,8 @@ def list_cadence_schedules(
         consultant_id,
         hrbp_id,
         status,
+        date_from,
+        date_to,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],

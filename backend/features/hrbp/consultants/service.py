@@ -1,4 +1,5 @@
 from core.pagination import PageResult, paginate
+from datetime import date
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPConsultant
 from sqlalchemy.orm import Session
@@ -28,6 +29,8 @@ def list_paginated(
     cohort: str | None = None,
     perf_tier: str | None = None,
     is_active: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> PageResult:
     q = db.query(HRBPConsultant)
     if hrbp_id is not None:
@@ -40,6 +43,10 @@ def list_paginated(
         q = q.filter(HRBPConsultant.perf_tier == perf_tier)
     if is_active is not None:
         q = q.filter(HRBPConsultant.is_active == is_active)
+    if date_from is not None:
+        q = q.filter(HRBPConsultant.created_at >= date_from)
+    if date_to is not None:
+        q = q.filter(HRBPConsultant.created_at <= date_to)
     q = q.order_by(HRBPConsultant.name)
     return paginate(q, page_no, per_page)
 
