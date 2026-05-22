@@ -16,12 +16,12 @@ LOGO_PATH = Path(__file__).parent.parent.parent.parent / "static" / "logo.jpg"
 _SYSTEM = (
     "You are a senior technical interviewer with 15+ years of experience "
     "hiring engineers across startups and enterprise companies. "
-    "Generate precise, role-specific interview questions that reveal true depth of knowledge. "
-    "Each question must be unambiguous, practical, and probe real-world understanding — "
-    "not textbook definitions."
+    "Generate precise, role-specific interview questions and concise model answers "
+    "that reveal true depth of knowledge. "
+    "Questions must be unambiguous and probe real-world understanding — not textbook definitions."
 )
 
-_PROMPT = """Generate exactly 5 interview questions for a {role_title} position at {client_name}.
+_PROMPT = """Generate exactly 5 interview questions with one-line model answers for a {role_title} position at {client_name}.
 These questions must test the candidate's depth of knowledge in: {skill}
 
 Context about the role:
@@ -32,21 +32,30 @@ Context about the role:
 {summary_section}
 
 Difficulty breakdown (return exactly this count):
-- 2 EASY: Core concepts, how-it-works, fundamental syntax or patterns. A good fresher should answer these.
+- 2 EASY: Core concepts, how-it-works, fundamental syntax or patterns.
 - 2 MEDIUM: Real-world application — debugging, implementation choices, performance considerations, comparing approaches.
 - 1 HARD: Expert-level — system design, deep internals, advanced optimization, trade-off analysis, or complex architecture specific to {skill}.
 
 Rules:
 1. Every question must directly relate to {skill}, not to the other skills in the stack.
 2. Questions must reflect the expected seniority for a {role_title}.
-3. Avoid vague questions like "Tell me about {skill}." — be specific.
+3. Avoid vague questions. Be specific and practical.
 4. The HARD question must require genuine expertise and cannot be answered by someone who only knows the basics.
+5. Each "answer" must be a single concise sentence (max 25 words) that captures the key evaluation point an interviewer should listen for.
 
 Return ONLY valid JSON in this exact format — no markdown fences, no explanation, no trailing text:
 {{
-  "easy": ["<concrete question 1>", "<concrete question 2>"],
-  "medium": ["<concrete question 1>", "<concrete question 2>"],
-  "hard": ["<concrete question 1>"]
+  "easy": [
+    {{"q": "<question 1>", "a": "<one-line model answer 1>"}},
+    {{"q": "<question 2>", "a": "<one-line model answer 2>"}}
+  ],
+  "medium": [
+    {{"q": "<question 1>", "a": "<one-line model answer 1>"}},
+    {{"q": "<question 2>", "a": "<one-line model answer 2>"}}
+  ],
+  "hard": [
+    {{"q": "<question 1>", "a": "<one-line model answer 1>"}}
+  ]
 }}"""
 
 
@@ -72,7 +81,7 @@ def _generate_for_skill(skill: str, job) -> dict:
 
 
 def _generate_questions(job) -> dict:
-    """Returns {skill: {easy: [...], medium: [...], hard: [...]}}."""
+    """Returns {skill: {easy: [{q,a},...], medium: [...], hard: [...]}}."""
     skills = _parse_skills(job.skill_stack or "")
     if not skills:
         skills = [job.role_title]
@@ -91,13 +100,15 @@ def _generate_questions(job) -> dict:
 # PDF builder
 # ──────────────────────────────────────────────────────────────────────────────
 
-_BRAND_BLUE  = (30,  64,  175)   # header/accent
-_BADGE_EASY  = (22,  163, 74)    # green-600
-_BADGE_MED   = (202, 138, 4)     # yellow-600
-_BADGE_HARD  = (220, 38,  38)    # red-600
+_BRAND_BLUE  = (30,  64,  175)
+_BADGE_EASY  = (22,  163, 74)
+_BADGE_MED   = (202, 138, 4)
+_BADGE_HARD  = (220, 38,  38)
 _BG_EASY     = (240, 253, 244)
 _BG_MED      = (254, 252, 232)
 _BG_HARD     = (254, 242, 242)
+_ANS_BG      = (241, 245, 249)   # slate-100 — answer block background
+_ANS_TEXT    = (15,  118, 110)   # teal-700  — answer text
 _SLATE_800   = (30,  41,  59)
 _SLATE_500   = (71,  85,  105)
 _SLATE_400   = (148, 163, 184)
@@ -105,12 +116,9 @@ _DIVIDER     = (203, 213, 225)
 
 
 class _PDF(FPDF):
-    """FPDF subclass that stamps the J2W logo as a faint watermark on every page."""
-
     def header(self):
         if LOGO_PATH.exists():
             with self.local_context(fill_opacity=0.07, stroke_opacity=0.07):
-                # Centre logo on page: A4 = 210 mm wide; logo width = 130 mm
                 self.image(str(LOGO_PATH), x=40, y=85, w=130)
 
     def footer(self):
@@ -128,15 +136,12 @@ class _PDF(FPDF):
 def _cover_page(pdf: _PDF, job, skill_count: int, total_q: int) -> None:
     pdf.add_page()
 
-    # Brand bar
     pdf.set_fill_color(*_BRAND_BLUE)
     pdf.rect(0, 0, 210, 52, style="F")
 
-    # Logo on cover — top-right corner, fully opaque
     if LOGO_PATH.exists():
         pdf.image(str(LOGO_PATH), x=130, y=6, w=70)
 
-    # Title
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_xy(10, 10)
@@ -147,9 +152,8 @@ def _cover_page(pdf: _PDF, job, skill_count: int, total_q: int) -> None:
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_xy(10, 37)
     pdf.set_text_color(186, 206, 255)
-    pdf.cell(115, 7, "AI-Generated Skill Assessment", align="L")
+    pdf.cell(115, 7, "AI-Generated Skill Assessment with Model Answers", align="L")
 
-    # Meta block
     pdf.set_text_color(*_SLATE_500)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_xy(10, 62)
@@ -167,7 +171,6 @@ def _cover_page(pdf: _PDF, job, skill_count: int, total_q: int) -> None:
     pdf.cell(190, 6, f"Total Sections: {skill_count}   |   Total Questions: {total_q}", align="L")
     pdf.ln(5)
 
-    # Summary if available
     if getattr(job, "jd_summary", None):
         pdf.set_x(10)
         pdf.set_draw_color(*_DIVIDER)
@@ -183,7 +186,6 @@ def _cover_page(pdf: _PDF, job, skill_count: int, total_q: int) -> None:
         pdf.set_x(10)
         pdf.multi_cell(190, 5, job.jd_summary[:600], align="L")
 
-    # Difficulty legend
     pdf.ln(6)
     pdf.set_x(10)
     pdf.set_draw_color(*_DIVIDER)
@@ -223,17 +225,15 @@ def _cover_page(pdf: _PDF, job, skill_count: int, total_q: int) -> None:
     pdf.set_x(10)
     pdf.multi_cell(
         190, 5,
-        "This questionnaire is AI-generated based on the job description and skill stack. "
-        "Interviewers should adapt questions based on candidate responses.",
+        "This questionnaire is AI-generated and includes model answers for interviewer evaluation. "
+        "Adapt questions and assess depth based on candidate responses.",
         align="L",
     )
 
 
 def _skill_section(pdf: _PDF, skill: str, questions: dict, start_q: int) -> int:
-    """Render one skill's questions. Returns the next question number."""
     pdf.add_page()
 
-    # Skill heading strip
     pdf.set_fill_color(*_BRAND_BLUE)
     pdf.rect(0, 0, 210, 18, style="F")
     pdf.set_text_color(255, 255, 255)
@@ -244,17 +244,16 @@ def _skill_section(pdf: _PDF, skill: str, questions: dict, start_q: int) -> int:
     pdf.ln(6)
 
     sections = [
-        ("EASY",   questions.get("easy",   []), _BADGE_EASY,  _BG_EASY),
-        ("MEDIUM", questions.get("medium", []), _BADGE_MED,   _BG_MED),
-        ("HARD",   questions.get("hard",   []), _BADGE_HARD,  _BG_HARD),
+        ("EASY",   questions.get("easy",   []), _BADGE_EASY, _BG_EASY),
+        ("MEDIUM", questions.get("medium", []), _BADGE_MED,  _BG_MED),
+        ("HARD",   questions.get("hard",   []), _BADGE_HARD, _BG_HARD),
     ]
 
     q_num = start_q
-    for level, qs, badge_rgb, bg_rgb in sections:
-        if not qs:
+    for level, items, badge_rgb, _bg_rgb in sections:
+        if not items:
             continue
 
-        # Difficulty badge
         pdf.set_fill_color(*badge_rgb)
         pdf.set_text_color(255, 255, 255)
         pdf.set_font("Helvetica", "B", 8)
@@ -262,33 +261,49 @@ def _skill_section(pdf: _PDF, skill: str, questions: dict, start_q: int) -> int:
         pdf.cell(28, 6, f"  {level}", fill=True)
         pdf.ln(10)
 
-        pdf.set_fill_color(*bg_rgb)
-        for q in qs:
+        for item in items:
+            # Support both old plain-string format and new {q, a} dict format
+            if isinstance(item, dict):
+                question_text = item.get("q", "")
+                answer_text   = item.get("a", "")
+            else:
+                question_text = item
+                answer_text   = ""
+
             # Question number
             pdf.set_text_color(*_SLATE_800)
             pdf.set_font("Helvetica", "B", 10)
             pdf.set_x(10)
-            pdf.cell(10, 8, f"Q{q_num}.", border=0)
+            pdf.cell(10, 7, f"Q{q_num}.", border=0)
 
             # Question text
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(51, 65, 85)
             pdf.set_x(22)
-            pdf.multi_cell(176, 6, q, border=0, fill=False)
+            pdf.multi_cell(176, 6, question_text, border=0)
 
-            # Answer lines
-            pdf.set_text_color(*_SLATE_400)
-            pdf.set_font("Helvetica", "I", 8)
-            for _ in range(4):
+            # Answer block
+            if answer_text:
                 pdf.set_x(22)
-                pdf.set_draw_color(226, 232, 240)
-                pdf.cell(176, 7, "", border="B")
-                pdf.ln(7)
+                pdf.set_fill_color(*_ANS_BG)
+                pdf.set_draw_color(*_DIVIDER)
 
-            pdf.ln(3)
+                # Label
+                pdf.set_font("Helvetica", "B", 8)
+                pdf.set_text_color(*_ANS_TEXT)
+                pdf.set_x(22)
+                pdf.cell(18, 6, "Answer:", border=0, fill=False)
+
+                # Answer text inline after label
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.set_text_color(*_ANS_TEXT)
+                pdf.set_x(40)
+                pdf.multi_cell(158, 6, answer_text, border=0, fill=False)
+
+            pdf.ln(5)
             q_num += 1
 
-        pdf.ln(4)
+        pdf.ln(6)
 
     return q_num
 

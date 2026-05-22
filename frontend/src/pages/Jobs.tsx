@@ -193,6 +193,10 @@ export default function Jobs() {
 
   const [togglingJobId, setTogglingJobId] = useState<number | null>(null);
 
+  // Questionnaire overlay state
+  const [generatingQIds, setGeneratingQIds]         = useState<Set<number>>(new Set());
+  const [questionnairePdf, setQuestionnairePdf]     = useState<{ url: string; filename: string } | null>(null);
+
   // Delivery lead allocation (KAM only) + KAM selection (DL only)
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
   const [selectedDeliveryLeadIds, setSelectedDeliveryLeadIds] = useState<number[]>([]);
@@ -806,17 +810,19 @@ export default function Jobs() {
               onViewCandidates={() => navigate(`/candidates?job_id=${job.id}`)}
               onViewJD={() => setSelectedJob(job)}
               onGenerateBoolean={() => navigate(`/skills?job_id=${job.id}`)}
+              isGeneratingQuestionnaire={generatingQIds.has(job.id)}
               onDownloadQuestionnaire={async () => {
+                if (generatingQIds.has(job.id)) return;
+                setGeneratingQIds(prev => new Set(prev).add(job.id));
                 try {
                   const res = await api.get(`/jobs/${job.id}/questionnaire`, { responseType: 'blob' });
                   const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `questionnaire_${job.id}_${job.role_title.replace(/\s+/g, '_')}.pdf`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  const filename = `questionnaire_${job.id}_${job.role_title.replace(/\s+/g, '_')}.pdf`;
+                  setQuestionnairePdf({ url, filename });
                 } catch {
                   alert('Failed to generate questionnaire. Please ensure the job has skills defined.');
+                } finally {
+                  setGeneratingQIds(prev => { const s = new Set(prev); s.delete(job.id); return s; });
                 }
               }}
               onToggleStatus={handleToggleStatus}
@@ -1678,6 +1684,64 @@ export default function Jobs() {
           </div>
         </div>
       )}
+
+      {/* ── Questionnaire PDF overlay ───────────────────────────────────── */}
+      {questionnairePdf && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(15,23,42,0.85)',
+            display: 'flex', flexDirection: 'column',
+          }}
+        >
+          {/* Top bar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 20px',
+            background: '#1E3A8A',
+            flexShrink: 0,
+          }}>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>
+              Interview Questionnaire
+            </span>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <a
+                href={questionnairePdf.url}
+                download={questionnairePdf.filename}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '7px 16px', borderRadius: 8,
+                  background: '#16A34A', color: '#fff',
+                  fontWeight: 700, fontSize: 13, textDecoration: 'none',
+                }}
+              >
+                <FileText size={14} /> Download PDF
+              </a>
+              <button
+                onClick={() => {
+                  URL.revokeObjectURL(questionnairePdf.url);
+                  setQuestionnairePdf(null);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  padding: '7px 14px', borderRadius: 8,
+                  background: 'rgba(255,255,255,0.12)', color: '#fff',
+                  fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer',
+                }}
+              >
+                <X size={14} /> Close
+              </button>
+            </div>
+          </div>
+
+          {/* PDF iframe */}
+          <iframe
+            src={questionnairePdf.url}
+            style={{ flex: 1, border: 'none', background: '#f8fafc' }}
+            title="Interview Questionnaire"
+          />
+        </div>
+      )}
     </Layout>
   );
 }
@@ -1695,6 +1759,7 @@ interface JobCardProps {
   onViewCandidates: () => void;
   onViewJD: () => void;
   onGenerateBoolean: () => void;
+  isGeneratingQuestionnaire: boolean;
   onDownloadQuestionnaire: () => void;
   onToggleStatus: (job: Job) => void;
   onEdit: () => void;
@@ -1726,7 +1791,7 @@ function Avatar({ name, size = 28, color }: { name: string; size?: number; color
   );
 }
 
-function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, isGeneratingQuestionnaire, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -1884,13 +1949,21 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
 
             {/* Questionnaire — visible to recruiter, DL, KAM */}
             {(isRecruiter || isDeliveryLead || isKam || isAdmin) && (
-              <button onClick={onDownloadQuestionnaire}
+              <button
+                onClick={onDownloadQuestionnaire}
+                disabled={isGeneratingQuestionnaire}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FFEDD5'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#FFF7ED'; }}
-                title="Download interview questionnaire (AI-generated from skills)">
-                <FileText size={12} /> Questionnaire
+                style={{
+                  background: isGeneratingQuestionnaire ? '#FEF3C7' : '#FFF7ED',
+                  color: isGeneratingQuestionnaire ? '#92400E' : '#C2410C',
+                  border: `1px solid ${isGeneratingQuestionnaire ? '#FDE68A' : '#FED7AA'}`,
+                  opacity: isGeneratingQuestionnaire ? 0.8 : 1,
+                  cursor: isGeneratingQuestionnaire ? 'not-allowed' : 'pointer',
+                }}
+                title={isGeneratingQuestionnaire ? 'Generating questionnaire...' : 'View interview questionnaire (AI-generated from skills)'}>
+                {isGeneratingQuestionnaire
+                  ? <><Loader2 size={12} className="animate-spin" /> Generating...</>
+                  : <><FileText size={12} /> Questionnaire</>}
               </button>
             )}
 
