@@ -37,7 +37,7 @@ export default function Layout({ title, subtitle, children }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: '#F1F5F9' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--surface-app)' }}>
       <Sidebar />
       <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} />
 
@@ -45,15 +45,19 @@ export default function Layout({ title, subtitle, children }: LayoutProps) {
         {/* ── Top bar ─────────────────────────────────────────────── */}
         <header
           className="flex-shrink-0 px-4 lg:px-6 py-0 flex items-center justify-between border-b gap-3"
-          style={{ height: 60, background: '#FFFFFF', borderColor: '#E8EDF3' }}
+          style={{ height: 56, background: 'var(--surface-card)', borderColor: 'var(--border-hairline)' }}
         >
           {/* Page title */}
           <div className="flex items-center gap-3 min-w-0">
             <MobileMenuButton onClick={() => setMobileOpen(true)} />
-            <div className="flex items-baseline gap-2 min-w-0">
-              <h1 className="text-sm lg:text-base font-bold text-slate-800 leading-none truncate">{title}</h1>
+            <div className="flex items-baseline gap-3 min-w-0">
+              <h1 className="text-[15px] font-semibold leading-none truncate" style={{ color: 'var(--ink)', letterSpacing: '-0.018em' }}>
+                {title}
+              </h1>
               {subtitle && (
-                <span className="text-xs text-slate-400 font-medium leading-none hidden sm:inline">{subtitle}</span>
+                <span className="text-[12px] leading-none hidden sm:inline" style={{ color: 'var(--ink-3)' }}>
+                  {subtitle}
+                </span>
               )}
             </div>
           </div>

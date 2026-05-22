@@ -112,46 +112,85 @@ function MultiSelectFilter({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-32 max-w-44 flex items-center justify-between gap-1 hover:bg-slate-50"
+        className="text-[12px] px-2.5 py-1.5 rounded-md min-w-32 max-w-44 flex items-center justify-between gap-1.5 transition-colors"
+        style={{
+          background: open ? 'var(--surface-muted)' : 'var(--surface-card)',
+          border: `1px solid ${open || selected.size > 0 ? 'var(--ink-3)' : 'var(--border-hairline)'}`,
+          color: 'var(--ink)',
+        }}
       >
-        <span className={`truncate ${selected.size > 0 ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>{summary}</span>
-        <ChevronDown size={11} className="text-slate-400 flex-shrink-0" />
+        <span className="truncate" style={{ color: selected.size > 0 ? 'var(--ink)' : 'var(--ink-3)', fontWeight: selected.size > 0 ? 600 : 400 }}>
+          {summary}
+        </span>
+        <ChevronDown size={11} className="flex-shrink-0 transition-transform"
+                     style={{ color: 'var(--ink-3)', transform: open ? 'rotate(180deg)' : 'none' }} />
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 left-0 w-60 bg-white rounded-xl border border-slate-200 shadow-lg p-2">
-          <div className="relative mb-1.5">
-            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              autoFocus
-              type="text"
-              placeholder="Search…"
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              className="w-full pl-6 pr-2 py-1.5 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-400"
-            />
+        <div
+          className="absolute z-30 mt-1.5 left-0 w-64 rounded-[12px] overflow-hidden animate-panel-in"
+          style={{
+            background: 'var(--surface-card)',
+            border: '1px solid var(--border-hairline)',
+            boxShadow: 'var(--shadow-pop)',
+          }}
+        >
+          {/* Search */}
+          <div className="p-2 pb-1.5" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+            <div className="relative">
+              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} />
+              <input
+                autoFocus
+                type="text"
+                placeholder={`Filter ${label.toLowerCase()}…`}
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                className="w-full pl-7 pr-2 py-1.5 rounded-md text-[12px] focus:outline-none transition-colors"
+                style={{ background: 'var(--surface-muted)', border: '1px solid transparent', color: 'var(--ink)' }}
+                onFocus={e => (e.currentTarget.style.borderColor = 'var(--border-hairline)')}
+                onBlur={e => (e.currentTarget.style.borderColor = 'transparent')}
+              />
+            </div>
           </div>
-          <div className="flex items-center justify-between px-1 mb-1">
-            <button
-              onClick={() => onChange(new Set(options))}
-              className="text-[11px] font-semibold text-blue-600 hover:underline"
-            >Select all ({options.length})</button>
-            <button
-              onClick={() => onChange(new Set())}
-              className="text-[11px] font-semibold text-slate-500 hover:underline"
-            >Clear</button>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between px-3 py-1.5 text-[11px]" style={{ background: 'var(--surface-muted)', color: 'var(--ink-3)' }}>
+            <span className="font-mono tabular-nums">{selected.size}/{options.length} selected</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onChange(new Set(options))}
+                className="font-medium transition-colors"
+                style={{ color: 'var(--accent)' }}
+              >Select all</button>
+              <span style={{ color: 'var(--ink-4)' }}>·</span>
+              <button
+                onClick={() => onChange(new Set())}
+                className="font-medium transition-colors"
+                style={{ color: 'var(--ink-2)' }}
+              >Clear</button>
+            </div>
           </div>
-          <div className="max-h-56 overflow-y-auto">
+
+          {/* Options */}
+          <div className="max-h-60 overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <p className="text-center text-xs text-slate-400 py-3">No matches.</p>
-            ) : filtered.map(o => (
-              <label
-                key={o}
-                className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-slate-50"
-              >
-                <input type="checkbox" checked={selected.has(o)} onChange={() => toggle(o)} className="accent-blue-500" />
-                <span className="text-xs text-slate-700 truncate">{o}</span>
-              </label>
-            ))}
+              <p className="text-center text-[12px] py-4" style={{ color: 'var(--ink-4)' }}>No matches.</p>
+            ) : filtered.map(o => {
+              const isOn = selected.has(o);
+              return (
+                <label
+                  key={o}
+                  className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer transition-colors"
+                  style={{ background: isOn ? 'var(--accent-soft)' : undefined }}
+                  onMouseEnter={e => { if (!isOn) (e.currentTarget as HTMLElement).style.background = 'var(--surface-muted)'; }}
+                  onMouseLeave={e => { if (!isOn) (e.currentTarget as HTMLElement).style.background = ''; }}
+                >
+                  <input type="checkbox" checked={isOn} onChange={() => toggle(o)} className="accent-[#2563EB]" />
+                  <span className="text-[12.5px] truncate" style={{ color: isOn ? 'var(--ink)' : 'var(--ink-2)', fontWeight: isOn ? 500 : 400 }}>
+                    {o}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </div>
       )}
@@ -182,100 +221,134 @@ function suggestedHourlySplit(dayTarget: number, slotCount: number): number[] {
   return out;
 }
 
-// Per-recruiter hourly activity grid. Shows how many ack mails / submissions /
-// DL verifications happened in each one-hour IST slot today, plus a SUGGESTED
-// per-hour target derived from the daily target so the user can see whether
-// each hour kept pace.
+// Per-recruiter hourly activity grid. Three activity rows (Ack → Subs →
+// Verified) plus a Suggested-pace row, all keyed to nine one-hour IST slots.
+// Verified cells are colored against the suggested pace so under-paced hours
+// stand out without screaming.
 function HourlyActivity({ hourly, dayTarget }: { hourly: HourlySlot[]; dayTarget: number }) {
   const suggested = suggestedHourlySplit(dayTarget, hourly.length);
+
+  // Shorter slot label: strip AM/PM, use en-dash, drop seconds — the table
+  // header is dense enough that two extra letters per column matter.
+  const shortLabel = (label: string) =>
+    label.replace(' AM', '').replace(' PM', '').replace(' – ', '–');
+
+  const rowNum = 'text-center px-2 py-1.5 font-mono text-[12px] tabular-nums';
+  const rowLabel = 'text-left px-3 py-1.5 text-[11px] font-medium whitespace-nowrap';
+
   return (
-    <div className="bg-slate-50 px-6 py-3 border-l-4 border-blue-200">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-          Hourly activity
+    <div
+      className="px-6 py-4"
+      style={{
+        background: 'linear-gradient(180deg, #FAFAF9 0%, #F5F5F4 100%)',
+        borderTop: '1px solid var(--border-hairline)',
+        borderBottom: '1px solid var(--border-hairline)',
+      }}
+    >
+      {/* Header strip */}
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="label-caps">Hourly activity</span>
+          <span className="text-[10.5px]" style={{ color: 'var(--ink-4)' }}>· today, IST</span>
         </div>
         {dayTarget > 0 && (
-          <div className="text-[10px] text-slate-500">
-            Suggested pace to hit <span className="font-bold text-slate-700">{dayTarget}/day</span>
+          <div className="text-[11px] flex items-center gap-1.5" style={{ color: 'var(--ink-3)' }}>
+            <span>Suggested pace —</span>
+            <span className="px-1.5 py-0.5 rounded-md font-semibold font-mono tabular-nums"
+                  style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}>
+              {dayTarget}/day
+            </span>
           </div>
         )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
+
+      <div className="overflow-x-auto rounded-[10px] border" style={{ background: 'var(--surface-card)', borderColor: 'var(--border-hairline)' }}>
+        <table className="w-full border-collapse" style={{ fontSize: 11 }}>
+          {/* Slot times — small monospaced chips; future-hour columns muted */}
           <thead>
-            <tr className="text-slate-500">
-              <th className="text-left py-1 px-2 font-semibold whitespace-nowrap">Hour</th>
+            <tr style={{ background: 'var(--surface-muted)' }}>
+              <th className="text-left px-3 py-1.5 label-caps">Hour</th>
               {hourly.map(s => (
-                <th key={s.slot_index}
-                    className={`text-center py-1 px-2 font-semibold whitespace-nowrap ${s.completed ? '' : 'text-slate-300'}`}>
-                  {s.label.replace(' AM', '').replace(' PM', '').replace(' – ', '–')}
+                <th
+                  key={s.slot_index}
+                  className="text-center px-2 py-1.5 font-mono text-[10.5px] tabular-nums whitespace-nowrap"
+                  style={{ color: s.completed ? 'var(--ink-3)' : 'var(--ink-4)' }}
+                >
+                  {shortLabel(s.label)}
                 </th>
               ))}
-              <th className="text-center py-1 px-2 font-semibold text-slate-700">Total</th>
+              <th className="text-center px-3 py-1.5 label-caps" style={{ minWidth: 56 }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr title="Ack mails sent to consultants in this hour">
-              <td className="py-1 px-2 font-semibold whitespace-nowrap" style={{ color: '#B45309' }}>
-                <Mail size={11} className="inline mr-1" /> Ack sent
+            {/* Ack sent */}
+            <tr style={{ borderTop: '1px solid var(--border-hairline)' }} title="Ack mails sent to consultants in this hour">
+              <td className={rowLabel} style={{ color: '#B45309' }}>
+                <Mail size={11} className="inline mr-1.5 -mt-0.5" /> Ack sent
               </td>
               {hourly.map(s => (
-                <td key={s.slot_index} className="text-center py-1 px-2"
-                    style={{ background: s.ack_sent > 0 ? '#FEF3C7' : undefined }}>
-                  {s.ack_sent || ''}
+                <td key={s.slot_index} className={rowNum}
+                    style={{ background: s.ack_sent > 0 ? '#FEF3C7' : undefined, color: s.ack_sent > 0 ? '#92400E' : 'var(--ink-4)' }}>
+                  {s.ack_sent || '·'}
                 </td>
               ))}
-              <td className="text-center py-1 px-2 font-bold" style={{ color: '#92400E' }}>
-                {hourly.reduce((a, s) => a + s.ack_sent, 0) || ''}
+              <td className={rowNum} style={{ fontWeight: 600, color: '#92400E', background: 'var(--surface-muted)' }}>
+                {hourly.reduce((a, s) => a + s.ack_sent, 0) || '·'}
               </td>
             </tr>
-            <tr title="Candidates submitted to client this hour">
-              <td className="py-1 px-2 font-semibold whitespace-nowrap" style={{ color: '#6D28D9' }}>
-                <Send size={11} className="inline mr-1" /> Submissions
+
+            {/* Submissions */}
+            <tr style={{ borderTop: '1px solid var(--border-hairline)' }} title="Candidates submitted to client this hour">
+              <td className={rowLabel} style={{ color: '#6D28D9' }}>
+                <Send size={11} className="inline mr-1.5 -mt-0.5" /> Submissions
               </td>
               {hourly.map(s => (
-                <td key={s.slot_index} className="text-center py-1 px-2"
-                    style={{ background: s.submissions > 0 ? '#EDE9FE' : undefined }}>
-                  {s.submissions || ''}
+                <td key={s.slot_index} className={rowNum}
+                    style={{ background: s.submissions > 0 ? '#EDE9FE' : undefined, color: s.submissions > 0 ? '#5B21B6' : 'var(--ink-4)' }}>
+                  {s.submissions || '·'}
                 </td>
               ))}
-              <td className="text-center py-1 px-2 font-bold" style={{ color: '#5B21B6' }}>
-                {hourly.reduce((a, s) => a + s.submissions, 0) || ''}
+              <td className={rowNum} style={{ fontWeight: 600, color: '#5B21B6', background: 'var(--surface-muted)' }}>
+                {hourly.reduce((a, s) => a + s.submissions, 0) || '·'}
               </td>
             </tr>
-            <tr title="DL validations completed this hour. Green = kept pace with the suggested per-hour pace; red = below.">
-              <td className="py-1 px-2 font-semibold whitespace-nowrap" style={{ color: '#047857' }}>
-                <ShieldCheck size={11} className="inline mr-1" /> DL verified
+
+            {/* DL verified — color-graded against the pace */}
+            <tr style={{ borderTop: '1px solid var(--border-hairline)' }} title="DL validations completed this hour. Green = on or above suggested pace; red = below.">
+              <td className={rowLabel} style={{ color: '#047857' }}>
+                <ShieldCheck size={11} className="inline mr-1.5 -mt-0.5" /> DL verified
               </td>
               {hourly.map((s, i) => {
                 const want = suggested[i] ?? 0;
-                // Behind only if the slot has already ended AND its suggestion was non-zero.
                 const behind = s.completed && want > 0 && s.dl_verified < want;
-                const met    = want > 0 && s.dl_verified >= want;
-                const bg   = met ? '#D1FAE5' : behind ? '#FEE2E2' : (s.dl_verified > 0 ? '#ECFDF5' : undefined);
-                const fg   = met ? '#047857' : behind ? '#B91C1C' : (s.dl_verified > 0 ? '#047857' : undefined);
+                const met = want > 0 && s.dl_verified >= want;
+                const bg = met ? '#D1FAE5' : behind ? '#FEE2E2' : (s.dl_verified > 0 ? '#ECFDF5' : undefined);
+                const fg = met ? '#065F46' : behind ? '#B91C1C' : (s.dl_verified > 0 ? '#065F46' : 'var(--ink-4)');
                 return (
-                  <td key={s.slot_index} className="text-center py-1 px-2 font-semibold"
-                      style={{ background: bg, color: fg }}>
-                    {s.dl_verified || ''}
+                  <td key={s.slot_index} className={rowNum} style={{ background: bg, color: fg, fontWeight: met || behind ? 600 : 400 }}>
+                    {s.dl_verified || '·'}
                   </td>
                 );
               })}
-              <td className="text-center py-1 px-2 font-bold" style={{ color: '#065F46' }}>
-                {hourly.reduce((a, s) => a + s.dl_verified, 0) || ''}
+              <td className={rowNum} style={{ fontWeight: 600, color: '#065F46', background: 'var(--surface-muted)' }}>
+                {hourly.reduce((a, s) => a + s.dl_verified, 0) || '·'}
               </td>
             </tr>
+
+            {/* Suggested pace */}
             {dayTarget > 0 && (
-              <tr title="Suggested per-hour pace to hit the daily target evenly across the working day (warm-up hour skipped).">
-                <td className="py-1 px-2 font-semibold whitespace-nowrap text-slate-600">
-                  ◎ Suggested
+              <tr style={{ borderTop: '1px solid var(--border-hairline)', background: '#FAFAFA' }}
+                  title="Suggested per-hour pace, spread evenly across the working day (warm-up hour skipped).">
+                <td className={rowLabel} style={{ color: 'var(--ink-3)' }}>
+                  <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: 'var(--ink-4)' }} />
+                  Suggested
                 </td>
                 {suggested.map((v, i) => (
-                  <td key={i} className="text-center py-1 px-2 text-slate-500 italic">
-                    {v || ''}
+                  <td key={i} className={rowNum} style={{ color: v > 0 ? 'var(--ink-2)' : 'var(--ink-4)', fontStyle: v > 0 ? 'normal' : 'italic' }}>
+                    {v || '·'}
                   </td>
                 ))}
-                <td className="text-center py-1 px-2 font-bold text-slate-700">
+                <td className={rowNum} style={{ fontWeight: 600, color: 'var(--ink)', background: 'var(--surface-muted)' }}>
                   {suggested.reduce((a, v) => a + v, 0)}
                 </td>
               </tr>
@@ -287,17 +360,25 @@ function HourlyActivity({ hourly, dayTarget }: { hourly: HourlySlot[]; dayTarget
   );
 }
 
-// Funnel visual: small horizontal stack showing Ack → Submissions → Verified.
+// Funnel visual — three nested progress fills (Ack → Subs → Verified) on a
+// shared baseline. Inverted from the previous overlay so each tier reads
+// independently: the leftmost solid emerald is the "got all the way through"
+// portion, the violet halo around it is "submitted but not yet verified",
+// and the amber tail is "outreached, not yet submitted".
 function FunnelBar({ ack, sub, ver }: { ack: number; sub: number; ver: number }) {
-  const total = Math.max(ack, 1);
-  const wAck = 100;
-  const wSub = Math.round((sub / total) * 100);
-  const wVer = Math.round((ver / total) * 100);
+  const max = Math.max(ack, 1);
+  const pAck = (ack / max) * 100;
+  const pSub = (sub / max) * 100;
+  const pVer = (ver / max) * 100;
   return (
-    <div className="flex items-center gap-0.5 h-2 w-24" title={`Ack ${ack} · Subs ${sub} · Verified ${ver}`}>
-      <div className="rounded-l-sm bg-amber-200" style={{ width: `${wAck}%` }} />
-      <div className="bg-violet-300" style={{ width: `${wSub}%`, marginLeft: '-100%' }} />
-      <div className="rounded-r-sm bg-emerald-500" style={{ width: `${wVer}%`, marginLeft: '-100%' }} />
+    <div
+      className="relative h-1.5 w-24 rounded-full overflow-hidden"
+      style={{ background: 'var(--surface-muted)' }}
+      title={`Ack ${ack} · Subs ${sub} · Verified ${ver}`}
+    >
+      <div className="absolute inset-y-0 left-0" style={{ width: `${pAck}%`, background: '#FDE68A' }} />
+      <div className="absolute inset-y-0 left-0" style={{ width: `${pSub}%`, background: '#C4B5FD' }} />
+      <div className="absolute inset-y-0 left-0" style={{ width: `${pVer}%`, background: '#10B981' }} />
     </div>
   );
 }
@@ -404,7 +485,7 @@ function RecruiterLeaderboardSection() {
     setFStatus(''); setFPerf('');
   };
 
-  const selectCls = "text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-blue-400 min-w-28 max-w-44";
+  const selectCls = "text-[12px] px-2.5 py-1.5 rounded-md min-w-28 max-w-44 transition-colors focus:outline-none";
 
   // Column count for spanning loading/empty rows (must match the header count).
   // Header columns: chevron + Recruiter + DL + KAM + BH/Pod + Ack + Subs +
@@ -412,25 +493,31 @@ function RecruiterLeaderboardSection() {
   const COL_COUNT = 13;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <Users size={18} className="text-slate-500" />
-          <h2 className="text-base font-bold text-slate-800">
-            Recruiter Leaderboard
-          </h2>
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">
-            Ack → Submissions → DL Verified
-          </span>
-          {data && (
-            <span className="ml-2 text-xs text-slate-400">{data.today}</span>
-          )}
+    <div className="surface" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* ── Section header ── */}
+      <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-4" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+               style={{ background: 'var(--surface-muted)' }}>
+            <Users size={15} style={{ color: 'var(--ink-2)' }} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold leading-tight" style={{ color: 'var(--ink)', letterSpacing: '-0.018em' }}>
+              Recruiter Leaderboard
+            </h2>
+            <p className="text-[11.5px] leading-tight mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              Ack&nbsp;→&nbsp;Submissions&nbsp;→&nbsp;DL&nbsp;Verified · daily target funnel
+              {data && <span className="font-mono ml-2 tabular-nums" style={{ color: 'var(--ink-4)' }}>{data.today}</span>}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={toggleAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md font-medium transition-colors"
+            style={{ background: 'var(--surface-muted)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#E7E5E4')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
             title="Show or hide the per-hour activity grid under every row"
           >
             {allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
@@ -439,7 +526,8 @@ function RecruiterLeaderboardSection() {
           <button
             onClick={fetchData}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md font-medium transition-colors disabled:opacity-50"
+            style={{ background: 'var(--surface-muted)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
           >
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             Refresh
@@ -448,36 +536,40 @@ function RecruiterLeaderboardSection() {
       </div>
 
       {/* ── Legend ── */}
-      <div className="flex items-center flex-wrap gap-3 mb-3 text-[11px] text-slate-500">
+      <div className="flex items-center flex-wrap gap-3 px-6 py-2.5 text-[11px]" style={{ background: 'var(--surface-muted)', color: 'var(--ink-3)' }}>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-300" />
-          <Mail size={11} /> Ack sent
-          <span className="text-slate-400">— mail sent to consultant</span>
+          <span className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: '#FDE68A' }} />
+          <Mail size={10.5} style={{ color: '#B45309' }} />
+          <span className="font-medium" style={{ color: 'var(--ink-2)' }}>Ack sent</span>
+          <span style={{ color: 'var(--ink-4)' }}>— mail sent to consultant</span>
         </span>
-        <span className="text-slate-300">›</span>
+        <span style={{ color: 'var(--ink-4)' }}>·</span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-400" />
-          <Send size={11} /> Submissions
-          <span className="text-slate-400">— sent to client, DL verification pending or done</span>
+          <span className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: '#C4B5FD' }} />
+          <Send size={10.5} style={{ color: '#6D28D9' }} />
+          <span className="font-medium" style={{ color: 'var(--ink-2)' }}>Submissions</span>
+          <span style={{ color: 'var(--ink-4)' }}>— DL verification pending or done</span>
         </span>
-        <span className="text-slate-300">›</span>
+        <span style={{ color: 'var(--ink-4)' }}>·</span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-          <ShieldCheck size={11} /> DL verified
-          <span className="text-slate-400">— validated by Delivery Lead</span>
+          <span className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: '#10B981' }} />
+          <ShieldCheck size={10.5} style={{ color: '#047857' }} />
+          <span className="font-medium" style={{ color: 'var(--ink-2)' }}>DL verified</span>
+          <span style={{ color: 'var(--ink-4)' }}>— validated by Delivery Lead</span>
         </span>
       </div>
 
       {/* ── Filter bar ── */}
-      <div className="flex items-center flex-wrap gap-2 mb-4 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-        <Filter size={13} className="text-slate-400 ml-1" />
+      <div className="flex items-center flex-wrap gap-2 px-6 py-3" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+        <Filter size={13} style={{ color: 'var(--ink-3)' }} />
 
         <div className="relative">
-          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} />
           <input
             type="text" placeholder="Search recruiter…"
             value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-44"
+            className="pl-7 pr-2.5 py-1.5 rounded-md text-[12px] w-48 transition-colors"
+            style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}
           />
         </div>
 
@@ -485,12 +577,14 @@ function RecruiterLeaderboardSection() {
         <MultiSelectFilter label="KAMs" options={kamOptions} selected={fKam} onChange={setFKam} />
         <MultiSelectFilter label="BHs"  options={bhOptions}  selected={fBh}  onChange={setFBh} />
         <MultiSelectFilter label="Pods" options={podOptions} selected={fPod} onChange={setFPod} />
-        <select value={fStatus} onChange={e => setFStatus(e.target.value)} className={selectCls}>
+        <select value={fStatus} onChange={e => setFStatus(e.target.value)} className={selectCls}
+                style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}>
           <option value="">Any status</option>
           <option value="On Track">On Track</option>
           <option value="Behind">Behind</option>
         </select>
-        <select value={fPerf} onChange={e => setFPerf(e.target.value)} className={selectCls}>
+        <select value={fPerf} onChange={e => setFPerf(e.target.value)} className={selectCls}
+                style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}>
           <option value="">Any performance</option>
           {PERF_OPTIONS.map(v => <option key={v} value={v} className="capitalize">{v}</option>)}
         </select>
@@ -498,7 +592,8 @@ function RecruiterLeaderboardSection() {
         {activeFilters > 0 && (
           <button
             onClick={clearAll}
-            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors"
+            style={{ background: 'var(--danger-soft)', border: '1px solid #FCA5A5', color: 'var(--danger)' }}
           >
             <X size={11} /> Clear ({activeFilters})
           </button>
@@ -511,28 +606,28 @@ function RecruiterLeaderboardSection() {
 
       {!error && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: 1400 }}>
+          <table className="w-full" style={{ minWidth: 1400, fontSize: 13 }}>
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="w-6 py-2.5 px-2" />
-                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Recruiter</th>
-                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Delivery Lead</th>
-                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">KAM</th>
-                <th className="text-left py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">BH / Pod</th>
-                <th className="text-center py-2.5 px-3 text-xs font-bold uppercase tracking-wider" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                  <Mail size={11} className="inline mr-1" /> Ack sent
+              <tr style={{ borderBottom: '1px solid var(--border-hairline)', background: 'var(--surface-card)' }}>
+                <th className="w-7 py-2.5 px-2" />
+                <th className="text-left py-2.5 px-3 label-caps">Recruiter</th>
+                <th className="text-left py-2.5 px-3 label-caps">Delivery Lead</th>
+                <th className="text-left py-2.5 px-3 label-caps">KAM</th>
+                <th className="text-left py-2.5 px-3 label-caps">BH / Pod</th>
+                <th className="text-center py-2.5 px-3 label-caps" style={{ color: '#92400E' }}>
+                  <Mail size={10.5} className="inline mr-1 -mt-0.5" />Ack&nbsp;sent
                 </th>
-                <th className="text-center py-2.5 px-3 text-xs font-bold uppercase tracking-wider" style={{ background: '#EDE9FE', color: '#5B21B6' }}>
-                  <Send size={11} className="inline mr-1" /> Submissions
+                <th className="text-center py-2.5 px-3 label-caps" style={{ color: '#5B21B6' }}>
+                  <Send size={10.5} className="inline mr-1 -mt-0.5" />Submissions
                 </th>
-                <th className="text-center py-2.5 px-3 text-xs font-bold uppercase tracking-wider" style={{ background: '#D1FAE5', color: '#065F46' }}>
-                  <ShieldCheck size={11} className="inline mr-1" /> DL verified
+                <th className="text-center py-2.5 px-3 label-caps" style={{ color: '#065F46' }}>
+                  <ShieldCheck size={10.5} className="inline mr-1 -mt-0.5" />DL&nbsp;verified
                 </th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Funnel</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider" title="Daily target — number of DL-verifications expected for the day">Daily target</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">% Done</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="text-center py-2.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Rejections</th>
+                <th className="text-center py-2.5 px-3 label-caps">Funnel</th>
+                <th className="text-center py-2.5 px-3 label-caps" title="Daily target — number of DL-verifications expected for the day">Daily&nbsp;target</th>
+                <th className="text-center py-2.5 px-3 label-caps">% Done</th>
+                <th className="text-center py-2.5 px-3 label-caps">Status</th>
+                <th className="text-center py-2.5 px-3 label-caps">Rejections</th>
               </tr>
             </thead>
             <tbody>
@@ -553,55 +648,79 @@ function RecruiterLeaderboardSection() {
                   <Fragment key={row.recruiter_id}>
                   <tr
                     onClick={() => toggleRow(row.recruiter_id)}
-                    className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                    className="cursor-pointer transition-colors"
+                    style={{ borderBottom: '1px solid var(--border-hairline)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}
                   >
-                    <td className="py-2.5 px-2 text-center text-slate-400">
+                    <td className="py-2 px-2 text-center" style={{ color: 'var(--ink-4)' }}>
                       {open ? <ChevronDown size={14} className="inline" /> : <ChevronRight size={14} className="inline" />}
                     </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">{row.recruiter_name}</td>
-                    <td className="py-2.5 px-3 text-slate-600 text-xs">
+                    <td className="py-2 px-3 font-medium whitespace-nowrap" style={{ color: 'var(--ink)' }}>
+                      {row.recruiter_name}
+                    </td>
+                    <td className="py-2 px-3 text-[12px]" style={{ color: 'var(--ink-2)' }}>
                       {row.dl_names.length === 0
-                        ? <span className="text-slate-300">—</span>
+                        ? <span style={{ color: 'var(--ink-4)' }}>—</span>
                         : row.dl_names.length === 1
                           ? row.dl_names[0]
                           : (
                             <span title={row.dl_names.join(', ')}>
                               {row.dl_names.join(', ')}
-                              <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700">×{row.dl_names.length}</span>
+                              <span className="ml-1.5 px-1 py-0.5 rounded text-[9.5px] font-mono font-semibold"
+                                    style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                                ×{row.dl_names.length}
+                              </span>
                             </span>
                           )}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600 text-xs">{row.kam_names.length > 0 ? row.kam_names.join(', ') : <span className="text-slate-300">—</span>}</td>
-                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-xs">
-                      {row.bh_name  ?? <span className="text-slate-300">—</span>}
-                      {row.pod_name && <span className="text-slate-400"> · {row.pod_name}</span>}
+                    <td className="py-2 px-3 text-[12px]" style={{ color: 'var(--ink-2)' }}>
+                      {row.kam_names.length > 0 ? row.kam_names.join(', ') : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                     </td>
-                    <td className="py-2.5 px-3 text-center font-bold" style={{ background: row.ack_sent > 0 ? '#FFFBEB' : undefined, color: '#92400E' }}>
-                      {row.ack_sent || <span className="text-slate-300 font-normal">—</span>}
+                    <td className="py-2 px-3 whitespace-nowrap text-[12px]" style={{ color: 'var(--ink-2)' }}>
+                      {row.bh_name  ?? <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                      {row.pod_name && <span style={{ color: 'var(--ink-4)' }}> · {row.pod_name}</span>}
                     </td>
-                    <td className="py-2.5 px-3 text-center font-bold" style={{ background: row.submissions > 0 ? '#F5F3FF' : undefined, color: '#5B21B6' }}>
-                      {row.submissions || <span className="text-slate-300 font-normal">—</span>}
+                    {/* Funnel-color cells use a hairline left border to read as a column, not a heatmap */}
+                    <td className="py-2 px-3 text-center font-mono font-semibold tabular-nums"
+                        style={{ color: row.ack_sent > 0 ? '#92400E' : 'var(--ink-4)', background: row.ack_sent > 0 ? '#FEF7E0' : undefined }}>
+                      {row.ack_sent || '·'}
                     </td>
-                    <td className="py-2.5 px-3 text-center font-bold" style={{ background: row.dl_verified > 0 ? '#ECFDF5' : undefined, color: '#065F46' }}>
-                      {row.dl_verified || <span className="text-slate-300 font-normal">—</span>}
+                    <td className="py-2 px-3 text-center font-mono font-semibold tabular-nums"
+                        style={{ color: row.submissions > 0 ? '#5B21B6' : 'var(--ink-4)', background: row.submissions > 0 ? '#F3EDFD' : undefined }}>
+                      {row.submissions || '·'}
                     </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <FunnelBar ack={row.ack_sent} sub={row.submissions} ver={row.dl_verified} />
+                    <td className="py-2 px-3 text-center font-mono font-semibold tabular-nums"
+                        style={{ color: row.dl_verified > 0 ? '#065F46' : 'var(--ink-4)', background: row.dl_verified > 0 ? '#E7FAF0' : undefined }}>
+                      {row.dl_verified || '·'}
                     </td>
-                    <td className="py-2.5 px-3 text-center font-semibold text-slate-800">{row.day_target || <span className="text-slate-300 font-normal">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-700 font-semibold">{row.day_target ? `${row.pct}%` : <span className="text-slate-300 font-normal">—</span>}</td>
-                    <td className="py-2.5 px-3 text-center">
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex justify-center">
+                        <FunnelBar ack={row.ack_sent} sub={row.submissions} ver={row.dl_verified} />
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-center font-mono font-semibold tabular-nums" style={{ color: 'var(--ink)' }}>
+                      {row.day_target || <span style={{ color: 'var(--ink-4)' }}>·</span>}
+                    </td>
+                    <td className="py-2 px-3 text-center font-mono font-semibold tabular-nums" style={{ color: 'var(--ink-2)' }}>
+                      {row.day_target ? `${row.pct}%` : <span style={{ color: 'var(--ink-4)' }}>·</span>}
+                    </td>
+                    <td className="py-2 px-3 text-center">
                       {row.status === 'On Track' ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
-                          <CheckCircle2 size={12} /> On Track
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ color: '#047857', background: 'var(--success-soft)', border: '1px solid #A7F3D0' }}>
+                          <CheckCircle2 size={11} /> On track
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-red-600 font-semibold text-xs">
-                          <AlertTriangle size={12} /> Behind
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ color: 'var(--danger)', background: 'var(--danger-soft)', border: '1px solid #FCA5A5' }}>
+                          <AlertTriangle size={11} /> Behind
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-center text-slate-700">{row.rejections || ''}</td>
+                    <td className="py-2 px-3 text-center font-mono tabular-nums" style={{ color: row.rejections > 0 ? 'var(--ink-2)' : 'var(--ink-4)' }}>
+                      {row.rejections || '·'}
+                    </td>
                   </tr>
                   {open && row.hourly && row.hourly.length > 0 && (
                     <tr>
@@ -617,31 +736,36 @@ function RecruiterLeaderboardSection() {
             </tbody>
             {totals && filteredRows.length > 0 && (
               <tfoot>
-                <tr className="bg-slate-100 font-bold text-slate-700">
+                <tr style={{ background: 'var(--surface-muted)', borderTop: '1px solid var(--border-strong)' }}>
                   <td className="py-2.5 px-2" />
-                  <td className="py-2.5 px-3" colSpan={4}>
-                    TOTAL ({filteredRows.length})
+                  <td className="py-2.5 px-3 label-caps" colSpan={4} style={{ color: 'var(--ink)' }}>
+                    Total ({filteredRows.length})
                   </td>
-                  <td className="py-2.5 px-3 text-center" style={{ color: '#92400E' }}>{totals.ack_sent}</td>
-                  <td className="py-2.5 px-3 text-center" style={{ color: '#5B21B6' }}>{totals.submissions}</td>
-                  <td className="py-2.5 px-3 text-center" style={{ color: '#065F46' }}>{totals.dl_verified}</td>
+                  <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums" style={{ color: '#92400E' }}>{totals.ack_sent}</td>
+                  <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums" style={{ color: '#5B21B6' }}>{totals.submissions}</td>
+                  <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums" style={{ color: '#065F46' }}>{totals.dl_verified}</td>
                   <td className="py-2.5 px-3 text-center">
-                    <FunnelBar ack={totals.ack_sent} sub={totals.submissions} ver={totals.dl_verified} />
+                    <div className="inline-flex justify-center">
+                      <FunnelBar ack={totals.ack_sent} sub={totals.submissions} ver={totals.dl_verified} />
+                    </div>
                   </td>
-                  <td className="py-2.5 px-3 text-center">{totals.day_target}</td>
-                  <td className="py-2.5 px-3 text-center">{totals.day_target ? `${totals.pct}%` : '—'}</td>
+                  <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums" style={{ color: 'var(--ink)' }}>{totals.day_target}</td>
+                  <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums" style={{ color: 'var(--ink)' }}>{totals.day_target ? `${totals.pct}%` : '—'}</td>
                   <td className="py-2.5 px-3 text-center">
                     {totals.status === 'On Track' ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-600 text-xs">
-                        <CheckCircle2 size={12} /> Pod on track
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                            style={{ color: '#047857', background: 'var(--surface-card)', border: '1px solid #A7F3D0' }}>
+                        <CheckCircle2 size={11} /> Pod on track
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-red-600 text-xs">
-                        <AlertTriangle size={12} /> Pod behind
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ color: 'var(--danger)', background: 'var(--surface-card)', border: '1px solid #FCA5A5' }}>
+                        <AlertTriangle size={11} /> Pod behind
                       </span>
                     )}
                   </td>
-                  <td className="py-2.5 px-3 text-center">{totals.rejections}</td>
+                  <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums" style={{ color: totals.rejections > 0 ? 'var(--ink)' : 'var(--ink-4)' }}>
+                    {totals.rejections || '·'}
+                  </td>
                 </tr>
               </tfoot>
             )}
@@ -1169,20 +1293,24 @@ export default function Leaderboard() {
   return (
     <Layout title="Leaderboard" subtitle="Recruiter activity and pipeline by Business Head & Client">
       {/* Tab bar */}
-      <div className="border-b border-slate-200 mb-5">
-        <div className="flex gap-1">
+      <div className="mb-5" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+        <div className="flex gap-0.5">
           {TABS.map(t => {
             const active = t.key === tab;
             return (
               <button
                 key={t.key}
                 onClick={() => openTab(t.key)}
-                className="px-4 py-2.5 text-sm font-semibold transition-colors"
+                className="px-3.5 py-2.5 text-[13px] transition-colors relative"
                 style={{
-                  color: active ? '#2563EB' : '#64748B',
-                  borderBottom: active ? '2px solid #2563EB' : '2px solid transparent',
+                  color: active ? 'var(--ink)' : 'var(--ink-3)',
+                  fontWeight: active ? 600 : 500,
+                  borderBottom: active ? '2px solid var(--ink)' : '2px solid transparent',
                   marginBottom: -1,
+                  letterSpacing: '-0.01em',
                 }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = 'var(--ink-2)'; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = 'var(--ink-3)'; }}
               >
                 {t.label}
               </button>

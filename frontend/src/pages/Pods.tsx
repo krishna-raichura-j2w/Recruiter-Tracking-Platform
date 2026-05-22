@@ -167,86 +167,142 @@ function PickerDialog({
 
   const submitLabel = isMulti && picked.size > 1 ? `Add (${picked.size})` : 'Add';
 
+  const labelLower = meta(role).label.toLowerCase();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-bold text-slate-800">
-            Add {meta(role).label}{isMulti ? 's' : ''}
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
-        </div>
-        {error && <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs font-medium">{error}</div>}
-
-        {options.length > 0 && (
-          <div className="mb-2 flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400"
-              />
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(10, 10, 10, 0.4)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden animate-panel-in"
+        style={{ background: 'var(--surface-card)', borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-pop)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: meta(role).bg, color: meta(role).color }}>
+              {meta(role).icon}
             </div>
-            {isMulti && filtered.length > 0 && (
-              <button
-                onClick={toggleAllFiltered}
-                className="text-[11px] font-semibold text-blue-600 hover:underline whitespace-nowrap"
-              >
-                {allFilteredSelected ? 'Clear' : `Select all (${filtered.length})`}
-              </button>
-            )}
+            <div>
+              <h3 className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.015em' }}>
+                Add {meta(role).label}{isMulti ? 's' : ''}
+              </h3>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+                {isMulti ? 'Pick one or more to add to this pod' : `Select a ${labelLower} to head this pod`}
+              </p>
+            </div>
           </div>
-        )}
-
-        {loading ? (
-          <div className="py-8 text-center text-sm text-slate-400">Loading…</div>
-        ) : options.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">
-            No unassigned {meta(role).label.toLowerCase()}s available. Create one in Users first.
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">No matches.</div>
-        ) : (
-          <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-100">
-            {filtered.map(u => {
-              const checked = picked.has(u.id);
-              return (
-                <label
-                  key={u.id}
-                  className="flex items-center gap-3 px-3 py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50"
-                >
-                  <input
-                    type={isMulti ? 'checkbox' : 'radio'}
-                    name="pickuser"
-                    checked={checked}
-                    onChange={() => toggle(u.id)}
-                    className="accent-blue-500"
-                  />
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600">
-                    {initials(u.name)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{u.name}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
-          <button
-            onClick={submit}
-            disabled={picked.size === 0 || loading || saving}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : submitLabel}
+          <button onClick={onClose} className="p-1 rounded-md transition-colors" style={{ color: 'var(--ink-3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            <X size={16} />
           </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5">
+          {error && (
+            <div className="mb-3 px-3 py-2 rounded-md text-[12px] font-medium"
+                 style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid #FCA5A5' }}>
+              {error}
+            </div>
+          )}
+
+          {options.length > 0 && (
+            <div className="mb-2 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} />
+                <input
+                  type="text"
+                  placeholder={`Search ${labelLower}s…`}
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-7 pr-2.5 py-1.5 rounded-md text-[12.5px] focus:outline-none"
+                  style={{ background: 'var(--surface-muted)', border: '1px solid transparent', color: 'var(--ink)' }}
+                />
+              </div>
+              {isMulti && filtered.length > 0 && (
+                <button
+                  onClick={toggleAllFiltered}
+                  className="text-[11px] font-semibold whitespace-nowrap transition-colors"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {allFilteredSelected ? 'Clear' : `Select all · ${filtered.length}`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="py-10 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>Loading…</div>
+          ) : options.length === 0 ? (
+            <div className="py-10 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              No unassigned {labelLower}s available. Create one in <span className="font-medium" style={{ color: 'var(--ink-2)' }}>Users</span> first.
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-10 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>No matches.</div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto rounded-md scrollbar-thin"
+                 style={{ background: 'var(--surface-muted)', border: '1px solid var(--border-hairline)' }}>
+              {filtered.map(u => {
+                const checked = picked.has(u.id);
+                return (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors"
+                    style={{
+                      background: checked ? 'var(--surface-card)' : 'transparent',
+                      borderBottom: '1px solid var(--border-hairline)',
+                    }}
+                    onMouseEnter={e => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.02)'; }}
+                    onMouseLeave={e => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    <input
+                      type={isMulti ? 'checkbox' : 'radio'}
+                      name="pickuser"
+                      checked={checked}
+                      onChange={() => toggle(u.id)}
+                      className="accent-[#2563EB]"
+                    />
+                    <div className="w-7 h-7 rounded-md flex items-center justify-center text-[10.5px] font-semibold font-mono"
+                         style={{ background: 'var(--surface-card)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}>
+                      {initials(u.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium truncate" style={{ color: 'var(--ink)' }}>{u.name}</p>
+                      <p className="text-[11px] truncate" style={{ color: 'var(--ink-4)' }}>{u.email}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-between items-center gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--border-hairline)', background: 'var(--surface-muted)' }}>
+          <span className="text-[11px] font-mono tabular-nums" style={{ color: 'var(--ink-3)' }}>
+            {picked.size > 0 ? `${picked.size} selected` : ''}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+                    className="px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors"
+                    style={{ color: 'var(--ink-2)', background: 'transparent' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-card)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              Cancel
+            </button>
+            <button
+              onClick={submit}
+              disabled={picked.size === 0 || loading || saving}
+              className="px-3.5 py-1.5 rounded-md text-[12.5px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              style={{ background: 'var(--ink)', color: '#FFFFFF', boxShadow: 'var(--shadow-1)' }}
+            >
+              {saving ? 'Saving…' : submitLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -271,29 +327,64 @@ function CreatePodDialog({ onClose, onDone }: { onClose: () => void; onDone: () 
     }
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-bold text-slate-800">Create Pod</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(10, 10, 10, 0.4)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden animate-panel-in"
+        style={{ background: 'var(--surface-card)', borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-pop)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+          <div>
+            <h3 className="text-[15px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.015em' }}>
+              Create Pod
+            </h3>
+            <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              Each pod has one BH and multiple team members.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-md transition-colors" style={{ color: 'var(--ink-3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            <X size={16} />
+          </button>
         </div>
-        {error && <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs font-medium">{error}</div>}
-        <input
-          autoFocus
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && submit()}
-          placeholder="Pod name (e.g. Mehr Pod)"
-          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
-        />
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+        <div className="p-5">
+          {error && (
+            <div className="mb-3 px-3 py-2 rounded-md text-[12px] font-medium"
+                 style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid #FCA5A5' }}>
+              {error}
+            </div>
+          )}
+          <label className="label-caps mb-1.5 block">Pod name</label>
+          <input
+            autoFocus
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder="e.g. Mehr Pod"
+            className="w-full px-3 py-2 rounded-md text-[13.5px] focus:outline-none transition-colors"
+            style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}
+          />
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--border-hairline)', background: 'var(--surface-muted)' }}>
+          <button onClick={onClose}
+                  className="px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors"
+                  style={{ color: 'var(--ink-2)', background: 'transparent' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-card)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            Cancel
+          </button>
           <button
             onClick={submit}
             disabled={!name.trim()}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            className="px-3.5 py-1.5 rounded-md text-[12.5px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            style={{ background: 'var(--ink)', color: '#FFFFFF', boxShadow: 'var(--shadow-1)' }}
           >
-            Create
+            Create Pod
           </button>
         </div>
       </div>
@@ -397,70 +488,122 @@ function TeamPickerDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-bold text-slate-800">Add to team</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
-        </div>
-        {error && <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs font-medium">{error}</div>}
-
-        {options.length > 0 && (
-          <div className="mb-2 flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text" placeholder="Search recruiters in this pod…"
-                value={search} onChange={e => setSearch(e.target.value)}
-                className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400"
-              />
-            </div>
-            {filtered.length > 0 && (
-              <button
-                onClick={toggleAllFiltered}
-                className="text-[11px] font-semibold text-blue-600 hover:underline whitespace-nowrap"
-              >
-                {allFilteredSelected ? 'Clear' : `Select all (${filtered.length})`}
-              </button>
-            )}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(10, 10, 10, 0.4)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden animate-panel-in"
+        style={{ background: 'var(--surface-card)', borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-pop)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+          <div>
+            <h3 className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.015em' }}>
+              Add recruiters to team
+            </h3>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              Recruiters already in this DL's team won't show here.
+            </p>
           </div>
-        )}
-
-        {options.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">
-            All pod recruiters are already in this team.
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">No matches.</div>
-        ) : (
-          <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-100">
-            {filtered.map(u => (
-              <label
-                key={u.id}
-                className="flex items-center gap-3 px-3 py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50"
-              >
-                <input type="checkbox" checked={picked.has(u.id)} onChange={() => toggle(u.id)} className="accent-blue-500" />
-                <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600">
-                  {initials(u.name)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{u.name}</p>
-                  <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
-          <button
-            onClick={submit}
-            disabled={picked.size === 0 || saving}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : (picked.size > 1 ? `Add (${picked.size})` : 'Add')}
+          <button onClick={onClose} className="p-1 rounded-md transition-colors" style={{ color: 'var(--ink-3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            <X size={16} />
           </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5">
+          {error && (
+            <div className="mb-3 px-3 py-2 rounded-md text-[12px] font-medium"
+                 style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid #FCA5A5' }}>
+              {error}
+            </div>
+          )}
+
+          {options.length > 0 && (
+            <div className="mb-2 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} />
+                <input
+                  type="text" placeholder="Search pod recruiters…"
+                  value={search} onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-7 pr-2.5 py-1.5 rounded-md text-[12.5px] focus:outline-none"
+                  style={{ background: 'var(--surface-muted)', border: '1px solid transparent', color: 'var(--ink)' }}
+                />
+              </div>
+              {filtered.length > 0 && (
+                <button
+                  onClick={toggleAllFiltered}
+                  className="text-[11px] font-semibold whitespace-nowrap transition-colors"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {allFilteredSelected ? 'Clear' : `Select all · ${filtered.length}`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {options.length === 0 ? (
+            <div className="py-10 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              All pod recruiters are already in this team.
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-10 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>No matches.</div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto rounded-md scrollbar-thin"
+                 style={{ background: 'var(--surface-muted)', border: '1px solid var(--border-hairline)' }}>
+              {filtered.map(u => {
+                const checked = picked.has(u.id);
+                return (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors"
+                    style={{ background: checked ? 'var(--surface-card)' : 'transparent', borderBottom: '1px solid var(--border-hairline)' }}
+                    onMouseEnter={e => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.02)'; }}
+                    onMouseLeave={e => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    <input type="checkbox" checked={checked} onChange={() => toggle(u.id)} className="accent-[#2563EB]" />
+                    <div className="w-7 h-7 rounded-md flex items-center justify-center text-[10.5px] font-semibold font-mono"
+                         style={{ background: 'var(--surface-card)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}>
+                      {initials(u.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium truncate" style={{ color: 'var(--ink)' }}>{u.name}</p>
+                      <p className="text-[11px] truncate" style={{ color: 'var(--ink-4)' }}>{u.email}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-between items-center gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--border-hairline)', background: 'var(--surface-muted)' }}>
+          <span className="text-[11px] font-mono tabular-nums" style={{ color: 'var(--ink-3)' }}>
+            {picked.size > 0 ? `${picked.size} selected` : ''}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+                    className="px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors"
+                    style={{ color: 'var(--ink-2)', background: 'transparent' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-card)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              Cancel
+            </button>
+            <button
+              onClick={submit}
+              disabled={picked.size === 0 || saving}
+              className="px-3.5 py-1.5 rounded-md text-[12.5px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              style={{ background: 'var(--ink)', color: '#FFFFFF', boxShadow: 'var(--shadow-1)' }}
+            >
+              {saving ? 'Saving…' : (picked.size > 1 ? `Add ${picked.size}` : 'Add')}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -494,31 +637,41 @@ function DlTeam({
   };
 
   return (
-    <div className="ml-7 mt-0.5 mb-1">
+    <div className="ml-7 mt-0.5 mb-1.5">
       <button
         onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+        className="inline-flex items-center gap-1.5 text-[11.5px] font-medium transition-colors"
+        style={{ color: open ? 'var(--ink-2)' : 'var(--ink-3)' }}
+        onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink-2)')}
+        onMouseLeave={e => (e.currentTarget.style.color = open ? 'var(--ink-2)' : 'var(--ink-3)')}
       >
         {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-        Team ({members.length})
+        <span>Team</span>
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold tabular-nums"
+              style={{ background: 'var(--surface-muted)', color: 'var(--ink-2)' }}>
+          {members.length}
+        </span>
       </button>
       {open && (
-        <div className="mt-1.5 pl-4 border-l-2 border-slate-100">
+        <div className="mt-1.5 pl-4" style={{ borderLeft: '2px solid var(--border-hairline)' }}>
           {members.length === 0 ? (
-            <p className="text-[11px] text-slate-400 py-1.5">No team members yet.</p>
+            <p className="text-[11.5px] py-1" style={{ color: 'var(--ink-4)' }}>No team members yet.</p>
           ) : (
             <div className="flex flex-wrap gap-1.5 py-1">
               {members.map(m => (
                 <span
                   key={m.id}
-                  className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border text-[11px] font-semibold"
-                  style={{ background: '#DBEAFE', color: '#1D4ED8', borderColor: '#1D4ED840' }}
+                  className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-md text-[11.5px] font-medium"
+                  style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
                 >
                   {m.name}
                   {canEditTeam && (
                     <button
                       onClick={() => removeFromTeam(m.id, m.name)}
-                      className="w-3.5 h-3.5 rounded-full flex items-center justify-center hover:bg-white/60"
+                      className="w-4 h-4 rounded flex items-center justify-center transition-colors"
+                      style={{ color: '#1D4ED8' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#DBEAFE')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                       title={`Remove ${m.name} from team`}
                     >
                       <X size={9} />
@@ -531,9 +684,10 @@ function DlTeam({
           {canEditTeam && (
             <button
               onClick={() => setPicker(true)}
-              className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-blue-600 hover:bg-blue-50"
+              className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors"
+              style={{ color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid #BFDBFE' }}
             >
-              <UserPlus size={10} /> Add to team
+              <UserPlus size={10} /> Add recruiters
             </button>
           )}
         </div>
@@ -586,37 +740,49 @@ function TreeNode({
 
   return (
     <div style={{ marginLeft: depth * 22 }}>
-      <div className="flex items-center gap-2 py-1.5">
+      <div className="flex items-center gap-2 py-1.5 rounded-md transition-colors group"
+           style={{ paddingLeft: 4, paddingRight: 4 }}
+           onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
         {node.children.length > 0 ? (
-          <button onClick={() => setOpen(o => !o)} className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700">
+          <button onClick={() => setOpen(o => !o)} className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+                  style={{ color: 'var(--ink-3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-3)')}>
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         ) : (
           <span className="w-5 h-5 inline-block" />
         )}
         <span
-          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider flex-shrink-0"
-          style={{ background: mt.bg, color: mt.color }}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold uppercase tracking-wider flex-shrink-0"
+          style={{ background: mt.bg, color: mt.color, letterSpacing: '0.05em' }}
         >
           {mt.icon} {mt.label}
         </span>
-        <span className="text-sm font-semibold text-slate-800">{node.name}</span>
-        <span className="text-[11px] text-slate-400 truncate">{node.email}</span>
+        <span className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{node.name}</span>
+        <span className="text-[11.5px] truncate font-mono" style={{ color: 'var(--ink-4)' }}>{node.email}</span>
         <div className="flex-1" />
         {canEditTree && childRoles.map(cr => (
           <button
             key={cr}
             onClick={() => setPicker(cr)}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+            style={{ color: 'var(--ink-2)', background: 'var(--surface-card)', border: '1px solid var(--border-hairline)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-soft)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-card)')}
             title={`Add ${meta(cr).label} to pod`}
           >
-            <UserPlus size={11} /> Add {meta(cr).label}s
+            <UserPlus size={11} /> Add {meta(cr).label}{cr !== 'recruiter' ? 's' : 's'}
           </button>
         ))}
         {canEditTree && node.role !== 'bh' && (
           <button
             onClick={removeMember}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-red-500 hover:bg-red-50"
+            className="flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+            style={{ color: 'var(--danger)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--danger-soft)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             title="Remove from pod"
           >
             <Trash2 size={11} />
@@ -704,9 +870,11 @@ function PodCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-        <Users size={16} className="text-slate-400" />
+    <div className="surface overflow-hidden">
+      <div className="px-5 py-3.5 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-hairline)', background: 'var(--surface-muted)' }}>
+        <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)' }}>
+          <Users size={14} style={{ color: 'var(--ink-2)' }} />
+        </div>
         {renaming ? (
           <input
             autoFocus
@@ -714,27 +882,35 @@ function PodCard({
             onChange={e => setNewName(e.target.value)}
             onBlur={rename}
             onKeyDown={e => { if (e.key === 'Enter') rename(); if (e.key === 'Escape') { setNewName(pod.name); setRenaming(false); } }}
-            className="px-2 py-1 rounded border border-slate-200 text-sm font-bold focus:outline-none focus:border-blue-400"
+            className="px-2 py-1 rounded text-[14px] font-semibold focus:outline-none"
+            style={{ background: 'var(--surface-card)', border: '1px solid var(--accent)', color: 'var(--ink)' }}
           />
         ) : (
-          <h2 className="text-sm font-bold text-slate-800">{pod.name}</h2>
+          <h2 className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.015em' }}>{pod.name}</h2>
         )}
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600">
-          {pod.member_count} members
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-mono font-semibold tabular-nums"
+              style={{ background: 'var(--surface-card)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}>
+          {pod.member_count} {pod.member_count === 1 ? 'member' : 'members'}
         </span>
         <div className="flex-1" />
         {isAdmin && (
           <>
             <button
               onClick={() => setRenaming(true)}
-              className="text-slate-400 hover:text-slate-700 p-1 rounded"
+              className="p-1.5 rounded-md transition-colors"
+              style={{ color: 'var(--ink-3)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-card)'; e.currentTarget.style.color = 'var(--ink)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
               title="Rename pod"
             >
               <Pencil size={13} />
             </button>
             <button
               onClick={deletePod}
-              className="text-red-400 hover:text-red-600 p-1 rounded"
+              className="p-1.5 rounded-md transition-colors"
+              style={{ color: 'var(--ink-3)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
               title="Delete pod"
             >
               <Trash2 size={13} />
@@ -743,7 +919,7 @@ function PodCard({
         )}
       </div>
 
-      <div className="p-5">
+      <div className="px-4 py-3">
         {pod.bh ? (
           <TreeNode
             node={pod.bh}
@@ -755,12 +931,17 @@ function PodCard({
             onChange={onChange}
           />
         ) : (
-          <div className="text-center py-8">
-            <p className="text-sm text-slate-500 mb-3">No BH assigned yet.</p>
+          <div className="text-center py-10">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full mb-3"
+                 style={{ background: 'var(--surface-muted)', border: '1px solid var(--border-hairline)' }}>
+              <Crown size={18} style={{ color: 'var(--ink-3)' }} />
+            </div>
+            <p className="text-[13px] mb-3" style={{ color: 'var(--ink-3)' }}>No BH assigned yet.</p>
             {isAdmin && (
               <button
                 onClick={() => setPicker('bh')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors"
+                style={{ background: 'var(--ink)', color: '#FFFFFF', boxShadow: 'var(--shadow-1)' }}
               >
                 <Plus size={12} /> Assign BH
               </button>
@@ -769,8 +950,8 @@ function PodCard({
         )}
 
         {pod.orphans.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-slate-100">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-2">
+          <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--border-hairline)' }}>
+            <p className="label-caps mb-2" style={{ color: 'var(--warning)' }}>
               ⚠ Orphan members (parent missing in pod)
             </p>
             <div className="flex flex-wrap gap-2">
@@ -833,11 +1014,12 @@ export default function Pods() {
 
   return (
     <Layout title="Pods" subtitle={subtitle}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-5">
         <button
           onClick={fetchPods}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-medium transition-colors disabled:opacity-50"
+          style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink-2)' }}
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -845,7 +1027,8 @@ export default function Pods() {
         {isAdmin && (
           <button
             onClick={() => setCreating(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors"
+            style={{ background: 'var(--ink)', color: '#FFFFFF', boxShadow: 'var(--shadow-1)' }}
           >
             <Plus size={13} /> Create Pod
           </button>
@@ -853,16 +1036,18 @@ export default function Pods() {
       </div>
 
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">
+        <div className="mb-4 px-4 py-2.5 rounded-md text-[13px] font-medium"
+             style={{ background: 'var(--danger-soft)', border: '1px solid #FCA5A5', color: 'var(--danger)' }}>
           {error}
         </div>
       )}
 
       {loading && pods.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center text-slate-400 text-sm">Loading…</div>
+        <div className="surface p-16 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>Loading…</div>
       ) : pods.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center text-slate-400 text-sm border border-dashed border-slate-200">
-          {isAdmin ? 'No pods yet. Click "Create Pod" to set up your first team.' : 'You are not part of any pod yet.'}
+        <div className="rounded-[14px] p-16 text-center text-[13px]"
+             style={{ background: 'var(--surface-card)', border: '1px dashed var(--border-strong)', color: 'var(--ink-3)' }}>
+          {isAdmin ? 'No pods yet. Click “Create Pod” to set up your first team.' : 'You are not part of any pod yet.'}
         </div>
       ) : (
         <div className="space-y-4">

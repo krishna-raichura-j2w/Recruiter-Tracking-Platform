@@ -145,47 +145,62 @@ export default function Targets() {
     fetchData();
   };
 
-  const subtitle = `Set hourly submission targets — cumulative target is what the user should reach by the end of each slot`;
+  const subtitle = `Set the daily submission target per person. Saved on any date carries forward until you override it.`;
 
   return (
     <Layout title="Targets" subtitle={subtitle}>
       {/* ── Controls ── */}
-      <div className="flex items-center flex-wrap gap-3 mb-4">
-        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-          {visibleTabs.map(t => (
-            <button
-              key={t.value}
-              onClick={() => setRoleTab(t.value)}
-              className={`px-3 py-1.5 text-xs font-bold ${roleTab === t.value ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              {t.label}
-            </button>
-          ))}
+      <div className="flex items-center flex-wrap gap-2 mb-5">
+        {/* Role segmented control */}
+        <div className="inline-flex rounded-md overflow-hidden p-0.5" style={{ background: 'var(--surface-muted)', border: '1px solid var(--border-hairline)' }}>
+          {visibleTabs.map(t => {
+            const isActive = roleTab === t.value;
+            return (
+              <button
+                key={t.value}
+                onClick={() => setRoleTab(t.value)}
+                className="px-3 py-1.5 text-[12.5px] rounded-[5px] transition-all"
+                style={{
+                  background: isActive ? 'var(--surface-card)' : 'transparent',
+                  color: isActive ? 'var(--ink)' : 'var(--ink-3)',
+                  fontWeight: isActive ? 600 : 500,
+                  boxShadow: isActive ? 'var(--shadow-1)' : 'none',
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white">
-          <Calendar size={13} className="text-slate-400" />
+        {/* Date picker — restyled */}
+        <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-colors"
+             style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)' }}>
+          <Calendar size={13} style={{ color: 'var(--ink-3)' }} />
           <input
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="text-xs focus:outline-none"
+            className="text-[12.5px] font-mono tabular-nums focus:outline-none bg-transparent"
+            style={{ color: 'var(--ink)' }}
           />
         </div>
 
         <div className="relative">
-          <Filter size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Filter size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} />
           <input
             type="text" placeholder="Search user…"
             value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-48"
+            className="pl-7 pr-2.5 py-1.5 rounded-md text-[12.5px] w-48 focus:outline-none"
+            style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}
           />
         </div>
 
         <button
           onClick={fetchData}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-medium transition-colors disabled:opacity-50"
+          style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink-2)' }}
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
@@ -195,43 +210,51 @@ export default function Targets() {
         <button
           onClick={saveAll}
           disabled={saving || dirtyUserIds.length === 0}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[12.5px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            background: dirtyUserIds.length > 0 ? 'var(--ink)' : 'var(--surface-muted)',
+            color: dirtyUserIds.length > 0 ? '#FFFFFF' : 'var(--ink-3)',
+            border: '1px solid ' + (dirtyUserIds.length > 0 ? 'var(--ink)' : 'var(--border-hairline)'),
+            boxShadow: dirtyUserIds.length > 0 ? 'var(--shadow-1)' : 'none',
+          }}
         >
-          <Save size={12} /> {saving ? 'Saving…' : dirtyUserIds.length > 0 ? `Save (${dirtyUserIds.length})` : 'No changes'}
+          <Save size={12} /> {saving ? 'Saving…' : dirtyUserIds.length > 0 ? `Save changes (${dirtyUserIds.length})` : 'No changes'}
         </button>
       </div>
 
       {error && (
-        <div className="mb-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">
+        <div className="mb-3 px-4 py-2.5 rounded-md text-[13px] font-medium"
+             style={{ background: 'var(--danger-soft)', border: '1px solid #FCA5A5', color: 'var(--danger)' }}>
           {error}
         </div>
       )}
       {savedMsg && !error && (
-        <div className="mb-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-700 font-medium">
+        <div className="mb-3 px-4 py-2.5 rounded-md text-[13px] font-medium"
+             style={{ background: 'var(--success-soft)', border: '1px solid #A7F3D0', color: 'var(--success)' }}>
           {savedMsg}
         </div>
       )}
 
       {/* ── Grid ── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="surface overflow-hidden">
         <div className="overflow-x-auto">
           {loading && !data ? (
-            <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
+            <div className="py-16 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>Loading…</div>
           ) : filteredUsers.length === 0 ? (
-            <div className="py-16 text-center text-sm text-slate-400">
+            <div className="py-16 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>
               No {roleTab === 'delivery_lead' ? 'Delivery Leads' : 'recruiters'} visible.
             </div>
           ) : (
-            <table className="w-full text-sm border-collapse">
+            <table className="w-full border-collapse">
               <thead>
-                <tr className="bg-slate-100">
-                  <th className="text-left py-2.5 px-4 text-xs font-bold text-slate-700 border-b border-slate-200 uppercase tracking-wider">
+                <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border-hairline)' }}>
+                  <th className="text-left py-2.5 px-5 label-caps">
                     {roleTab === 'delivery_lead' ? 'Delivery Lead' : 'Recruiter'}
                   </th>
-                  <th className="text-center py-2.5 px-4 text-xs font-bold text-slate-700 border-b border-slate-200 uppercase tracking-wider" style={{ width: 180 }}>
+                  <th className="text-center py-2.5 px-5 label-caps" style={{ width: 200 }}>
                     Daily target
                   </th>
-                  <th className="text-left py-2.5 px-4 text-xs font-bold text-slate-700 border-b border-slate-200 uppercase tracking-wider" style={{ width: 180 }}>
+                  <th className="text-left py-2.5 px-5 label-caps" style={{ width: 240 }}>
                     Status
                   </th>
                 </tr>
@@ -241,12 +264,14 @@ export default function Targets() {
                   const v = valueFor(u.id);
                   const dirty = edits[u.id] !== undefined;
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-800">{u.name}</div>
-                        <div className="text-[10px] text-slate-400">{u.email}</div>
+                    <tr key={u.id} className="transition-colors" style={{ borderBottom: '1px solid var(--border-hairline)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                      <td className="py-3 px-5">
+                        <div className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{u.name}</div>
+                        <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-4)' }}>{u.email}</div>
                       </td>
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-5 text-center">
                         <input
                           type="number"
                           min={0}
@@ -254,24 +279,46 @@ export default function Targets() {
                           value={v}
                           disabled={!u.editable}
                           onChange={e => setEdit(u.id, Math.max(0, Math.min(999, parseInt(e.target.value || '0', 10))))}
-                          className={`w-24 py-2 px-3 text-center text-base font-semibold rounded-lg border ${dirty ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200'} focus:outline-none focus:border-blue-400 ${u.editable ? '' : 'bg-slate-50 text-slate-400 cursor-not-allowed'}`}
+                          className="w-20 py-1.5 px-2 text-center font-mono tabular-nums focus:outline-none transition-colors"
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 600,
+                            borderRadius: 8,
+                            border: '1px solid ' + (dirty ? '#10B981' : 'var(--border-hairline)'),
+                            background: dirty ? '#ECFDF5' : (u.editable ? 'var(--surface-card)' : 'var(--surface-muted)'),
+                            color: u.editable ? (dirty ? '#047857' : 'var(--ink)') : 'var(--ink-4)',
+                            cursor: u.editable ? 'text' : 'not-allowed',
+                          }}
                         />
                       </td>
-                      <td className="py-3 px-4 text-xs">
+                      <td className="py-3 px-5">
                         {dirty ? (
-                          <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">Unsaved change</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                                style={{ background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0' }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#10B981' }} />
+                            Unsaved change
+                          </span>
                         ) : u.is_default ? (
-                          <span className="px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-700 border border-amber-200" title="Role default — no save on file yet">
-                            Default ({v})
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                                style={{ background: 'var(--warning-soft)', color: 'var(--warning)', border: '1px solid #FDE68A' }}
+                                title="Role default — no save on file yet">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#F59E0B' }} />
+                            Default · {v}
                           </span>
                         ) : u.is_carried_forward && u.source_date ? (
-                          <span className="text-slate-500" title="Carried forward from a prior save; still active until you change it">
-                            Carried from {u.source_date}
+                          <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--ink-3)' }}
+                                title="Carried forward from a prior save; still active until you change it">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--ink-4)' }} />
+                            Carried from <span className="font-mono tabular-nums">{u.source_date}</span>
                           </span>
                         ) : v === 0 ? (
-                          <span className="text-slate-400">No target</span>
+                          <span className="text-[11px]" style={{ color: 'var(--ink-4)' }}>No target set</span>
                         ) : (
-                          <span className="text-slate-500">Saved today</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium"
+                                style={{ color: 'var(--ink-2)', background: 'var(--surface-muted)' }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                            Saved today
+                          </span>
                         )}
                       </td>
                     </tr>
