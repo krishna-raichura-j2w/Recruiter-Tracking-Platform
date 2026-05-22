@@ -806,6 +806,19 @@ export default function Jobs() {
               onViewCandidates={() => navigate(`/candidates?job_id=${job.id}`)}
               onViewJD={() => setSelectedJob(job)}
               onGenerateBoolean={() => navigate(`/skills?job_id=${job.id}`)}
+              onDownloadQuestionnaire={async () => {
+                try {
+                  const res = await api.get(`/jobs/${job.id}/questionnaire`, { responseType: 'blob' });
+                  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `questionnaire_${job.id}_${job.role_title.replace(/\s+/g, '_')}.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  alert('Failed to generate questionnaire. Please ensure the job has skills defined.');
+                }
+              }}
               onToggleStatus={handleToggleStatus}
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
@@ -1682,6 +1695,7 @@ interface JobCardProps {
   onViewCandidates: () => void;
   onViewJD: () => void;
   onGenerateBoolean: () => void;
+  onDownloadQuestionnaire: () => void;
   onToggleStatus: (job: Job) => void;
   onEdit: () => void;
   onConfirm: () => void;
@@ -1712,7 +1726,7 @@ function Avatar({ name, size = 28, color }: { name: string; size?: number; color
   );
 }
 
-function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -1865,6 +1879,18 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#F5F3FF'; }}
                 title="Generate Naukri boolean search string from this JD">
                 <Sparkles size={12} /> Boolean
+              </button>
+            )}
+
+            {/* Questionnaire — visible to recruiter, DL, KAM */}
+            {(isRecruiter || isDeliveryLead || isKam || isAdmin) && (
+              <button onClick={onDownloadQuestionnaire}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FFEDD5'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#FFF7ED'; }}
+                title="Download interview questionnaire (AI-generated from skills)">
+                <FileText size={12} /> Questionnaire
               </button>
             )}
 

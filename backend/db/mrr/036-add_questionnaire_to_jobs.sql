@@ -1,0 +1,2 @@
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS questionnaire_data         BYTEA;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS questionnaire_generated_at TIMESTAMP WITH TIME ZONE

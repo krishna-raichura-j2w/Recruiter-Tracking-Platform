@@ -1,6 +1,7 @@
 from core.database import get_db
 from core.deps import get_current_user, require_roles, user_has_role
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from infra.models import Client, JobStatus, NotifType, PodMembership, User
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -83,6 +84,30 @@ def get_job(
         if job.created_by_id != current_user.id:
             raise HTTPException(status_code=404, detail="Job not found")
     return service._job_dict(db, job)
+
+
+@router.get("/{job_id}/questionnaire")
+def download_questionnaire(
+    job_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Return a PDF questionnaire for the job. Generated once via LLM, cached in DB."""
+    job = service.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.skill_stack:
+        raise HTTPException(status_code=400, detail="Job has no skills defined — cannot generate questionnaire.")
+
+    from features.mrr.jobs.questionnaire import get_or_generate
+    pdf_bytes = get_or_generate(db, job)
+
+    filename = f"questionnaire_{job_id}_{job.role_title.replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("")

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -392,12 +393,14 @@ class Job(Base):
     job_responsibilities  = Column(Text, nullable=True)
     billable_leaves       = Column(Boolean, nullable=True)
     is_vip                = Column(Boolean, default=False)
-    po_opportunity_mrr    = Column(String(200), nullable=True)
-    potential_gm          = Column(String(50), nullable=True)
-    key_string            = Column(Text, nullable=True)
-    referral_amount       = Column(Integer, nullable=True)
-    group_name            = Column(String(100), nullable=True)
-    sub_group             = Column(String(100), nullable=True)
+    po_opportunity_mrr         = Column(String(200), nullable=True)
+    potential_gm               = Column(String(50), nullable=True)
+    key_string                 = Column(Text, nullable=True)
+    referral_amount            = Column(Integer, nullable=True)
+    group_name                 = Column(String(100), nullable=True)
+    sub_group                  = Column(String(100), nullable=True)
+    questionnaire_data         = Column(LargeBinary, nullable=True)
+    questionnaire_generated_at = Column(DateTime, nullable=True)
     assigned_sourcer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_caller_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sourcer_ids = Column(Text, default="[]")  # JSON array e.g. "[9,6]"

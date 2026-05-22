@@ -92,6 +92,13 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for sql in load_sql_list("036-add_questionnaire_to_jobs.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         for sql in load_sql_list("034-add_candidate_application_arrays.sql"):
             try:
                 db.execute(text(sql))
