@@ -7,7 +7,18 @@ from sqlalchemy.orm import Session
 
 def _job_dict(db: Session, job: Job) -> dict:
     count = db.query(Candidate).filter(Candidate.job_id == job.id).count()
-    d = {c.name: getattr(job, c.name) for c in Job.__table__.columns}
+    # Skip binary columns (e.g. questionnaire_data — a PDF blob). FastAPI's
+    # jsonable_encoder calls bytes.decode() on raw `bytes` values which dies
+    # on any non-UTF-8 payload (a PDF starts with %PDF-\x... — invalid UTF-8).
+    # The PDF is served via a dedicated download endpoint; here we only flag
+    # whether a questionnaire has been generated.
+    _BINARY_COLS = {"questionnaire_data"}
+    d = {
+        c.name: getattr(job, c.name)
+        for c in Job.__table__.columns
+        if c.name not in _BINARY_COLS
+    }
+    d["has_questionnaire"] = bool(getattr(job, "questionnaire_data", None))
     d["candidate_count"] = count
     d["assigned_sourcer_name"] = (
         job.assigned_sourcer.name if job.assigned_sourcer else None
