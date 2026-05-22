@@ -113,6 +113,40 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for sql in load_sql_list("038-add_jobs_assigned_email_id.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        # Backfill jobs.assigned_email_id for legacy rows (the SQLAlchemy
+        # event keeps it in sync going forward, but pre-existing rows need
+        # one initial pass). Only touches rows still at the empty default,
+        # so re-running on every startup is essentially free.
+        try:
+            from infra.models import Job, _job_assignee_user_ids
+            empty_jobs = (
+                db.query(Job)
+                  .filter((Job.assigned_email_id == None) | (Job.assigned_email_id == []))  # noqa: E711
+                  .all()
+            )
+            if empty_jobs:
+                from infra.models import User as _User
+                user_email_by_id = {
+                    u.id: u.email for u in db.query(_User).all() if u.email
+                }
+                for j in empty_jobs:
+                    ids = _job_assignee_user_ids(j)
+                    emails = sorted({
+                        e for uid in ids if (e := user_email_by_id.get(uid))
+                    })
+                    j.assigned_email_id = emails
+                db.commit()
+        except Exception as _e:
+            db.rollback()
+            print(f"[ensure_schema] assigned_email_id backfill: {_e}")
+
         # Legacy BH → user migration (idempotent)
         try:
             ams = db.execute(
