@@ -21,6 +21,7 @@ class CadenceScheduleCreate(BaseModel):
     end_date: date | None = None
     frequency_weeks: int = 1
     supporting_documents: list[str] = []
+    bh_id: int | None = None
 
     @model_validator(mode="after")
     def validate_dates(self) -> CadenceScheduleCreate:
@@ -55,6 +56,7 @@ class CadenceScheduleResponse(BaseModel):
     client_id: int
     consultant_id: int
     hrbp_id: int
+    bh_id: int | None
     meeting_type: str
     project_name: str | None
     meeting_time: time | None

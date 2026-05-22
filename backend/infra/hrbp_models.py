@@ -277,6 +277,7 @@ class HRBPCadenceSchedule(Base):
     client_id = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
     consultant_id = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
     hrbp_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    bh_id = Column(Integer, ForeignKey("users.id"))
     meeting_type = Column(Text, nullable=False)  # "one_time" | "recurring"
     project_name = Column(Text)
     meeting_time = Column(Time)

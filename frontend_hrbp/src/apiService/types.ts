@@ -128,6 +128,7 @@ export interface CreateCadenceScheduleRequest {
   end_date?: string;
   frequency_weeks?: number;
   supporting_documents?: string[];
+  bh_id?: number | null;
 }
 
 export interface CreateCadenceScheduleResponse {
@@ -164,6 +165,7 @@ export interface CadenceSessionItem {
   completed_at: string | null;
   completed_by: number | null;
   hrbp_id: number;
+  bh_id: number | null;
   meeting_type: string;
   project_name: string | null;
   frequency_weeks: number;

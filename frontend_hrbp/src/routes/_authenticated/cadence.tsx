@@ -84,6 +84,7 @@ interface Cadence {
   history: CadenceCheckIn[];
   scheduleId?: number;
   sessionId?: number;
+  bhId?: number | null;
 }
 
 const clientList = [
@@ -236,7 +237,8 @@ const generateMockCadences = (): Cadence[] => {
   return list;
 };
 
-const TODAY_DATE_STR = "2026-05-21";
+const TODAY_DATE_STR = dayjs().format("YYYY-MM-DD");
+const YESTERDAY_DATE_STR = dayjs().subtract(1, "day").format("YYYY-MM-DD");
 
 const getDaysInMonth = (year: number, month: number) =>
   new Date(year, month + 1, 0).getDate();
@@ -399,6 +401,16 @@ function CadenceHistoryTimeline({
   );
 }
 
+const getCadenceTag = (
+  bhId: number | null | undefined,
+  currentUserId: number | undefined,
+  role: string | undefined,
+): "my_cadence" | "team_cadence" | null => {
+  if (role !== "bh") return null;
+  if (bhId && bhId === currentUserId) return "my_cadence";
+  return "team_cadence";
+};
+
 const mapSessionToCadence = (item: any, todayDateStr: string): Cadence => {
   // Determine UI status
   let uiStatus: "today" | "pending" | "completed" = "pending";
@@ -447,6 +459,7 @@ const mapSessionToCadence = (item: any, todayDateStr: string): Cadence => {
     history: [],
     scheduleId: item.schedule_id,
     sessionId: item.id,
+    bhId: item.bh_id ?? null,
   };
 };
 
@@ -476,6 +489,14 @@ function CadenceSchedulerPage() {
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingConsultants, setLoadingConsultants] = useState(false);
   const [creatingCadence, setCreatingCadence] = useState(false);
+
+  // BH tagging in create modal
+  const [modalAddBh, setModalAddBh] = useState(false);
+  const [modalBhId, setModalBhId] = useState<number | null>(null);
+  const [modalBhName, setModalBhName] = useState<string>("");
+
+  // BH cadence tag filter (for BH role view): "all" | "my_cadence" | "team_cadence"
+  const [cadenceTagFilter, setCadenceTagFilter] = useState<"all" | "my_cadence" | "team_cadence">("all");
 
   // Search, Table & Timeline filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -542,6 +563,25 @@ function CadenceSchedulerPage() {
     fetchClients();
   }, [user?.id]);
 
+  // Auto-fill BH from the selected client
+  useEffect(() => {
+    if (!modalClientId) {
+      setModalBhId(null);
+      setModalBhName("");
+      setModalAddBh(false);
+      return;
+    }
+    const client = apiClients.find((c) => c.id === Number(modalClientId));
+    if (client?.bh_id) {
+      setModalBhId(client.bh_id);
+      setModalBhName(client.bh_name || `BH #${client.bh_id}`);
+    } else {
+      setModalBhId(null);
+      setModalBhName("");
+      setModalAddBh(false);
+    }
+  }, [modalClientId, apiClients]);
+
   // Fetch consultants when client selection changes
   useEffect(() => {
     const fetchConsultants = async () => {
@@ -580,7 +620,7 @@ function CadenceSchedulerPage() {
         // Fetch Today, Pending, and Completed sessions, and the Summary
         const [todayRes, pendingRes, completedRes, summaryRes] = await Promise.all([
           getCadenceSessionsApi({ scheduled_date: TODAY_DATE_STR }),
-          getCadenceSessionsApi({ status: "not_started" }),
+          getCadenceSessionsApi({ status: "not_started", date_to: YESTERDAY_DATE_STR }),
           getCadenceSessionsApi({ status: "completed" }),
           getCadenceSessionsSummaryApi().catch(() => null),
         ]);
@@ -664,10 +704,10 @@ function CadenceSchedulerPage() {
     fetchTimelineSessions();
   }, [currentYear, currentMonth, user?.id]);
 
-  // Reset registry page when month or status filter changes
+  // Reset registry page when month, status, or tag filter changes
   useEffect(() => {
     setRegistryPage(1);
-  }, [tableFilter, currentYear, currentMonth]);
+  }, [tableFilter, cadenceTagFilter, currentYear, currentMonth]);
 
   // Fetch Cadence Registry table (paginated, month date range, optional status)
   useEffect(() => {
@@ -692,6 +732,7 @@ function CadenceSchedulerPage() {
           date_from: dateFrom,
           date_to: dateTo,
           ...(statusParam ? { status: statusParam } : {}),
+          ...(cadenceTagFilter !== "all" ? { cadence_tag: cadenceTagFilter } : {}),
         });
 
         if (res.meta.status && res.data) {
@@ -714,7 +755,7 @@ function CadenceSchedulerPage() {
     };
 
     fetchRegistrySessions();
-  }, [user?.id, currentYear, currentMonth, tableFilter, registryPage, registryPerPage, registryDateRange]);
+  }, [user?.id, currentYear, currentMonth, tableFilter, cadenceTagFilter, registryPage, registryPerPage, registryDateRange]);
 
   // Stats
   const pendingCount = useMemo(
@@ -850,6 +891,7 @@ function CadenceSchedulerPage() {
         end_date: modalRecurring ? modalTillDate : undefined,
         frequency_weeks: modalRecurring ? modalFrequencyWeeks : undefined,
         supporting_documents: [],
+        bh_id: modalAddBh && modalBhId ? modalBhId : null,
       };
 
       const res = await createCadenceScheduleApi(payload);
@@ -927,6 +969,7 @@ function CadenceSchedulerPage() {
         setModalMeetingTime("10:30");
         setModalCustomDuration("");
         setModalTime("30 mins");
+        setModalAddBh(false);
         toast.success(res.meta.message || "Cadence schedule created successfully");
         await refreshCadenceSummary();
       } else {
@@ -943,7 +986,7 @@ function CadenceSchedulerPage() {
   const handleCheckInSubmit = async (id: string) => {
     const comment = checkInComments[id] || "";
     const rca = checkInRcas[id];
-    const status = checkInStatuses[id] || "completed";
+    const status = checkInStatuses[id] || "not_started";
 
     const cadence = cadences.find((c) => c.id === id);
     if (!cadence) return;
@@ -1164,9 +1207,9 @@ function CadenceSchedulerPage() {
           </div>
 
           {/* Kanban Section */}
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 min-h-[520px] mb-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 mb-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {/* TODAY Column */}
-            <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-full min-h-[500px]">
+            <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-[580px]">
               <div className="flex items-center gap-2 rounded-t-xl border-b border-border/60 px-3 py-2.5 bg-blue-50/80 min-h-[52px]">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                 <h3 className="text-sm font-semibold text-foreground flex-1">Today</h3>
@@ -1185,7 +1228,7 @@ function CadenceSchedulerPage() {
                 )}
               </div>
 
-              <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto max-h-[500px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {cadences
                   .filter((c) => c.date === TODAY_DATE_STR && c.status !== "completed")
                   .map((c) => (
@@ -1199,6 +1242,11 @@ function CadenceSchedulerPage() {
                           <span className="inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-sky-100 text-sky-800">
                             {c.client}
                           </span>
+                          {user?.role === "bh" && getCadenceTag(c.bhId, user?.id, user?.role) === "my_cadence" && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
+                              My Cadence
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm font-semibold leading-snug text-foreground">
                           {c.project}
@@ -1223,8 +1271,7 @@ function CadenceSchedulerPage() {
                             }
                             className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 resize-none h-14"
                           />
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-2">
                               <RcaSelect
                                 value={checkInRcas[c.id] || ""}
                                 onChange={(rca) => {
@@ -1234,24 +1281,24 @@ function CadenceSchedulerPage() {
                                 }}
                               />
                               <CustomSelect
-                                value={checkInStatuses[c.id] || "completed"}
+                                value={checkInStatuses[c.id] || ""}
                                 onChange={(v) => setCheckInStatuses({ ...checkInStatuses, [c.id]: v })}
+                                placeholder="Select Status"
                                 options={[
                                   { value: "not_started", label: "Not Started" },
                                   { value: "completed", label: "Completed" },
                                   { value: "cancelled", label: "Cancelled" },
                                 ]}
-                                className="w-[110px]"
+                                className="w-[118px]"
                                 triggerClassName="h-7 py-1 px-2 text-[10px]"
                               />
-                            </div>
                             <Button
                               size="icon"
                               onClick={() => handleCheckInSubmit(c.id)}
-                              className="h-7 w-7 bg-sky-600 hover:bg-sky-500 text-white rounded-md shadow-sm"
+                              className="h-8 w-8 shrink-0 bg-sky-600 hover:bg-sky-500 text-white rounded-md shadow-sm"
                               title="Submit check-in"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
@@ -1288,18 +1335,18 @@ function CadenceSchedulerPage() {
             </div>
 
             {/* PENDING Column */}
-            <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-full min-h-[500px]">
+            <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-[580px]">
               <div className="flex items-center gap-2 rounded-t-xl border-b border-border/60 px-3 py-2.5 bg-amber-50/80 min-h-[52px]">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
                 <h3 className="text-sm font-semibold text-foreground flex-1">Pending Catch-ups</h3>
                 <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/80 px-1.5 text-xs font-medium text-muted-foreground">
-                  {cadences.filter((c) => c.date !== TODAY_DATE_STR && c.status !== "completed").length}
+                  {cadences.filter((c) => c.date < TODAY_DATE_STR && c.status !== "completed").length}
                 </span>
               </div>
 
-              <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto max-h-[500px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {cadences
-                  .filter((c) => c.date !== TODAY_DATE_STR && c.status !== "completed")
+                  .filter((c) => c.date < TODAY_DATE_STR && c.status !== "completed")
                   .map((c) => (
                     <div
                       key={c.id}
@@ -1311,6 +1358,11 @@ function CadenceSchedulerPage() {
                           <span className="inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800">
                             {c.client}
                           </span>
+                          {user?.role === "bh" && getCadenceTag(c.bhId, user?.id, user?.role) === "my_cadence" && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
+                              My Cadence
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm font-semibold leading-snug text-foreground">
                           {c.project}
@@ -1335,8 +1387,7 @@ function CadenceSchedulerPage() {
                             }
                             className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 resize-none h-14"
                           />
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-2">
                               <RcaSelect
                                 value={checkInRcas[c.id] || ""}
                                 onChange={(rca) => {
@@ -1346,24 +1397,24 @@ function CadenceSchedulerPage() {
                                 }}
                               />
                               <CustomSelect
-                                value={checkInStatuses[c.id] || "completed"}
+                                value={checkInStatuses[c.id] || ""}
                                 onChange={(v) => setCheckInStatuses({ ...checkInStatuses, [c.id]: v })}
+                                placeholder="Select Status"
                                 options={[
                                   { value: "not_started", label: "Not Started" },
                                   { value: "completed", label: "Completed" },
                                   { value: "cancelled", label: "Cancelled" },
                                 ]}
-                                className="w-[110px]"
+                                className="w-[118px]"
                                 triggerClassName="h-7 py-1 px-2 text-[10px]"
                               />
-                            </div>
                             <Button
                               size="icon"
                               onClick={() => handleCheckInSubmit(c.id)}
-                              className="h-7 w-7 bg-sky-600 hover:bg-sky-500 text-white rounded-md shadow-sm"
+                              className="h-8 w-8 shrink-0 bg-sky-600 hover:bg-sky-500 text-white rounded-md shadow-sm"
                               title="Submit check-in"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
@@ -1393,7 +1444,7 @@ function CadenceSchedulerPage() {
             </div>
 
             {/* COMPLETED Column */}
-            <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-full min-h-[500px]">
+            <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-[580px]">
               <div className="flex items-center gap-2 rounded-t-xl border-b border-border/60 px-3 py-2.5 bg-emerald-50/80 min-h-[52px]">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
                 <h3 className="text-sm font-semibold text-foreground flex-1">Completed</h3>
@@ -1402,7 +1453,7 @@ function CadenceSchedulerPage() {
                 </span>
               </div>
 
-              <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto max-h-[500px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {cadences
                   .filter((c) => c.status === "completed")
                   .map((c) => (
@@ -1416,6 +1467,12 @@ function CadenceSchedulerPage() {
                           <span className="inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800">
                             {c.client}
                           </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                          {user?.role === "bh" && getCadenceTag(c.bhId, user?.id, user?.role) === "my_cadence" && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">
+                              My Cadence
+                            </span>
+                          )}
                           <div
                             className={`h-4 w-4 rounded-full shrink-0 border ${c.rag === "Green"
                               ? "bg-emerald-500 border-emerald-600"
@@ -1424,6 +1481,7 @@ function CadenceSchedulerPage() {
                                 : "bg-red-500 border-red-600"
                               }`}
                           />
+                          </div>
                         </div>
                         <p className="text-sm font-semibold leading-snug text-foreground">
                           {c.project}
@@ -1594,6 +1652,27 @@ function CadenceSchedulerPage() {
               </h3>
 
               <div className="flex flex-wrap items-center gap-3">
+                {/* Cadence Tag filter — BH only */}
+                {user?.role === "bh" && (
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                    {(["all", "my_cadence", "team_cadence"] as const).map((tag) => (
+                      <Button
+                        key={tag}
+                        size="sm"
+                        variant={cadenceTagFilter === tag ? "secondary" : "ghost"}
+                        onClick={() => setCadenceTagFilter(tag)}
+                        className={`h-7 px-2.5 text-xs font-semibold ${
+                          cadenceTagFilter === tag
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        {tag === "all" ? "All" : tag === "my_cadence" ? "My Cadence" : "Team Cadence"}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+
                 {/* Search */}
                 <div className="relative w-64">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
@@ -1675,13 +1754,16 @@ function CadenceSchedulerPage() {
                     <TableHead className="font-semibold text-white">Consultant</TableHead>
                     <TableHead className="font-semibold text-white text-center">Cadence Status</TableHead>
                     <TableHead className="font-semibold text-white text-center">RAG</TableHead>
+                    {user?.role === "bh" && (
+                      <TableHead className="font-semibold text-white text-center">Tag</TableHead>
+                    )}
                     <TableHead className="font-semibold text-white">Comment / Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingRegistry ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center text-slate-400">
+                      <TableCell colSpan={user?.role === "bh" ? 8 : 7} className="h-24 text-center text-slate-400">
                         Loading registry…
                       </TableCell>
                     </TableRow>
@@ -1733,13 +1815,29 @@ function CadenceSchedulerPage() {
                                   </span>
                                 )}
                               </TableCell>
+                              {user?.role === "bh" && (() => {
+                                const tag = getCadenceTag(session.bh_id, user?.id, user?.role);
+                                return (
+                                  <TableCell className="text-center">
+                                    {tag === "my_cadence" ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">
+                                        My Cadence
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">
+                                        Team Cadence
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                );
+                              })()}
                               <TableCell className="max-w-[250px] truncate text-slate-500 italic">
                                 {session.comments || "N/A"}
                               </TableCell>
                             </TableRow>
                             {registryExpandedRowId === session.id && (
                               <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
-                                <TableCell colSpan={7} className="p-4 border-t border-slate-100">
+                                <TableCell colSpan={user?.role === "bh" ? 8 : 7} className="p-4 border-t border-slate-100">
                                   {loadingRegistryHistory ? (
                                     <div className="text-center text-xs text-slate-400 p-4">Loading timeline...</div>
                                   ) : registryHistorySessions.length > 0 ? (
@@ -1787,7 +1885,7 @@ function CadenceSchedulerPage() {
                       })}
                       {!loadingRegistry && filteredRegistrySessions.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-slate-400">
+                          <TableCell colSpan={user?.role === "bh" ? 8 : 7} className="h-24 text-center text-slate-400">
                             No cadences matching filters.
                           </TableCell>
                         </TableRow>
@@ -1889,6 +1987,24 @@ function CadenceSchedulerPage() {
                     />
                   )}
                 </div>
+
+                {/* BH Tagging — optional, only shown when the client has a BH assigned */}
+                {modalBhId && (
+                  <div className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">Add BH to this cadence?</p>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        {modalBhName} — will appear as "My Cadence" in their view
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={modalAddBh}
+                      onChange={(e) => setModalAddBh(e.target.checked)}
+                      className="h-4 w-4 rounded text-sky-600 focus:ring-sky-500"
+                    />
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">

@@ -85,6 +85,7 @@ def create(
         client_id=payload.client_id,
         consultant_id=payload.consultant_id,
         hrbp_id=hrbp_id,
+        bh_id=payload.bh_id,
         meeting_type=payload.meeting_type,
         project_name=payload.project_name,
         meeting_time=payload.meeting_time,
@@ -261,6 +262,8 @@ def list_all_sessions(
     scheduled_date: date | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    cadence_tag: str | None = None,
+    current_bh_id: int | None = None,
 ) -> dict:
     rows = (
         db.query(
@@ -275,6 +278,7 @@ def list_all_sessions(
             HRBPCadenceSession.completed_at,
             HRBPCadenceSession.completed_by,
             HRBPCadenceSchedule.hrbp_id,
+            HRBPCadenceSchedule.bh_id,
             HRBPCadenceSchedule.meeting_type,
             HRBPCadenceSchedule.project_name,
             HRBPCadenceSchedule.frequency_weeks,
@@ -305,6 +309,10 @@ def list_all_sessions(
         rows = rows.filter(HRBPCadenceSession.scheduled_date >= date_from)
     if date_to is not None:
         rows = rows.filter(HRBPCadenceSession.scheduled_date <= date_to)
+    if cadence_tag == "my_cadence" and current_bh_id is not None:
+        rows = rows.filter(HRBPCadenceSchedule.bh_id == current_bh_id)
+    elif cadence_tag == "team_cadence":
+        rows = rows.filter(HRBPCadenceSchedule.bh_id.is_(None))
 
     rows = rows.order_by(
         HRBPCadenceSession.scheduled_date,

@@ -89,10 +89,12 @@ def list_all_sessions(
     scheduled_date: date | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    cadence_tag: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     hrbp_ids = resolve_hrbp_ids(current_user, db)
+    current_bh_id = current_user.id if current_user.role.value == "bh" else None
     result = service.list_all_sessions(
         db,
         page_no,
@@ -104,6 +106,8 @@ def list_all_sessions(
         scheduled_date,
         date_from,
         date_to,
+        cadence_tag=cadence_tag,
+        current_bh_id=current_bh_id,
     )
     return success_response_with_pagination(
         data=result["items"],

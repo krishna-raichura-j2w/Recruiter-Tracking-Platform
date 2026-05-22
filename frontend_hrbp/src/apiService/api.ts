@@ -272,6 +272,7 @@ export async function getCadenceSessionsApi(params: {
   date_to?: string;
   page_no?: number;
   per_page?: number;
+  cadence_tag?: string;
 }): Promise<CadenceSessionsResponse> {
   const baseUrl = getBaseUrl();
   const queryParams = new URLSearchParams({
@@ -291,6 +292,9 @@ export async function getCadenceSessionsApi(params: {
   }
   if (params.date_to) {
     queryParams.append("date_to", params.date_to);
+  }
+  if (params.cadence_tag) {
+    queryParams.append("cadence_tag", params.cadence_tag);
   }
 
   const response = await fetchWithAuth(
