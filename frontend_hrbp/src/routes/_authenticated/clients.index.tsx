@@ -86,7 +86,7 @@ function ClientsPage() {
     return matchesSearch && matchesStatus;
   });
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar
         title="Clients"
         subtitle="Manage client engagements, monitor headcount, and track project health."
@@ -118,15 +118,15 @@ function ClientsPage() {
 
         <div className="rounded-lg overflow-hidden border border-slate-200 bg-white shadow-sm">
           <Table>
-            <TableHeader className="bg-[#132246]">
+            <TableHeader className="bg-slate-100 border-b border-slate-200">
               <TableRow className="hover:bg-transparent border-0">
-                <TableHead className="font-semibold text-white">Client</TableHead>
-                <TableHead className="font-semibold text-white">Industry</TableHead>
-                <TableHead className="text-center font-semibold text-white">BH Owner</TableHead>
-                <TableHead className="text-center font-semibold text-white">Headcount</TableHead>
-                <TableHead className="text-center font-semibold text-white">PO Value</TableHead>
-                <TableHead className="text-center font-semibold text-white">Active Incidents</TableHead>
-                <TableHead className="font-semibold text-white">Status</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Industry</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">BH Owner</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Headcount</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">PO Value</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Active Incidents</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

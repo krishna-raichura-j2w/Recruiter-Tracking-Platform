@@ -19,12 +19,12 @@ function AuthLayout() {
       style={
         {
           "--sidebar-width": "16rem",
-          "--sidebar-width-icon": "5rem",
-          "--sidebar": "#0f2249",
-          "--sidebar-foreground": "#94a3b8",
-          "--sidebar-border": "#1e2e4f",
-          "--sidebar-accent": "rgba(255, 255, 255, 0.08)",
-          "--sidebar-accent-foreground": "#ffffff",
+          "--sidebar-width-icon": "4.5rem",
+          "--sidebar": "#ffffff",
+          "--sidebar-foreground": "#505f76",
+          "--sidebar-border": "#e2e8f0",
+          "--sidebar-accent": "#dbeafe",
+          "--sidebar-accent-foreground": "#1e40af",
         } as CSSProperties
       }
     >

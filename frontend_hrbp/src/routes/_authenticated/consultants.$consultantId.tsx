@@ -58,7 +58,7 @@ function ConsultantDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen bg-white text-slate-800">
         <TopBar title="Consultant Profile" subtitle="Loading consultant details..." />
         <main className="flex-1 p-6 flex justify-center items-center">
           <div className="text-slate-500 font-medium">Loading...</div>
@@ -69,7 +69,7 @@ function ConsultantDetailPage() {
 
   if (!consultant) {
     return (
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen bg-white text-slate-800">
         <TopBar title="Consultant Profile" subtitle="Not Found" />
         <main className="flex-1 p-6">
           <div className="text-slate-500 font-medium text-center">Consultant not found.</div>
@@ -79,7 +79,7 @@ function ConsultantDetailPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
+    <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar
         title={consultant.name || "Consultant Profile"}
         subtitle={`Employee ID: ${consultant.emp_id || "-"} · Skill: ${consultant.skill || "-"}`}

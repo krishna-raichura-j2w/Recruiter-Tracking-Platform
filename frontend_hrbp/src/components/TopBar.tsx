@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Bell, Plus } from "lucide-react";
+import { Bell, Plus, User } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,7 @@ import {
 import { notifications } from "@/lib/mockData";
 import { Link } from "@tanstack/react-router";
 import { toast } from "react-toastify";
+import { useAuth } from "@/lib/auth";
 
 import * as React from "react";
 
@@ -25,6 +26,7 @@ export function TopBar({
   actions?: React.ReactNode;
   onNewTicket?: () => void;
 }) {
+  const { user } = useAuth();
   const unread = notifications.filter((n) => !n.read).length;
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-100 bg-white/80 backdrop-blur-md px-6 shadow-sm">
@@ -86,6 +88,19 @@ export function TopBar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* User profile */}
+        {user && (
+          <div className="flex items-center gap-2.5 pl-3.5 border-l border-slate-200 ml-1">
+            <div className="h-8 w-8 shrink-0 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center">
+              <User className="h-4 w-4 text-blue-600" />
+            </div>
+            <div className="hidden lg:flex flex-col items-end leading-tight">
+              <span className="text-sm font-semibold text-slate-800 leading-none">{user.name}</span>
+              <span className="text-[11px] text-slate-400 mt-0.5 leading-none">{user.role}</span>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

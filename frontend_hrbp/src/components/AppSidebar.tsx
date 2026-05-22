@@ -9,18 +9,17 @@ import {
   Mail,
   Bell,
   LogOut,
-  User,
-  ChevronLeft,
-  ChevronRight,
   CalendarClock,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  User,
 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -44,23 +43,6 @@ const ALL_NAV_ITEMS: { title: string; url: string; icon: React.ElementType; modu
   { title: "Notifications",     url: "/notifications",   icon: Bell,            module: "notifications" },
 ];
 
-const iconOnlyButtonClass = (isItemActive: boolean, collapsed: boolean) =>
-  cn(
-    "rounded-lg font-semibold transition-all duration-200",
-    "text-slate-300 hover:bg-white/10 hover:text-white",
-    collapsed && [
-      "!size-10 !p-0",
-      "flex items-center justify-center",
-      "[&>span]:hidden",
-      "[&>a]:flex [&>a]:size-full [&>a]:items-center [&>a]:justify-center",
-    ],
-    isItemActive && [
-      "bg-sky-600 text-white shadow-md shadow-sky-600/10",
-      "hover:bg-sky-500 hover:text-white",
-      "data-[active=true]:bg-sky-600 data-[active=true]:text-white",
-    ],
-  );
-
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
@@ -73,129 +55,142 @@ export function AppSidebar() {
   const items = ALL_NAV_ITEMS.filter((it) => can(it.module, "read"));
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+    <Sidebar
+      collapsible="icon"
+      className="border-r border-slate-200 bg-white shadow-sm"
+    >
+      {/* Header — Logo + Brand */}
       <SidebarHeader
-        className={cn("border-b border-sidebar-border", collapsed ? "px-2 py-4" : "px-3 py-3")}
+        className={cn(
+          "border-b border-slate-100",
+          collapsed ? "px-2 py-3" : "px-4 py-3",
+        )}
       >
         {collapsed ? (
-          <div className="flex flex-col items-center gap-3">
-            <div
-              className="flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-sidebar-border"
-              title="J2W"
-            >
-              <img src="/J2W_Logo.png" alt="J2W" className="h-9 w-9 object-contain" />
-            </div>
+          <div className="flex flex-col items-center gap-1.5">
+            <img src="/J2W_Logo.png" alt="J2W" className="h-7 w-7 object-contain" />
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10 transition-all duration-200"
+              className="h-5 w-5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all duration-200"
               onClick={toggleSidebar}
               aria-label="Expand sidebar"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-3 w-3" />
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-3 px-1 py-1">
-            <img
-              src="/J2W_Logo.png"
-              alt="J2W Logo"
-              className="h-11 w-auto shrink-0 object-contain"
-            />
-            <div className="h-8 w-[1px] bg-slate-700/50 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-base font-black tracking-wider text-white uppercase leading-none">
-                HRBP System
-              </p>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img src="/J2W_Logo.png" alt="J2W" className="h-8 w-auto shrink-0 object-contain" />
+              <div className="h-6 w-px bg-slate-200 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-black text-blue-700 leading-tight tracking-tight uppercase whitespace-nowrap">
+                  HRBP System
+                </p>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 leading-tight">
+                  HR Operations
+                </p>
+              </div>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0 text-slate-400 hover:text-white hover:bg-white/10 transition-all duration-200"
+              className="h-7 w-7 shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all duration-200"
               onClick={toggleSidebar}
               aria-label="Collapse sidebar"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4" />
             </Button>
           </div>
         )}
       </SidebarHeader>
 
-      <SidebarContent className={cn(collapsed && "overflow-visible px-2")}>
-        <SidebarGroup className={cn(collapsed ? "p-0" : "p-2")}>
-          {!collapsed && (
-            <SidebarGroupLabel className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Navigation
-            </SidebarGroupLabel>
-          )}
+      {/* Nav Items */}
+      <SidebarContent className={cn("py-4", collapsed && "overflow-visible px-2")}>
+        <SidebarGroup className={cn(collapsed ? "p-0" : "px-3")}>
           <SidebarGroupContent>
-            <SidebarMenu className={cn(collapsed && "items-center gap-2 py-1")}>
-              {items.map((it) => (
-                <SidebarMenuItem key={it.url} className={cn(collapsed && "flex justify-center")}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={active(it.url)}
-                    tooltip={it.title}
-                    className={iconOnlyButtonClass(active(it.url), collapsed)}
-                  >
-                    <Link to={it.url}>
-                      <it.icon className="!size-[18px] shrink-0" />
-                      {!collapsed && <span>{it.title}</span>}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+            <SidebarMenu className={cn("gap-1.5", collapsed && "items-center gap-2 py-1")}>
+              {items.map((it) => {
+                const isActive = active(it.url);
+                return (
+                  <SidebarMenuItem key={it.url} className={cn(collapsed && "flex justify-center")}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={it.title}
+                      className={cn(
+                        "rounded-lg font-medium transition-all duration-150 active:scale-[0.98] h-10",
+                        "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
+                        isActive && [
+                          "bg-blue-50 text-blue-700 font-semibold",
+                          "hover:bg-blue-100 hover:text-blue-800",
+                          "data-[active=true]:bg-blue-50 data-[active=true]:text-blue-700",
+                        ],
+                        collapsed && "!size-10 !p-0 flex items-center justify-center [&>span]:hidden",
+                      )}
+                    >
+                      <Link to={it.url}>
+                        <it.icon
+                          className={cn(
+                            "!size-[18px] shrink-0",
+                            isActive ? "text-blue-600" : "text-slate-500",
+                          )}
+                        />
+                        {!collapsed && <span>{it.title}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
+      {/* Footer — Profile + Logout */}
       <SidebarFooter
-        className={cn("border-t border-sidebar-border", collapsed ? "px-2 py-3" : "p-2")}
+        className={cn(
+          "border-t border-slate-100",
+          collapsed ? "px-2 py-3" : "px-3 py-3",
+        )}
       >
-        <SidebarMenu className={cn(collapsed && "items-center gap-2")}>
+        <SidebarMenu className={cn("gap-0.5", collapsed && "items-center gap-1.5")}>
+          {/* Profile */}
           <SidebarMenuItem className={cn(collapsed && "flex justify-center")}>
             <SidebarMenuButton
               asChild
               tooltip={user?.name ?? "Profile"}
               className={cn(
-                "rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition-all duration-200",
-                collapsed && [
-                  "!size-10 !p-0",
-                  "flex items-center justify-center",
-                  "[&>span]:hidden",
-                ],
+                "rounded-lg text-slate-600 hover:bg-slate-100 transition-all duration-150",
+                collapsed && "!size-10 !p-0 flex items-center justify-center [&>span]:hidden",
               )}
             >
-              <Link to="/profile" className="flex items-center gap-2 w-full">
-                <div className="h-7 w-7 shrink-0 rounded-full bg-slate-100 flex items-center justify-center p-[2px] shadow-sm border border-slate-600/50 group-hover:bg-white transition-colors">
-                  <img src="/profile-icon.svg" className="h-full w-full object-contain" alt="Profile" />
+              <Link to="/profile" className="flex items-center gap-2.5 w-full">
+                <div className="h-7 w-7 shrink-0 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center">
+                  <User className="h-4 w-4 text-blue-600" />
                 </div>
                 {!collapsed && (
                   <div className="flex min-w-0 flex-col items-start text-left leading-tight">
-                    <span className="truncate text-sm font-semibold text-white">{user?.name}</span>
+                    <span className="truncate text-sm font-semibold text-slate-800">{user?.name}</span>
                     <span className="truncate text-xs text-slate-400">{user?.role}</span>
                   </div>
                 )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+
+          {/* Logout */}
           <SidebarMenuItem className={cn(collapsed && "flex justify-center")}>
             <SidebarMenuButton
               tooltip="Logout"
               className={cn(
-                "rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200",
-                collapsed && [
-                  "!size-10 !p-0",
-                  "flex items-center justify-center",
-                  "[&>span]:hidden",
-                ],
+                "rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all duration-150",
+                collapsed && "!size-10 !p-0 flex items-center justify-center [&>span]:hidden",
               )}
-              onClick={() => {
-                setShowLogoutConfirm(true);
-              }}
+              onClick={() => setShowLogoutConfirm(true)}
             >
               <LogOut className="!size-[18px] shrink-0" />
               {!collapsed && <span>Logout</span>}
@@ -205,6 +200,7 @@ export function AppSidebar() {
       </SidebarFooter>
 
       <SidebarRail />
+
       <ConfirmDialog
         open={showLogoutConfirm}
         onOpenChange={setShowLogoutConfirm}

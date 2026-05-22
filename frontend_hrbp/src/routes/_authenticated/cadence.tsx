@@ -1168,23 +1168,43 @@ function CadenceSchedulerPage() {
 
         <main className="flex-1 p-6 md:p-8 space-y-6">
           <div className="space-y-4">
-            {/* Navigation & Header Panel */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
+            {/* KPI Cards + Create Button in one row */}
+            <div className="flex items-center gap-4">
+              <div className="flex gap-4 flex-1">
+              <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/60 shadow-sm transition-all hover:shadow-md flex-1">
+                <CardContent className="p-4 relative overflow-hidden">
+                  <div className="absolute top-4 right-4 bg-amber-100 p-1.5 rounded-lg shadow-sm border border-amber-200/50">
+                    <Clock className="h-4 w-4 text-amber-600" />
+                  </div>
+                  <div className="text-[10px] font-bold text-amber-700/80 uppercase tracking-wider mb-1">Pending</div>
+                  <div className="text-3xl font-bold text-amber-950">{pendingCount}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200/60 shadow-sm transition-all hover:shadow-md flex-1">
+                <CardContent className="p-4 relative overflow-hidden">
+                  <div className="absolute top-4 right-4 bg-emerald-100 p-1.5 rounded-lg shadow-sm border border-emerald-200/50">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <div className="text-[10px] font-bold text-emerald-700/80 uppercase tracking-wider mb-1">Completed</div>
+                  <div className="text-3xl font-bold text-emerald-950">{completedCount}</div>
+                </CardContent>
+              </Card>
+              </div>
               {can("cadence", "create") && (
                 <Button
                   onClick={() => {
                     setModalDate(TODAY_DATE_STR);
                     setShowCreateModal(true);
                   }}
-                  className="bg-sky-600 hover:bg-sky-500 text-white font-semibold gap-1.5 shadow-sm"
+                  className="bg-sky-600 hover:bg-sky-500 text-white font-semibold gap-1.5 shadow-sm shrink-0"
                 >
                   <Plus className="w-4 h-4" /> Create Cadence
                 </Button>
               )}
             </div>
 
-            {/* Counter Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Counter Stats Cards — kept as hidden placeholder to avoid removing downstream refs */}
+            <div className="hidden">
               <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/60 shadow-sm transition-all hover:shadow-md">
                 <CardContent className="p-4 relative overflow-hidden">
                   <div className="absolute top-4 right-4 bg-amber-100 p-1.5 rounded-lg shadow-sm border border-amber-200/50">
@@ -1746,18 +1766,18 @@ function CadenceSchedulerPage() {
             {/* Grid Table */}
             <div className="rounded-lg overflow-hidden border border-slate-200 bg-white shadow-sm mt-4">
               <Table>
-                <TableHeader className="bg-[#132246]">
+                <TableHeader className="bg-slate-100 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent border-0">
-                    <TableHead className="font-semibold text-white">Date</TableHead>
-                    <TableHead className="font-semibold text-white">Client</TableHead>
-                    <TableHead className="font-semibold text-white">Project</TableHead>
-                    <TableHead className="font-semibold text-white">Consultant</TableHead>
-                    <TableHead className="font-semibold text-white text-center">Cadence Status</TableHead>
-                    <TableHead className="font-semibold text-white text-center">RAG</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Project</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Consultant</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Cadence Status</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">RAG</TableHead>
                     {user?.role === "bh" && (
-                      <TableHead className="font-semibold text-white text-center">Tag</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Tag</TableHead>
                     )}
-                    <TableHead className="font-semibold text-white">Comment / Notes</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Comment / Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1774,7 +1794,7 @@ function CadenceSchedulerPage() {
                         return (
                           <React.Fragment key={session.id}>
                             <TableRow
-                              className="hover:bg-slate-50 transition-colors cursor-pointer even:bg-slate-50/50"
+                              className="hover:bg-slate-50 transition-colors cursor-pointer"
                               onClick={() => handleToggleRegistryRow(session.schedule_id, session.id)}
                             >
                               <TableCell className="font-semibold text-slate-900">

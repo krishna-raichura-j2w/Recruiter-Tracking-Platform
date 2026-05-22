@@ -70,7 +70,7 @@ function CommHub() {
   const classification = useMemo(() => (inbound ? classify(inbound) : null), [inbound]);
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar
         title="Communication Hub"
         subtitle="Outbound templates, inbound triage, and full sent history."
@@ -243,13 +243,13 @@ function CommHub() {
           <TabsContent value="history" className="mt-4">
             <Card>
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Template</TableHead>
-                    <TableHead>Recipient</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Status</TableHead>
+                <TableHeader className="bg-slate-100 border-b border-slate-200">
+                  <TableRow className="hover:bg-transparent border-0">
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Template</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Recipient</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Subject</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

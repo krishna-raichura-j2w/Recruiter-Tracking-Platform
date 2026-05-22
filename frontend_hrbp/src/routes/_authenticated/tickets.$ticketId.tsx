@@ -39,7 +39,7 @@ function TicketDetail() {
   const cl = c ? findClient(c.clientId) : undefined;
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar
         title={`${t.id} · ${t.sopType}`}
         subtitle={`Opened ${t.createdAt} · Source: ${t.source}`}

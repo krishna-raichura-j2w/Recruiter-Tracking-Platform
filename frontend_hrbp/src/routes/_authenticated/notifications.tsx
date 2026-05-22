@@ -19,7 +19,7 @@ const iconMap = {
 
 function NotificationsPage() {
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar
         title="Notifications"
         subtitle="Recent alerts across PIPs, renewals, NPS, BH calls and escalations."
