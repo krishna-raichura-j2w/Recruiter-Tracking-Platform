@@ -110,6 +110,28 @@ def download_questionnaire(
     )
 
 
+class _QuestionnaireNotesBody(BaseModel):
+    notes: str | None = None
+
+
+@router.patch("/{job_id}/questionnaire-notes")
+def update_questionnaire_notes(
+    job_id: int,
+    body: _QuestionnaireNotesBody,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin", "kam", "delivery_lead")),
+):
+    """Save/update interviewer focus notes for a job and clear the cached PDF so it regenerates."""
+    job = service.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.questionnaire_notes = body.notes or None
+    job.questionnaire_data = None
+    job.questionnaire_generated_at = None
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("")
 def create_job(
     body: JobCreate,

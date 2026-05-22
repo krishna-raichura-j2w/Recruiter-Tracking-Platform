@@ -401,6 +401,7 @@ class Job(Base):
     sub_group                  = Column(String(100), nullable=True)
     questionnaire_data         = Column(LargeBinary, nullable=True)
     questionnaire_generated_at = Column(DateTime, nullable=True)
+    questionnaire_notes        = Column(Text, nullable=True)
     assigned_sourcer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_caller_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sourcer_ids = Column(Text, default="[]")  # JSON array e.g. "[9,6]"

@@ -193,9 +193,10 @@ export default function Jobs() {
 
   const [togglingJobId, setTogglingJobId] = useState<number | null>(null);
 
-  // Questionnaire overlay state
+  // Questionnaire overlay + settings modal state
   const [generatingQIds, setGeneratingQIds]         = useState<Set<number>>(new Set());
   const [questionnairePdf, setQuestionnairePdf]     = useState<{ url: string; filename: string } | null>(null);
+  const [qModal, setQModal]                         = useState<{ job: Job; notes: string; saving: boolean } | null>(null);
 
   // Delivery lead allocation (KAM only) + KAM selection (DL only)
   const [deliveryLeads, setDeliveryLeads]           = useState<{ id: number; name: string; clients: string[] }[]>([]);
@@ -812,17 +813,22 @@ export default function Jobs() {
               onGenerateBoolean={() => navigate(`/skills?job_id=${job.id}`)}
               isGeneratingQuestionnaire={generatingQIds.has(job.id)}
               onDownloadQuestionnaire={async () => {
-                if (generatingQIds.has(job.id)) return;
-                setGeneratingQIds(prev => new Set(prev).add(job.id));
-                try {
-                  const res = await api.get(`/jobs/${job.id}/questionnaire`, { responseType: 'blob' });
-                  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-                  const filename = `questionnaire_${job.id}_${job.role_title.replace(/\s+/g, '_')}.pdf`;
-                  setQuestionnairePdf({ url, filename });
-                } catch {
-                  alert('Failed to generate questionnaire. Please ensure the job has skills defined.');
-                } finally {
-                  setGeneratingQIds(prev => { const s = new Set(prev); s.delete(job.id); return s; });
+                if (isRecruiter) {
+                  // Recruiters: load PDF directly, no settings modal
+                  if (generatingQIds.has(job.id)) return;
+                  setGeneratingQIds(prev => new Set(prev).add(job.id));
+                  try {
+                    const res = await api.get(`/jobs/${job.id}/questionnaire`, { responseType: 'blob' });
+                    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                    setQuestionnairePdf({ url, filename: `questionnaire_${job.id}_${job.role_title.replace(/\s+/g, '_')}.pdf` });
+                  } catch {
+                    alert('Failed to load questionnaire. Please ensure the job has skills defined.');
+                  } finally {
+                    setGeneratingQIds(prev => { const s = new Set(prev); s.delete(job.id); return s; });
+                  }
+                } else {
+                  // Admin / KAM / DL: open settings modal first
+                  setQModal({ job, notes: job.questionnaire_notes || '', saving: false });
                 }
               }}
               onToggleStatus={handleToggleStatus}
@@ -1686,6 +1692,133 @@ export default function Jobs() {
       )}
 
       {/* ── Questionnaire PDF overlay ───────────────────────────────────── */}
+      {/* ── Questionnaire Settings Modal (Admin / KAM / DL) ───────────────── */}
+      {qModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: 540, maxWidth: '94vw', boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ background: '#1E3A8A', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Questionnaire Settings</div>
+                <div style={{ color: '#BAC8FF', fontSize: 12, marginTop: 2 }}>{qModal.job.role_title} — {qModal.job.client_name}</div>
+              </div>
+              <button onClick={() => setQModal(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: '#1E293B', marginBottom: 6 }}>
+                Additional Focus Points <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span>
+              </label>
+              <textarea
+                value={qModal.notes}
+                onChange={e => setQModal(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                placeholder="e.g. Focus on async patterns, avoid basic syntax questions, emphasize system design for distributed systems, probe on error handling..."
+                rows={5}
+                style={{
+                  width: '100%', boxSizing: 'border-box', border: '1.5px solid #CBD5E1',
+                  borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1E293B',
+                  resize: 'vertical', outline: 'none', fontFamily: 'inherit', lineHeight: 1.6,
+                }}
+                onFocus={e => { e.target.style.borderColor = '#3B82F6'; }}
+                onBlur={e => { e.target.style.borderColor = '#CBD5E1'; }}
+              />
+              <p style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
+                These points guide the AI when generating questions. Saving will clear any existing cached PDF and generate a fresh one.
+              </p>
+
+              {qModal.job.questionnaire_generated_at && (
+                <div style={{ marginTop: 10, padding: '8px 12px', background: '#F0FDF4', borderRadius: 8, border: '1px solid #BBF7D0', fontSize: 12, color: '#15803D' }}>
+                  Last generated: {new Date(qModal.job.questionnaire_generated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '0 24px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Clear notes */}
+              {(qModal.job.questionnaire_notes || qModal.notes) && (
+                <button
+                  disabled={qModal.saving}
+                  onClick={async () => {
+                    try {
+                      await api.patch(`/jobs/${qModal.job.id}/questionnaire-notes`, { notes: null });
+                      setJobs(prev => prev.map(j => j.id === qModal.job.id ? { ...j, questionnaire_notes: null, questionnaire_generated_at: null } : j));
+                      setQModal(prev => prev ? { ...prev, notes: '', job: { ...prev.job, questionnaire_notes: null, questionnaire_generated_at: null } } : null);
+                    } catch { alert('Failed to clear points.'); }
+                  }}
+                  style={{ marginRight: 'auto', background: 'none', border: 'none', color: '#EF4444', fontSize: 12, cursor: 'pointer', padding: '6px 0', fontWeight: 600 }}
+                >
+                  Clear Points
+                </button>
+              )}
+
+              {/* View existing — only if cached PDF exists */}
+              {qModal.job.questionnaire_generated_at && (
+                <button
+                  disabled={qModal.saving}
+                  onClick={async () => {
+                    setQModal(null);
+                    setGeneratingQIds(prev => new Set(prev).add(qModal.job.id));
+                    try {
+                      const res = await api.get(`/jobs/${qModal.job.id}/questionnaire`, { responseType: 'blob' });
+                      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                      setQuestionnairePdf({ url, filename: `questionnaire_${qModal.job.id}_${qModal.job.role_title.replace(/\s+/g, '_')}.pdf` });
+                    } catch { alert('Failed to load questionnaire.'); }
+                    finally { setGeneratingQIds(prev => { const s = new Set(prev); s.delete(qModal.job.id); return s; }); }
+                  }}
+                  style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #CBD5E1', background: '#F8FAFC', color: '#334155', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  View Existing PDF
+                </button>
+              )}
+
+              {/* Cancel */}
+              <button onClick={() => setQModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #CBD5E1', background: '#F8FAFC', color: '#334155', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+
+              {/* Save & Generate */}
+              <button
+                disabled={qModal.saving}
+                onClick={async () => {
+                  const jobId = qModal.job.id;
+                  const notes = qModal.notes.trim() || null;
+                  setQModal(prev => prev ? { ...prev, saving: true } : null);
+                  try {
+                    await api.patch(`/jobs/${jobId}/questionnaire-notes`, { notes });
+                    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, questionnaire_notes: notes, questionnaire_generated_at: null } : j));
+                    setQModal(null);
+                    setGeneratingQIds(prev => new Set(prev).add(jobId));
+                    const res = await api.get(`/jobs/${jobId}/questionnaire`, { responseType: 'blob' });
+                    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                    setQuestionnairePdf({ url, filename: `questionnaire_${jobId}_${qModal.job.role_title.replace(/\s+/g, '_')}.pdf` });
+                    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, questionnaire_generated_at: new Date().toISOString() } : j));
+                  } catch {
+                    alert('Failed to generate questionnaire. Ensure the job has skills defined.');
+                  } finally {
+                    setGeneratingQIds(prev => { const s = new Set(prev); s.delete(jobId); return s; });
+                    setQModal(prev => prev ? { ...prev, saving: false } : null);
+                  }
+                }}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, border: 'none',
+                  background: qModal.saving ? '#93C5FD' : '#1D4ED8', color: '#fff',
+                  fontSize: 13, fontWeight: 700, cursor: qModal.saving ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {qModal.saving
+                  ? <><Loader2 size={13} className="animate-spin" /> Generating...</>
+                  : (qModal.job.questionnaire_generated_at ? 'Save & Regenerate' : 'Save & Generate')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {questionnairePdf && (
         <div
           style={{

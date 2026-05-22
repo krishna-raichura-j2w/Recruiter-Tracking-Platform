@@ -99,6 +99,8 @@ export interface Job {
   created_at: string | null;
   updated_at: string | null;
   candidate_count: number;
+  questionnaire_notes: string | null;
+  questionnaire_generated_at: string | null;
 }
 
 export interface TeamMemberLoad {

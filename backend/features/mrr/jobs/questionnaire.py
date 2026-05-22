@@ -29,8 +29,7 @@ Context about the role:
 - Client / Company: {client_name}
 - Skill Under Test: {skill}
 - Full Tech Stack: {skill_stack}
-{summary_section}
-
+{summary_section}{notes_section}
 Difficulty breakdown (return exactly this count):
 - 2 EASY: Core concepts, how-it-works, fundamental syntax or patterns.
 - 2 MEDIUM: Real-world application — debugging, implementation choices, performance considerations, comparing approaches.
@@ -64,9 +63,12 @@ def _parse_skills(skill_stack: str) -> list[str]:
     return [s.strip() for s in raw if s.strip()]
 
 
-def _generate_for_skill(skill: str, job) -> dict:
+def _generate_for_skill(skill: str, job, notes: str | None = None) -> dict:
     summary_section = (
-        f"- Job Summary: {job.jd_summary}" if getattr(job, "jd_summary", None) else ""
+        f"- Job Summary: {job.jd_summary}\n" if getattr(job, "jd_summary", None) else ""
+    )
+    notes_section = (
+        f"- Interviewer Focus Points: {notes}\n" if notes else ""
     )
     prompt = _PROMPT.format(
         role_title=job.role_title,
@@ -74,6 +76,7 @@ def _generate_for_skill(skill: str, job) -> dict:
         skill=skill,
         skill_stack=job.skill_stack or skill,
         summary_section=summary_section,
+        notes_section=notes_section,
     )
     raw = call_ai(prompt, system_prompt=_SYSTEM)
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
@@ -86,10 +89,12 @@ def _generate_questions(job) -> dict:
     if not skills:
         skills = [job.role_title]
 
+    notes = getattr(job, "questionnaire_notes", None)
+
     result = {}
     for skill in skills:
         try:
-            result[skill] = _generate_for_skill(skill, job)
+            result[skill] = _generate_for_skill(skill, job, notes)
             log.info("Generated questions for skill: %s", skill)
         except Exception:
             log.exception("Failed to generate questions for skill: %s", skill)
@@ -104,9 +109,6 @@ _BRAND_BLUE  = (30,  64,  175)
 _BADGE_EASY  = (22,  163, 74)
 _BADGE_MED   = (202, 138, 4)
 _BADGE_HARD  = (220, 38,  38)
-_BG_EASY     = (240, 253, 244)
-_BG_MED      = (254, 252, 232)
-_BG_HARD     = (254, 242, 242)
 _ANS_BG      = (241, 245, 249)   # slate-100 — answer block background
 _ANS_TEXT    = (15,  118, 110)   # teal-700  — answer text
 _SLATE_800   = (30,  41,  59)
@@ -244,13 +246,13 @@ def _skill_section(pdf: _PDF, skill: str, questions: dict, start_q: int) -> int:
     pdf.ln(6)
 
     sections = [
-        ("EASY",   questions.get("easy",   []), _BADGE_EASY, _BG_EASY),
-        ("MEDIUM", questions.get("medium", []), _BADGE_MED,  _BG_MED),
-        ("HARD",   questions.get("hard",   []), _BADGE_HARD, _BG_HARD),
+        ("EASY",   questions.get("easy",   []), _BADGE_EASY),
+        ("MEDIUM", questions.get("medium", []), _BADGE_MED),
+        ("HARD",   questions.get("hard",   []), _BADGE_HARD),
     ]
 
     q_num = start_q
-    for level, items, badge_rgb, _bg_rgb in sections:
+    for level, items, badge_rgb in sections:
         if not items:
             continue
 

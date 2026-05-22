@@ -147,6 +147,8 @@ class JobOut(BaseModel):
     referral_amount:      int | None = None
     group_name:           str | None = None
     sub_group:            str | None = None
-    client_job_id:        str | None = None
+    client_job_id:             str | None = None
+    questionnaire_notes:       str | None = None
+    questionnaire_generated_at: str | None = None
 
     model_config = {"from_attributes": True}
