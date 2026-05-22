@@ -217,6 +217,15 @@ def _visible_user_ids(db: Session, viewer: User, role_filter: str | None) -> lis
 
     if role == UserRole.admin.value or role == UserRole.coo.value:
         q = base
+    elif role == UserRole.bh.value:
+        # BH heads a pod → sees everyone in that pod (read-only — only
+        # admin/KAM/DL can mutate; this is enforced by _editable_user_ids).
+        if not viewer.pod_id:
+            return []
+        q = base.filter(
+            User.pod_id == viewer.pod_id,
+            User.role.in_([UserRole.kam, UserRole.delivery_lead, UserRole.recruiter]),
+        )
     elif role == UserRole.kam.value:
         if not viewer.pod_id:
             return []
@@ -232,7 +241,7 @@ def _visible_user_ids(db: Session, viewer: User, role_filter: str | None) -> lis
             User.role.in_([UserRole.recruiter, UserRole.delivery_lead]),
         )
     else:
-        # Recruiter / BH: see only themselves.
+        # Recruiter / others: see only themselves.
         q = base.filter(User.id == viewer.id)
 
     if role_filter:
