@@ -13,47 +13,50 @@ log = logging.getLogger(__name__)
 
 LOGO_PATH = Path(__file__).parent.parent.parent.parent / "static" / "logo.jpg"
 
+# ── LLM prompt ────────────────────────────────────────────────────────────────
+
 _SYSTEM = (
-    "You are a senior technical interviewer with 15+ years of experience "
-    "hiring engineers across startups and enterprise companies. "
-    "Generate precise, role-specific interview questions and concise model answers "
-    "that reveal true depth of knowledge. "
-    "Questions must be unambiguous and probe real-world understanding — not textbook definitions."
+    "You are a principal-level technical interviewer with 15+ years of experience "
+    "hiring senior engineers. Generate precise, role-specific interview questions "
+    "with substantive model answers that reveal genuine depth of knowledge. "
+    "Never produce generic or vague questions."
 )
 
-_PROMPT = """Generate exactly 5 interview questions with one-line model answers for a {role_title} position at {client_name}.
-These questions must test the candidate's depth of knowledge in: {skill}
+_PROMPT = """Generate exactly 5 interview questions with 2-sentence model answers for a {role_title} role at {client_name}.
+Focus specifically on: {skill}
 
-Context about the role:
-- Role Title: {role_title}
-- Client / Company: {client_name}
-- Skill Under Test: {skill}
-- Full Tech Stack: {skill_stack}
+Role context:
+- Role: {role_title} at {client_name}
+- Skill under test: {skill}
+- Full tech stack: {skill_stack}
 {summary_section}{notes_section}
-Difficulty breakdown (return exactly this count):
-- 2 EASY: Core concepts, how-it-works, fundamental syntax or patterns.
-- 2 MEDIUM: Real-world application — debugging, implementation choices, performance considerations, comparing approaches.
-- 1 HARD: Expert-level — system design, deep internals, advanced optimization, trade-off analysis, or complex architecture specific to {skill}.
+Difficulty (return exactly this many):
+- 2 EASY   - fundamental concepts, syntax, how-it-works; a capable junior should answer these
+- 2 MEDIUM - practical judgment: debugging, design choices, trade-offs, real-world scenarios
+- 1 HARD   - expert-level: system design, performance internals, architectural trade-offs specific to {skill}
+
+Answer format (2 sentences each):
+- Sentence 1: The core technical point the candidate must articulate clearly.
+- Sentence 2: A specific detail, edge case, or nuance that separates an expert from an average candidate.
 
 Rules:
-1. Every question must directly relate to {skill}, not to the other skills in the stack.
-2. Questions must reflect the expected seniority for a {role_title}.
-3. Avoid vague questions. Be specific and practical.
-4. The HARD question must require genuine expertise and cannot be answered by someone who only knows the basics.
-5. Each "answer" must be a single concise sentence (max 25 words) that captures the key evaluation point an interviewer should listen for.
+1. Every question must be directly about {skill} — not generic engineering questions.
+2. Questions must fit the seniority level of {role_title}.
+3. No vague questions ("Explain X" or "Tell me about Y"). Be specific and scenario-based.
+4. HARD question must genuinely require deep expertise — a developer who only knows basics cannot answer it.
 
-Return ONLY valid JSON in this exact format — no markdown fences, no explanation, no trailing text:
+Return ONLY valid JSON, no markdown fences, no explanation:
 {{
   "easy": [
-    {{"q": "<question 1>", "a": "<one-line model answer 1>"}},
-    {{"q": "<question 2>", "a": "<one-line model answer 2>"}}
+    {{"q": "<specific question 1>", "a": "<sentence 1>. <sentence 2>."}},
+    {{"q": "<specific question 2>", "a": "<sentence 1>. <sentence 2>."}}
   ],
   "medium": [
-    {{"q": "<question 1>", "a": "<one-line model answer 1>"}},
-    {{"q": "<question 2>", "a": "<one-line model answer 2>"}}
+    {{"q": "<specific question 1>", "a": "<sentence 1>. <sentence 2>."}},
+    {{"q": "<specific question 2>", "a": "<sentence 1>. <sentence 2>."}}
   ],
   "hard": [
-    {{"q": "<question 1>", "a": "<one-line model answer 1>"}}
+    {{"q": "<specific question 1>", "a": "<sentence 1>. <sentence 2>."}}
   ]
 }}"""
 
@@ -90,7 +93,6 @@ def _generate_questions(job) -> dict:
         skills = [job.role_title]
 
     notes = getattr(job, "questionnaire_notes", None)
-
     result = {}
     for skill in skills:
         try:
@@ -101,279 +103,310 @@ def _generate_questions(job) -> dict:
     return result
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PDF builder
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Colour palette ─────────────────────────────────────────────────────────────
 
-_BRAND_BLUE  = (30,  64,  175)
-_BADGE_EASY  = (22,  163, 74)
-_BADGE_MED   = (202, 138, 4)
-_BADGE_HARD  = (220, 38,  38)
-_ANS_BG      = (241, 245, 249)   # slate-100 — answer block background
-_ANS_TEXT    = (15,  118, 110)   # teal-700  — answer text
-_SLATE_800   = (30,  41,  59)
-_SLATE_500   = (71,  85,  105)
-_SLATE_400   = (148, 163, 184)
-_DIVIDER     = (203, 213, 225)
+_INK          = (15,  23,  42)    # #0F172A  — near-black, main text
+_INK_LIGHT    = (51,  65,  85)    # #334155  — slate-700, secondary text
+_MUTED        = (100, 116, 139)   # #64748B  — slate-500, captions
+_MUTED_LIGHT  = (148, 163, 184)   # #94A3B8  — slate-400, footer
+_BORDER       = (226, 232, 240)   # #E2E8F0  — slate-200, dividers
+_CANVAS       = (248, 250, 252)   # #F8FAFC  — slate-50, skill header bg
+
+_ACCENT       = (79,  70,  229)   # #4F46E5  — indigo-600, skill heading accent bar
+
+# Difficulty pill colours (text + bg) — soft, not garish
+_EASY_TEXT    = (6,   95,  70)    # #065F46  emerald-800
+_EASY_BG      = (209, 250, 229)   # #D1FAE5  emerald-100
+_MED_TEXT     = (120, 53,  15)    # #78350F  amber-900
+_MED_BG       = (254, 243, 199)   # #FEF3C7  amber-100
+_HARD_TEXT    = (136, 19,  55)    # #881337  rose-900
+_HARD_BG      = (255, 228, 230)   # #FFE4E6  rose-100
+
+_ANS_TEXT     = (13,  148, 136)   # #0D9488  teal-600
+_ANS_BG       = (240, 253, 250)   # #F0FDFA  teal-50
+_ANS_BORDER   = (153, 246, 228)   # #99F6E4  teal-200
 
 
-# AI-generated text routinely contains curly quotes, en/em dashes, ellipses,
-# bullets, non-breaking spaces, etc. fpdf2's built-in Helvetica/Arial fonts
-# are Latin-1 only and crash on any character outside that range. This map
-# substitutes the worst offenders with safe ASCII/Latin-1 equivalents before
-# the string ever reaches fpdf's encoder.
+# ── Unicode → Latin-1 safety ───────────────────────────────────────────────────
+
 _LATIN1_TRANSLATIONS = str.maketrans({
-    "‘": "'", "’": "'",  # curly single quotes  ' '
-    "“": '"', "”": '"',  # curly double quotes  " "
-    "–": "-", "—": "-",  # en/em dash           – —
-    "−": "-",                  # math minus           −
-    "…": "...",                # ellipsis             …
-    "•": "*", "·": "*",   # bullet / middle dot  • ·
-    " ": " ",                  # non-breaking space
-    "​": "",  "‌": "",    # zero-width characters
-    "‍": "",  "﻿": "",
-    " ": " ", " ": " ", " ": " ",  # thin / en / em spaces
-    "«": '"', "»": '"',  # « »
-    "′": "'", "″": '"',  # primes
+    "‘": "'",  "’": "'",   # curly single quotes
+    "“": '"',  "”": '"',   # curly double quotes
+    "–": "-",  "—": "-",   # en-dash / em-dash
+    "−": "-",                   # minus sign
+    "…": "...",                 # ellipsis
+    "•": "*",  "·": "*",   # bullet / middle dot
+    " ": " ",                   # non-breaking space
+    "​": "",   "‌": "",    # zero-width chars
+    "‍": "",   "﻿": "",
+    " ": " ",  " ": " ",   # thin / en space
+    "«": '"',  "»": '"',   # guillemets
+    "′": "'",  "″": '"',   # primes
     "©": "(c)", "®": "(R)", "™": "(TM)",
     "€": "EUR", "£": "GBP", "¥": "JPY",
-    "→": "->", "←": "<-", "↔": "<->",
+    "→": "->", "←": "<-",  "↔": "<->",
 })
 
 
 def _safe(text) -> str:
-    """Make a string fpdf2-safe: translate common Unicode → Latin-1, then
-    drop anything that still can't be encoded."""
     if text is None:
         return ""
     s = str(text).translate(_LATIN1_TRANSLATIONS)
-    # Final guard: any remaining char outside Latin-1 becomes '?' so a single
-    # exotic glyph never crashes the whole PDF render.
     return s.encode("latin-1", errors="replace").decode("latin-1")
 
 
+# ── PDF class ──────────────────────────────────────────────────────────────────
+
 class _PDF(FPDF):
-    # ── Auto-sanitizing wrappers ──
-    # Override the text-writing methods so every string the rest of this file
-    # passes in is automatically Latin-1 safe. No call site has to remember.
+    """Auto-sanitises all text writes; adds faint watermark + footer."""
+
     def cell(self, *args, **kwargs):  # type: ignore[override]
-        if "text" in kwargs:
-            kwargs["text"] = _safe(kwargs["text"])
-        if "txt" in kwargs:
-            kwargs["txt"] = _safe(kwargs["txt"])
+        for k in ("text", "txt"):
+            if k in kwargs:
+                kwargs[k] = _safe(kwargs[k])
         if len(args) >= 3 and isinstance(args[2], str):
             args = (args[0], args[1], _safe(args[2]), *args[3:])
         return super().cell(*args, **kwargs)
 
     def multi_cell(self, *args, **kwargs):  # type: ignore[override]
-        if "text" in kwargs:
-            kwargs["text"] = _safe(kwargs["text"])
-        if "txt" in kwargs:
-            kwargs["txt"] = _safe(kwargs["txt"])
+        for k in ("text", "txt"):
+            if k in kwargs:
+                kwargs[k] = _safe(kwargs[k])
         if len(args) >= 3 and isinstance(args[2], str):
             args = (args[0], args[1], _safe(args[2]), *args[3:])
         return super().multi_cell(*args, **kwargs)
 
-    def write(self, *args, **kwargs):  # type: ignore[override]
-        if "text" in kwargs:
-            kwargs["text"] = _safe(kwargs["text"])
-        if "txt" in kwargs:
-            kwargs["txt"] = _safe(kwargs["txt"])
-        if len(args) >= 2 and isinstance(args[1], str):
-            args = (args[0], _safe(args[1]), *args[2:])
-        return super().write(*args, **kwargs)
-
     def header(self):
+        # Faint watermark on every page
         if LOGO_PATH.exists():
-            with self.local_context(fill_opacity=0.07, stroke_opacity=0.07):
-                self.image(str(LOGO_PATH), x=40, y=85, w=130)
+            with self.local_context(fill_opacity=0.05, stroke_opacity=0.05):
+                self.image(str(LOGO_PATH), x=45, y=90, w=120)
 
     def footer(self):
-        self.set_y(-14)
-        self.set_draw_color(*_DIVIDER)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.set_font("Helvetica", "I", 7)
-        self.set_text_color(*_SLATE_400)
-        self.set_x(10)
-        self.cell(95, 8, "J2W Recruiter Tracking - Confidential", align="L")
+        self.set_y(-13)
+        self.set_draw_color(*_BORDER)
+        self.line(12, self.get_y(), 198, self.get_y())
+        self.set_font("Helvetica", "", 7)
+        self.set_text_color(*_MUTED_LIGHT)
+        self.set_x(12)
+        self.cell(93, 8, "J2W Recruiter Tracking  |  Confidential", align="L")
         self.set_x(105)
-        self.cell(95, 8, f"Page {self.page_no()}", align="R")
+        self.cell(93, 8, f"Page {self.page_no()}", align="R")
 
+
+# ── Cover page ─────────────────────────────────────────────────────────────────
 
 def _cover_page(pdf: _PDF, job, skill_count: int, total_q: int) -> None:
     pdf.add_page()
 
-    pdf.set_fill_color(*_BRAND_BLUE)
-    pdf.rect(0, 0, 210, 52, style="F")
-
+    # ── Top strip: white with logo ──────────────────────────────────────────
     if LOGO_PATH.exists():
-        pdf.image(str(LOGO_PATH), x=130, y=6, w=70)
+        pdf.image(str(LOGO_PATH), x=12, y=10, w=62)
 
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 22)
-    pdf.set_xy(10, 10)
-    pdf.cell(115, 12, "Interview Questionnaire", align="L")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.set_xy(10, 26)
-    pdf.cell(115, 8, f"{job.role_title}  |  {job.client_name}", align="L")
+    # Thin charcoal accent bar at top
+    pdf.set_fill_color(*_INK)
+    pdf.rect(0, 0, 4, 297, style="F")
+
+    # Title block
+    pdf.set_xy(16, 40)
+    pdf.set_font("Helvetica", "B", 26)
+    pdf.set_text_color(*_INK)
+    pdf.cell(180, 12, "Interview Questionnaire", align="L")
+
+    pdf.set_xy(16, 56)
+    pdf.set_font("Helvetica", "", 13)
+    pdf.set_text_color(*_INK_LIGHT)
+    pdf.cell(180, 8, f"{job.role_title}  |  {job.client_name}", align="L")
+
+    pdf.set_xy(16, 66)
     pdf.set_font("Helvetica", "I", 9)
-    pdf.set_xy(10, 37)
-    pdf.set_text_color(186, 206, 255)
-    pdf.cell(115, 7, "AI-Generated Skill Assessment with Model Answers", align="L")
+    pdf.set_text_color(*_MUTED)
+    pdf.cell(180, 6, "AI-Generated Skill Assessment with Model Answers", align="L")
 
-    pdf.set_text_color(*_SLATE_500)
-    pdf.set_font("Helvetica", "", 10)
-    pdf.set_xy(10, 62)
+    # Thin divider
+    pdf.set_draw_color(*_BORDER)
+    pdf.line(16, 76, 198, 76)
 
+    # Meta info
+    pdf.set_xy(16, 80)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*_MUTED)
     skills_display = (job.skill_stack or "").strip()
-    pdf.multi_cell(190, 6, f"Skills Assessed: {skills_display}", align="L")
-    pdf.set_x(10)
-    pdf.cell(
-        190, 6,
-        f"Generated: {datetime.now(timezone.utc).strftime('%d %B %Y')}",
-        align="L",
-    )
-    pdf.ln(3)
-    pdf.set_x(10)
-    pdf.cell(190, 6, f"Total Sections: {skill_count}   |   Total Questions: {total_q}", align="L")
-    pdf.ln(5)
+    pdf.multi_cell(180, 5, f"Skills: {skills_display}", align="L")
+    pdf.set_x(16)
+    pdf.cell(88, 5, f"Generated: {datetime.now(timezone.utc).strftime('%d %B %Y')}", align="L")
+    pdf.cell(92, 5, f"Sections: {skill_count}   |   Questions: {total_q}", align="L")
+    pdf.ln(2)
 
+    # Role summary if present
     if getattr(job, "jd_summary", None):
-        pdf.set_x(10)
-        pdf.set_draw_color(*_DIVIDER)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(5)
+        pdf.set_draw_color(*_BORDER)
+        pdf.line(16, pdf.get_y(), 198, pdf.get_y())
         pdf.ln(4)
+        pdf.set_x(16)
         pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(*_SLATE_800)
-        pdf.set_x(10)
-        pdf.cell(190, 6, "Role Summary", align="L")
+        pdf.set_text_color(*_INK)
+        pdf.cell(180, 5, "Role Summary", align="L")
         pdf.ln(6)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(*_SLATE_500)
-        pdf.set_x(10)
-        pdf.multi_cell(190, 5, job.jd_summary[:600], align="L")
+        pdf.set_x(16)
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_text_color(*_INK_LIGHT)
+        pdf.multi_cell(180, 5, (job.jd_summary or "")[:700], align="L")
 
+    # Focus points (if any)
+    notes = getattr(job, "questionnaire_notes", None)
+    if notes:
+        pdf.ln(4)
+        pdf.set_draw_color(*_BORDER)
+        pdf.line(16, pdf.get_y(), 198, pdf.get_y())
+        pdf.ln(4)
+        pdf.set_x(16)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*_INK)
+        pdf.cell(180, 5, "Interviewer Focus Points", align="L")
+        pdf.ln(6)
+        pdf.set_x(16)
+        pdf.set_font("Helvetica", "I", 8.5)
+        pdf.set_text_color(*_MUTED)
+        pdf.multi_cell(180, 5, notes, align="L")
+
+    # Legend
     pdf.ln(6)
-    pdf.set_x(10)
-    pdf.set_draw_color(*_DIVIDER)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.set_draw_color(*_BORDER)
+    pdf.line(16, pdf.get_y(), 198, pdf.get_y())
     pdf.ln(5)
+    pdf.set_x(16)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(*_INK)
+    pdf.cell(180, 5, "Question Distribution  (5 per skill)", align="L")
+    pdf.ln(7)
 
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*_SLATE_800)
-    pdf.set_x(10)
-    pdf.cell(190, 6, "Question Distribution  (per skill)", align="L")
-    pdf.ln(8)
-
-    legend = [
-        ("EASY",   "2 questions", _BADGE_EASY),
-        ("MEDIUM", "2 questions", _BADGE_MED),
-        ("HARD",   "1 question",  _BADGE_HARD),
-    ]
-    for label, desc, color in legend:
-        pdf.set_fill_color(*color)
-        pdf.set_text_color(255, 255, 255)
+    for label, desc, txt_c, bg_c in [
+        ("EASY",   "2 questions  |  Concepts & fundamentals", _EASY_TEXT, _EASY_BG),
+        ("MEDIUM", "2 questions  |  Practical application",   _MED_TEXT,  _MED_BG),
+        ("HARD",   "1 question   |  Expert-level design",     _HARD_TEXT, _HARD_BG),
+    ]:
+        pdf.set_fill_color(*bg_c)
+        pdf.set_text_color(*txt_c)
         pdf.set_font("Helvetica", "B", 8)
-        pdf.set_x(10)
+        pdf.set_x(16)
         pdf.cell(22, 6, f"  {label}", fill=True)
-        pdf.set_text_color(*_SLATE_500)
+        pdf.set_text_color(*_MUTED)
         pdf.set_font("Helvetica", "", 8)
-        pdf.cell(60, 6, f"  {desc}")
+        pdf.cell(100, 6, f"   {desc}")
         pdf.ln(9)
 
-    pdf.ln(4)
-    pdf.set_x(10)
-    pdf.set_draw_color(*_DIVIDER)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(6)
-
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_text_color(*_SLATE_400)
-    pdf.set_x(10)
+    pdf.ln(3)
+    pdf.set_draw_color(*_BORDER)
+    pdf.line(16, pdf.get_y(), 198, pdf.get_y())
+    pdf.ln(5)
+    pdf.set_x(16)
+    pdf.set_font("Helvetica", "I", 7.5)
+    pdf.set_text_color(*_MUTED_LIGHT)
     pdf.multi_cell(
-        190, 5,
-        "This questionnaire is AI-generated and includes model answers for interviewer evaluation. "
-        "Adapt questions and assess depth based on candidate responses.",
+        180, 5,
+        "Questions and model answers are AI-generated from the job description and skill stack. "
+        "Interviewers should probe deeper based on candidate responses.",
         align="L",
     )
 
 
-def _skill_section(pdf: _PDF, skill: str, questions: dict, start_q: int) -> int:
-    pdf.add_page()
+# ── Skill section (inline — no forced page break) ──────────────────────────────
 
-    pdf.set_fill_color(*_BRAND_BLUE)
-    pdf.rect(0, 0, 210, 18, style="F")
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.set_xy(10, 4)
-    pdf.cell(190, 10, f"Skill: {skill}", align="L")
+_DIFF_META = {
+    "easy":   ("EASY",   _EASY_TEXT,  _EASY_BG),
+    "medium": ("MEDIUM", _MED_TEXT,   _MED_BG),
+    "hard":   ("HARD",   _HARD_TEXT,  _HARD_BG),
+}
 
-    pdf.ln(6)
 
-    sections = [
-        ("EASY",   questions.get("easy",   []), _BADGE_EASY),
-        ("MEDIUM", questions.get("medium", []), _BADGE_MED),
-        ("HARD",   questions.get("hard",   []), _BADGE_HARD),
-    ]
+def _skill_block_v2(pdf: _PDF, skill: str, questions: dict, start_q: int) -> int:
+    """Render one skill inline (no forced page break). Returns next question number."""
+
+    pdf.ln(4)
+
+    # ── Skill heading ─────────────────────────────────────────────────────
+    y = pdf.get_y()
+    pdf.set_fill_color(*_CANVAS)
+    pdf.rect(12, y, 186, 11, style="F")
+    pdf.set_fill_color(*_ACCENT)
+    pdf.rect(12, y, 4, 11, style="F")
+    pdf.set_xy(20, y + 2)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(*_INK)
+    pdf.cell(176, 8, skill, align="L")
+    pdf.ln(14)
 
     q_num = start_q
-    for level, items, badge_rgb in sections:
+
+    for diff_key in ("easy", "medium", "hard"):
+        items = questions.get(diff_key, [])
         if not items:
             continue
 
-        pdf.set_fill_color(*badge_rgb)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", "B", 8)
-        pdf.set_x(10)
-        pdf.cell(28, 6, f"  {level}", fill=True)
-        pdf.ln(10)
+        label, txt_c, bg_c = _DIFF_META[diff_key]
+
+        # Difficulty pill badge
+        pdf.set_fill_color(*bg_c)
+        pdf.set_text_color(*txt_c)
+        pdf.set_font("Helvetica", "B", 7.5)
+        pdf.set_x(14)
+        pdf.cell(20, 5.5, f"  {label}", fill=True)
+        pdf.ln(9)
 
         for item in items:
-            # Support both old plain-string format and new {q, a} dict format
             if isinstance(item, dict):
-                question_text = item.get("q", "")
-                answer_text   = item.get("a", "")
+                q_text = item.get("q", "")
+                a_text = item.get("a", "")
             else:
-                question_text = item
-                answer_text   = ""
+                q_text = item
+                a_text = ""
 
-            # Question number
-            pdf.set_text_color(*_SLATE_800)
+            # ── Question ──────────────────────────────────────────────────
+            pdf.set_x(14)
             pdf.set_font("Helvetica", "B", 10)
-            pdf.set_x(10)
-            pdf.cell(10, 7, f"Q{q_num}.", border=0)
-
-            # Question text
+            pdf.set_text_color(*_INK)
+            pdf.cell(12, 6, f"Q{q_num}.")
             pdf.set_font("Helvetica", "", 10)
-            pdf.set_text_color(51, 65, 85)
-            pdf.set_x(22)
-            pdf.multi_cell(176, 6, question_text, border=0)
+            pdf.set_text_color(*_INK_LIGHT)
+            pdf.set_x(27)
+            pdf.multi_cell(169, 5.5, q_text, align="L")
+            pdf.ln(2)
 
-            # Answer block
-            if answer_text:
-                pdf.set_x(22)
-                pdf.set_fill_color(*_ANS_BG)
-                pdf.set_draw_color(*_DIVIDER)
+            # ── Answer block ──────────────────────────────────────────────
+            if a_text:
+                ans_y = pdf.get_y()
 
-                # Label
+                # "Ans:" label
+                pdf.set_x(30)
                 pdf.set_font("Helvetica", "B", 8)
                 pdf.set_text_color(*_ANS_TEXT)
-                pdf.set_x(22)
-                pdf.cell(18, 6, "Answer:", border=0, fill=False)
+                pdf.cell(12, 5, "Ans:")
 
-                # Answer text inline after label
-                pdf.set_font("Helvetica", "I", 8)
+                # Answer text (2 sentences, wraps naturally)
+                pdf.set_font("Helvetica", "I", 8.5)
                 pdf.set_text_color(*_ANS_TEXT)
-                pdf.set_x(40)
-                pdf.multi_cell(158, 6, answer_text, border=0, fill=False)
+                pdf.set_x(42)
+                pdf.multi_cell(152, 5, a_text, align="L")
+                ans_end_y = pdf.get_y()
 
-            pdf.ln(5)
+                # Draw teal left accent bar (4px wide) alongside the answer
+                pdf.set_fill_color(*_ANS_BORDER)
+                pdf.rect(27, ans_y - 0.5, 2.5, ans_end_y - ans_y + 2, style="F")
+
+            pdf.ln(6)
+            pdf.set_draw_color(*_BORDER)
+            pdf.line(14, pdf.get_y() - 2, 196, pdf.get_y() - 2)
+            pdf.ln(2)
             q_num += 1
 
-        pdf.ln(6)
+        pdf.ln(3)
 
     return q_num
 
+
+# ── Master build ───────────────────────────────────────────────────────────────
 
 def _build_pdf(job, all_questions: dict) -> bytes:
     total_q = sum(
@@ -382,20 +415,23 @@ def _build_pdf(job, all_questions: dict) -> bytes:
     )
 
     pdf = _PDF()
-    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_margins(0, 0, 0)
 
     _cover_page(pdf, job, skill_count=len(all_questions), total_q=total_q)
 
+    # All skills on continuous pages — auto-break handles pagination
+    pdf.add_page()
     q_num = 1
     for skill, questions in all_questions.items():
-        q_num = _skill_section(pdf, skill, questions, q_num)
+        q_num = _skill_block_v2(pdf, skill, questions, q_num)
 
     buf = BytesIO()
     pdf.output(buf)
     return buf.getvalue()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Public entry point ─────────────────────────────────────────────────────────
 
 def get_or_generate(db, job) -> bytes:
     """Return cached PDF if available, else generate, persist, and return."""
