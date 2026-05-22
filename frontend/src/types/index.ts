@@ -101,6 +101,9 @@ export interface Job {
   candidate_count: number;
   questionnaire_notes: string | null;
   questionnaire_generated_at: string | null;
+  // Auto-maintained union of every assignee's email (DLs, sourcers, callers,
+  // KAM, BH, creator). Backend keeps it in sync on every job mutation.
+  assigned_email_id: string[];
 }
 
 export interface TeamMemberLoad {

@@ -432,6 +432,12 @@ class Job(Base):
         String(200),
         nullable=True,
     )  # creator's email (snapshot at create time)
+    # All emails tied to this job through ANY user-id reference (delivery
+    # lead, sourcers, callers, KAM, BH, creator). Kept in sync by
+    # SQLAlchemy before_insert / before_update events defined below — so any
+    # change to the job's user-FK columns also rewrites this array in the
+    # same transaction.
+    assigned_email_id = Column(PG_ARRAY(String), nullable=False, server_default="{}")
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
@@ -818,3 +824,70 @@ class AuditLog(Base):
     entity_id = Column(Integer)
     detail = Column(Text)
     created_at = Column(DateTime, default=now_utc)
+
+
+# ── Job.assigned_email_id auto-refresh ────────────────────────────────────────
+# Recompute `Job.assigned_email_id` from the union of every user-id column on
+# the job whenever the row is inserted or updated. Lives at module scope so
+# the import side-effect of `infra.models` registers the listeners once.
+import json as _json  # noqa: E402
+from sqlalchemy import event as _sa_event  # noqa: E402
+
+
+def _job_assignee_user_ids(job: "Job") -> set[int]:
+    """Union of every user id this job references (single FKs + JSON arrays)."""
+    ids: set[int] = set()
+    for col in (
+        "delivery_lead_id",
+        "assigned_sourcer_id",
+        "assigned_caller_id",
+        "kam_id",
+        "account_manager_id",   # business head, repurposed FK
+        "created_by_id",
+    ):
+        v = getattr(job, col, None)
+        if v:
+            try:
+                ids.add(int(v))
+            except (TypeError, ValueError):
+                pass
+    for col in ("delivery_lead_ids", "sourcer_ids", "caller_ids"):
+        raw = getattr(job, col, None)
+        if not raw:
+            continue
+        try:
+            parsed = _json.loads(raw) if isinstance(raw, str) else raw
+            for x in parsed or []:
+                if x is None:
+                    continue
+                try:
+                    ids.add(int(x))
+                except (TypeError, ValueError):
+                    pass
+        except (ValueError, TypeError):
+            continue
+    return ids
+
+
+def _refresh_job_assigned_emails(_mapper, connection, target: "Job") -> None:
+    """before_insert / before_update hook: rewrite target.assigned_email_id
+    from the current user-id columns. Runs inside the same transaction as the
+    save so the column is never stale relative to the row's other fields."""
+    from sqlalchemy import text as _text
+    ids = _job_assignee_user_ids(target)
+    if not ids:
+        target.assigned_email_id = []
+        return
+    rows = connection.execute(
+        _text(
+            "SELECT DISTINCT email FROM users "
+            "WHERE id = ANY(:ids) AND email IS NOT NULL AND email <> '' "
+            "ORDER BY email"
+        ),
+        {"ids": list(ids)},
+    ).fetchall()
+    target.assigned_email_id = [r[0] for r in rows]
+
+
+_sa_event.listen(Job, "before_insert", _refresh_job_assigned_emails)
+_sa_event.listen(Job, "before_update", _refresh_job_assigned_emails)
