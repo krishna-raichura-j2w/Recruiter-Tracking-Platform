@@ -35,12 +35,14 @@ def create_client(
 def list_clients(
     page_no: int = Query(default=1, ge=1),
     per_page: int = Query(default=10, ge=-1),
-    hrbp_id: int | None = Query(default=None),
     is_active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    result = service.list_paginated(db, page_no, per_page, hrbp_id, is_active)
+    role = current_user.role.value
+    hrbp_ids = [current_user.id] if role == "hrbp" else None
+    bh_id = current_user.id if role == "bh" else None
+    result = service.list_paginated(db, page_no, per_page, hrbp_ids, bh_id, is_active)
     return success_response_with_pagination(
         data=result["items"],
         message="Clients fetched successfully",

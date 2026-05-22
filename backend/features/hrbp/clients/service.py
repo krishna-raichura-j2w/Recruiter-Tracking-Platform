@@ -20,7 +20,8 @@ def list_paginated(
     db: Session,
     page_no: int,
     per_page: int,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
+    bh_id: int | None = None,
     is_active: bool | None = None,
 ) -> dict:
     consultant_sub = (
@@ -50,8 +51,11 @@ def list_paginated(
         .outerjoin(consultant_sub, HRBPClient.id == consultant_sub.c.client_id)
     )
 
-    if hrbp_id is not None:
-        q = q.filter(HRBPClient.hrbp_id == hrbp_id)
+    # hrbp sees their own clients; bh sees clients where they are the owner
+    if hrbp_ids is not None:
+        q = q.filter(HRBPClient.hrbp_id.in_(hrbp_ids))
+    elif bh_id is not None:
+        q = q.filter(HRBPClient.bh_id == bh_id)
     if is_active is not None:
         q = q.filter(HRBPClient.is_active == is_active)
     q = q.order_by(HRBPClient.name)

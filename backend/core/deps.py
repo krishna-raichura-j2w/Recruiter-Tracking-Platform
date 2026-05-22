@@ -6,6 +6,32 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from core.security import decode_token
 
+
+def resolve_hrbp_ids(user: User, db: Session) -> list[int] | None:
+    """
+    Returns the hrbp_ids this user is allowed to see, based on their role.
+
+    - hrbp  → [user.id]  (own data only)
+    - bh    → all hrbp_ids from hrbp_clients where bh_id = user.id
+    - admin / coo / ops_head → None  (no filter — full access)
+    - any other role → []  (empty — sees nothing)
+    """
+    role = user.role.value
+    if role == "hrbp":
+        return [user.id]
+    if role == "bh":
+        from infra.hrbp_models import HRBPClient
+        rows = (
+            db.query(HRBPClient.hrbp_id)
+            .filter(HRBPClient.bh_id == user.id)
+            .distinct()
+            .all()
+        )
+        return [r[0] for r in rows]
+    if role in ("admin", "coo", "ops_head"):
+        return None
+    return []
+
 bearer = HTTPBearer()
 
 

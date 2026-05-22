@@ -110,7 +110,7 @@ def list_paginated(
     per_page: int,
     client_id: int | None = None,
     consultant_id: int | None = None,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -120,8 +120,8 @@ def list_paginated(
         q = q.filter(HRBPCadenceSchedule.client_id == client_id)
     if consultant_id is not None:
         q = q.filter(HRBPCadenceSchedule.consultant_id == consultant_id)
-    if hrbp_id is not None:
-        q = q.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
+    if hrbp_ids is not None:
+        q = q.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
     if status is not None:
         q = q.filter(HRBPCadenceSchedule.status == status)
     if date_from is not None:
@@ -237,13 +237,13 @@ def cancel(db: Session, id: int) -> None:
     db.commit()
 
 
-def get_summary(db: Session, hrbp_id: int | None = None) -> dict:
+def get_summary(db: Session, hrbp_ids: list[int] | None = None) -> dict:
     base = db.query(HRBPCadenceSession).join(
         HRBPCadenceSchedule,
         HRBPCadenceSession.schedule_id == HRBPCadenceSchedule.id,
     )
-    if hrbp_id is not None:
-        base = base.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
+    if hrbp_ids is not None:
+        base = base.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
 
     pending = base.filter(HRBPCadenceSession.status == "not_started").count()
     completed = base.filter(HRBPCadenceSession.status == "completed").count()
@@ -254,7 +254,7 @@ def list_all_sessions(
     db: Session,
     page_no: int,
     per_page: int,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
     client_id: int | None = None,
     consultant_id: int | None = None,
     status: str | None = None,
@@ -291,8 +291,8 @@ def list_all_sessions(
         .join(HRBPConsultant, HRBPCadenceSchedule.consultant_id == HRBPConsultant.id)
     )
 
-    if hrbp_id is not None:
-        rows = rows.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
+    if hrbp_ids is not None:
+        rows = rows.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
     if client_id is not None:
         rows = rows.filter(HRBPCadenceSchedule.client_id == client_id)
     if consultant_id is not None:

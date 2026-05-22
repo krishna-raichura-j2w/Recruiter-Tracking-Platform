@@ -24,7 +24,8 @@ def list_paginated(
     db: Session,
     page_no: int,
     per_page: int,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
+    bh_client_ids: list[int] | None = None,
     client_id: int | None = None,
     cohort: str | None = None,
     perf_tier: str | None = None,
@@ -33,8 +34,11 @@ def list_paginated(
     date_to: date | None = None,
 ) -> PageResult:
     q = db.query(HRBPConsultant)
-    if hrbp_id is not None:
-        q = q.filter(HRBPConsultant.hrbp_id == hrbp_id)
+    # hrbp sees their own consultants; bh sees consultants via their client_ids
+    if hrbp_ids is not None:
+        q = q.filter(HRBPConsultant.hrbp_id.in_(hrbp_ids))
+    elif bh_client_ids is not None:
+        q = q.filter(HRBPConsultant.client_id.in_(bh_client_ids))
     if client_id is not None:
         q = q.filter(HRBPConsultant.client_id == client_id)
     if cohort is not None:
