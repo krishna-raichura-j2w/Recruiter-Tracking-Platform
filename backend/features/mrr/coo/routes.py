@@ -315,7 +315,7 @@ def _performance_category(verified: int) -> str:
 @router.get("/recruiter-leaderboard")
 def recruiter_leaderboard(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     """
     Per-recruiter daily metrics for the COO dashboard.
@@ -357,12 +357,23 @@ def recruiter_leaderboard(
     day_end_utc = day_start_utc + timedelta(days=1)
 
     # All active recruiters (primary or secondary role)…
-    recruiters = (
+    # Pod scoping: admin / COO see everyone; BH / KAM / DL see only the
+    # recruiters who belong to their own pod, so each pod head gets a focused
+    # leaderboard for their own team rather than the whole company.
+    _caller_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    _scope_to_pod = _caller_role in ("bh", "kam", "delivery_lead") and current_user.pod_id is not None
+
+    rec_query = (
         db.query(User)
         .filter(
             User.is_active == True,  # noqa: E712
             or_(User.role == UserRole.recruiter, User.secondary_role == "recruiter"),
         )
+    )
+    if _scope_to_pod:
+        rec_query = rec_query.filter(User.pod_id == current_user.pod_id)
+    recruiters = (
+        rec_query
         .all()
     )
     rec_ids_set = {u.id for u in recruiters}
@@ -382,8 +393,12 @@ def recruiter_leaderboard(
         if row[0] not in rec_ids_set
     ]
     if extra_sourcer_ids:
-        extras = db.query(User).filter(User.id.in_(extra_sourcer_ids)).all()
-        recruiters = recruiters + extras
+        extras_q = db.query(User).filter(User.id.in_(extra_sourcer_ids))
+        # Honour pod-scoping for non-recruiter sourcers too — a BH should not
+        # see a DL from another pod show up just because they sourced today.
+        if _scope_to_pod:
+            extras_q = extras_q.filter(User.pod_id == current_user.pod_id)
+        recruiters = recruiters + extras_q.all()
     recruiters.sort(key=lambda u: u.name or "")
     rec_ids = [u.id for u in recruiters]
     if not rec_ids:

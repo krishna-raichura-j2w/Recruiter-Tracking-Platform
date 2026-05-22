@@ -69,7 +69,7 @@ export default function App() {
           <Route
             path="/candidates"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'delivery_lead', 'recruiter', 'kam']}>
+              <ProtectedRoute allowedRoles={['admin', 'delivery_lead', 'recruiter', 'kam', 'bh']}>
                 <Candidates />
               </ProtectedRoute>
             }
@@ -107,7 +107,7 @@ export default function App() {
           <Route
             path="/pipeline"
             element={
-              <ProtectedRoute allowedRoles={['delivery_lead', 'admin', 'kam']}>
+              <ProtectedRoute allowedRoles={['delivery_lead', 'admin', 'kam', 'bh']}>
                 <Pipeline />
               </ProtectedRoute>
             }
@@ -136,7 +136,7 @@ export default function App() {
           <Route
             path="/clients"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'bh']}>
                 <Clients />
               </ProtectedRoute>
             }
@@ -145,7 +145,7 @@ export default function App() {
           <Route
             path="/export"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'bh']}>
                 <Export />
               </ProtectedRoute>
             }
@@ -163,7 +163,7 @@ export default function App() {
           <Route
             path="/demand-status"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'bh']}>
                 <DemandStatus />
               </ProtectedRoute>
             }
@@ -208,7 +208,7 @@ export default function App() {
           <Route
             path="/targets"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'bh']}>
                 <Targets />
               </ProtectedRoute>
             }

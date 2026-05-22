@@ -7,6 +7,7 @@ from infra.models import (
     CandidateStatus,
     Job,
     NotifType,
+    User,
     isofy_datetimes,
     to_iso_utc,
 )
@@ -117,6 +118,44 @@ def list_candidates(
             for j in db.query(Job).filter(Job.created_by_id == current_user.id).all()
         ]
         _job_ids = kam_job_ids  # empty list = no results if KAM has no jobs
+    elif role == "bh":
+        # BH sees every candidate sourced by any user in their pod.
+        # Filter by pod members (recruiters + DLs who could have sourced).
+        if not current_user.pod_id:
+            _job_ids = []  # BH with no pod → nothing
+        else:
+            pod_user_ids = [
+                u.id for u in db.query(User).filter(User.pod_id == current_user.pod_id).all()
+            ]
+            _sourced_by = None  # we use a different shape below
+            # Scope by sourcer being a pod member. service.list_candidates
+            # supports filtering by a specific sourced_by; we pass the pod's
+            # full set as an "any of these" list via the _job_ids escape
+            # hatch indirectly — instead, narrow to jobs created by pod KAMs
+            # or those whose delivery_lead_id is a pod DL.
+            pod_user_id_set = set(pod_user_ids)
+            pod_job_ids: list[int] = []
+            import json as _json
+            for j in db.query(Job).all():
+                if j.created_by_id in pod_user_id_set:
+                    pod_job_ids.append(j.id); continue
+                if j.delivery_lead_id in pod_user_id_set:
+                    pod_job_ids.append(j.id); continue
+                dl_ids = (
+                    _json.loads(j.delivery_lead_ids or "[]")
+                    if isinstance(j.delivery_lead_ids, str)
+                    else (j.delivery_lead_ids or [])
+                )
+                if any(d in pod_user_id_set for d in dl_ids):
+                    pod_job_ids.append(j.id); continue
+                s_ids = (
+                    _json.loads(j.sourcer_ids or "[]")
+                    if isinstance(j.sourcer_ids, str)
+                    else []
+                )
+                if any(s in pod_user_id_set for s in s_ids):
+                    pod_job_ids.append(j.id)
+            _job_ids = pod_job_ids
 
     items, total = service.list_candidates(
         db,

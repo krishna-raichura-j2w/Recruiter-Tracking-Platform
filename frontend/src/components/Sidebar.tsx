@@ -131,6 +131,31 @@ const navConfig: Record<string, NavGroup[]> = {
       ],
     },
   ],
+  bh: [
+    {
+      section: 'My Pod',
+      items: [
+        { label: 'Leaderboard', path: '/leaderboard',   icon: <Trophy size={16} /> },
+        { label: 'My Pod',      path: '/pods',          icon: <Network size={16} /> },
+        { label: 'Targets',     path: '/targets',       icon: <Target size={16} /> },
+      ],
+    },
+    {
+      section: 'Pipeline',
+      items: [
+        { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Candidates',         path: '/candidates',   icon: <Users size={16} /> },
+        { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} />, countKey: 'pipeline' },
+        { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={16} /> },
+      ],
+    },
+    {
+      section: 'Reports',
+      items: [
+        { label: 'Export / Reports', path: '/export', icon: <BarChart2 size={16} /> },
+      ],
+    },
+  ],
 };
 
 const roleLabels: Record<string, { title: string; sub: string; color: string }> = {
