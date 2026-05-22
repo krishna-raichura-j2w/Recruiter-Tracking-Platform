@@ -117,7 +117,72 @@ _SLATE_400   = (148, 163, 184)
 _DIVIDER     = (203, 213, 225)
 
 
+# AI-generated text routinely contains curly quotes, en/em dashes, ellipses,
+# bullets, non-breaking spaces, etc. fpdf2's built-in Helvetica/Arial fonts
+# are Latin-1 only and crash on any character outside that range. This map
+# substitutes the worst offenders with safe ASCII/Latin-1 equivalents before
+# the string ever reaches fpdf's encoder.
+_LATIN1_TRANSLATIONS = str.maketrans({
+    "‘": "'", "’": "'",  # curly single quotes  ' '
+    "“": '"', "”": '"',  # curly double quotes  " "
+    "–": "-", "—": "-",  # en/em dash           – —
+    "−": "-",                  # math minus           −
+    "…": "...",                # ellipsis             …
+    "•": "*", "·": "*",   # bullet / middle dot  • ·
+    " ": " ",                  # non-breaking space
+    "​": "",  "‌": "",    # zero-width characters
+    "‍": "",  "﻿": "",
+    " ": " ", " ": " ", " ": " ",  # thin / en / em spaces
+    "«": '"', "»": '"',  # « »
+    "′": "'", "″": '"',  # primes
+    "©": "(c)", "®": "(R)", "™": "(TM)",
+    "€": "EUR", "£": "GBP", "¥": "JPY",
+    "→": "->", "←": "<-", "↔": "<->",
+})
+
+
+def _safe(text) -> str:
+    """Make a string fpdf2-safe: translate common Unicode → Latin-1, then
+    drop anything that still can't be encoded."""
+    if text is None:
+        return ""
+    s = str(text).translate(_LATIN1_TRANSLATIONS)
+    # Final guard: any remaining char outside Latin-1 becomes '?' so a single
+    # exotic glyph never crashes the whole PDF render.
+    return s.encode("latin-1", errors="replace").decode("latin-1")
+
+
 class _PDF(FPDF):
+    # ── Auto-sanitizing wrappers ──
+    # Override the text-writing methods so every string the rest of this file
+    # passes in is automatically Latin-1 safe. No call site has to remember.
+    def cell(self, *args, **kwargs):  # type: ignore[override]
+        if "text" in kwargs:
+            kwargs["text"] = _safe(kwargs["text"])
+        if "txt" in kwargs:
+            kwargs["txt"] = _safe(kwargs["txt"])
+        if len(args) >= 3 and isinstance(args[2], str):
+            args = (args[0], args[1], _safe(args[2]), *args[3:])
+        return super().cell(*args, **kwargs)
+
+    def multi_cell(self, *args, **kwargs):  # type: ignore[override]
+        if "text" in kwargs:
+            kwargs["text"] = _safe(kwargs["text"])
+        if "txt" in kwargs:
+            kwargs["txt"] = _safe(kwargs["txt"])
+        if len(args) >= 3 and isinstance(args[2], str):
+            args = (args[0], args[1], _safe(args[2]), *args[3:])
+        return super().multi_cell(*args, **kwargs)
+
+    def write(self, *args, **kwargs):  # type: ignore[override]
+        if "text" in kwargs:
+            kwargs["text"] = _safe(kwargs["text"])
+        if "txt" in kwargs:
+            kwargs["txt"] = _safe(kwargs["txt"])
+        if len(args) >= 2 and isinstance(args[1], str):
+            args = (args[0], _safe(args[1]), *args[2:])
+        return super().write(*args, **kwargs)
+
     def header(self):
         if LOGO_PATH.exists():
             with self.local_context(fill_opacity=0.07, stroke_opacity=0.07):
