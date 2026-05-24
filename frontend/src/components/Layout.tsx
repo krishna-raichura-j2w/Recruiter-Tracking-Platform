@@ -13,13 +13,14 @@ interface LayoutProps {
 
 const roleColors: Record<string, string> = {
   admin:         'bg-red-100 text-red-700 border-red-200',
+  bh:            'bg-emerald-100 text-emerald-700 border-emerald-200',
   kam:           'bg-purple-100 text-purple-700 border-purple-200',
   delivery_lead: 'bg-orange-100 text-orange-700 border-orange-200',
   recruiter:     'bg-blue-100 text-blue-700 border-blue-200',
   coo:           'bg-sky-100 text-sky-700 border-sky-200',
 };
 const roleLabels: Record<string, string> = {
-  admin: 'Admin', kam: 'KAM', delivery_lead: 'Delivery Lead', recruiter: 'Recruiter', coo: 'COO',
+  admin: 'Admin', bh: 'Business Head', kam: 'KAM', delivery_lead: 'Delivery Lead', recruiter: 'Recruiter', coo: 'COO',
 };
 
 const notifTypeIcon: Record<string, string> = {

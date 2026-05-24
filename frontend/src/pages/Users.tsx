@@ -31,14 +31,16 @@ interface ActivityEntry {
 
 const ROLES = [
   { value: 'admin',         label: 'Admin' },
-  { value: 'kam',      label: 'KAM' },
+  { value: 'bh',            label: 'Business Head' },
+  { value: 'kam',           label: 'KAM' },
   { value: 'delivery_lead', label: 'Delivery Lead' },
   { value: 'recruiter',     label: 'Recruiter' },
 ];
 
 const roleColors: Record<string, string> = {
   admin:         'bg-red-100 text-red-700',
-  kam:      'bg-purple-100 text-purple-700',
+  bh:            'bg-emerald-100 text-emerald-700',
+  kam:           'bg-purple-100 text-purple-700',
   delivery_lead: 'bg-orange-100 text-orange-700',
   recruiter:     'bg-blue-100 text-blue-700',
 };

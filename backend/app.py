@@ -122,13 +122,15 @@ def ensure_schema():
 
         # Backfill jobs.assigned_email_id for legacy rows (the SQLAlchemy
         # event keeps it in sync going forward, but pre-existing rows need
-        # one initial pass). Only touches rows still at the empty default,
-        # so re-running on every startup is essentially free.
+        # one initial pass). Filter via array_length() IS NULL — that's how
+        # PostgreSQL signals "empty array" (and matches the column's default
+        # value of '{}'). Re-running this on every startup is cheap because
+        # populated rows are skipped at the SQL level.
         try:
             from infra.models import Job, _job_assignee_user_ids
             empty_jobs = (
                 db.query(Job)
-                  .filter((Job.assigned_email_id == None) | (Job.assigned_email_id == []))  # noqa: E711
+                  .filter(text("array_length(assigned_email_id, 1) IS NULL"))
                   .all()
             )
             if empty_jobs:

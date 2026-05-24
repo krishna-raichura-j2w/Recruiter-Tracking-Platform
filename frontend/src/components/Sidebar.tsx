@@ -160,6 +160,7 @@ const navConfig: Record<string, NavGroup[]> = {
 
 const roleLabels: Record<string, { title: string; sub: string; color: string }> = {
   admin:         { title: 'Admin',         sub: 'Full system access',           color: '#EF4444' },
+  bh:            { title: 'Business Head', sub: 'Heads a pod — oversees KAMs, DLs & recruiters', color: '#10B981' },
   kam:           { title: 'KAM',           sub: 'Manages client demands',       color: '#A855F7' },
   delivery_lead: { title: 'Delivery Lead', sub: 'Manages recruitment pipeline', color: '#F97316' },
   recruiter:     { title: 'Recruiter',     sub: 'Sources & screens candidates', color: '#3B82F6' },

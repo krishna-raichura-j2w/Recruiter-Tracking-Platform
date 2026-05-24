@@ -11,7 +11,7 @@ const roleColors: Record<string, string> = {
   coo:           'bg-sky-100 text-sky-700',
 };
 const roleLabels: Record<string, string> = {
-  admin: 'Admin', kam: 'KAM', delivery_lead: 'Delivery Lead', recruiter: 'Recruiter', coo: 'COO',
+  admin: 'Admin', bh: 'Business Head', kam: 'KAM', delivery_lead: 'Delivery Lead', recruiter: 'Recruiter', coo: 'COO',
 };
 
 function getInitials(name: string): string {
