@@ -146,6 +146,35 @@ export async function fetchRecentActivity(limit = 10): Promise<ActivityItem[]> {
   return handleResponse<ActivityItem[]>(res);
 }
 
+export interface ClientsSummary {
+  total: number;
+  active: number;
+  inactive: number;
+  total_consultants: number;
+}
+
+export interface ConsultantsSummary {
+  total: number;
+  active: number;
+  expiring_soon: number;
+  po_at_risk: number;
+}
+
+export async function fetchClientsSummary(): Promise<ClientsSummary> {
+  const res = await fetch(`${getBaseUrl()}api/hrbp/clients/summary`, {
+    headers: authHeaders(),
+  });
+  return handleResponse<ClientsSummary>(res);
+}
+
+export async function fetchConsultantsSummary(clientId?: number): Promise<ConsultantsSummary> {
+  const url = clientId
+    ? `${getBaseUrl()}api/hrbp/consultants/summary?client_id=${clientId}`
+    : `${getBaseUrl()}api/hrbp/consultants/summary`;
+  const res = await fetch(url, { headers: authHeaders() });
+  return handleResponse<ConsultantsSummary>(res);
+}
+
 export async function chatWithAI(message: string, history: ChatMessage[]): Promise<AIChatResult> {
   const res = await fetch(`${getBaseUrl()}api/hrbp/ai/chat`, {
     method: "POST",

@@ -15,6 +15,18 @@ from features.hrbp.clients.schema import ClientCreate, ClientUpdate
 router = APIRouter(prefix="/clients", tags=["hrbp-clients"])
 
 
+@router.get("/summary")
+def get_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.get_summary(db, current_user)
+        return success_response(data=data, message="Clients summary fetched")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
 @router.post("")
 def create_client(
     payload: ClientCreate,

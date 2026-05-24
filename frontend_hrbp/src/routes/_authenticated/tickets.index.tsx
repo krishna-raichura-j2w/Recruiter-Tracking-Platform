@@ -19,7 +19,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle, Clock, TicketIcon, RefreshCw } from "lucide-react";
+import { Plus, Search, RefreshCw } from "lucide-react";
+import { LottieIcon } from "@/components/LottieIcon";
 import { toast } from "react-toastify";
 import type { Dayjs } from "dayjs";
 
@@ -144,10 +145,10 @@ function TicketsPage() {
         {/* Stat cards + New Ticket button */}
         <div className="flex items-center gap-4">
           <div className="flex gap-4 flex-1">
-            <StatCard icon={<TicketIcon className="w-5 h-5" />} label="Total (this view)" value={total} />
-            <StatCard icon="🟢"                                  label="Open"              value={statsOpen}     accent="text-emerald-700" />
-            <StatCard icon={<AlertTriangle className="w-5 h-5" />} label="SLA Breached"  value={statsBreached} accent="text-red-600" />
-            <StatCard icon={<Clock className="w-5 h-5" />}       label="Critical"          value={statsCritical} accent="text-orange-600" />
+            <StatCard icon={<LottieIcon src="/json/checking-resume.json" size={44} />}          label="Total (this view)" value={total} />
+            <StatCard icon={<LottieIcon src="/json/reviewed.json" size={44} />}                label="Open"              value={statsOpen}     accent="text-emerald-700" />
+            <StatCard icon={<LottieIcon src="/json/helpful-tips-for-business.json" size={44} />} label="SLA Breached"   value={statsBreached} accent="text-red-600" />
+            <StatCard icon={<LottieIcon src="/json/business-problem-solving.json" size={44} />}  label="Critical"         value={statsCritical} accent="text-orange-600" />
           </div>
           {can("tickets", "create") && (
             <Button
@@ -238,9 +239,9 @@ function TicketsPage() {
                 </TableRow>
               ) : tickets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-32 text-center text-slate-400">
-                    <TicketIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="font-medium">No tickets found</p>
+                  <TableCell colSpan={9} className="h-40 text-center text-slate-400">
+                    <div className="flex justify-center"><LottieIcon src="/json/searching-jobs.json" size={80} /></div>
+                    <p className="font-medium -mt-1">No tickets found</p>
                     <p className="text-xs mt-1">
                       {can("tickets", "create")
                         ? 'Click "New Ticket" to raise one.'

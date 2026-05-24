@@ -26,7 +26,6 @@ import {
   Undo2,
   Lock,
   AlertCircle,
-  CheckCircle2,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAuth } from "@/lib/auth";
@@ -48,6 +47,8 @@ import {
   type ConsultantItem,
 } from "@/apiService/types";
 import React from "react";
+import { LottieIcon } from "@/components/LottieIcon";
+import { ScrollContainer } from "@/components/ScrollList";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CustomDateRangePicker } from "@/components/CustomDateRangePicker";
@@ -772,6 +773,10 @@ function CadenceSchedulerPage() {
         : cadences.filter((c) => c.status === "completed").length,
     [cadences, summaryCompletedCount],
   );
+  const todayCount = useMemo(
+    () => cadences.filter((c) => c.status === "today").length,
+    [cadences],
+  );
 
   // Month navigation
   const monthNames = [
@@ -1171,24 +1176,27 @@ function CadenceSchedulerPage() {
             {/* KPI Cards + Create Button in one row */}
             <div className="flex items-center gap-4">
               <div className="flex gap-4 flex-1">
-              <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/60 shadow-sm transition-all hover:shadow-md flex-1">
-                <CardContent className="p-4 relative overflow-hidden">
-                  <div className="absolute top-4 right-4 bg-amber-100 p-1.5 rounded-lg shadow-sm border border-amber-200/50">
-                    <Clock className="h-4 w-4 text-amber-600" />
+                <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm flex-1">
+                  <div className="shrink-0"><LottieIcon src="/json/business-meeting.json" size={44} /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Today's Sessions</p>
+                    <p className="text-3xl font-bold leading-tight text-sky-600">{todayCount}</p>
                   </div>
-                  <div className="text-[10px] font-bold text-amber-700/80 uppercase tracking-wider mb-1">Pending</div>
-                  <div className="text-3xl font-bold text-amber-950">{pendingCount}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200/60 shadow-sm transition-all hover:shadow-md flex-1">
-                <CardContent className="p-4 relative overflow-hidden">
-                  <div className="absolute top-4 right-4 bg-emerald-100 p-1.5 rounded-lg shadow-sm border border-emerald-200/50">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm flex-1">
+                  <div className="shrink-0"><LottieIcon src="/json/helpful-tips-for-business.json" size={44} /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Pending</p>
+                    <p className="text-3xl font-bold leading-tight text-amber-600">{pendingCount}</p>
                   </div>
-                  <div className="text-[10px] font-bold text-emerald-700/80 uppercase tracking-wider mb-1">Completed</div>
-                  <div className="text-3xl font-bold text-emerald-950">{completedCount}</div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm flex-1">
+                  <div className="shrink-0"><LottieIcon src="/json/reviewed.json" size={44} /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Completed</p>
+                    <p className="text-3xl font-bold leading-tight text-emerald-600">{completedCount}</p>
+                  </div>
+                </div>
               </div>
               {can("cadence", "create") && (
                 <Button
@@ -1202,32 +1210,10 @@ function CadenceSchedulerPage() {
                 </Button>
               )}
             </div>
-
-            {/* Counter Stats Cards — kept as hidden placeholder to avoid removing downstream refs */}
-            <div className="hidden">
-              <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/60 shadow-sm transition-all hover:shadow-md">
-                <CardContent className="p-4 relative overflow-hidden">
-                  <div className="absolute top-4 right-4 bg-amber-100 p-1.5 rounded-lg shadow-sm border border-amber-200/50">
-                    <Clock className="h-4 w-4 text-amber-600" />
-                  </div>
-                  <div className="text-[10px] font-bold text-amber-700/80 uppercase tracking-wider mb-1">Pending</div>
-                  <div className="text-3xl font-bold text-amber-950">{pendingCount}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200/60 shadow-sm transition-all hover:shadow-md">
-                <CardContent className="p-4 relative overflow-hidden">
-                  <div className="absolute top-4 right-4 bg-emerald-100 p-1.5 rounded-lg shadow-sm border border-emerald-200/50">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  </div>
-                  <div className="text-[10px] font-bold text-emerald-700/80 uppercase tracking-wider mb-1">Completed</div>
-                  <div className="text-3xl font-bold text-emerald-950">{completedCount}</div>
-                </CardContent>
-              </Card>
-            </div>
           </div>
 
           {/* Kanban Section */}
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 mb-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <ScrollContainer className="flex gap-4 -mx-1 px-1 mb-8">
             {/* TODAY Column */}
             <div className="flex flex-1 min-w-[320px] flex-col rounded-xl border border-border/60 bg-muted/30 h-[580px]">
               <div className="flex items-center gap-2 rounded-t-xl border-b border-border/60 px-3 py-2.5 bg-blue-50/80 min-h-[52px]">
@@ -1553,7 +1539,7 @@ function CadenceSchedulerPage() {
                   ))}
               </div>
             </div>
-          </div>
+          </ScrollContainer>
 
           {/* Calendar Timeline Section */}
           <div className="space-y-6 mt-6">
@@ -1585,7 +1571,7 @@ function CadenceSchedulerPage() {
               </div>
 
               {/* Timeline Horizontal Day Grid — one column per calendar day in the month */}
-              <div className="overflow-x-auto pb-2">
+              <ScrollContainer>
                 {loadingTimeline ? (
                   <div className="flex items-center justify-center py-8 text-sm text-slate-400 font-medium">
                     Loading timeline…
@@ -1661,7 +1647,7 @@ function CadenceSchedulerPage() {
                     })}
                   </div>
                 )}
-              </div>
+              </ScrollContainer>
           </div>
 
           {/* Tabular Column / Grid listing */}

@@ -18,6 +18,19 @@ from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
 router = APIRouter(prefix="/consultants", tags=["hrbp-consultants"])
 
 
+@router.get("/summary")
+def get_summary(
+    client_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.get_summary(db, current_user, client_id)
+        return success_response(data=data, message="Consultants summary fetched")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
 @router.post("")
 def create_consultant(
     payload: ConsultantCreate,

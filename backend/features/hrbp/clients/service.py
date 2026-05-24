@@ -8,6 +8,35 @@ from sqlalchemy.orm import Session
 from features.hrbp.clients.schema import ClientCreate, ClientUpdate
 
 
+def get_summary(db: Session, current_user: User) -> dict:
+    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+
+    q = db.query(HRBPClient)
+    if role == "hrbp":
+        q = q.filter(HRBPClient.hrbp_id == current_user.id)
+    elif role == "bh":
+        q = q.filter(HRBPClient.bh_id == current_user.id)
+
+    client_ids = [c.id for c in q.with_entities(HRBPClient.id).all()]
+
+    total    = len(client_ids)
+    active   = q.filter(HRBPClient.is_active.is_(True)).count()
+    inactive = total - active
+
+    total_consultants = (
+        db.query(func.count(HRBPConsultant.id))
+        .filter(HRBPConsultant.client_id.in_(client_ids))
+        .scalar() or 0
+    ) if client_ids else 0
+
+    return {
+        "total":             total,
+        "active":            active,
+        "inactive":          inactive,
+        "total_consultants": total_consultants,
+    }
+
+
 def create(db: Session, payload: ClientCreate) -> HRBPClient:
     record = HRBPClient(**payload.model_dump())
     db.add(record)

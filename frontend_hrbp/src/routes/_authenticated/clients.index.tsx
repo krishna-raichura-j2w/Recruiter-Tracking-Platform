@@ -25,6 +25,8 @@ import { getClientsApi } from "@/apiService/api";
 import type { ClientItem } from "@/apiService/types";
 import { toast } from "react-toastify";
 import { CustomTablePagination } from "@/components/CustomPagination";
+import { LottieIcon } from "@/components/LottieIcon";
+import { fetchClientsSummary, type ClientsSummary } from "@/apiService/dashboardApi";
 
 export const Route = createFileRoute("/_authenticated/clients/")({ component: ClientsPage });
 
@@ -34,10 +36,14 @@ function ClientsPage() {
   const [apiClients, setApiClients] = useState<ClientItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  
+  const [summary, setSummary] = useState<ClientsSummary | null>(null);
+
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  
+
+  useEffect(() => {
+    fetchClientsSummary().then(setSummary).catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function fetchClients() {
@@ -92,6 +98,45 @@ function ClientsPage() {
         subtitle="Manage client engagements, monitor headcount, and track project health."
       />
       <main className="flex-1 p-6 space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            {
+              label: "Total Clients",
+              value: summary?.total ?? "—",
+              color: "text-sky-600",
+              src: "/json/successful-business-agreement.json",
+            },
+            {
+              label: "Active",
+              value: summary?.active ?? "—",
+              color: "text-emerald-600",
+              src: "/json/reviewed.json",
+            },
+            {
+              label: "Inactive",
+              value: summary?.inactive ?? "—",
+              color: "text-slate-500",
+              src: "/json/office-drawer.json",
+            },
+            {
+              label: "Total Consultants",
+              value: summary?.total_consultants ?? "—",
+              color: "text-violet-600",
+              src: "/json/employee-colored.json",
+            },
+          ].map(({ label, value, color, src }) => (
+            <Card key={label} className="flex items-center gap-4 p-4 border border-slate-100 shadow-sm bg-white rounded-xl">
+              <div className="shrink-0">
+                <LottieIcon src={src} size={40} />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-medium">{label}</p>
+                <p className={`text-2xl font-bold ${color}`}>{value}</p>
+              </div>
+            </Card>
+          ))}
+        </div>
+
         <div className="flex items-center justify-between gap-4">
           <div className="relative max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

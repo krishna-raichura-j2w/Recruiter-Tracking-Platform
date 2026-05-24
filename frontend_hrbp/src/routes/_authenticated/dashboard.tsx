@@ -4,9 +4,6 @@ import { useAuth } from "@/lib/auth";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
 import {
-  Ticket,
-  AlertTriangle,
-  CalendarClock,
   Pin,
   PinOff,
   Loader2,
@@ -14,9 +11,6 @@ import {
   Phone,
   Mail,
   ChevronRight,
-  Plus,
-  ShieldAlert,
-  Users,
   Clock,
   Activity,
   TrendingDown,
@@ -38,6 +32,7 @@ import {
   type ActivityItem,
 } from "@/apiService/dashboardApi";
 import { ScrollList } from "@/components/ScrollList";
+import { LottieIcon } from "@/components/LottieIcon";
 import type { Ticket as TicketDetail } from "@/apiService/ticketTypes";
 
 import { TicketStatusBadge } from "@/components/tickets/TicketStatusBadge";
@@ -78,19 +73,18 @@ function timeAgo(iso: string | null): string {
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
 function KpiCard({
-  icon, label, value, accentBg, accentText, sub,
+  icon, label, value, accentText, sub,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
-  accentBg: string;
   accentText: string;
   sub?: string;
 }) {
   return (
     <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-xl px-5 py-4 shadow-sm flex-1 min-w-[160px]">
-      <div className={`p-2.5 rounded-xl ${accentBg} shrink-0`}>
-        <div className={accentText}>{icon}</div>
+      <div className="shrink-0">
+        {icon}
       </div>
       <div className="min-w-0">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-none">{label}</p>
@@ -135,20 +129,19 @@ function avatarColor(name: string) {
 // ── Quick action button ───────────────────────────────────────────────────────
 
 function QuickAction({
-  icon, label, description, onClick, accent,
+  icon, label, description, onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   description: string;
   onClick: () => void;
-  accent: string;
 }) {
   return (
     <button
       onClick={onClick}
       className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3.5 hover:border-slate-300 hover:shadow-sm transition-all text-left flex-1 min-w-[180px] group"
     >
-      <div className={`p-2 rounded-lg ${accent} shrink-0 group-hover:scale-105 transition-transform`}>
+      <div className="shrink-0 group-hover:scale-105 transition-transform">
         {icon}
       </div>
       <div className="min-w-0">
@@ -254,28 +247,28 @@ function Dashboard() {
         {/* KPI Cards */}
         <div className="flex gap-4 flex-wrap">
           <KpiCard
-            icon={<Ticket className="w-5 h-5" />}
+            icon={<LottieIcon src="/json/job-vacancy.json" size={40} />}
             label="Open Tickets"
             value={loadingKpis ? "—" : (kpis?.open_tickets ?? 0)}
-            accentBg="bg-sky-100" accentText="text-sky-600" sub="Status: open"
+ accentText="text-sky-600" sub="Status: open"
           />
           <KpiCard
-            icon={<AlertTriangle className="w-5 h-5" />}
+            icon={<LottieIcon src="/json/helpful-tips-for-business.json" size={40} />}
             label="SLA Breaches"
             value={loadingKpis ? "—" : (kpis?.sla_breaches ?? 0)}
-            accentBg="bg-red-100" accentText="text-red-600" sub="Deadline passed"
+ accentText="text-red-600" sub="Deadline passed"
           />
           <KpiCard
-            icon={<span className="text-base font-extrabold leading-none">₹</span>}
+            icon={<LottieIcon src="/json/the-boy-is-holding-a-dollar-coin.json" size={40} />}
             label="PO at Risk"
             value={loadingKpis ? "—" : fmtInr(kpis?.po_at_risk ?? 0)}
-            accentBg="bg-orange-100" accentText="text-orange-600" sub="From open tickets"
+ accentText="text-orange-600" sub="From open tickets"
           />
           <KpiCard
-            icon={<CalendarClock className="w-5 h-5" />}
+            icon={<LottieIcon src="/json/business-meeting.json" size={40} />}
             label="Cadence Overdue"
             value={loadingKpis ? "—" : (kpis?.cadence_overdue ?? 0)}
-            accentBg="bg-violet-100" accentText="text-violet-600" sub="Sessions pending"
+ accentText="text-violet-600" sub="Sessions pending"
           />
         </div>
 
@@ -284,35 +277,35 @@ function Dashboard() {
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">Quick Actions</p>
           <div className="flex gap-3 flex-wrap">
             <QuickAction
-              icon={<Plus className="w-4 h-4 text-sky-600" />}
+              icon={<LottieIcon src="/json/making-portfolio.json" size={36} />}
               label="New Ticket"
               description={
                 user?.role === "hrbp" ? "Raise a ticket for your consultant"
                 : user?.role === "bh"  ? "Raise a ticket for your business unit"
                 : "Raise a new HR operations ticket"
               }
-              accent="bg-sky-50"
+
               onClick={() => navigate({ to: "/tickets" })}
             />
             <QuickAction
-              icon={<ShieldAlert className="w-4 h-4 text-red-600" />}
+              icon={<LottieIcon src="/json/business-problem-solving.json" size={36} />}
               label="Breached SLAs"
               description="View all overdue tickets"
-              accent="bg-red-50"
+
               onClick={() => navigate({ to: "/tickets" })}
             />
             <QuickAction
-              icon={<Users className="w-4 h-4 text-orange-600" />}
+              icon={<LottieIcon src="/json/successful-business-agreement.json" size={36} />}
               label="Clients"
               description="Manage clients & consultants"
-              accent="bg-orange-50"
+
               onClick={() => navigate({ to: "/clients" })}
             />
             <QuickAction
-              icon={<CalendarClock className="w-4 h-4 text-violet-600" />}
+              icon={<LottieIcon src="/json/business-colleague-working-on-collaborative-planning.json" size={36} />}
               label="Cadence Scheduler"
               description="View & schedule cadence"
-              accent="bg-violet-50"
+
               onClick={() => navigate({ to: "/cadence" })}
             />
           </div>
@@ -339,8 +332,8 @@ function Dashboard() {
               </div>
             ) : myTickets.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-                <Ticket className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm font-medium">No open tickets</p>
+                <LottieIcon src="/json/office-drawer.json" size={72} />
+                <p className="text-sm font-medium -mt-1">No open tickets</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
@@ -385,8 +378,8 @@ function Dashboard() {
               </div>
             ) : cadence.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-                <CalendarClock className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm font-medium">No cadence today</p>
+                <LottieIcon src="/json/business-meeting.json" size={72} />
+                <p className="text-sm font-medium -mt-1">No cadence today</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
@@ -444,8 +437,8 @@ function Dashboard() {
               </div>
             ) : atRisk.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-                <Users className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm font-medium">No consultants at risk</p>
+                <LottieIcon src="/json/employee-development.json" size={72} />
+                <p className="text-sm font-medium -mt-1">No consultants at risk</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
@@ -509,8 +502,8 @@ function Dashboard() {
               </div>
             ) : activity.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-                <Activity className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm font-medium">No recent activity</p>
+                <LottieIcon src="/json/social-communication.json" size={72} />
+                <p className="text-sm font-medium -mt-1">No recent activity</p>
               </div>
             ) : (
               <ScrollList maxHeight="320px">
@@ -568,9 +561,9 @@ function Dashboard() {
               <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
             </div>
           ) : !pinned ? (
-            <div className="flex flex-col items-center justify-center h-28 text-slate-400 gap-2 px-6 text-center">
-              <Pin className="w-9 h-9 opacity-15" />
-              <p className="text-sm font-semibold text-slate-500">No pinned ticket</p>
+            <div className="flex flex-col items-center justify-center h-36 text-slate-400 gap-1 px-6 text-center">
+              <LottieIcon src="/json/making-portfolio.json" size={72} />
+              <p className="text-sm font-semibold text-slate-500 -mt-1">No pinned ticket</p>
               <p className="text-xs text-slate-400">Open any ticket and click the Pin button to keep it here for quick access.</p>
             </div>
           ) : (

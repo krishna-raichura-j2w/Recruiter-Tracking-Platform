@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { TopBar } from "@/components/TopBar";
@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Loader2, XCircle, RefreshCw, Pin, PinOff } from "lucide-react";
+import { Loader2, XCircle, RefreshCw, Pin, PinOff } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { toast } from "sonner";
 
 import { TicketPriorityBadge } from "@/components/tickets/TicketPriorityBadge";
@@ -76,7 +77,6 @@ function ActivityItem({ entry }: { entry: ActivityLogEntry }) {
 
 function TicketDetailPage() {
   const { ticketId } = Route.useParams();
-  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -192,15 +192,7 @@ function TicketDetailPage() {
       <div className="flex-1 overflow-auto px-6 py-5">
         {/* Back + actions */}
         <div className="flex items-center justify-between mb-5">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate({ to: "/tickets" })}
-            className="gap-1.5 text-gray-600"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Tickets
-          </Button>
+          <BackButton to="/tickets" label="Back to Tickets" />
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={fetchTicket} title="Refresh">

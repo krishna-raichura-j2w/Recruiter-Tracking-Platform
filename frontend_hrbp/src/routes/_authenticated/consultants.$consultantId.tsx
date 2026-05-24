@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, User, Briefcase, IndianRupee } from "lucide-react";
+import { User, Briefcase, IndianRupee } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { getConsultantDetailsApi } from "@/apiService/api";
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
@@ -87,14 +88,11 @@ function ConsultantDetailPage() {
       
       <main className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
         <div className="flex items-center justify-between">
-          <Link
+          <BackButton
             to={consultant.client_id ? "/clients/$clientId" : "/clients"}
-            params={{ clientId: String(consultant.client_id) }}
-            className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm font-medium transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> 
-            Back to {consultant.client_id ? "Client Team" : "Clients"}
-          </Link>
+            params={consultant.client_id ? { clientId: String(consultant.client_id) } : undefined}
+            label={consultant.client_id ? "Back to Client Team" : "Back to Clients"}
+          />
           
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-slate-500">Status:</span>

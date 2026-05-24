@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { getUserProfile, updateUserProfile } from "@/apiService/api";
@@ -15,13 +15,13 @@ import {
   Activity,
   Calendar,
   Clock,
-  ArrowLeft,
   Loader2,
   Lock,
   Edit2,
   Check,
   X,
 } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { toast } from "react-toastify";
 
 export const Route = createFileRoute("/_authenticated/profile")({
@@ -132,15 +132,7 @@ function ProfilePage() {
       <main className="flex-1 p-6 max-w-5xl w-full mx-auto space-y-6">
         {/* Navigation Shortcut */}
         <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            asChild
-            className="text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 gap-2 transition-all"
-          >
-            {/* <Link to="/dashboard">
-              <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-            </Link> */}
-          </Button>
+          <BackButton to="/dashboard" label="Back to Dashboard" />
 
           {!loading && !error && profile && (
             <div className="flex items-center gap-2">
