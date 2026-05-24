@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback, type ComponentType } from 'react';
+import { useEffect, useState, useCallback, useRef, type ComponentType } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Plus, X, Trash2, UserPlus, UserMinus, Pencil,
   RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck, KeyRound,
   Activity, Mail, FileText, Bell, Users as UsersIcon,
+  Upload, Download, CheckCircle2, AlertCircle, FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
 import PaginationBar from '../components/PaginationBar';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +14,16 @@ import api from '../api/client';
 import type { User, TeamLoads, TeamMemberLoad } from '../types';
 
 interface UserForm { name: string; email: string; role: string; secondary_role?: string; }
+
+interface ImportRow {
+  sno: number;
+  name: string;
+  email: string;
+  role: string;
+  valid: boolean;
+  errors: string[];
+}
+interface ImportResult { name: string; email: string; ok: boolean; error?: string; }
 
 interface TeamAssignment {
   id: number; name: string; recruiter_type: string | null;
@@ -36,6 +48,8 @@ const ROLES = [
   { value: 'delivery_lead', label: 'Delivery Lead' },
   { value: 'recruiter',     label: 'Recruiter' },
 ];
+
+const VALID_IMPORT_ROLES = new Set(ROLES.map(r => r.value));
 
 const roleColors: Record<string, string> = {
   admin:         'bg-red-100 text-red-700',
@@ -131,6 +145,14 @@ export default function Users() {
   const [actioningId, setActioningId] = useState<number | null>(null);
   const [apiError, setApiError]     = useState('');
   const [message, setMessage]       = useState('');
+
+  // ── Bulk CSV/Excel import state ───────────────────────────────────────────
+  const [showImport, setShowImport]         = useState(false);
+  const [importRows, setImportRows]         = useState<ImportRow[] | null>(null);
+  const [importResults, setImportResults]   = useState<ImportResult[] | null>(null);
+  const [importing, setImporting]           = useState(false);
+  const [dragOver, setDragOver]             = useState(false);
+  const importFileRef                       = useRef<HTMLInputElement>(null);
   const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
 
   // ── Admin user-details overlay (works for any role) ───────────────────────
@@ -392,6 +414,104 @@ export default function Users() {
       fetchAll();
     } catch { setApiError('Failed. Email may already be in use.'); }
     finally { setSubmitting(false); }
+  };
+
+  // ── Import helpers ────────────────────────────────────────────────────────
+
+  const downloadTemplate = () => {
+    const roleList = ROLES.map(r => r.value).join(' | ');
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['S.No', 'Name', 'Email ID', 'Role'],
+      ['', '', '', `Valid roles: ${roleList}`],
+      ['1', 'Priya Sharma',   'priya@company.com',   'admin'],
+      ['2', 'Arjun Mehta',    'arjun@company.com',   'kam'],
+      ['3', 'Sneha Iyer',     'sneha@company.com',   'delivery_lead'],
+      ['4', 'Rahul Verma',    'rahul@company.com',   'recruiter'],
+    ]);
+    ws['!cols'] = [{ wch: 6 }, { wch: 22 }, { wch: 30 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Users');
+    XLSX.writeFile(wb, 'j2w_user_import_template.xlsx');
+  };
+
+  const parseFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
+
+      // Find header row (look for 'Name' column)
+      let headerIdx = rows.findIndex(r =>
+        r.some(c => String(c).toLowerCase().trim() === 'name')
+      );
+      if (headerIdx === -1) headerIdx = 0;
+
+      const headers = rows[headerIdx].map(h => String(h).toLowerCase().trim());
+      const nameCol  = headers.findIndex(h => h === 'name');
+      const emailCol = headers.findIndex(h => h.includes('email'));
+      const roleCol  = headers.findIndex(h => h === 'role');
+
+      if (nameCol === -1 || emailCol === -1 || roleCol === -1) {
+        alert('Could not find Name, Email ID, and Role columns. Please use the provided template.');
+        return;
+      }
+
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const parsed: ImportRow[] = [];
+      let sno = 0;
+
+      rows.slice(headerIdx + 1).forEach((row) => {
+        const name  = String(row[nameCol]  || '').trim();
+        const email = String(row[emailCol] || '').trim();
+        const role  = String(row[roleCol]  || '').trim().toLowerCase();
+
+        // Skip blank rows and the "valid roles:" hint row
+        if (!name && !email && !role) return;
+        if (role.startsWith('valid roles')) return;
+
+        sno++;
+        const errors: string[] = [];
+        if (!name)                          errors.push('Name is required');
+        if (!email)                         errors.push('Email is required');
+        else if (!emailRe.test(email))      errors.push('Invalid email format');
+        if (!role)                          errors.push('Role is required');
+        else if (!VALID_IMPORT_ROLES.has(role))
+          errors.push(`Unknown role "${role}" — must be: ${ROLES.map(r => r.value).join(', ')}`);
+
+        parsed.push({ sno, name, email, role, valid: errors.length === 0, errors });
+      });
+
+      setImportRows(parsed);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importRows) return;
+    const valid = importRows.filter(r => r.valid);
+    if (!valid.length) return;
+    setImporting(true);
+    try {
+      const res = await api.post<{ results: ImportResult[] }>('/users/bulk', {
+        users: valid.map(r => ({ name: r.name, email: r.email, role: r.role })),
+      });
+      setImportResults(res.data.results);
+      fetchAll();
+    } catch {
+      alert('Bulk import failed. Please try again.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const resetImport = () => {
+    setShowImport(false);
+    setImportRows(null);
+    setImportResults(null);
+    setImporting(false);
+    setDragOver(false);
   };
 
   const handleDeactivate = async (user: User) => {
@@ -908,13 +1028,21 @@ export default function Users() {
           </div>
           <p className="text-sm text-slate-500"><span className="font-semibold text-slate-700">{userTotal}</span> users</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
-          style={{ backgroundColor: '#3b82f6' }}
-        >
-          <Plus size={16} /> Add User
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 shadow-sm border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+          >
+            <FileSpreadsheet size={15} /> Import via Excel
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
+            style={{ backgroundColor: '#3b82f6' }}
+          >
+            <Plus size={16} /> Add User
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -1613,6 +1741,203 @@ export default function Users() {
                 {euSaving ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Import Modal ─────────────────────────────────────────────── */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
+                  <FileSpreadsheet size={18} className="text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">
+                    {importResults ? 'Import Results' : importRows ? 'Review & Confirm' : 'Import Users via Excel'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {importResults
+                      ? `${importResults.filter(r => r.ok).length} added successfully`
+                      : importRows
+                      ? `${importRows.filter(r => r.valid).length} valid · ${importRows.filter(r => !r.valid).length} with errors`
+                      : 'Upload a .xlsx or .csv file to bulk-add users'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={resetImport} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* ── PHASE 1: Upload ── */}
+            {!importRows && !importResults && (
+              <div className="p-6 flex flex-col gap-5 overflow-y-auto">
+                {/* Download template */}
+                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-100">
+                  <div>
+                    <p className="text-sm font-semibold text-blue-800">Step 1 — Download the template</p>
+                    <p className="text-xs text-blue-600 mt-0.5">Columns: S.No · Name · Email ID · Role — sample rows show all valid role spellings</p>
+                  </div>
+                  <button
+                    onClick={downloadTemplate}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 flex-shrink-0 ml-4"
+                  >
+                    <Download size={13} /> Template
+                  </button>
+                </div>
+
+                {/* Valid roles reference */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-500 font-semibold">Valid role values:</span>
+                  {ROLES.map(r => (
+                    <span key={r.value} className="text-xs font-mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded-lg border border-slate-200">
+                      {r.value}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Drop zone */}
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setDragOver(false);
+                    const file = e.dataTransfer.files[0];
+                    if (file) parseFile(file);
+                  }}
+                  onClick={() => importFileRef.current?.click()}
+                  className={`flex flex-col items-center justify-center gap-3 p-10 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+                    dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <Upload size={28} className={dragOver ? 'text-emerald-500' : 'text-slate-300'} />
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-slate-600">Step 2 — Drop your file here</p>
+                    <p className="text-xs text-slate-400 mt-1">or click to browse  ·  .xlsx and .csv supported</p>
+                  </div>
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) parseFile(f); e.target.value = ''; }}
+                  />
+                </div>
+
+                <p className="text-xs text-slate-400 text-center">
+                  Default password for all imported users: <span className="font-mono font-bold text-amber-600">joules@123</span>
+                </p>
+              </div>
+            )}
+
+            {/* ── PHASE 2: Preview ── */}
+            {importRows && !importResults && (
+              <>
+                <div className="overflow-y-auto flex-1">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">S.No</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Name</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Email</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Role</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {importRows.map((row) => (
+                        <tr key={row.sno} className={row.valid ? 'bg-white' : 'bg-red-50'}>
+                          <td className="px-4 py-3 text-slate-400 text-xs">{row.sno}</td>
+                          <td className="px-4 py-3 font-medium text-slate-800">{row.name || <span className="text-red-400 italic">missing</span>}</td>
+                          <td className="px-4 py-3 text-slate-600 text-xs">{row.email || <span className="text-red-400 italic">missing</span>}</td>
+                          <td className="px-4 py-3">
+                            {row.role ? (
+                              <span className={`text-xs font-mono px-2 py-0.5 rounded-lg ${VALID_IMPORT_ROLES.has(row.role) ? 'bg-slate-100 text-slate-700' : 'bg-red-100 text-red-700'}`}>
+                                {row.role}
+                              </span>
+                            ) : <span className="text-red-400 italic text-xs">missing</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {row.valid ? (
+                              <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+                                <CheckCircle2 size={13} /> Ready
+                              </span>
+                            ) : (
+                              <span className="flex items-start gap-1 text-xs text-red-600">
+                                <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+                                <span>{row.errors.join('; ')}</span>
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between flex-shrink-0 gap-3">
+                  <div className="text-xs text-slate-500">
+                    <span className="font-bold text-emerald-700">{importRows.filter(r => r.valid).length}</span> will be added &nbsp;·&nbsp;
+                    <span className="font-bold text-red-600">{importRows.filter(r => !r.valid).length}</span> will be skipped
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setImportRows(null)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-white">
+                      ← Back
+                    </button>
+                    <button
+                      disabled={importing || importRows.filter(r => r.valid).length === 0}
+                      onClick={handleImportConfirm}
+                      className="flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      {importing ? 'Adding...' : `Confirm & Add ${importRows.filter(r => r.valid).length} Users`}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── PHASE 3: Results ── */}
+            {importResults && (
+              <>
+                <div className="overflow-y-auto flex-1">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Name</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Email</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {importResults.map((r, i) => (
+                        <tr key={i} className={r.ok ? 'bg-white' : 'bg-red-50'}>
+                          <td className="px-4 py-3 font-medium text-slate-800">{r.name}</td>
+                          <td className="px-4 py-3 text-slate-500 text-xs">{r.email}</td>
+                          <td className="px-4 py-3">
+                            {r.ok ? (
+                              <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold"><CheckCircle2 size={13} /> Added</span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-red-600"><AlertCircle size={13} /> {r.error}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-6 py-4 border-t border-slate-100 flex justify-end flex-shrink-0">
+                  <button onClick={resetImport} className="px-5 py-2 rounded-xl bg-slate-800 text-white text-sm font-bold hover:bg-slate-700">
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

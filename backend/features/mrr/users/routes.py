@@ -95,6 +95,38 @@ def create_user(
     return _out(service.create_user(db, body.model_dump()), db)
 
 
+class _BulkUserItem(BaseModel):
+    name: str
+    email: str
+    role: str
+
+
+class _BulkUserCreate(BaseModel):
+    users: list[_BulkUserItem]
+
+
+@router.post("/bulk")
+def bulk_create_users(
+    body: _BulkUserCreate,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Bulk-create users. Returns per-row ok/error results."""
+    valid_roles = {r.value for r in UserRole}
+    results = []
+    for item in body.users:
+        if item.role not in valid_roles:
+            results.append({"email": item.email, "name": item.name, "ok": False, "error": f"Invalid role '{item.role}'"})
+            continue
+        try:
+            user = service.create_user(db, {"name": item.name, "email": item.email, "role": item.role})
+            results.append({"email": item.email, "name": item.name, "ok": True, "id": user.id})
+        except Exception as e:
+            db.rollback()
+            results.append({"email": item.email, "name": item.name, "ok": False, "error": str(e)})
+    return {"results": results}
+
+
 @router.post("/{user_id}/reset-password")
 def reset_password(
     user_id: int,
