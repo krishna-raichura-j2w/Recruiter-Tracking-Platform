@@ -10,7 +10,6 @@ import Jobs from './pages/Jobs';
 import Candidates from './pages/Candidates';
 import CandidateDetail from './pages/CandidateDetail';
 import ValidationQueue from './pages/ValidationQueue';
-import Submissions from './pages/Submissions';
 import Pipeline from './pages/Pipeline';
 import Users from './pages/Users';
 import MailTracker from './pages/MailTracker';
@@ -90,16 +89,6 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['delivery_lead', 'admin']}>
                 <ValidationQueue />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Only KAM + Admin can submit candidates to a client */}
-          <Route
-            path="/submissions"
-            element={
-              <ProtectedRoute allowedRoles={['admin', 'kam']}>
-                <Submissions />
               </ProtectedRoute>
             }
           />

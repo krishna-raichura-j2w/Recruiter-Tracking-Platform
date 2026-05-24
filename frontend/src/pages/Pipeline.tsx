@@ -160,11 +160,11 @@ function Divider({ label }: { label: string }) {
   );
 }
 
-function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+function ReadField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
-      {children}
+      <p className="text-xs font-medium text-slate-400 mb-0.5">{label}</p>
+      <p className="text-sm text-slate-700 font-medium">{value || '—'}</p>
     </div>
   );
 }
@@ -240,17 +240,12 @@ function groupByDay<T>(items: T[], getDate: (item: T) => string | null | undefin
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
-type FormState = Record<string, string | boolean>;
-
 export default function Pipeline() {
   const [active, setActive]       = useState<Sub[]>([]);
   const [closed, setClosed]       = useState<Sub[]>([]);
   const [showClosed, setShowClosed] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [overlay, setOverlay]     = useState<Sub | null>(null);
-  const [form, setForm]           = useState<FormState>({});
-  const [saving, setSaving]       = useState(false);
-  const [toast, setToast]         = useState('');
 
   // ── Filter state ──────────────────────────────────────────────────────────
   const [search,         setSearch]         = useState('');
@@ -262,11 +257,6 @@ export default function Pipeline() {
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate,   setFilterToDate]   = useState('');
   const [showFilters,    setShowFilters]    = useState(false);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -289,66 +279,7 @@ export default function Pipeline() {
   const pipelineSignal = useSignal('pipeline');
   useEffect(() => { fetchData(); }, [pipelineSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openOverlay = (sub: Sub) => {
-    setOverlay(sub);
-    setForm({
-      current_stage:          sub.current_stage,
-      ta_feedback:            sub.ta_feedback ?? '',
-      hm_feedback:            sub.hm_feedback ?? '',
-      tat_window:             sub.tat_window ?? '',
-      l1_date:                sub.l1_date ?? '',
-      l1_feedback:            sub.l1_feedback ?? '',
-      l1_briefing_done:       !!sub.l1_briefing_done,
-      l2_date:                sub.l2_date ?? '',
-      l2_feedback:            sub.l2_feedback ?? '',
-      l2_briefing_done:       !!sub.l2_briefing_done,
-      final_date:             sub.final_date ?? '',
-      final_feedback:         sub.final_feedback ?? '',
-      final_briefing_done:    !!sub.final_briefing_done,
-      offered_ctc:            sub.offered_ctc != null ? String(sub.offered_ctc) : '',
-      offer_date:             sub.offer_date ?? '',
-      joining_date_confirmed: sub.joining_date_confirmed ?? '',
-      actual_joining_date:    sub.actual_joining_date ?? '',
-      other_offers_count:     sub.other_offers_count ?? '',
-      counter_offer_risk:     sub.counter_offer_risk ?? '',
-      last_notes:             sub.last_notes ?? '',
-      next_action:            sub.next_action ?? '',
-      next_action_date:       sub.next_action_date ?? '',
-    });
-  };
-
-  const setField = (key: string, val: string | boolean) =>
-    setForm(prev => ({ ...prev, [key]: val }));
-
-  const onSave = async () => {
-    if (!overlay) return;
-    const notes = (form.last_notes as string)?.trim();
-    if (!notes) {
-      showToast('⚠ Feedback / notes are required before saving.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = { ...form };
-      payload.notes = notes;   // map to required backend field
-      if (payload.offered_ctc) payload.offered_ctc = Number(payload.offered_ctc);
-      Object.keys(payload).forEach(k => {
-        if (payload[k] === '' || payload[k] === null) delete payload[k];
-      });
-      await api.patch(`/submissions/${overlay.id}`, payload);
-      showToast('✅ Updated successfully!');
-      setOverlay(null);
-      fetchData();
-    } catch {
-      showToast('❌ Update failed. Try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const currentStage = (form.current_stage as string) ?? '';
-  const group        = stageGroup(currentStage);
-  const baseList     = showClosed ? closed : active;
+  const baseList = showClosed ? closed : active;
 
   // ── Derived dropdown options ───────────────────────────────────────────────
   const companies = useMemo(() =>
@@ -413,15 +344,138 @@ export default function Pipeline() {
     setFilterFromDate(''); setFilterToDate('');
   };
 
+  // ── Read-only overlay details ──────────────────────────────────────────────
+  const renderOverlayBody = (sub: Sub) => {
+    const group = stageGroup(sub.current_stage);
+    const isClientScreening = ['submitted','ta_review','ta_rejected','hm_review','hm_rejected','shortlisted'].includes(sub.current_stage);
+    const isL1 = group === 'L1 Round';
+    const isL2 = group === 'L2 Round';
+    const isFinal = group === 'Final Round';
+    const isOffer = group === 'Offer & Joining';
+
+    return (
+      <div className="p-6 space-y-5">
+
+        {/* Client Screening */}
+        {isClientScreening && (sub.ta_feedback || sub.hm_feedback || sub.tat_window) && (
+          <div className="space-y-3">
+            <Divider label="Client Screening" />
+            <div className="grid grid-cols-2 gap-3">
+              <ReadField label="TA Feedback" value={sub.ta_feedback} />
+              <ReadField label="HM Feedback" value={sub.hm_feedback} />
+              <ReadField label="TAT Window" value={sub.tat_window} />
+            </div>
+          </div>
+        )}
+
+        {/* L1 */}
+        {isL1 && (
+          <div className="space-y-3">
+            <Divider label="L1 Interview" />
+            <div className="grid grid-cols-2 gap-3">
+              <ReadField label="L1 Date" value={fmtDate(sub.l1_date)} />
+              <ReadField label="L1 Feedback" value={sub.l1_feedback} />
+            </div>
+            {sub.l1_briefing_done && (
+              <p className="text-xs text-teal-600 font-medium">✓ Candidate briefed before L1</p>
+            )}
+          </div>
+        )}
+
+        {/* L2 */}
+        {isL2 && (
+          <div className="space-y-3">
+            <Divider label="L2 Interview" />
+            <div className="grid grid-cols-2 gap-3">
+              <ReadField label="L2 Date" value={fmtDate(sub.l2_date)} />
+              <ReadField label="L2 Feedback" value={sub.l2_feedback} />
+            </div>
+            {sub.l2_briefing_done && (
+              <p className="text-xs text-teal-600 font-medium">✓ Candidate briefed before L2</p>
+            )}
+          </div>
+        )}
+
+        {/* Final */}
+        {isFinal && (
+          <div className="space-y-3">
+            <Divider label="Final Interview" />
+            <div className="grid grid-cols-2 gap-3">
+              <ReadField label="Final Date" value={fmtDate(sub.final_date)} />
+              <ReadField label="Final Feedback" value={sub.final_feedback} />
+            </div>
+            {sub.final_briefing_done && (
+              <p className="text-xs text-teal-600 font-medium">✓ Candidate briefed before Final round</p>
+            )}
+          </div>
+        )}
+
+        {/* Offer & Joining */}
+        {isOffer && (
+          <div className="space-y-3">
+            <Divider label="Offer & Joining" />
+            <div className="grid grid-cols-2 gap-3">
+              {sub.offered_ctc != null && (
+                <ReadField label="Offered CTC (Lakhs)" value={sub.offered_ctc} />
+              )}
+              {sub.offer_date && (
+                <ReadField label="Offer Date" value={fmtDate(sub.offer_date)} />
+              )}
+              {sub.joining_date_confirmed && (
+                <ReadField label="Joining Date (Confirmed)" value={fmtDate(sub.joining_date_confirmed)} />
+              )}
+              {sub.actual_joining_date && (
+                <ReadField label="Actual Joining Date" value={fmtDate(sub.actual_joining_date)} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Risk & Notes */}
+        {(sub.other_offers_count || sub.counter_offer_risk || sub.last_notes || sub.next_action) && (
+          <div className="space-y-3">
+            <Divider label="Risk & Notes" />
+            <div className="grid grid-cols-2 gap-3">
+              {sub.other_offers_count && (
+                <ReadField label="Other Offers in Hand" value={sub.other_offers_count} />
+              )}
+              {sub.counter_offer_risk && (
+                <ReadField label="Counter-Offer Risk" value={sub.counter_offer_risk} />
+              )}
+            </div>
+            {sub.last_notes && (
+              <div>
+                <p className="text-xs font-medium text-slate-400 mb-1">Feedback / Notes</p>
+                <p className="text-sm text-slate-700 bg-slate-50 rounded-xl px-3 py-2 leading-relaxed">{sub.last_notes}</p>
+              </div>
+            )}
+            {(sub.next_action || sub.next_action_date) && (
+              <div className="grid grid-cols-2 gap-3">
+                <ReadField label="Next Action" value={sub.next_action} />
+                <ReadField label="Action By Date" value={fmtDate(sub.next_action_date)} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Submitted at */}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <ReadField label="Submitted" value={fmtDate(sub.submitted_at)} />
+          <ReadField label="Last Updated" value={fmtDate(sub.updated_at)} />
+        </div>
+
+        {/* Timeline */}
+        <div className="space-y-3">
+          <Divider label="Journey Timeline" />
+          <Timeline entries={sub.timeline ?? []} />
+        </div>
+
+      </div>
+    );
+  };
+
   return (
     <Layout title="Interview Tracking">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-5 right-5 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium bg-white border border-slate-200 text-slate-800">
-          {toast}
-        </div>
-      )}
 
       {/* ── Top bar: Active/Closed + Search + Filter toggle ── */}
       <div className="space-y-3 mb-5">
@@ -615,7 +669,7 @@ export default function Pipeline() {
                 return (
                 <button
                   key={sub.id}
-                  onClick={() => openOverlay(sub)}
+                  onClick={() => setOverlay(sub)}
                   className={`w-full text-left rounded-2xl border shadow-sm hover:shadow-md transition-all px-5 py-4 flex items-center gap-4 ${
                     isOverdue
                       ? 'bg-amber-50 border-amber-200 hover:border-amber-300'
@@ -656,7 +710,7 @@ export default function Pipeline() {
         </div>
       )}
 
-      {/* ── Overlay modal ─────────────────────────────────────────────────── */}
+      {/* ── Read-only detail overlay ─────────────────────────────────────────── */}
       {overlay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
@@ -685,312 +739,16 @@ export default function Pipeline() {
               </button>
             </div>
 
-            {/* Body */}
-            <div className="p-6 space-y-5">
-
-              {/* Stage selector */}
-              <div>
-                <label className="form-label">Update Stage</label>
-                <select
-                  value={currentStage}
-                  onChange={e => setField('current_stage', e.target.value)}
-                  className="form-select"
-                >
-                  {STAGE_GROUPS.map(g => (
-                    <optgroup key={g.label} label={g.label}>
-                      {g.stages.map(s => (
-                        <option key={s} value={s}>{STAGE_LABELS[s]}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-
-              {/* ── Conditional fields based on selected stage ── */}
-
-              {/* Client Screening */}
-              {['submitted','ta_review','ta_rejected','hm_review','hm_rejected','shortlisted'].includes(currentStage) && (
-                <div className="space-y-3">
-                  <Divider label="Client Screening" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="TA Feedback">
-                      <select
-                        value={form.ta_feedback as string}
-                        onChange={e => setField('ta_feedback', e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="">—</option>
-                        {['Pending','Accepted','Rejected'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="HM Feedback">
-                      <select
-                        value={form.hm_feedback as string}
-                        onChange={e => setField('hm_feedback', e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="">—</option>
-                        {['Pending','Shortlisted','Rejected'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="TAT Window">
-                      <select
-                        value={form.tat_window as string}
-                        onChange={e => setField('tat_window', e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="">—</option>
-                        {['24 hrs','24–48 hrs','72 hrs'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                  </div>
-                </div>
-              )}
-
-              {/* L1 */}
-              {group === 'L1 Round' && (
-                <div className="space-y-3">
-                  <Divider label="L1 Interview" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="L1 Date">
-                      <input
-                        type="date"
-                        value={form.l1_date as string}
-                        onChange={e => setField('l1_date', e.target.value)}
-                        className="form-input"
-                      />
-                    </Field>
-                    <Field label="L1 Feedback">
-                      <select
-                        value={form.l1_feedback as string}
-                        onChange={e => setField('l1_feedback', e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="">—</option>
-                        {['Pending','Cleared','Rejected','Hold'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!form.l1_briefing_done}
-                      onChange={e => setField('l1_briefing_done', e.target.checked)}
-                      className="rounded"
-                    />
-                    Candidate briefed before L1
-                  </label>
-                </div>
-              )}
-
-              {/* L2 */}
-              {group === 'L2 Round' && (
-                <div className="space-y-3">
-                  <Divider label="L2 Interview" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="L2 Date">
-                      <input
-                        type="date"
-                        value={form.l2_date as string}
-                        onChange={e => setField('l2_date', e.target.value)}
-                        className="form-input"
-                      />
-                    </Field>
-                    <Field label="L2 Feedback">
-                      <select
-                        value={form.l2_feedback as string}
-                        onChange={e => setField('l2_feedback', e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="">—</option>
-                        {['Pending','Cleared','Rejected','Hold'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!form.l2_briefing_done}
-                      onChange={e => setField('l2_briefing_done', e.target.checked)}
-                      className="rounded"
-                    />
-                    Candidate briefed before L2
-                  </label>
-                </div>
-              )}
-
-              {/* Final */}
-              {group === 'Final Round' && (
-                <div className="space-y-3">
-                  <Divider label="Final Interview" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Final Date">
-                      <input
-                        type="date"
-                        value={form.final_date as string}
-                        onChange={e => setField('final_date', e.target.value)}
-                        className="form-input"
-                      />
-                    </Field>
-                    <Field label="Final Feedback">
-                      <select
-                        value={form.final_feedback as string}
-                        onChange={e => setField('final_feedback', e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="">—</option>
-                        {['Pending','Cleared','Rejected','Hold'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!form.final_briefing_done}
-                      onChange={e => setField('final_briefing_done', e.target.checked)}
-                      className="rounded"
-                    />
-                    Candidate briefed before Final round
-                  </label>
-                </div>
-              )}
-
-              {/* Offer & Joining */}
-              {group === 'Offer & Joining' && (
-                <div className="space-y-3">
-                  <Divider label="Offer & Joining" />
-                  <div className="grid grid-cols-2 gap-3">
-                    {['offer_rolled_out','offer_accepted'].includes(currentStage) && (
-                      <>
-                        <Field label="Offered CTC (Lakhs)">
-                          <input
-                            type="number"
-                            step="0.1"
-                            placeholder="e.g. 18.5"
-                            value={form.offered_ctc as string}
-                            onChange={e => setField('offered_ctc', e.target.value)}
-                            className="form-input"
-                          />
-                        </Field>
-                        <Field label="Offer Date">
-                          <input
-                            type="date"
-                            value={form.offer_date as string}
-                            onChange={e => setField('offer_date', e.target.value)}
-                            className="form-input"
-                          />
-                        </Field>
-                      </>
-                    )}
-                    {['offer_accepted','joined'].includes(currentStage) && (
-                      <Field label="Joining Date (Confirmed)">
-                        <input
-                          type="date"
-                          value={form.joining_date_confirmed as string}
-                          onChange={e => setField('joining_date_confirmed', e.target.value)}
-                          className="form-input"
-                        />
-                      </Field>
-                    )}
-                    {currentStage === 'joined' && (
-                      <Field label="Actual Joining Date">
-                        <input
-                          type="date"
-                          value={form.actual_joining_date as string}
-                          onChange={e => setField('actual_joining_date', e.target.value)}
-                          className="form-input"
-                        />
-                      </Field>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Risk & Notes — always shown */}
-              <div className="space-y-3">
-                <Divider label="Risk & Notes" />
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Other Offers in Hand">
-                    <select
-                      value={form.other_offers_count as string}
-                      onChange={e => setField('other_offers_count', e.target.value)}
-                      className="form-select"
-                    >
-                      <option value="">—</option>
-                      {['0','1','2','3+'].map(o => <option key={o}>{o}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Counter-Offer Risk">
-                    <select
-                      value={form.counter_offer_risk as string}
-                      onChange={e => setField('counter_offer_risk', e.target.value)}
-                      className="form-select"
-                    >
-                      <option value="">—</option>
-                      {['Low','Medium','High'].map(o => <option key={o}>{o}</option>)}
-                    </select>
-                  </Field>
-                </div>
-                <Field label={<span>Feedback / Notes <span className="text-red-500">*</span></span>}>
-                  <textarea
-                    rows={3}
-                    placeholder="Required — add your feedback or update notes for this stage change…"
-                    value={form.last_notes as string}
-                    onChange={e => setField('last_notes', e.target.value)}
-                    className={`form-input resize-none border-2 ${
-                      !(form.last_notes as string)?.trim()
-                        ? 'border-amber-300 bg-amber-50/30 focus:border-amber-400'
-                        : 'border-green-300 bg-green-50/20'
-                    }`}
-                  />
-                  {!(form.last_notes as string)?.trim() && (
-                    <p className="text-xs text-amber-600 mt-1">⚠ Required before saving</p>
-                  )}
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Next Action">
-                    <input
-                      type="text"
-                      placeholder="e.g. Lock L2 slot"
-                      value={form.next_action as string}
-                      onChange={e => setField('next_action', e.target.value)}
-                      className="form-input"
-                    />
-                  </Field>
-                  <Field label="Action By Date">
-                    <input
-                      type="date"
-                      value={form.next_action_date as string}
-                      onChange={e => setField('next_action_date', e.target.value)}
-                      className="form-input"
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              {/* Timeline */}
-              <div className="space-y-3">
-                <Divider label="Journey Timeline" />
-                <Timeline entries={overlay.timeline ?? []} />
-              </div>
-
-            </div>
+            {/* Body — read-only */}
+            {renderOverlayBody(overlay)}
 
             {/* Footer */}
-            <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 flex gap-3 rounded-b-2xl">
+            <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 rounded-b-2xl">
               <button
                 onClick={() => setOverlay(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                className="w-full py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
               >
-                Cancel
-              </button>
-              <button
-                onClick={onSave}
-                disabled={saving}
-                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-60"
-                style={{ backgroundColor: '#1a2744' }}
-              >
-                {saving ? 'Saving…' : 'Save Update'}
+                Close
               </button>
             </div>
 

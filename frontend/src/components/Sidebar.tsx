@@ -29,7 +29,6 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Jobs',             path: '/jobs',        icon: <Briefcase size={16} />, countKey: 'jobs' },
         { label: 'All Candidates',   path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
-        { label: 'Submit to Client', path: '/submissions', icon: <Send size={16} />, countKey: 'submissions' },
         { label: 'Boolean Builder',  path: '/skills',      icon: <Sparkles size={16} /> },
       ],
     },
@@ -60,7 +59,6 @@ const navConfig: Record<string, NavGroup[]> = {
       section: 'My Work',
       items: [
         { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
-        { label: 'Submit to Client',   path: '/submissions',  icon: <Send size={16} />, countKey: 'submissions' },
         { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} />, countKey: 'pipeline' },
       ],
     },
