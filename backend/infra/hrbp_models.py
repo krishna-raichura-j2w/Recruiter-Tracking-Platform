@@ -8,8 +8,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    MetaData,
     Numeric,
     SmallInteger,
+    Table,
     Text,
     Time,
 )
@@ -125,6 +127,7 @@ class HRBPConsultant(Base):
     last_hike_date = Column(Date)
     last_hike_pct = Column(Numeric(5, 2))
     l_d_status = Column(Text)
+    po_risk = Column(Numeric(14, 2))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -292,6 +295,73 @@ class HRBPCadenceSchedule(Base):
     supporting_documents = Column(ARRAY(Text), default=list)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ── Tickets module ──────────────────────────────────────────────────────────
+
+# Association table for ticket ↔ consultant (many-to-many)
+hrbp_ticket_consultants = Table(
+    "hrbp_ticket_consultants",
+    Base.metadata,
+    Column("ticket_id",    Integer, ForeignKey("hrbp_tickets.id",     ondelete="CASCADE"), primary_key=True),
+    Column("consultant_id", Integer, ForeignKey("hrbp_consultants.id"), primary_key=True),
+)
+
+
+class HRBPTicket(Base):
+    __tablename__ = "hrbp_tickets"
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_number     = Column(Text, unique=True, nullable=False)
+    title             = Column(Text, nullable=False)
+    raised_by_id      = Column(Integer, ForeignKey("users.id"), nullable=False)
+    escalation_mgr_id = Column(Integer, ForeignKey("users.id"))
+    client_id         = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
+    sop_id            = Column(Integer, ForeignKey("hrbp_sop_definitions.id"))
+    priority          = Column(Text, nullable=False, default="medium")
+    sla_deadline      = Column(DateTime(timezone=True))
+    description       = Column(Text)
+    po_risk_amount    = Column(Numeric(14, 2))
+    status            = Column(Text, nullable=False, default="open")
+    hierarchy_json    = Column(JSONB, nullable=False, default=list)
+    current_step      = Column(SmallInteger, nullable=False, default=1)
+    closed_at         = Column(DateTime(timezone=True))
+    created_at        = Column(DateTime(timezone=True), default=_now)
+    updated_at        = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPTicketComment(Base):
+    __tablename__ = "hrbp_ticket_comments"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id      = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="CASCADE"), nullable=False)
+    author_id      = Column(Integer, ForeignKey("users.id"), nullable=False)
+    hierarchy_step = Column(SmallInteger, nullable=False)
+    content        = Column(Text, nullable=False)
+    is_resolution  = Column(Boolean, nullable=False, default=False)
+    created_at     = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPTicketActivityLog(Base):
+    __tablename__ = "hrbp_ticket_activity_log"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id   = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="CASCADE"), nullable=False)
+    actor_id    = Column(Integer, ForeignKey("users.id"))
+    action      = Column(Text, nullable=False)
+    meta_data   = Column("metadata", JSONB, nullable=False, default=dict)
+    created_at  = Column(DateTime(timezone=True), default=_now)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+
+class HRBPUserPinnedTicket(Base):
+    __tablename__ = "hrbp_user_pinned_tickets"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    ticket_id  = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class HRBPCadenceSession(Base):

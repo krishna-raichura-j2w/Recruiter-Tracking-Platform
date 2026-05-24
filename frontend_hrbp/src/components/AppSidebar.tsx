@@ -10,10 +10,8 @@ import {
   Bell,
   LogOut,
   CalendarClock,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  User,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,7 +33,6 @@ import type { Module } from "@/lib/permissions";
 
 const ALL_NAV_ITEMS: { title: string; url: string; icon: React.ElementType; module: Module }[] = [
   { title: "Overview",          url: "/dashboard",       icon: LayoutDashboard, module: "dashboard"     },
-  { title: "Incident Engine",   url: "/incident-engine", icon: AlertTriangle,   module: "incidents"     },
   { title: "Cadence Scheduler", url: "/cadence",         icon: CalendarClock,   module: "cadence"       },
   { title: "Clients",           url: "/clients",         icon: Building2,       module: "clients"       },
   { title: "Tickets",           url: "/tickets",         icon: Ticket,          module: "tickets"       },
@@ -157,7 +154,7 @@ export function AppSidebar() {
           collapsed ? "px-2 py-3" : "px-3 py-3",
         )}
       >
-        <SidebarMenu className={cn("gap-0.5", collapsed && "items-center gap-1.5")}>
+        <SidebarMenu className={cn("gap-1", collapsed && "items-center gap-2")}>
           {/* Profile */}
           <SidebarMenuItem className={cn(collapsed && "flex justify-center")}>
             <SidebarMenuButton
@@ -169,25 +166,30 @@ export function AppSidebar() {
               )}
             >
               <Link to="/profile" className="flex items-center gap-2.5 w-full">
-                <div className="h-7 w-7 shrink-0 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center">
-                  <User className="h-4 w-4 text-blue-600" />
-                </div>
+                <img
+                  src="/profile-icon.svg"
+                  alt="Profile"
+                  className="h-7 w-7 shrink-0 rounded-full"
+                />
                 {!collapsed && (
                   <div className="flex min-w-0 flex-col items-start text-left leading-tight">
                     <span className="truncate text-sm font-semibold text-slate-800">{user?.name}</span>
-                    <span className="truncate text-xs text-slate-400">{user?.role}</span>
+                    <span className="truncate text-xs text-slate-400">{user?.role?.toUpperCase()}</span>
                   </div>
                 )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
 
+          {/* Separator */}
+          {!collapsed && <div className="mx-1 border-t border-slate-100 my-1" />}
+
           {/* Logout */}
           <SidebarMenuItem className={cn(collapsed && "flex justify-center")}>
             <SidebarMenuButton
               tooltip="Logout"
               className={cn(
-                "rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all duration-150",
+                "rounded-lg text-slate-800 hover:bg-red-50 hover:text-red-500 transition-all duration-150",
                 collapsed && "!size-10 !p-0 flex items-center justify-center [&>span]:hidden",
               )}
               onClick={() => setShowLogoutConfirm(true)}

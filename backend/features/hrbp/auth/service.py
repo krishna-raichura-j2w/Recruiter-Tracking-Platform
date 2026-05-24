@@ -5,6 +5,13 @@ from sqlalchemy.orm import Session
 from features.hrbp.auth.schema import UserUpdate
 
 
+def list_users(db: Session, role: str | None = None) -> list[User]:
+    q = db.query(User).filter(User.is_active == True)  # noqa: E712
+    if role:
+        q = q.filter(User.role == role)
+    return q.order_by(User.name).all()
+
+
 def get_by_id(db: Session, user_id: int) -> User:
     user = db.query(User).filter_by(id=user_id).first()
     if not user:

@@ -47,6 +47,39 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     communication: { read: true },
     notifications: { read: true },
   },
+
+  ops_head: {
+    dashboard:     { read: true },
+    clients:       { read: true },
+    consultants:   { read: true },
+    cadence:       { read: true, export: true },
+    tickets:       { read: true, create: false, update: false, delete: false },
+    incidents:     { read: true },
+    communication: { read: true },
+    notifications: { read: true },
+  },
+
+  coo: {
+    dashboard:     { read: true },
+    clients:       { read: true },
+    consultants:   { read: true },
+    cadence:       { read: true, export: true },
+    tickets:       { read: true, create: false, update: false, delete: false },
+    incidents:     { read: true },
+    communication: { read: true },
+    notifications: { read: true },
+  },
+
+  priti: {
+    dashboard:     { read: true },
+    clients:       { read: true },
+    consultants:   { read: true },
+    cadence:       { read: true },
+    tickets:       { read: true, create: false, update: false, delete: false },
+    incidents:     { read: true },
+    communication: { read: true },
+    notifications: { read: true },
+  },
 };
 
 /**

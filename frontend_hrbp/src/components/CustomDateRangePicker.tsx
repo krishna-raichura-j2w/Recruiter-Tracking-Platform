@@ -69,7 +69,7 @@ export function CustomDateRangePicker({
                 format(date.from, "MM/dd/y")
               )
             ) : (
-              <span>MM/DD/Y</span>
+              <span>MM/DD/YYYY</span>
             )}
             <div className="flex items-center gap-1.5 ml-auto">
               {date?.from && (

@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 
 from core.deps import require_roles
+from features.hrbp.ai.route import router as ai_router
 from features.hrbp.audit_log.route import router as audit_log_router
 from features.hrbp.auth.route import router as auth_router
 from features.hrbp.cadence_schedules.route import router as cadence_schedules_router
 from features.hrbp.clients.route import router as clients_router
 from features.hrbp.consultants.route import router as consultants_router
+from features.hrbp.dashboard.route import router as dashboard_router
 from features.hrbp.email_templates.route import router as email_templates_router
 from features.hrbp.emails.route import router as emails_router
 from features.hrbp.incidents.route import router as incidents_router
@@ -18,12 +20,13 @@ from features.hrbp.signals.route import router as signals_router
 from features.hrbp.sop_definitions.route import router as sop_router
 from features.hrbp.sop_steps.route import router as sop_steps_router
 from features.hrbp.storage.route import router as storage_router
+from features.hrbp.tickets.route import router as tickets_router
 
 hrbp_router = APIRouter(prefix="/hrbp")
 
 # Roles permitted to access HRBP data endpoints.
 # Add new roles here as the system grows — no other file needs to change.
-_HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin"))
+_HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin", "ops_head", "coo", "priti"))
 
 # Auth router is open to any authenticated user (needed for token refresh + profile).
 hrbp_router.include_router(auth_router)
@@ -45,3 +48,6 @@ hrbp_router.include_router(nps_surveys_router,        dependencies=[_HRBP_ROLES]
 hrbp_router.include_router(audit_log_router,          dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(cadence_schedules_router,  dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(storage_router,            dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(tickets_router,            dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(dashboard_router,          dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(ai_router,                 dependencies=[_HRBP_ROLES])

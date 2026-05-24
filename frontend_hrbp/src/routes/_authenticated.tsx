@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { AICopilotWidget } from "@/components/AICopilotWidget";
 import { isAuthed } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -34,6 +35,7 @@ function AuthLayout() {
           <Outlet />
         </SidebarInset>
       </div>
+      <AICopilotWidget />
     </SidebarProvider>
   );
 }
