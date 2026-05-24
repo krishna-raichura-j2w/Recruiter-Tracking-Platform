@@ -138,16 +138,19 @@ def list_candidates(
             import json as _json
             for j in db.query(Job).all():
                 if j.created_by_id in pod_user_id_set:
-                    pod_job_ids.append(j.id); continue
+                    pod_job_ids.append(j.id)
+                    continue
                 if j.delivery_lead_id in pod_user_id_set:
-                    pod_job_ids.append(j.id); continue
+                    pod_job_ids.append(j.id)
+                    continue
                 dl_ids = (
                     _json.loads(j.delivery_lead_ids or "[]")
                     if isinstance(j.delivery_lead_ids, str)
                     else (j.delivery_lead_ids or [])
                 )
                 if any(d in pod_user_id_set for d in dl_ids):
-                    pod_job_ids.append(j.id); continue
+                    pod_job_ids.append(j.id)
+                    continue
                 s_ids = (
                     _json.loads(j.sourcer_ids or "[]")
                     if isinstance(j.sourcer_ids, str)
