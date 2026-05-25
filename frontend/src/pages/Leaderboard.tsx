@@ -390,7 +390,7 @@ function RecruiterLeaderboardSection() {
   // Hourly view expansion: rows are EXPANDED by default. `collapsed` tracks
   // rows the user has explicitly closed; `allCollapsed` is the master toggle.
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-  const [allCollapsed, setAllCollapsed] = useState(false);
+  const [allCollapsed, setAllCollapsed] = useState(true);
 
   // ── Filter state — multi-select where it matters ──
   const [search, setSearch]     = useState('');

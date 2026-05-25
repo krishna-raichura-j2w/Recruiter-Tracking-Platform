@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Plus, X, Pencil, Trash2, Globe, Building2, Clock, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { X, Pencil, Trash2, Globe, Building2, Clock, Loader2, Search } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -28,12 +28,22 @@ export default function Clients() {
   const [toast, setToast]             = useState('');
   const [logoKey, setLogoKey]         = useState<string | null>(null);  // S3 key for new upload
   const [logoUploading, setLogoUploading] = useState(false);
+  const [search, setSearch] = useState('');
 
   const [form, setForm] = useState({
     name: '', short_name: '', website_url: '', logo_data: '', description: '',
   });
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const filteredClients = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.short_name ?? '').toLowerCase().includes(q)
+    );
+  }, [clients, search]);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -132,24 +142,43 @@ export default function Clients() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-sm text-slate-500">{clients.length} client{clients.length !== 1 ? 's' : ''}</p>
-        {/* Client list is fixed (sourced from of_clients) — only editing is allowed. */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search clients…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <p className="text-sm text-slate-400 whitespace-nowrap">
+          {filteredClients.length}{search ? ` of ${clients.length}` : ''} client{filteredClients.length !== 1 ? 's' : ''}
+        </p>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
           {[...Array(3)].map((_, i) => <div key={i} className="h-48 bg-white rounded-2xl border border-slate-100" />)}
         </div>
-      ) : clients.length === 0 ? (
+      ) : filteredClients.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400">
           <Building2 size={44} className="opacity-20 mb-3" />
-          <p className="font-medium text-slate-500">No clients added yet.</p>
-          <p className="text-sm mt-1">Add clients to use them in job openings and email templates.</p>
+          {search ? (
+            <p className="font-medium text-slate-500">No clients match "{search}".</p>
+          ) : (
+            <p className="font-medium text-slate-500">No clients added yet.</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clients.map(c => (
+          {filteredClients.map(c => (
             <div key={c.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col gap-3">
               {/* Logo */}
               <div className="h-20 flex items-center justify-center bg-slate-50 rounded-xl overflow-hidden">
