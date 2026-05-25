@@ -332,6 +332,7 @@ def recruiter_leaderboard(
         PodMembership,
         Submission,
         User,
+        UserLeave,
         UserRole,
         Validation,
         ValidationStatus,
@@ -637,6 +638,12 @@ def recruiter_leaderboard(
         kam_names = kams_by_pod.get(u.pod_id, []) if u.pod_id else []
         return {"dl_names": names, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
 
+    # Recruiters on leave today (by IST date)
+    on_leave_ids: set[int] = {
+        r.user_id
+        for r in db.query(UserLeave.user_id).filter(UserLeave.leave_date == today_ist).all()
+    }
+
     rows = []
     sum_done = sum_ack = sum_subs = sum_verified = sum_rejects = 0
     sum_target_so_far = sum_day_target = 0
@@ -645,19 +652,26 @@ def recruiter_leaderboard(
     sum_hourly_sub    = [0] * len(TIME_SLOTS)
     sum_hourly_ver    = [0] * len(TIME_SLOTS)
     for u in recruiters:
+        is_on_leave = u.id in on_leave_ids
         done       = done_by_rec.get(u.id, 0)
         verified   = verified_by_rec.get(u.id, 0)
         subs       = max(sub_by_rec.get(u.id, 0), verified)   # submissions ≥ dl_verified
         ack        = max(ack_by_rec.get(u.id, 0), subs)       # ack_sent ≥ submissions
         rejects    = reject_by_rec.get(u.id, 0)
         target_so_far, day_target = _targets_for(u.id)
-        # % against the cumulative target the recruiter SHOULD have hit by now,
-        # measured on the DL-verified count (the bottom of the funnel).
+        if is_on_leave:
+            # On-leave recruiters don't contribute to the team target
+            target_so_far = 0
+            day_target    = 0
         pct = round((verified / target_so_far) * 100) if target_so_far else 0
         status = (
-            "On Track"
-            if (target_so_far == 0 or pct >= ON_TRACK_THRESHOLD)
-            else "Behind"
+            "On Leave"
+            if is_on_leave
+            else (
+                "On Track"
+                if (target_so_far == 0 or pct >= ON_TRACK_THRESHOLD)
+                else "Behind"
+            )
         )
 
         # Per-slot view: target + actual at each level. Frontend renders the
@@ -669,7 +683,7 @@ def recruiter_leaderboard(
         hourly = []
         for s in TIME_SLOTS:
             idx = s["index"]
-            t   = int(target_slots.get(idx, 0))
+            t   = 0 if is_on_leave else int(target_slots.get(idx, 0))
             vr  = int(v_h.get(idx, 0))
             sb  = max(int(s_h.get(idx, 0)), vr)
             a   = max(int(a_h.get(idx, 0)), sb)
@@ -704,6 +718,7 @@ def recruiter_leaderboard(
                 "dl_verified":    verified,
                 "pct":            pct,
                 "status":         status,
+                "is_on_leave":    is_on_leave,
                 "rejections":     rejects,
                 "performance":    _performance_category(verified),
                 "hourly":         hourly,

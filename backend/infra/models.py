@@ -827,6 +827,17 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=now_utc)
 
 
+class UserLeave(Base):
+    __tablename__ = "user_leaves"
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    leave_date  = Column(Date, nullable=False)
+    marked_by   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    note        = Column(Text, nullable=True)
+    created_at  = Column(DateTime, default=now_utc)
+    __table_args__ = (UniqueConstraint("user_id", "leave_date", name="uq_user_leave_date"),)
+
+
 # ── Job.assigned_email_id auto-refresh ────────────────────────────────────────
 # Recompute `Job.assigned_email_id` from the union of every user-id column on
 # the job whenever the row is inserted or updated. Lives at module scope so

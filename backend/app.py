@@ -38,6 +38,7 @@ from features.mrr.mails.routes import router as mails_router  # noqa: E402
 from features.mrr.notifications.routes import (  # noqa: E402
     router as notifications_router,
 )
+from features.mrr.leaves.routes import router as leaves_router  # noqa: E402
 from features.mrr.pods.routes import router as pods_router  # noqa: E402
 from features.mrr.probing.routes import router as probing_router  # noqa: E402
 from features.mrr.resume_extract.routes import (  # noqa: E402
@@ -114,6 +115,13 @@ def ensure_schema():
                 db.rollback()
 
         for sql in load_sql_list("038-add_jobs_assigned_email_id.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        for sql in load_sql_list("039-add_user_leaves.sql"):
             try:
                 db.execute(text(sql))
                 db.commit()
@@ -253,6 +261,7 @@ app.include_router(probing_router,            prefix="/api")
 app.include_router(boolean_builder_router,    prefix="/api")
 app.include_router(coo_router,                prefix="/api")
 app.include_router(pods_router,               prefix="/api")
+app.include_router(leaves_router,             prefix="/api")
 app.include_router(targets_router,            prefix="/api")
 app.include_router(hrbp_router,               prefix="/api")
 

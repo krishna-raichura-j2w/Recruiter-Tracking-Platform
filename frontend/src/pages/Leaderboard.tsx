@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo, useRef, Fragment } from 'react';
 import {
   Users, AlertTriangle, CheckCircle2, RefreshCw,
   Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Filter,
-  Mail, Send, ShieldCheck, ChevronRight,
+  Mail, Send, ShieldCheck, ChevronRight, CalendarOff,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Section 1 — Recruiter Leaderboard (per-recruiter daily metrics)
@@ -35,7 +36,8 @@ interface RecruiterRow {
   submissions: number;
   dl_verified: number;
   pct: number;                   // dl_verified / day_target × 100
-  status: 'On Track' | 'Behind';
+  status: 'On Track' | 'Behind' | 'On Leave';
+  is_on_leave: boolean;
   rejections: number;
   performance: 'needs discussion' | 'below average' | 'average' | 'high' | 'good performance';
   hourly: HourlySlot[];          // per-hour breakdown of activity events
@@ -384,9 +386,12 @@ function FunnelBar({ ack, sub, ver }: { ack: number; sub: number; ver: number })
 }
 
 function RecruiterLeaderboardSection() {
+  const { user } = useAuth();
+  const canMarkLeave = ['admin', 'coo', 'bh', 'kam', 'delivery_lead'].includes(user?.role ?? '');
   const [data, setData]       = useState<RecruiterApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+  const [leavePending, setLeavePending] = useState<Set<number>>(new Set());
   // Hourly view expansion: rows are EXPANDED by default. `collapsed` tracks
   // rows the user has explicitly closed; `allCollapsed` is the master toggle.
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -407,6 +412,23 @@ function RecruiterLeaderboardSection() {
       .then((r) => { setData(r.data); setError(''); })
       .catch(() => setError('Failed to load recruiter leaderboard.'))
       .finally(() => setLoading(false));
+  };
+
+  const toggleLeave = async (recruiterId: number, currentlyOnLeave: boolean) => {
+    setLeavePending(prev => new Set(prev).add(recruiterId));
+    try {
+      if (currentlyOnLeave) {
+        const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+        await api.delete(`/leaves/${recruiterId}/${today}`);
+      } else {
+        await api.post('/leaves', { user_id: recruiterId });
+      }
+      await fetchData();
+    } catch {
+      // silently ignore — row state will stay as-is
+    } finally {
+      setLeavePending(prev => { const n = new Set(prev); n.delete(recruiterId); return n; });
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -459,11 +481,13 @@ function RecruiterLeaderboardSection() {
     if (!data) return null;
     const t = filteredRows.reduce(
       (a, r) => {
-        a.day_target    += r.day_target;
-        a.ack_sent      += r.ack_sent;
-        a.submissions   += r.submissions;
-        a.dl_verified   += r.dl_verified;
-        a.rejections    += r.rejections;
+        a.day_target    += r.day_target;   // already 0 for on-leave from backend
+        if (!r.is_on_leave) {
+          a.ack_sent    += r.ack_sent;
+          a.submissions += r.submissions;
+          a.dl_verified += r.dl_verified;
+          a.rejections  += r.rejections;
+        }
         return a;
       },
       { day_target: 0, ack_sent: 0, submissions: 0, dl_verified: 0, rejections: 0 }
@@ -582,6 +606,7 @@ function RecruiterLeaderboardSection() {
           <option value="">Any status</option>
           <option value="On Track">On Track</option>
           <option value="Behind">Behind</option>
+          <option value="On Leave">Absent</option>
         </select>
         <select value={fPerf} onChange={e => setFPerf(e.target.value)} className={selectCls}
                 style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)' }}>
@@ -644,20 +669,43 @@ function RecruiterLeaderboardSection() {
               ) : (
                 filteredRows.map((row) => {
                   const open = isOpen(row.recruiter_id);
+                  const onLeave = row.is_on_leave;
+                  const leaveBusy = leavePending.has(row.recruiter_id);
                   return (
                   <Fragment key={row.recruiter_id}>
                   <tr
                     onClick={() => toggleRow(row.recruiter_id)}
                     className="cursor-pointer transition-colors"
-                    style={{ borderBottom: '1px solid var(--border-hairline)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    style={{
+                      borderBottom: '1px solid var(--border-hairline)',
+                      background: onLeave ? '#FFFBEB' : undefined,
+                      opacity: onLeave ? 0.75 : 1,
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = onLeave ? '#FEF3C7' : 'var(--surface-muted)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = onLeave ? '#FFFBEB' : '')}
                   >
                     <td className="py-2 px-2 text-center" style={{ color: 'var(--ink-4)' }}>
                       {open ? <ChevronDown size={14} className="inline" /> : <ChevronRight size={14} className="inline" />}
                     </td>
                     <td className="py-2 px-3 font-medium whitespace-nowrap" style={{ color: 'var(--ink)' }}>
-                      {row.recruiter_name}
+                      <div className="flex items-center gap-2">
+                        <span>{row.recruiter_name}</span>
+                        {canMarkLeave && (
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleLeave(row.recruiter_id, onLeave); }}
+                            disabled={leaveBusy}
+                            title={onLeave ? 'Mark as present' : 'Mark as absent'}
+                            className="flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold transition-colors disabled:opacity-40"
+                            style={onLeave
+                              ? { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }
+                              : { background: 'var(--surface-muted)', color: 'var(--ink-3)', border: '1px solid var(--border-hairline)' }
+                            }
+                          >
+                            <CalendarOff size={10} />
+                            {onLeave ? 'Absent' : 'Mark absent'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-3 text-[12px]" style={{ color: 'var(--ink-2)' }}>
                       {row.dl_names.length === 0
@@ -706,7 +754,12 @@ function RecruiterLeaderboardSection() {
                       {row.day_target ? `${row.pct}%` : <span style={{ color: 'var(--ink-4)' }}>·</span>}
                     </td>
                     <td className="py-2 px-3 text-center">
-                      {row.status === 'On Track' ? (
+                      {row.status === 'On Leave' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A' }}>
+                          <CalendarOff size={11} /> Absent
+                        </span>
+                      ) : row.status === 'On Track' ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded"
                               style={{ color: '#047857', background: 'var(--success-soft)', border: '1px solid #A7F3D0' }}>
                           <CheckCircle2 size={11} /> On track
