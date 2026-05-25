@@ -572,8 +572,13 @@ def update_job(
                 status_code=400,
                 detail=f"Client '{cn}' is not in the client list. Pick an existing client.",
             )
-        data["client_name"] = matched.name   # snap to canonical casing
-        data["client_id"]   = matched.id
+        if matched.client_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Client '{matched.name}' has no client_id set. Ask an admin to assign one.",
+            )
+        data["client_name"] = matched.name        # snap to canonical casing
+        data["client_id"]   = matched.client_id   # FK → of_clients.client_id, NOT .id
     if "business_head_id" in data:
         data["account_manager_id"] = data.pop("business_head_id")
     if "deadline" in data and isinstance(data["deadline"], str):
