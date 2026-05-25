@@ -767,7 +767,7 @@ function TreeNode({
           <button
             key={cr}
             onClick={() => setPicker(cr)}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors"
             style={{ color: 'var(--ink-2)', background: 'var(--surface-card)', border: '1px solid var(--border-hairline)' }}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-soft)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-card)')}
@@ -779,7 +779,7 @@ function TreeNode({
         {canEditTree && node.role !== 'bh' && (
           <button
             onClick={removeMember}
-            className="flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+            className="flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] font-medium transition-colors"
             style={{ color: 'var(--danger)' }}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--danger-soft)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
