@@ -646,9 +646,9 @@ def recruiter_leaderboard(
     sum_hourly_ver    = [0] * len(TIME_SLOTS)
     for u in recruiters:
         done       = done_by_rec.get(u.id, 0)
-        ack        = ack_by_rec.get(u.id, 0)
-        subs       = sub_by_rec.get(u.id, 0)
         verified   = verified_by_rec.get(u.id, 0)
+        subs       = max(sub_by_rec.get(u.id, 0), verified)   # submissions ≥ dl_verified
+        ack        = max(ack_by_rec.get(u.id, 0), subs)       # ack_sent ≥ submissions
         rejects    = reject_by_rec.get(u.id, 0)
         target_so_far, day_target = _targets_for(u.id)
         # % against the cumulative target the recruiter SHOULD have hit by now,
@@ -670,9 +670,9 @@ def recruiter_leaderboard(
         for s in TIME_SLOTS:
             idx = s["index"]
             t   = int(target_slots.get(idx, 0))
-            a   = int(a_h.get(idx, 0))
-            sb  = int(s_h.get(idx, 0))
             vr  = int(v_h.get(idx, 0))
+            sb  = max(int(s_h.get(idx, 0)), vr)
+            a   = max(int(a_h.get(idx, 0)), sb)
             hourly.append({
                 "slot_index":  idx,
                 "label":       s["label"],
