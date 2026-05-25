@@ -57,6 +57,7 @@ class JobCreate(BaseModel):
 
 
 class JobUpdate(BaseModel):
+    client_name:         str | None = None
     role_title:          str | None = None
     job_id:              int | None = None
     probing_id:          int | None = None

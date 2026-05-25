@@ -558,7 +558,22 @@ def update_job(
     import json as _json
     from datetime import datetime
 
+    from sqlalchemy import func as _f
+
     data = body.model_dump(exclude_none=True)
+    # Validate and canonicalise client_name when it's being changed
+    if "client_name" in data:
+        cn = (data["client_name"] or "").strip()
+        if not cn:
+            raise HTTPException(status_code=400, detail="Client name cannot be empty.")
+        matched = db.query(Client).filter(_f.lower(Client.name) == cn.lower()).first()
+        if not matched:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Client '{cn}' is not in the client list. Pick an existing client.",
+            )
+        data["client_name"] = matched.name   # snap to canonical casing
+        data["client_id"]   = matched.id
     if "business_head_id" in data:
         data["account_manager_id"] = data.pop("business_head_id")
     if "deadline" in data and isinstance(data["deadline"], str):

@@ -429,6 +429,9 @@ export default function Jobs() {
         .then(r => setDeliveryLeads(r.data))
         .catch(() => setDeliveryLeads([]));
     }
+    api.get<ClientOption[]>('/clients')
+      .then(r => setClientOptions(r.data))
+      .catch(() => setClientOptions([]));
     if (job.jd_parsed) {
       try { setParsedResult(JSON.parse(job.jd_parsed)); } catch { /* ignore */ }
     }
