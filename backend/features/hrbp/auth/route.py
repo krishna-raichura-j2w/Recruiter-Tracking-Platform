@@ -14,6 +14,30 @@ from features.hrbp.utils.auth import get_hrbp_user
 router = APIRouter(prefix="/users", tags=["hrbp-users"])
 
 
+@router.get("")
+def list_users(
+    role: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_hrbp_user),
+):
+    try:
+        users = service.list_users(db, role=role)
+        return success_response(
+            data=[
+                {
+                    "id": u.id,
+                    "name": u.name,
+                    "email": u.email,
+                    "role": u.role.value if hasattr(u.role, "value") else u.role,
+                }
+                for u in users
+            ],
+            message="Users fetched successfully",
+        )
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
 @router.post("/refresh_token")
 def refresh_token(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
     try:

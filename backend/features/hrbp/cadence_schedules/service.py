@@ -85,6 +85,7 @@ def create(
         client_id=payload.client_id,
         consultant_id=payload.consultant_id,
         hrbp_id=hrbp_id,
+        bh_id=payload.bh_id,
         meeting_type=payload.meeting_type,
         project_name=payload.project_name,
         meeting_time=payload.meeting_time,
@@ -110,7 +111,7 @@ def list_paginated(
     per_page: int,
     client_id: int | None = None,
     consultant_id: int | None = None,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -120,8 +121,8 @@ def list_paginated(
         q = q.filter(HRBPCadenceSchedule.client_id == client_id)
     if consultant_id is not None:
         q = q.filter(HRBPCadenceSchedule.consultant_id == consultant_id)
-    if hrbp_id is not None:
-        q = q.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
+    if hrbp_ids is not None:
+        q = q.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
     if status is not None:
         q = q.filter(HRBPCadenceSchedule.status == status)
     if date_from is not None:
@@ -237,13 +238,13 @@ def cancel(db: Session, id: int) -> None:
     db.commit()
 
 
-def get_summary(db: Session, hrbp_id: int | None = None) -> dict:
+def get_summary(db: Session, hrbp_ids: list[int] | None = None) -> dict:
     base = db.query(HRBPCadenceSession).join(
         HRBPCadenceSchedule,
         HRBPCadenceSession.schedule_id == HRBPCadenceSchedule.id,
     )
-    if hrbp_id is not None:
-        base = base.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
+    if hrbp_ids is not None:
+        base = base.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
 
     pending = base.filter(HRBPCadenceSession.status == "not_started").count()
     completed = base.filter(HRBPCadenceSession.status == "completed").count()
@@ -254,13 +255,15 @@ def list_all_sessions(
     db: Session,
     page_no: int,
     per_page: int,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
     client_id: int | None = None,
     consultant_id: int | None = None,
     status: str | None = None,
     scheduled_date: date | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    cadence_tag: str | None = None,
+    current_bh_id: int | None = None,
 ) -> dict:
     rows = (
         db.query(
@@ -275,6 +278,7 @@ def list_all_sessions(
             HRBPCadenceSession.completed_at,
             HRBPCadenceSession.completed_by,
             HRBPCadenceSchedule.hrbp_id,
+            HRBPCadenceSchedule.bh_id,
             HRBPCadenceSchedule.meeting_type,
             HRBPCadenceSchedule.project_name,
             HRBPCadenceSchedule.frequency_weeks,
@@ -291,8 +295,8 @@ def list_all_sessions(
         .join(HRBPConsultant, HRBPCadenceSchedule.consultant_id == HRBPConsultant.id)
     )
 
-    if hrbp_id is not None:
-        rows = rows.filter(HRBPCadenceSchedule.hrbp_id == hrbp_id)
+    if hrbp_ids is not None:
+        rows = rows.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
     if client_id is not None:
         rows = rows.filter(HRBPCadenceSchedule.client_id == client_id)
     if consultant_id is not None:
@@ -305,6 +309,10 @@ def list_all_sessions(
         rows = rows.filter(HRBPCadenceSession.scheduled_date >= date_from)
     if date_to is not None:
         rows = rows.filter(HRBPCadenceSession.scheduled_date <= date_to)
+    if cadence_tag == "my_cadence" and current_bh_id is not None:
+        rows = rows.filter(HRBPCadenceSchedule.bh_id == current_bh_id)
+    elif cadence_tag == "team_cadence":
+        rows = rows.filter(HRBPCadenceSchedule.bh_id.is_(None))
 
     rows = rows.order_by(
         HRBPCadenceSession.scheduled_date,

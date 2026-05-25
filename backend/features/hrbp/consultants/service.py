@@ -1,10 +1,50 @@
 from core.pagination import PageResult, paginate
-from datetime import date
+from datetime import date, timedelta
 from fastapi import HTTPException
-from infra.hrbp_models import HRBPConsultant
+from infra.hrbp_models import HRBPClient, HRBPConsultant
+from infra.models import User
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
+
+
+def get_summary(db: Session, current_user: User, client_id: int | None = None) -> dict:
+    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+
+    q = db.query(HRBPConsultant)
+    if role == "hrbp":
+        q = q.filter(HRBPConsultant.hrbp_id == current_user.id)
+    elif role == "bh":
+        bh_client_ids = [
+            r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()
+        ]
+        q = q.filter(HRBPConsultant.client_id.in_(bh_client_ids))
+
+    if client_id is not None:
+        q = q.filter(HRBPConsultant.client_id == client_id)
+
+    total  = q.count()
+    active = q.filter(HRBPConsultant.is_active.is_(True)).count()
+
+    cutoff = date.today() + timedelta(days=30)
+    expiring_soon = q.filter(
+        HRBPConsultant.is_active.is_(True),
+        HRBPConsultant.po_end_date <= cutoff,
+        HRBPConsultant.po_end_date >= date.today(),
+    ).count()
+
+    po_at_risk = q.filter(
+        HRBPConsultant.is_active.is_(True),
+        HRBPConsultant.po_risk > 0,
+    ).count()
+
+    return {
+        "total":          total,
+        "active":         active,
+        "expiring_soon":  expiring_soon,
+        "po_at_risk":     po_at_risk,
+    }
 
 
 def create(db: Session, payload: ConsultantCreate) -> HRBPConsultant:
@@ -24,7 +64,8 @@ def list_paginated(
     db: Session,
     page_no: int,
     per_page: int,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
+    bh_client_ids: list[int] | None = None,
     client_id: int | None = None,
     cohort: str | None = None,
     perf_tier: str | None = None,
@@ -33,8 +74,11 @@ def list_paginated(
     date_to: date | None = None,
 ) -> PageResult:
     q = db.query(HRBPConsultant)
-    if hrbp_id is not None:
-        q = q.filter(HRBPConsultant.hrbp_id == hrbp_id)
+    # hrbp sees their own consultants; bh sees consultants via their client_ids
+    if hrbp_ids is not None:
+        q = q.filter(HRBPConsultant.hrbp_id.in_(hrbp_ids))
+    elif bh_client_ids is not None:
+        q = q.filter(HRBPConsultant.client_id.in_(bh_client_ids))
     if client_id is not None:
         q = q.filter(HRBPConsultant.client_id == client_id)
     if cohort is not None:

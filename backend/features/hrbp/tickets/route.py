@@ -1,0 +1,125 @@
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+from core.database import get_db
+from core.deps import get_current_user
+from core.response_format import (
+    error_response,
+    success_response,
+    success_response_with_pagination,
+)
+from features.hrbp.tickets import service
+from features.hrbp.tickets.schema import (
+    TicketCommentCreate,
+    TicketCreate,
+    TicketUpdate,
+)
+from infra.models import User
+
+router = APIRouter(prefix="/tickets", tags=["hrbp-tickets"])
+
+
+@router.post("")
+def create_ticket(
+    payload: TicketCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.create(db, payload, current_user)
+        return success_response(data=data, message="Ticket created successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.get("")
+def list_tickets(
+    page_no: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=-1),
+    status: str | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    client_id: int | None = Query(default=None),
+    sop_id: int | None = Query(default=None),
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = service.list_paginated(
+        db, current_user, page_no, per_page,
+        status, priority, client_id, sop_id, search,
+    )
+    return success_response_with_pagination(
+        data=result.items,
+        message="Tickets fetched successfully",
+        page_no=result.page_no,
+        per_page=result.per_page,
+        total=result.total,
+        total_pages=result.total_pages,
+    )
+
+
+@router.get("/{ticket_id}")
+def get_ticket(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.get_by_id(db, ticket_id)
+        return success_response(data=data, message="Ticket fetched successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.patch("/{ticket_id}")
+def update_ticket(
+    ticket_id: int,
+    payload: TicketUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.update_ticket(db, ticket_id, payload, current_user)
+        return success_response(data=data, message="Ticket updated successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{ticket_id}/comments")
+def add_comment(
+    ticket_id: int,
+    payload: TicketCommentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.add_comment(db, ticket_id, payload, current_user)
+        return success_response(data=data, message="Comment added successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{ticket_id}/advance")
+def advance_step(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.advance_step(db, ticket_id, current_user)
+        return success_response(data=data, message="Ticket advanced to next step")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{ticket_id}/close")
+def close_ticket(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.close_ticket(db, ticket_id, current_user)
+        return success_response(data=data, message="Ticket closed successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))

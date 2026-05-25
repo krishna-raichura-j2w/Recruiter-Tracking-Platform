@@ -8,6 +8,35 @@ from sqlalchemy.orm import Session
 from features.hrbp.clients.schema import ClientCreate, ClientUpdate
 
 
+def get_summary(db: Session, current_user: User) -> dict:
+    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+
+    q = db.query(HRBPClient)
+    if role == "hrbp":
+        q = q.filter(HRBPClient.hrbp_id == current_user.id)
+    elif role == "bh":
+        q = q.filter(HRBPClient.bh_id == current_user.id)
+
+    client_ids = [c.id for c in q.with_entities(HRBPClient.id).all()]
+
+    total    = len(client_ids)
+    active   = q.filter(HRBPClient.is_active.is_(True)).count()
+    inactive = total - active
+
+    total_consultants = (
+        db.query(func.count(HRBPConsultant.id))
+        .filter(HRBPConsultant.client_id.in_(client_ids))
+        .scalar() or 0
+    ) if client_ids else 0
+
+    return {
+        "total":             total,
+        "active":            active,
+        "inactive":          inactive,
+        "total_consultants": total_consultants,
+    }
+
+
 def create(db: Session, payload: ClientCreate) -> HRBPClient:
     record = HRBPClient(**payload.model_dump())
     db.add(record)
@@ -20,7 +49,8 @@ def list_paginated(
     db: Session,
     page_no: int,
     per_page: int,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
+    bh_id: int | None = None,
     is_active: bool | None = None,
 ) -> dict:
     consultant_sub = (
@@ -50,8 +80,11 @@ def list_paginated(
         .outerjoin(consultant_sub, HRBPClient.id == consultant_sub.c.client_id)
     )
 
-    if hrbp_id is not None:
-        q = q.filter(HRBPClient.hrbp_id == hrbp_id)
+    # hrbp sees their own clients; bh sees clients where they are the owner
+    if hrbp_ids is not None:
+        q = q.filter(HRBPClient.hrbp_id.in_(hrbp_ids))
+    elif bh_id is not None:
+        q = q.filter(HRBPClient.bh_id == bh_id)
     if is_active is not None:
         q = q.filter(HRBPClient.is_active == is_active)
     q = q.order_by(HRBPClient.name)

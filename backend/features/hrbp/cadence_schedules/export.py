@@ -42,7 +42,7 @@ def _rag_fill(value: str | None) -> PatternFill | None:
 
 def build_and_upload(
     db: Session,
-    hrbp_id: int | None = None,
+    hrbp_ids: list[int] | None = None,
     client_id: int | None = None,
     consultant_id: int | None = None,
     status: str | None = None,
@@ -54,7 +54,7 @@ def build_and_upload(
         db,
         page_no=1,
         per_page=-1,
-        hrbp_id=hrbp_id,
+        hrbp_ids=hrbp_ids,
         client_id=client_id,
         consultant_id=consultant_id,
         status=status,
