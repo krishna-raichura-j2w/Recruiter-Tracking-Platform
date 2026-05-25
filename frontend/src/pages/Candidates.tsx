@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSignal } from '../context/RealtimeContext';
 import { useForm } from 'react-hook-form';
 import { Plus, X, Search, Eye, UserPlus, Sparkles, AlignLeft, Image, FileText, Loader2, ChevronRight, Users } from 'lucide-react';
+import LottieLib from 'lottie-react';
+import searchAnim from '../assets/lottie-search.json';
 import Layout from '../components/Layout';
 import PaginationBar from '../components/PaginationBar';
 import StatusBadge from '../components/StatusBadge';
@@ -10,6 +12,9 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import { uploadToS3 } from '../api/upload';
 import type { Candidate, Job, User } from '../types';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 
 const EDUCATION_OPTIONS = [
   'B.Tech/BE', 'M.Tech/ME', 'BCA', 'MCA', 'B.Sc', 'M.Sc',
@@ -449,7 +454,11 @@ export default function Candidates() {
             {[...Array(6)].map((_, i) => <div key={i} className="h-12 bg-slate-100 rounded-xl" />)}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-slate-400 text-sm">No candidates found.</div>
+          <div className="flex flex-col items-center py-10 text-slate-400">
+            <Lottie animationData={searchAnim} loop style={{ width: 160, height: 160 }} />
+            <p className="text-sm font-medium text-slate-500 mt-2">No candidates found.</p>
+            <p className="text-xs mt-1">Try adjusting your search or filters.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

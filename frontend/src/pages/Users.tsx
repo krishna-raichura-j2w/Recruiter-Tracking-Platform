@@ -1,4 +1,8 @@
-import { useEffect, useState, useCallback, useRef, type ComponentType } from 'react';
+import React, { useEffect, useState, useCallback, useRef, type ComponentType } from 'react';
+import LottieLib from 'lottie-react';
+import employeeAnim from '../assets/lottie-employee.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import { useForm } from 'react-hook-form';
 import {
   Plus, X, Trash2, UserPlus, UserMinus, Pencil,
@@ -716,9 +720,9 @@ export default function Users() {
             {[...Array(4)].map((_, i) => <div key={i} className="h-40 bg-white rounded-2xl border border-slate-100" />)}
           </div>
         ) : recruiters.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-100 text-center py-20 text-slate-400">
-            <UserPlus className="mx-auto mb-3 opacity-20" size={40} />
-            <p className="text-sm font-semibold">No recruiters in your team yet</p>
+          <div className="bg-white rounded-2xl border border-slate-100 text-center py-10 text-slate-400 flex flex-col items-center">
+            <Lottie animationData={employeeAnim} loop style={{ width: 160, height: 160 }} />
+            <p className="text-sm font-semibold text-slate-500 mt-2">No recruiters in your team yet</p>
             <p className="text-xs mt-1 text-slate-400">Click "Add Recruiter" to bring someone in</p>
           </div>
         ) : (

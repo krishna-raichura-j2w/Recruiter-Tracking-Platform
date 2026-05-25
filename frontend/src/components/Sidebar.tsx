@@ -1,3 +1,4 @@
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavCounts } from '../context/NavCountsContext';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -7,7 +8,11 @@ import {
   Building2, BarChart2, GitBranch, TrendingUp, Settings, Trophy,
   ChevronRight, X, Menu, Sparkles, Network, Target,
 } from 'lucide-react';
-import { useState } from 'react';
+import LottieLib from 'lottie-react';
+import goalAnim from '../assets/lottie-goal.json';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 
 interface NavItem {
   label: string;
@@ -271,6 +276,9 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
       {/* Footer */}
       <div className="px-3 pb-4 border-t border-white/8 pt-3 flex-shrink-0">
+        <div className="flex justify-center mb-1">
+          <Lottie animationData={goalAnim} loop style={{ width: 64, height: 64, opacity: 0.75 }} />
+        </div>
         <p className="text-[10px] px-3 mb-2 leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
           {roleInfo?.sub}
         </p>

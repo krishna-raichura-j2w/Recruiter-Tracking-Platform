@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSignal } from '../context/RealtimeContext';
 import { useForm } from 'react-hook-form';
@@ -9,11 +9,16 @@ import {
   Phone, Lock, Unlock, Pencil, Search, Calendar,
   UserCheck, Trash2,
 } from 'lucide-react';
+import LottieLib from 'lottie-react';
+import jobVacancyAnim from '../assets/lottie-job-vacancy.json';
 import Layout from '../components/Layout';
 import PaginationBar from '../components/PaginationBar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { Job, ParsedJD, SkillEntry } from '../types';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 function fmtDate(iso: string | null): string {
@@ -796,9 +801,10 @@ export default function Jobs() {
           {[...Array(4)].map((_, i) => <div key={i} className="h-40 bg-white rounded-2xl border border-slate-100" />)}
         </div>
       ) : filteredJobs.length === 0 ? (
-        <div className="text-center py-20 text-slate-400">
-          <Briefcase className="mx-auto mb-3 opacity-30" size={40} />
-          <p className="text-sm">No jobs match your filters.</p>
+        <div className="text-center py-10 text-slate-400 flex flex-col items-center">
+          <Lottie animationData={jobVacancyAnim} loop style={{ width: 180, height: 180 }} />
+          <p className="text-sm mt-2 font-medium text-slate-500">No jobs match your filters.</p>
+          <p className="text-xs text-slate-400 mt-1">Try adjusting the search or filter criteria.</p>
         </div>
       ) : (
         <div className="space-y-3">

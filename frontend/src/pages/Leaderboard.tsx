@@ -1,12 +1,17 @@
-import { useEffect, useState, useMemo, useRef, Fragment } from 'react';
+import React, { useEffect, useState, useMemo, useRef, Fragment } from 'react';
 import {
-  Users, AlertTriangle, CheckCircle2, RefreshCw,
+  AlertTriangle, CheckCircle2, RefreshCw,
   Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Filter,
   Mail, Send, ShieldCheck, ChevronRight, CalendarOff,
 } from 'lucide-react';
+import LottieLib from 'lottie-react';
+import leaderboardAnim from '../assets/lottie-leaderboard.json';
 import Layout from '../components/Layout';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Section 1 — Recruiter Leaderboard (per-recruiter daily metrics)
@@ -519,12 +524,9 @@ function RecruiterLeaderboardSection() {
   return (
     <div className="surface" style={{ padding: 0, overflow: 'hidden' }}>
       {/* ── Section header ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-4" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
+      <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-3" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-               style={{ background: 'var(--surface-muted)' }}>
-            <Users size={15} style={{ color: 'var(--ink-2)' }} />
-          </div>
+          <Lottie animationData={leaderboardAnim} loop style={{ width: 52, height: 52, flexShrink: 0 }} />
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold leading-tight" style={{ color: 'var(--ink)', letterSpacing: '-0.018em' }}>
               Recruiter Leaderboard

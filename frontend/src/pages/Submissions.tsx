@@ -1,13 +1,18 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSignal } from '../context/RealtimeContext';
 import {
   Send, Phone, Mail, MapPin, Briefcase,
   TrendingUp, Clock, User, ArrowRight, XCircle, X,
   Eye, FileText, ExternalLink, Search,
 } from 'lucide-react';
+import LottieLib from 'lottie-react';
+import reviewedAnim from '../assets/lottie-vacancy.json';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import PaginationBar from '../components/PaginationBar';
 import FilterBar, { emptyFilters, toQueryParams, type FilterValues } from '../components/FilterBar';
 import { useAuth } from '../context/AuthContext';
@@ -529,9 +534,9 @@ export default function Submissions() {
             ))}
           </div>
         ) : ready.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-            <Send size={44} className="opacity-20 mb-3" />
-            <p className="font-medium text-slate-500">No candidates awaiting submission.</p>
+          <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+            <Lottie animationData={reviewedAnim} loop style={{ width: 180, height: 180 }} />
+            <p className="font-medium text-slate-500 mt-2">No candidates awaiting submission.</p>
             <p className="text-sm mt-1">Candidates validated by the delivery lead will appear here.</p>
           </div>
         ) : (
