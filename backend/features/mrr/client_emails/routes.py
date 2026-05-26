@@ -106,122 +106,54 @@ Rules:
 - The subject, greeting, intro, closing must be professional and client-ready"""
 
 
-def _render_html(data: dict) -> str:
-    """Turn the AI JSON into a styled HTML email body."""
+def _render_plain(data: dict) -> str:
+    """Render AI JSON as plain text ready to paste into any email client."""
     skills: list[str] = data.get("skills", [])
     candidates: list[dict] = data.get("candidates", [])
+    divider = "─" * 68
 
-    # ── skills-matrix rows ───────────────────────────────────────────────────
-    header_cells = "".join(
-        f'<th style="padding:8px 12px;border:1px solid #e2e8f0;background:#f8fafc;'
-        f'font-weight:600;font-size:12px;color:#374151;white-space:nowrap">{s}</th>'
-        for s in skills
-    )
-    header_cells += (
-        '<th style="padding:8px 12px;border:1px solid #e2e8f0;background:#f8fafc;'
-        'font-weight:600;font-size:12px;color:#374151;min-width:180px">Overall Summary</th>'
-    )
+    lines: list[str] = []
 
-    candidate_rows = ""
-    for idx, cand in enumerate(candidates):
-        bg = "#ffffff" if idx % 2 == 0 else "#f9fafb"
-        skill_cells = ""
-        for s in skills:
-            analysis = (cand.get("skill_analysis") or {}).get(s, {})
+    lines.append(data.get("greeting", ""))
+    lines.append("")
+    lines.append(data.get("intro", ""))
+    lines.append("")
+
+    for idx, cand in enumerate(candidates, 1):
+        lines.append(divider)
+        lines.append(f"Candidate {idx}: {cand.get('name', '')}")
+        lines.append(f"Role        : {cand.get('current_role', '')}")
+
+        exp = cand.get("experience", "")
+        loc = cand.get("location", "")
+        ctc = cand.get("ctc_info", "")
+        if exp or loc:
+            lines.append(f"Experience  : {exp} yrs" + (f"  |  Location: {loc}" if loc else ""))
+        if ctc:
+            lines.append(f"CTC         : {ctc}")
+
+        lines.append("")
+        lines.append("Skills Assessment:")
+        for skill in skills:
+            analysis = (cand.get("skill_analysis") or {}).get(skill, {})
             has = analysis.get("has", False)
-            note = analysis.get("note", "—")
+            note = analysis.get("note", "")
             icon = "✅" if has else "❌"
-            skill_cells += (
-                f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-                f'font-size:12px;vertical-align:top">'
-                f'<span style="font-size:14px">{icon}</span><br>'
-                f'<span style="color:#6b7280;font-size:11px">{note}</span></td>'
-            )
-        summary_cell = (
-            f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-            f'font-size:12px;color:#374151;vertical-align:top">{cand.get("summary","")}</td>'
-        )
+            lines.append(f"  {icon}  {skill:<18} — {note}")
 
-        candidate_rows += (
-            f'<tr>'
-            f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-            f'font-weight:600;font-size:12px;color:#1e293b;white-space:nowrap;vertical-align:top">'
-            f'{cand.get("name","")}</td>'
-            f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-            f'font-size:12px;color:#374151;white-space:nowrap;vertical-align:top">'
-            f'{cand.get("current_role","")}</td>'
-            f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-            f'font-size:12px;color:#374151;white-space:nowrap;vertical-align:top">'
-            f'{cand.get("experience","")}</td>'
-            f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-            f'font-size:12px;color:#374151;white-space:nowrap;vertical-align:top">'
-            f'{cand.get("location","")}</td>'
-            f'<td style="padding:8px 12px;border:1px solid #e2e8f0;background:{bg};'
-            f'font-size:12px;color:#374151;white-space:nowrap;vertical-align:top">'
-            f'{cand.get("ctc_info","")}</td>'
-            f'{skill_cells}{summary_cell}'
-            f'</tr>'
-        )
+        lines.append("")
+        lines.append("Summary:")
+        lines.append(f"  {cand.get('summary', '')}")
+        lines.append("")
 
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8" /></head>
-<body style="font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;margin:0;padding:24px">
-<div style="max-width:900px;margin:0 auto;background:#ffffff;border-radius:12px;
-     box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden">
+    lines.append(divider)
+    lines.append("")
+    lines.append(data.get("closing", ""))
+    lines.append("")
+    lines.append("Best regards,")
+    lines.append("J2W Recruitment Team")
 
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);padding:28px 36px">
-    <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0 0 4px">Candidate Shortlist</p>
-    <h1 style="color:#ffffff;font-size:22px;margin:0;font-weight:700">
-      {data.get("subject","Candidate Shortlist")}
-    </h1>
-  </div>
-
-  <!-- Body -->
-  <div style="padding:28px 36px">
-    <p style="font-size:15px;color:#374151;margin:0 0 12px">{data.get("greeting","")}</p>
-    <p style="font-size:14px;color:#4b5563;line-height:1.7;margin:0 0 24px">
-      {data.get("intro","")}
-    </p>
-
-    <!-- Skills Matrix Table -->
-    <div style="overflow-x:auto;margin-bottom:24px">
-      <table style="border-collapse:collapse;width:100%;min-width:700px">
-        <thead>
-          <tr>
-            <th style="padding:8px 12px;border:1px solid #e2e8f0;background:#1e3a8a;
-              color:#ffffff;font-size:12px;font-weight:600;text-align:left">Candidate</th>
-            <th style="padding:8px 12px;border:1px solid #e2e8f0;background:#1e3a8a;
-              color:#ffffff;font-size:12px;font-weight:600;white-space:nowrap">Current Role</th>
-            <th style="padding:8px 12px;border:1px solid #e2e8f0;background:#1e3a8a;
-              color:#ffffff;font-size:12px;font-weight:600">Exp.</th>
-            <th style="padding:8px 12px;border:1px solid #e2e8f0;background:#1e3a8a;
-              color:#ffffff;font-size:12px;font-weight:600">Location</th>
-            <th style="padding:8px 12px;border:1px solid #e2e8f0;background:#1e3a8a;
-              color:#ffffff;font-size:12px;font-weight:600;white-space:nowrap">CTC</th>
-            {header_cells}
-          </tr>
-        </thead>
-        <tbody>
-          {candidate_rows}
-        </tbody>
-      </table>
-    </div>
-
-    <p style="font-size:14px;color:#4b5563;line-height:1.7;margin:0 0 28px">
-      {data.get("closing","")}
-    </p>
-
-    <!-- Signature -->
-    <div style="border-top:1px solid #e2e8f0;padding-top:18px;margin-top:8px">
-      <p style="font-size:13px;color:#6b7280;margin:0">Best regards,</p>
-      <p style="font-size:13px;font-weight:700;color:#1e293b;margin:2px 0">J2W Recruitment Team</p>
-    </div>
-  </div>
-</div>
-</body>
-</html>"""
+    return "\n".join(lines)
 
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
@@ -378,14 +310,14 @@ def generate_client_email(
         logger.error(f"AI returned non-JSON: {raw[:500]}")
         raise HTTPException(status_code=502, detail="AI returned invalid JSON")
 
-    html = _render_html(email_data)
+    email_text = _render_plain(email_data)
 
     # Persist
     record = ClientEmail(
         job_id=job_id,
         created_by_id=current_user.id,
         subject=email_data.get("subject", ""),
-        email_html=html,
+        email_html=email_text,   # column reused for plain text
         email_json=raw,
     )
     db.add(record)
@@ -395,7 +327,7 @@ def generate_client_email(
     return {
         "id": record.id,
         "subject": email_data.get("subject", ""),
-        "email_html": html,
+        "email_text": email_text,
         "email_data": email_data,
         "created_at": to_iso_utc(record.created_at),
     }
@@ -420,7 +352,7 @@ def get_email_history(
             "id": r.id,
             "subject": r.subject,
             "created_at": to_iso_utc(r.created_at),
-            "email_html": r.email_html,
+            "email_text": r.email_html,   # stored in email_html column
         }
         for r in records
     ]

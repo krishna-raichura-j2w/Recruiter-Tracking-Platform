@@ -55,22 +55,7 @@ interface JobDetail {
 interface GeneratedEmail {
   id: number;
   subject: string;
-  email_html: string;
-  email_data: {
-    greeting: string;
-    intro: string;
-    skills: string[];
-    candidates: {
-      name: string;
-      current_role: string;
-      experience: string;
-      location: string;
-      ctc_info: string;
-      summary: string;
-      skill_analysis: Record<string, { has: boolean; note: string }>;
-    }[];
-    closing: string;
-  };
+  email_text: string;
   created_at: string;
 }
 
@@ -84,7 +69,6 @@ function toast(msg: string, type: 'success' | 'error' = 'success') {
     padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;
     color:#fff;box-shadow:0 4px 20px rgba(0,0,0,0.18);
     background:${type === 'success' ? '#10b981' : '#ef4444'};
-    animation:slideUp 0.3s ease;
   `;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 3000);
@@ -134,11 +118,13 @@ export default function ClientEmailGenerator() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GeneratedEmail | null>(null);
   const [editSubject, setEditSubject] = useState('');
+  const [emailText, setEmailText] = useState('');
+
   const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<{ id: number; subject: string; created_at: string; email_html: string }[]>([]);
+  const [history, setHistory] = useState<{ id: number; subject: string; created_at: string; email_text: string }[]>([]);
   const [historyOpen, setHistoryOpen] = useState<number | null>(null);
 
-  const previewRef = useRef<HTMLIFrameElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load jobs on mount
   useEffect(() => {
@@ -152,6 +138,7 @@ export default function ClientEmailGenerator() {
   const selectJob = useCallback((job: JobSummary) => {
     setSelectedJob(job);
     setResult(null);
+    setEmailText('');
     setSelected(new Set());
     setShowHistory(false);
     setCandidatesLoading(true);
@@ -184,6 +171,7 @@ export default function ClientEmailGenerator() {
     if (!selectedJob || selected.size === 0) return;
     setGenerating(true);
     setResult(null);
+    setEmailText('');
     try {
       const r = await api.post('/client-emails/generate', {
         job_id: selectedJob.id,
@@ -191,6 +179,7 @@ export default function ClientEmailGenerator() {
       });
       setResult(r.data);
       setEditSubject(r.data.subject);
+      setEmailText(r.data.email_text);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Generation failed';
       toast(msg, 'error');
@@ -210,31 +199,11 @@ export default function ClientEmailGenerator() {
     }
   };
 
-  const copyHTML = () => {
-    if (!result) return;
-    navigator.clipboard.writeText(result.email_html);
-    toast('HTML copied to clipboard');
+  const copyEmail = () => {
+    const fullText = `Subject: ${editSubject}\n\n${emailText}`;
+    navigator.clipboard.writeText(fullText);
+    toast('Email copied — paste directly into your mail client');
   };
-
-  const copyPlain = () => {
-    if (!result) return;
-    const div = document.createElement('div');
-    div.innerHTML = result.email_html;
-    navigator.clipboard.writeText(div.innerText);
-    toast('Plain text copied to clipboard');
-  };
-
-  // Inject preview into iframe
-  useEffect(() => {
-    if (result && previewRef.current) {
-      const doc = previewRef.current.contentDocument;
-      if (doc) {
-        doc.open();
-        doc.write(result.email_html);
-        doc.close();
-      }
-    }
-  }, [result]);
 
   const filtered = jobs.filter(j =>
     j.role_title.toLowerCase().includes(jobSearch.toLowerCase()) ||
@@ -248,9 +217,8 @@ export default function ClientEmailGenerator() {
         {/* ── LEFT PANEL: Job list ─────────────────────────────────────── */}
         <div
           className="flex flex-col flex-shrink-0 border-r border-slate-200 bg-white"
-          style={{ width: 280 }}
+          style={{ width: 272 }}
         >
-          {/* Header */}
           <div className="px-4 py-4 border-b border-slate-100">
             <div className="flex items-center gap-2 mb-3">
               <Mail size={16} className="text-blue-600" />
@@ -265,7 +233,6 @@ export default function ClientEmailGenerator() {
             />
           </div>
 
-          {/* Job list */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {jobsLoading ? (
               <div className="flex justify-center py-8">
@@ -292,11 +259,11 @@ export default function ClientEmailGenerator() {
         {/* ── MIDDLE PANEL: Candidates ──────────────────────────────────── */}
         <div
           className="flex flex-col flex-shrink-0 border-r border-slate-200 bg-white"
-          style={{ width: 320 }}
+          style={{ width: 300 }}
         >
           {!selectedJob ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-              <Lottie animationData={meetingAnim} loop style={{ width: 200, height: 200 }} />
+              <Lottie animationData={meetingAnim} loop style={{ width: 190, height: 190 }} />
               <p className="text-sm text-slate-500 text-center font-medium">
                 Select a job to see submitted candidates
               </p>
@@ -341,7 +308,6 @@ export default function ClientEmailGenerator() {
                   </div>
                 ) : (
                   <>
-                    {/* Select all */}
                     <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
                       <button
                         onClick={toggleAll}
@@ -378,12 +344,8 @@ export default function ClientEmailGenerator() {
                               <p className="font-semibold text-xs text-slate-800 truncate">{c.name}</p>
                               <p className="text-[10px] text-slate-500 truncate">{c.current_role}</p>
                               <div className="flex gap-2 mt-1 flex-wrap">
-                                {c.experience && (
-                                  <span className="text-[10px] text-slate-400">{c.experience} yrs</span>
-                                )}
-                                {c.location && (
-                                  <span className="text-[10px] text-slate-400">· {c.location}</span>
-                                )}
+                                {c.experience && <span className="text-[10px] text-slate-400">{c.experience} yrs</span>}
+                                {c.location && <span className="text-[10px] text-slate-400">· {c.location}</span>}
                               </div>
                               {c.ctc_info && c.ctc_info !== 'Not disclosed' && (
                                 <p className="text-[10px] text-green-600 mt-0.5 truncate">{c.ctc_info}</p>
@@ -397,7 +359,6 @@ export default function ClientEmailGenerator() {
                 )}
               </div>
 
-              {/* Action buttons */}
               {candidates.length > 0 && (
                 <div className="p-3 border-t border-slate-100 space-y-2">
                   <button
@@ -426,10 +387,9 @@ export default function ClientEmailGenerator() {
           )}
         </div>
 
-        {/* ── RIGHT PANEL: Preview / Result ───────────────────────────── */}
+        {/* ── RIGHT PANEL: Email text ──────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {!selectedJob ? (
-            /* No job selected */
             <div className="flex flex-col items-center justify-center h-full gap-4">
               <Lottie animationData={aiRobotAnim} loop style={{ width: 220, height: 220 }} />
               <div className="text-center">
@@ -440,7 +400,6 @@ export default function ClientEmailGenerator() {
               </div>
             </div>
           ) : showHistory ? (
-            /* History view */
             <div className="flex flex-col h-full">
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white">
                 <h3 className="font-bold text-sm text-slate-800">Email History — {selectedJob.role_title}</h3>
@@ -448,7 +407,7 @@ export default function ClientEmailGenerator() {
                   onClick={() => setShowHistory(false)}
                   className="text-xs text-blue-600 hover:underline font-semibold"
                 >
-                  Back to Generator
+                  Back
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
@@ -474,19 +433,23 @@ export default function ClientEmailGenerator() {
                       </button>
                       {historyOpen === h.id && (
                         <div className="border-t border-slate-100">
-                          <div className="p-3 flex gap-2 bg-slate-50">
+                          <div className="px-4 py-2 bg-slate-50 flex justify-end">
                             <button
-                              onClick={() => { navigator.clipboard.writeText(h.email_html); toast('HTML copied'); }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:text-blue-600 hover:border-blue-300 transition-colors"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`Subject: ${h.subject}\n\n${h.email_text}`);
+                                toast('Copied');
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors"
                             >
-                              <ClipboardCopy size={11} /> Copy HTML
+                              <ClipboardCopy size={11} /> Copy Email
                             </button>
                           </div>
-                          <iframe
-                            srcDoc={h.email_html}
-                            style={{ width: '100%', height: 400, border: 'none' }}
-                            title="Email preview"
-                          />
+                          <pre
+                            className="px-4 py-3 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed"
+                            style={{ maxHeight: 400, overflowY: 'auto' }}
+                          >
+                            {h.email_text}
+                          </pre>
                         </div>
                       )}
                     </div>
@@ -495,19 +458,17 @@ export default function ClientEmailGenerator() {
               </div>
             </div>
           ) : generating ? (
-            /* Generating state */
             <div className="flex flex-col items-center justify-center h-full gap-4">
               <Lottie animationData={aiRobotAnim} loop style={{ width: 180, height: 180 }} />
               <p className="text-sm font-bold text-slate-700">Analyzing candidates & generating email…</p>
               <p className="text-xs text-slate-400">This may take 15–30 seconds</p>
             </div>
           ) : result ? (
-            /* Result view */
             <div className="flex flex-col h-full">
               {/* Toolbar */}
               <div className="px-6 py-3 border-b border-slate-200 bg-white flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Subject</label>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Subject</p>
                   <input
                     type="text"
                     value={editSubject}
@@ -517,16 +478,10 @@ export default function ClientEmailGenerator() {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
-                    onClick={copyHTML}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                    onClick={copyEmail}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
                   >
-                    <ClipboardCopy size={12} /> Copy HTML
-                  </button>
-                  <button
-                    onClick={copyPlain}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors"
-                  >
-                    <ClipboardCopy size={12} /> Copy Plain
+                    <ClipboardCopy size={12} /> Copy Email
                   </button>
                   <button
                     onClick={generate}
@@ -538,23 +493,37 @@ export default function ClientEmailGenerator() {
                 </div>
               </div>
 
-              {/* Email preview in iframe */}
-              <div className="flex-1 overflow-hidden bg-slate-100 p-4">
-                <iframe
-                  ref={previewRef}
-                  style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
-                  title="Email preview"
+              {/* Subject preview line */}
+              <div className="px-6 py-2 bg-slate-50 border-b border-slate-100">
+                <span className="text-xs text-slate-400 font-semibold">Subject: </span>
+                <span className="text-xs text-slate-700 font-semibold">{editSubject}</span>
+              </div>
+
+              {/* Editable email body */}
+              <div className="flex-1 overflow-hidden p-4">
+                <textarea
+                  ref={textareaRef}
+                  value={emailText}
+                  onChange={e => setEmailText(e.target.value)}
+                  className="w-full h-full resize-none outline-none text-sm text-slate-800 bg-white border border-slate-200 rounded-xl p-5 font-mono leading-relaxed"
+                  style={{ fontSize: 13, lineHeight: '1.75' }}
+                  spellCheck={false}
                 />
+              </div>
+
+              <div className="px-6 py-2 border-t border-slate-100 bg-slate-50">
+                <p className="text-[10px] text-slate-400">
+                  You can edit the text above before copying. Click <strong>Copy Email</strong> to copy subject + body.
+                </p>
               </div>
             </div>
           ) : (
-            /* Job selected but not generated yet */
             <div className="flex flex-col items-center justify-center h-full gap-4">
               <Lottie animationData={aiRobotAnim} loop style={{ width: 200, height: 200 }} />
               <div className="text-center">
                 <p className="text-sm font-bold text-slate-700">Ready to Generate</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  Select one or more candidates from the list, then click Generate Email
+                  Select candidates from the list, then click Generate Email
                 </p>
               </div>
             </div>
