@@ -314,15 +314,17 @@ def _performance_category(verified: int) -> str:
 
 @router.get("/recruiter-leaderboard")
 def recruiter_leaderboard(
+    date: str | None = None,      # YYYY-MM-DD; defaults to today IST
+    period: str = "day",          # "day" | "week" | "month"
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """
-    Per-recruiter daily metrics for the COO dashboard.
+    Per-recruiter metrics for the COO dashboard.
 
-    All counts use today's IST calendar day. "Verified by DL" counts validations
-    completed today on candidates this recruiter sourced. Performance category
-    is derived from verified count only (per product spec).
+    period=day   → single-day view with hourly breakdown (default: today)
+    period=week  → Mon-Sun week containing `date`, aggregate totals
+    period=month → calendar month containing `date`, aggregate totals
     """
     from infra.models import (
         Candidate,
@@ -345,17 +347,61 @@ def recruiter_leaderboard(
         default_targets_for_user,
         latest_targets_for_users,
     )
+    import calendar as _cal
 
-    # IST today
-    ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    # ── Resolve anchor date (IST) ──────────────────────────────────────────
+    ist_now   = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     today_ist = ist_now.date()
-    # UTC range covering the IST day
-    day_start_utc = datetime(
-        today_ist.year,
-        today_ist.month,
-        today_ist.day,
-    ) - timedelta(hours=5, minutes=30)
-    day_end_utc = day_start_utc + timedelta(days=1)
+
+    from datetime import date as _date
+    if date:
+        try:
+            anchor = _date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    else:
+        anchor = today_ist
+
+    is_today = (anchor == today_ist)
+
+    # ── Compute UTC range and period label based on period ─────────────────
+    if period == "week":
+        # Monday of anchor's week
+        range_start_ist = anchor - timedelta(days=anchor.weekday())
+        range_end_ist   = range_start_ist + timedelta(days=7)
+        period_label    = f"Week of {range_start_ist.strftime('%d %b')} – {(range_end_ist - timedelta(days=1)).strftime('%d %b %Y')}"
+        # working days Mon-Fri in this week (up to today for current week)
+        end_for_target  = min(range_end_ist - timedelta(days=1), today_ist)
+        working_days    = sum(
+            1 for i in range(7)
+            if (range_start_ist + timedelta(days=i)).weekday() < 5
+            and (range_start_ist + timedelta(days=i)) <= end_for_target
+        )
+    elif period == "month":
+        range_start_ist = _date(anchor.year, anchor.month, 1)
+        last_day        = _cal.monthrange(anchor.year, anchor.month)[1]
+        range_end_ist   = _date(anchor.year, anchor.month, last_day) + timedelta(days=1)
+        period_label    = anchor.strftime("%B %Y")
+        end_for_target  = min(range_end_ist - timedelta(days=1), today_ist)
+        working_days    = sum(
+            1 for d in range(last_day)
+            if (_date(anchor.year, anchor.month, d + 1)).weekday() < 5
+            and (_date(anchor.year, anchor.month, d + 1)) <= end_for_target
+        )
+    else:  # day
+        range_start_ist = anchor
+        range_end_ist   = anchor + timedelta(days=1)
+        period_label    = anchor.strftime("%d %b %Y")
+        working_days    = 1
+
+    # Convert IST range to UTC
+    range_start_utc = datetime(range_start_ist.year, range_start_ist.month, range_start_ist.day) - timedelta(hours=5, minutes=30)
+    range_end_utc   = datetime(range_end_ist.year,   range_end_ist.month,   range_end_ist.day)   - timedelta(hours=5, minutes=30)
+
+    # Aliases kept for day-period compat
+    today_ist     = anchor
+    day_start_utc = range_start_utc
+    day_end_utc   = range_end_utc
 
     # All active recruiters (primary or secondary role)…
     # Pod scoping: admin / COO see everyone; BH / KAM / DL see only the
@@ -536,20 +582,12 @@ def recruiter_leaderboard(
         ):
             reject_by_rec[uid] = reject_by_rec.get(uid, 0) + 1
 
-    # ── Hourly targets ──
-    # Sum of slot_targets for slots that have already ended → "target_so_far".
-    # Sum of all slot_targets for today → "day_target".
+    # ── Targets ──
     completed_slots = set(current_slot_indices_completed(ist_now))
-    # Resolve targets per recruiter using the same logic the Targets page
-    # uses: exact-date save → carry-forward from the latest prior save →
-    # role default. This guarantees that once a recruiter has any saved
-    # targets, the leaderboard keeps using them on every subsequent day
-    # until the next save overrides them.
-    resolved = latest_targets_for_users(db, rec_ids, today_ist)
+    resolved = latest_targets_for_users(db, rec_ids, anchor)
     slots_by_user: dict[int, dict[int, int]] = {
         uid: slot_map for uid, (slot_map, _) in resolved.items()
     }
-    # Quick role lookup for the default fallback when nothing is saved.
     rec_by_id: dict[int, User] = {u.id: u for u in recruiters}
 
     def _targets_for(uid: int) -> tuple[int, int]:
@@ -557,8 +595,13 @@ def recruiter_leaderboard(
         if not slots:
             user = rec_by_id.get(uid)
             slots = default_targets_for_user(user) if user is not None else {}
-        so_far = sum(c for idx, c in slots.items() if idx in completed_slots)
         day = sum(slots.values())
+        if period == "day":
+            so_far = sum(c for idx, c in slots.items() if idx in completed_slots)
+        else:
+            # For week/month: scale by number of working days in the period
+            so_far = day * working_days
+            day    = day * working_days
         return so_far, day
 
     # ── Org chain per recruiter ──
@@ -638,11 +681,13 @@ def recruiter_leaderboard(
         kam_names = kams_by_pod.get(u.pod_id, []) if u.pod_id else []
         return {"dl_names": names, "kam_names": kam_names, "bh": bh_name, "pod": pod_name}
 
-    # Recruiters on leave today (by IST date)
-    on_leave_ids: set[int] = {
-        r.user_id
-        for r in db.query(UserLeave.user_id).filter(UserLeave.leave_date == today_ist).all()
-    }
+    # Recruiters on leave — only relevant for day view (single date)
+    on_leave_ids: set[int] = set()
+    if period == "day":
+        on_leave_ids = {
+            r.user_id
+            for r in db.query(UserLeave.user_id).filter(UserLeave.leave_date == anchor).all()
+        }
 
     rows = []
     sum_done = sum_ack = sum_subs = sum_verified = sum_rejects = 0
@@ -674,32 +719,32 @@ def recruiter_leaderboard(
             )
         )
 
-        # Per-slot view: target + actual at each level. Frontend renders the
-        # hourly drill-down from this list.
+        # Hourly breakdown only for day view
         target_slots = slots_by_user.get(u.id, {})
-        a_h = ack_hourly.get(u.id, {})
-        s_h = sub_hourly.get(u.id, {})
-        v_h = verified_hourly.get(u.id, {})
         hourly = []
-        for s in TIME_SLOTS:
-            idx = s["index"]
-            t   = 0 if is_on_leave else int(target_slots.get(idx, 0))
-            vr  = int(v_h.get(idx, 0))
-            sb  = max(int(s_h.get(idx, 0)), vr)
-            a   = max(int(a_h.get(idx, 0)), sb)
-            hourly.append({
-                "slot_index":  idx,
-                "label":       s["label"],
-                "target":      t,
-                "ack_sent":    a,
-                "submissions": sb,
-                "dl_verified": vr,
-                "completed":   idx in completed_slots,
-            })
-            sum_hourly_target[idx] += t
-            sum_hourly_ack[idx]    += a
-            sum_hourly_sub[idx]    += sb
-            sum_hourly_ver[idx]    += vr
+        if period == "day":
+            a_h = ack_hourly.get(u.id, {})
+            s_h = sub_hourly.get(u.id, {})
+            v_h = verified_hourly.get(u.id, {})
+            for s in TIME_SLOTS:
+                idx = s["index"]
+                t   = 0 if is_on_leave else int(target_slots.get(idx, 0))
+                vr  = int(v_h.get(idx, 0))
+                sb  = max(int(s_h.get(idx, 0)), vr)
+                a   = max(int(a_h.get(idx, 0)), sb)
+                hourly.append({
+                    "slot_index":  idx,
+                    "label":       s["label"],
+                    "target":      t,
+                    "ack_sent":    a,
+                    "submissions": sb,
+                    "dl_verified": vr,
+                    "completed":   idx in completed_slots,
+                })
+                sum_hourly_target[idx] += t
+                sum_hourly_ack[idx]    += a
+                sum_hourly_sub[idx]    += sb
+                sum_hourly_ver[idx]    += vr
 
         chain = _chain_for(u)
         rows.append(
@@ -765,8 +810,11 @@ def recruiter_leaderboard(
     }
 
     return {
-        "rows":   rows,
-        "totals": totals,
-        "today":  today_ist.isoformat(),
-        "slots":  TIME_SLOTS,
+        "rows":         rows,
+        "totals":       totals,
+        "today":        anchor.isoformat(),
+        "period":       period,
+        "period_label": period_label,
+        "is_today":     is_today and period == "day",
+        "slots":        TIME_SLOTS,
     }

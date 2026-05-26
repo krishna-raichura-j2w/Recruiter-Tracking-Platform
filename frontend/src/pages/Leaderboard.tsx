@@ -60,9 +60,12 @@ interface RecruiterTotals {
 }
 
 interface RecruiterApiResponse {
-  rows:   RecruiterRow[];
-  totals: RecruiterTotals;
-  today:  string;
+  rows:         RecruiterRow[];
+  totals:       RecruiterTotals;
+  today:        string;
+  period:       string;
+  period_label: string;
+  is_today:     boolean;
 }
 
 const PERF_OPTIONS: RecruiterRow['performance'][] = [
@@ -390,6 +393,12 @@ function FunnelBar({ ack, sub, ver }: { ack: number; sub: number; ver: number })
   );
 }
 
+type Period = 'day' | 'week' | 'month';
+
+function todayISO() {
+  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+}
+
 function RecruiterLeaderboardSection() {
   const { user } = useAuth();
   const canMarkLeave = ['admin', 'coo', 'bh', 'kam', 'delivery_lead'].includes(user?.role ?? '');
@@ -397,12 +406,14 @@ function RecruiterLeaderboardSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [leavePending, setLeavePending] = useState<Set<number>>(new Set());
-  // Hourly view expansion: rows are EXPANDED by default. `collapsed` tracks
-  // rows the user has explicitly closed; `allCollapsed` is the master toggle.
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [allCollapsed, setAllCollapsed] = useState(true);
 
-  // ── Filter state — multi-select where it matters ──
+  // ── Period / date filter ──
+  const [period, setPeriod]     = useState<Period>('day');
+  const [selDate, setSelDate]   = useState(todayISO());   // YYYY-MM-DD
+
+  // ── Filter state ──
   const [search, setSearch]     = useState('');
   const [fDl,  setFDl]          = useState<Set<string>>(new Set());
   const [fKam, setFKam]         = useState<Set<string>>(new Set());
@@ -411,24 +422,33 @@ function RecruiterLeaderboardSection() {
   const [fStatus, setFStatus]   = useState('');
   const [fPerf,   setFPerf]     = useState('');
 
-  const fetchData = () => {
+  const fetchData = (p: Period = period, d: string = selDate) => {
     setLoading(true);
-    api.get<RecruiterApiResponse>('/coo/recruiter-leaderboard')
+    api.get<RecruiterApiResponse>('/coo/recruiter-leaderboard', { params: { period: p, date: d } })
       .then((r) => { setData(r.data); setError(''); })
       .catch(() => setError('Failed to load recruiter leaderboard.'))
       .finally(() => setLoading(false));
+  };
+
+  const handlePeriodChange = (p: Period) => {
+    setPeriod(p);
+    fetchData(p, selDate);
+  };
+
+  const handleDateChange = (d: string) => {
+    setSelDate(d);
+    fetchData(period, d);
   };
 
   const toggleLeave = async (recruiterId: number, currentlyOnLeave: boolean) => {
     setLeavePending(prev => new Set(prev).add(recruiterId));
     try {
       if (currentlyOnLeave) {
-        const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
-        await api.delete(`/leaves/${recruiterId}/${today}`);
+        await api.delete(`/leaves/${recruiterId}/${selDate}`);
       } else {
         await api.post('/leaves', { user_id: recruiterId });
       }
-      await fetchData();
+      await fetchData(period, selDate);
     } catch {
       // silently ignore — row state will stay as-is
     } finally {
