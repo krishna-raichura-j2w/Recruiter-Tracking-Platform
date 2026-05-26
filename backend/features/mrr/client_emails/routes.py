@@ -107,46 +107,55 @@ Rules:
 
 
 def _render_plain(data: dict) -> str:
-    """Render AI JSON as plain text ready to paste into any email client."""
+    """Render AI JSON as plain text — paste directly into Gmail / Outlook."""
     skills: list[str] = data.get("skills", [])
     candidates: list[dict] = data.get("candidates", [])
-    divider = "─" * 68
 
     lines: list[str] = []
 
     lines.append(data.get("greeting", ""))
     lines.append("")
     lines.append(data.get("intro", ""))
-    lines.append("")
 
     for idx, cand in enumerate(candidates, 1):
-        lines.append(divider)
-        lines.append(f"Candidate {idx}: {cand.get('name', '')}")
-        lines.append(f"Role        : {cand.get('current_role', '')}")
+        lines.append("")
+        lines.append("")
+        name = cand.get("name", "")
+        lines.append(f"{idx}. {name.upper()}")
 
+        role = cand.get("current_role", "")
+        if role:
+            lines.append(f"   Role: {role}")
+
+        parts = []
         exp = cand.get("experience", "")
         loc = cand.get("location", "")
+        if exp:
+            parts.append(f"Experience: {exp} yrs")
+        if loc:
+            parts.append(f"Location: {loc}")
+        if parts:
+            lines.append(f"   {' | '.join(parts)}")
+
         ctc = cand.get("ctc_info", "")
-        if exp or loc:
-            lines.append(f"Experience  : {exp} yrs" + (f"  |  Location: {loc}" if loc else ""))
-        if ctc:
-            lines.append(f"CTC         : {ctc}")
+        if ctc and ctc != "Not disclosed":
+            lines.append(f"   CTC: {ctc}")
 
         lines.append("")
-        lines.append("Skills Assessment:")
+        lines.append("   Skills:")
         for skill in skills:
             analysis = (cand.get("skill_analysis") or {}).get(skill, {})
             has = analysis.get("has", False)
             note = analysis.get("note", "")
             icon = "✅" if has else "❌"
-            lines.append(f"  {icon}  {skill:<18} — {note}")
+            lines.append(f"   {icon} {skill} - {note}")
 
-        lines.append("")
-        lines.append("Summary:")
-        lines.append(f"  {cand.get('summary', '')}")
-        lines.append("")
+        summary = cand.get("summary", "")
+        if summary:
+            lines.append("")
+            lines.append(f"   Summary: {summary}")
 
-    lines.append(divider)
+    lines.append("")
     lines.append("")
     lines.append(data.get("closing", ""))
     lines.append("")
