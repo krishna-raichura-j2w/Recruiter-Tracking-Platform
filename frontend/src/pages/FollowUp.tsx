@@ -6,6 +6,10 @@ import {
   UserCheck, Phone, Mail, Send, Briefcase, Download,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import LottieLib from 'lottie-react';
+import findingAnim from '../assets/lottie-finding.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import Layout from '../components/Layout';
 import api from '../api/client';
 
@@ -617,9 +621,10 @@ export default function FollowUp() {
           {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-white rounded-xl border border-slate-100" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20 text-slate-400">
-          <GitBranch size={40} className="mx-auto mb-3 opacity-20" />
-          <p className="font-medium">No JD stories found.</p>
+        <div className="flex flex-col items-center py-10 text-slate-400">
+          <Lottie animationData={findingAnim} loop style={{ width: 220, height: 220 }} />
+          <p className="font-medium text-slate-500 mt-2">No JD stories found.</p>
+          <p className="text-xs mt-1">Try adjusting the filters above.</p>
         </div>
       ) : (
         <div className="space-y-2">

@@ -455,7 +455,7 @@ export default function Candidates() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center py-10 text-slate-400">
-            <Lottie animationData={searchAnim} loop style={{ width: 160, height: 160 }} />
+            <Lottie animationData={searchAnim} loop style={{ width: 200, height: 200 }} />
             <p className="text-sm font-medium text-slate-500 mt-2">No candidates found.</p>
             <p className="text-xs mt-1">Try adjusting your search or filters.</p>
           </div>

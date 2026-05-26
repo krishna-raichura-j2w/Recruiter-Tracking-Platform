@@ -1,4 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import LottieLib from 'lottie-react';
+import communicationAnim from '../assets/lottie-communication.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import { Mail, CheckCircle2, ShieldCheck, X, Calendar, Upload, FileText, Image, ExternalLink, Search } from 'lucide-react';
 import PaginationBar from '../components/PaginationBar';
 import Layout from '../components/Layout';
@@ -203,9 +207,9 @@ export default function MailTracker() {
           ))}
         </div>
       ) : mails.length === 0 ? (
-        <div className="text-center py-24 text-slate-400">
-          <Mail size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="font-semibold">No mails recorded yet.</p>
+        <div className="flex flex-col items-center py-10 text-slate-400">
+          <Lottie animationData={communicationAnim} loop style={{ width: 220, height: 220 }} />
+          <p className="font-semibold text-slate-500 mt-2">No mails recorded yet.</p>
           <p className="text-sm mt-1">Use "Generate Email" from a candidate profile to log a sent mail.</p>
         </div>
       ) : (

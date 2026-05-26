@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import LottieLib from 'lottie-react';
+import collaborationAnim from '../assets/lottie-collaboration.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import {
   Plus, Trash2, UserPlus, Users, Pencil, X, ChevronRight,
   ChevronDown, RefreshCw, Crown, Briefcase, ClipboardList, UserCheck,
@@ -1045,9 +1049,10 @@ export default function Pods() {
       {loading && pods.length === 0 ? (
         <div className="surface p-16 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>Loading…</div>
       ) : pods.length === 0 ? (
-        <div className="rounded-[14px] p-16 text-center text-[13px]"
+        <div className="rounded-[14px] py-10 text-center text-[13px] flex flex-col items-center"
              style={{ background: 'var(--surface-card)', border: '1px dashed var(--border-strong)', color: 'var(--ink-3)' }}>
-          {isAdmin ? 'No pods yet. Click “Create Pod” to set up your first team.' : 'You are not part of any pod yet.'}
+          <Lottie animationData={collaborationAnim} loop style={{ width: 200, height: 200 }} />
+          <p className="mt-2">{isAdmin ? 'No pods yet. Click "Create Pod" to set up your first team.' : 'You are not part of any pod yet.'}</p>
         </div>
       ) : (
         <div className="space-y-4">

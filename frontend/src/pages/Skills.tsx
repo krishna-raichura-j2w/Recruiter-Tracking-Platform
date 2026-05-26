@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import LottieLib from 'lottie-react';
+import portfolioAnim from '../assets/lottie-portfolio.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, FileText, AlignLeft, Loader2,
@@ -645,11 +649,9 @@ export default function Skills() {
 
           {/* Skills */}
           {skills.length === 0 ? (
-            <div className="px-5 py-12 text-center">
-              <div className="inline-flex p-3 rounded-2xl bg-slate-100 mb-3">
-                <Sparkles size={20} className="text-slate-400" />
-              </div>
-              <p className="text-sm text-slate-500">Skills will appear here after extraction.</p>
+            <div className="px-5 py-6 text-center flex flex-col items-center">
+              <Lottie animationData={portfolioAnim} loop style={{ width: 180, height: 180 }} />
+              <p className="text-sm text-slate-500 mt-2">Skills will appear here after extraction.</p>
               <p className="text-xs text-slate-400 mt-1">Toggle each skill as <b>AND</b> (must), <b>OR</b> (optional), or <b>NOT</b> (exclude) to refine the boolean string in real time.</p>
             </div>
           ) : (

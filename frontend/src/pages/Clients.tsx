@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import LottieLib from 'lottie-react';
+import agreementAnim from '../assets/lottie-agreement.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import { X, Pencil, Trash2, Globe, Building2, Clock, Loader2, Search } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
@@ -168,12 +172,12 @@ export default function Clients() {
           {[...Array(3)].map((_, i) => <div key={i} className="h-48 bg-white rounded-2xl border border-slate-100" />)}
         </div>
       ) : filteredClients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-          <Building2 size={44} className="opacity-20 mb-3" />
+        <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+          <Lottie animationData={agreementAnim} loop style={{ width: 220, height: 220 }} />
           {search ? (
-            <p className="font-medium text-slate-500">No clients match "{search}".</p>
+            <p className="font-medium text-slate-500 mt-2">No clients match "{search}".</p>
           ) : (
-            <p className="font-medium text-slate-500">No clients added yet.</p>
+            <p className="font-medium text-slate-500 mt-2">No clients added yet.</p>
           )}
         </div>
       ) : (

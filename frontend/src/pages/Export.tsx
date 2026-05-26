@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import LottieLib from 'lottie-react';
+import officeDrawerAnim from '../assets/lottie-office-drawer.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import * as XLSX from 'xlsx';
 import { Download, RefreshCw, Filter, Users, FileSpreadsheet, X } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -737,9 +741,9 @@ export default function Export() {
               <RefreshCw size={24} className="animate-spin mr-3" /> Loading data…
             </div>
           ) : rows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-              <Users size={44} className="opacity-20 mb-3" />
-              <p className="font-medium text-slate-500">No candidates match the selected filters.</p>
+            <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+              <Lottie animationData={officeDrawerAnim} loop style={{ width: 200, height: 200 }} />
+              <p className="font-medium text-slate-500 mt-2">No candidates match the selected filters.</p>
             </div>
           ) : (
             <div className="overflow-auto rounded-2xl border border-slate-200 shadow-sm" style={{ maxHeight: 'calc(100vh - 220px)' }}>

@@ -277,7 +277,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
       {/* Footer */}
       <div className="px-3 pb-4 border-t border-white/8 pt-3 flex-shrink-0">
         <div className="flex justify-center mb-1">
-          <Lottie animationData={goalAnim} loop style={{ width: 64, height: 64, opacity: 0.75 }} />
+          <Lottie animationData={goalAnim} loop style={{ width: 80, height: 80, opacity: 0.75 }} />
         </div>
         <p className="text-[10px] px-3 mb-2 leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
           {roleInfo?.sub}

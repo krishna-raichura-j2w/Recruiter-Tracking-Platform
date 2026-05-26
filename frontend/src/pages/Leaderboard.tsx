@@ -542,7 +542,7 @@ function RecruiterLeaderboardSection() {
       {/* ── Section header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-3" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
         <div className="flex items-center gap-3 min-w-0">
-          <Lottie animationData={leaderboardAnim} loop style={{ width: 52, height: 52, flexShrink: 0 }} />
+          <Lottie animationData={leaderboardAnim} loop style={{ width: 90, height: 90, flexShrink: 0 }} />
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold leading-tight" style={{ color: 'var(--ink)', letterSpacing: '-0.018em' }}>
               Recruiter Leaderboard

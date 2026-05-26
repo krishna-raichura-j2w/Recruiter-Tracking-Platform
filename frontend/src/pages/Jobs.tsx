@@ -802,7 +802,7 @@ export default function Jobs() {
         </div>
       ) : filteredJobs.length === 0 ? (
         <div className="text-center py-10 text-slate-400 flex flex-col items-center">
-          <Lottie animationData={jobVacancyAnim} loop style={{ width: 180, height: 180 }} />
+          <Lottie animationData={jobVacancyAnim} loop style={{ width: 220, height: 220 }} />
           <p className="text-sm mt-2 font-medium text-slate-500">No jobs match your filters.</p>
           <p className="text-xs text-slate-400 mt-1">Try adjusting the search or filter criteria.</p>
         </div>

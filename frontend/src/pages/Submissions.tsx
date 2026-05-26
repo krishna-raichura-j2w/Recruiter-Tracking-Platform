@@ -10,14 +10,14 @@ import reviewedAnim from '../assets/lottie-vacancy.json';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ScoreBar from '../components/ScoreBar';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import PaginationBar from '../components/PaginationBar';
 import FilterBar, { emptyFilters, toQueryParams, type FilterValues } from '../components/FilterBar';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import type { Candidate } from '../types';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -535,7 +535,7 @@ export default function Submissions() {
           </div>
         ) : ready.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-slate-400">
-            <Lottie animationData={reviewedAnim} loop style={{ width: 180, height: 180 }} />
+            <Lottie animationData={reviewedAnim} loop style={{ width: 220, height: 220 }} />
             <p className="font-medium text-slate-500 mt-2">No candidates awaiting submission.</p>
             <p className="text-sm mt-1">Candidates validated by the delivery lead will appear here.</p>
           </div>

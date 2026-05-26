@@ -1,4 +1,8 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import LottieLib from 'lottie-react';
+import reviewedAnim from '../assets/lottie-reviewed.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import { useSignal } from '../context/RealtimeContext';
 import { X, CheckCircle, AlertCircle, PauseCircle, XCircle, FileText, ExternalLink, UserCheck, Search } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -184,9 +188,10 @@ export default function ValidationQueue() {
             {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-100 rounded-xl" />)}
           </div>
         ) : queue.length === 0 ? (
-          <div className="text-center py-16">
-            <CheckCircle size={40} className="mx-auto text-green-300 mb-3" />
-            <p className="text-slate-400 text-sm">Validation queue is empty. All caught up!</p>
+          <div className="flex flex-col items-center py-10 text-slate-400">
+            <Lottie animationData={reviewedAnim} loop style={{ width: 220, height: 220 }} />
+            <p className="text-sm font-medium text-green-600 mt-2">All caught up!</p>
+            <p className="text-xs mt-1">Validation queue is empty.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
