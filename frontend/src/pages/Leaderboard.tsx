@@ -395,10 +395,6 @@ function FunnelBar({ ack, sub, ver }: { ack: number; sub: number; ver: number })
 
 type Period = 'day' | 'week' | 'month';
 
-function todayISO() {
-  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
-}
-
 function RecruiterLeaderboardSection() {
   const { user } = useAuth();
   const canMarkLeave = ['admin', 'coo', 'bh', 'kam', 'delivery_lead'].includes(user?.role ?? '');
@@ -553,24 +549,97 @@ function RecruiterLeaderboardSection() {
             </h2>
             <p className="text-[11.5px] leading-tight mt-0.5" style={{ color: 'var(--ink-3)' }}>
               Ack&nbsp;→&nbsp;Submissions&nbsp;→&nbsp;DL&nbsp;Verified · daily target funnel
-              {data && <span className="font-mono ml-2 tabular-nums" style={{ color: 'var(--ink-4)' }}>{data.today}</span>}
+              {data && (
+                <span className="font-mono ml-2 tabular-nums" style={{ color: 'var(--ink-4)' }}>
+                  {data.period_label}
+                </span>
+              )}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* ── Period tabs ── */}
+          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-hairline)' }}>
+            {(['day', 'week', 'month'] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePeriodChange(p)}
+                className="px-3 py-1.5 text-[12px] font-medium capitalize transition-colors"
+                style={{
+                  background: period === p ? '#1E3A5F' : 'var(--surface-card)',
+                  color:      period === p ? 'white'    : 'var(--ink-2)',
+                  borderRight: p !== 'month' ? '1px solid var(--border-hairline)' : 'none',
+                }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Date input ── */}
+          <div className="relative flex items-center gap-1">
+            <Calendar size={12} style={{ color: 'var(--ink-3)', position: 'absolute', left: 8, pointerEvents: 'none' }} />
+            <input
+              type={period === 'month' ? 'month' : period === 'week' ? 'week' : 'date'}
+              value={
+                period === 'month' ? selDate.slice(0, 7) :
+                period === 'week'  ? (() => {
+                  // Convert YYYY-MM-DD to YYYY-Www for week input
+                  const d = new Date(selDate);
+                  const jan4 = new Date(d.getFullYear(), 0, 4);
+                  const week = Math.ceil(((d.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7);
+                  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+                })() :
+                selDate
+              }
+              max={period === 'month' ? todayISO().slice(0, 7) : period === 'week' ? (() => {
+                const d = new Date(); const jan4 = new Date(d.getFullYear(), 0, 4);
+                const w = Math.ceil(((d.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7);
+                return `${d.getFullYear()}-W${String(w).padStart(2, '0')}`;
+              })() : todayISO()}
+              onChange={e => {
+                let val = e.target.value;
+                if (period === 'month') val = val + '-01';
+                else if (period === 'week') {
+                  // Parse YYYY-Www → Monday date
+                  const [yr, wk] = val.split('-W').map(Number);
+                  const jan4 = new Date(yr, 0, 4);
+                  const monday = new Date(jan4.getTime() + ((wk - 1) * 7 - jan4.getDay() + 1) * 86400000);
+                  val = monday.toLocaleDateString('en-CA');
+                }
+                if (val) handleDateChange(val);
+              }}
+              className="pl-7 pr-2 py-1.5 text-[12px] rounded-md"
+              style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink)', width: period === 'week' ? 130 : period === 'month' ? 110 : 120 }}
+            />
+          </div>
+
+          {/* Today shortcut */}
+          {selDate !== todayISO() && (
+            <button
+              onClick={() => handleDateChange(todayISO())}
+              className="px-2.5 py-1.5 text-[12px] rounded-md font-medium transition-colors"
+              style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+            >
+              Today
+            </button>
+          )}
+
+          {period === 'day' && (
+            <button
+              onClick={toggleAll}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md font-medium transition-colors"
+              style={{ background: 'var(--surface-muted)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#E7E5E4')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
+              title="Show or hide the per-hour activity grid under every row"
+            >
+              {allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+              {allCollapsed ? 'Show hourly' : 'Hide hourly'}
+            </button>
+          )}
           <button
-            onClick={toggleAll}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md font-medium transition-colors"
-            style={{ background: 'var(--surface-muted)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#E7E5E4')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-muted)')}
-            title="Show or hide the per-hour activity grid under every row"
-          >
-            {allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-            {allCollapsed ? 'Show hourly' : 'Hide hourly'}
-          </button>
-          <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             disabled={loading}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] rounded-md font-medium transition-colors disabled:opacity-50"
             style={{ background: 'var(--surface-muted)', color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
@@ -696,8 +765,8 @@ function RecruiterLeaderboardSection() {
                   return (
                   <Fragment key={row.recruiter_id}>
                   <tr
-                    onClick={() => toggleRow(row.recruiter_id)}
-                    className="cursor-pointer transition-colors"
+                    onClick={() => period === 'day' && toggleRow(row.recruiter_id)}
+                    className={period === 'day' ? 'cursor-pointer transition-colors' : 'transition-colors'}
                     style={{
                       borderBottom: '1px solid var(--border-hairline)',
                       background: onLeave ? '#FFFBEB' : undefined,
@@ -707,12 +776,12 @@ function RecruiterLeaderboardSection() {
                     onMouseLeave={e => (e.currentTarget.style.background = onLeave ? '#FFFBEB' : '')}
                   >
                     <td className="py-2 px-2 text-center" style={{ color: 'var(--ink-4)' }}>
-                      {open ? <ChevronDown size={14} className="inline" /> : <ChevronRight size={14} className="inline" />}
+                      {period === 'day' && (open ? <ChevronDown size={14} className="inline" /> : <ChevronRight size={14} className="inline" />)}
                     </td>
                     <td className="py-2 px-3 font-medium whitespace-nowrap" style={{ color: 'var(--ink)' }}>
                       <div className="flex items-center gap-2">
                         <span>{row.recruiter_name}</span>
-                        {canMarkLeave && (
+                        {canMarkLeave && data?.is_today && (
                           <button
                             onClick={e => { e.stopPropagation(); toggleLeave(row.recruiter_id, onLeave); }}
                             disabled={leaveBusy}
@@ -797,7 +866,7 @@ function RecruiterLeaderboardSection() {
                       {row.rejections || '·'}
                     </td>
                   </tr>
-                  {open && row.hourly && row.hourly.length > 0 && (
+                  {period === 'day' && open && row.hourly && row.hourly.length > 0 && (
                     <tr>
                       <td colSpan={COL_COUNT} className="p-0">
                         <HourlyActivity hourly={row.hourly} dayTarget={row.day_target} />
