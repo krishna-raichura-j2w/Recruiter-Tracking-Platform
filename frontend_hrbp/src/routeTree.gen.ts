@@ -19,10 +19,16 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedCadenceRouteImport } from './routes/_authenticated/cadence'
 import { Route as AuthenticatedTicketsIndexRouteImport } from './routes/_authenticated/tickets.index'
+import { Route as AuthenticatedExitsIndexRouteImport } from './routes/_authenticated/exits.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
 import { Route as AuthenticatedTicketsTicketIdRouteImport } from './routes/_authenticated/tickets.$ticketId'
 import { Route as AuthenticatedConsultantsConsultantIdRouteImport } from './routes/_authenticated/consultants.$consultantId'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
+import { Route as AuthenticatedAdminTicketsRouteImport } from './routes/_authenticated/admin.tickets'
+import { Route as AuthenticatedAdminConsultantsRouteImport } from './routes/_authenticated/admin.consultants'
+import { Route as AuthenticatedAdminClientsRouteImport } from './routes/_authenticated/admin.clients'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -77,12 +83,22 @@ const AuthenticatedTicketsIndexRoute =
     path: '/tickets/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedExitsIndexRoute = AuthenticatedExitsIndexRouteImport.update({
+  id: '/exits/',
+  path: '/exits/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/clients/',
     path: '/clients/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedTicketsTicketIdRoute =
   AuthenticatedTicketsTicketIdRouteImport.update({
     id: '/tickets/$ticketId',
@@ -101,6 +117,29 @@ const AuthenticatedClientsClientIdRoute =
     path: '/clients/$clientId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedAdminTicketsRoute =
+  AuthenticatedAdminTicketsRouteImport.update({
+    id: '/admin/tickets',
+    path: '/admin/tickets',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminConsultantsRoute =
+  AuthenticatedAdminConsultantsRouteImport.update({
+    id: '/admin/consultants',
+    path: '/admin/consultants',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminClientsRoute =
+  AuthenticatedAdminClientsRouteImport.update({
+    id: '/admin/clients',
+    path: '/admin/clients',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -111,10 +150,16 @@ export interface FileRoutesByFullPath {
   '/incident-engine': typeof AuthenticatedIncidentEngineRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/admin/clients': typeof AuthenticatedAdminClientsRoute
+  '/admin/consultants': typeof AuthenticatedAdminConsultantsRoute
+  '/admin/tickets': typeof AuthenticatedAdminTicketsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
   '/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
+  '/exits/': typeof AuthenticatedExitsIndexRoute
   '/tickets/': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -126,10 +171,16 @@ export interface FileRoutesByTo {
   '/incident-engine': typeof AuthenticatedIncidentEngineRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/admin/clients': typeof AuthenticatedAdminClientsRoute
+  '/admin/consultants': typeof AuthenticatedAdminConsultantsRoute
+  '/admin/tickets': typeof AuthenticatedAdminTicketsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
   '/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
+  '/exits': typeof AuthenticatedExitsIndexRoute
   '/tickets': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRoutesById {
@@ -143,10 +194,16 @@ export interface FileRoutesById {
   '/_authenticated/incident-engine': typeof AuthenticatedIncidentEngineRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/admin/clients': typeof AuthenticatedAdminClientsRoute
+  '/_authenticated/admin/consultants': typeof AuthenticatedAdminConsultantsRoute
+  '/_authenticated/admin/tickets': typeof AuthenticatedAdminTicketsRoute
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
   '/_authenticated/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
+  '/_authenticated/exits/': typeof AuthenticatedExitsIndexRoute
   '/_authenticated/tickets/': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRouteTypes {
@@ -160,10 +217,16 @@ export interface FileRouteTypes {
     | '/incident-engine'
     | '/notifications'
     | '/profile'
+    | '/admin/clients'
+    | '/admin/consultants'
+    | '/admin/tickets'
+    | '/admin/users'
     | '/clients/$clientId'
     | '/consultants/$consultantId'
     | '/tickets/$ticketId'
+    | '/admin/'
     | '/clients/'
+    | '/exits/'
     | '/tickets/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -175,10 +238,16 @@ export interface FileRouteTypes {
     | '/incident-engine'
     | '/notifications'
     | '/profile'
+    | '/admin/clients'
+    | '/admin/consultants'
+    | '/admin/tickets'
+    | '/admin/users'
     | '/clients/$clientId'
     | '/consultants/$consultantId'
     | '/tickets/$ticketId'
+    | '/admin'
     | '/clients'
+    | '/exits'
     | '/tickets'
   id:
     | '__root__'
@@ -191,10 +260,16 @@ export interface FileRouteTypes {
     | '/_authenticated/incident-engine'
     | '/_authenticated/notifications'
     | '/_authenticated/profile'
+    | '/_authenticated/admin/clients'
+    | '/_authenticated/admin/consultants'
+    | '/_authenticated/admin/tickets'
+    | '/_authenticated/admin/users'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/consultants/$consultantId'
     | '/_authenticated/tickets/$ticketId'
+    | '/_authenticated/admin/'
     | '/_authenticated/clients/'
+    | '/_authenticated/exits/'
     | '/_authenticated/tickets/'
   fileRoutesById: FileRoutesById
 }
@@ -276,11 +351,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTicketsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/exits/': {
+      id: '/_authenticated/exits/'
+      path: '/exits'
+      fullPath: '/exits/'
+      preLoaderRoute: typeof AuthenticatedExitsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/clients'
       fullPath: '/clients/'
       preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/tickets/$ticketId': {
@@ -304,6 +393,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/tickets': {
+      id: '/_authenticated/admin/tickets'
+      path: '/admin/tickets'
+      fullPath: '/admin/tickets'
+      preLoaderRoute: typeof AuthenticatedAdminTicketsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/consultants': {
+      id: '/_authenticated/admin/consultants'
+      path: '/admin/consultants'
+      fullPath: '/admin/consultants'
+      preLoaderRoute: typeof AuthenticatedAdminConsultantsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/clients': {
+      id: '/_authenticated/admin/clients'
+      path: '/admin/clients'
+      fullPath: '/admin/clients'
+      preLoaderRoute: typeof AuthenticatedAdminClientsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -314,10 +431,16 @@ interface AuthenticatedRouteChildren {
   AuthenticatedIncidentEngineRoute: typeof AuthenticatedIncidentEngineRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedAdminClientsRoute: typeof AuthenticatedAdminClientsRoute
+  AuthenticatedAdminConsultantsRoute: typeof AuthenticatedAdminConsultantsRoute
+  AuthenticatedAdminTicketsRoute: typeof AuthenticatedAdminTicketsRoute
+  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedConsultantsConsultantIdRoute: typeof AuthenticatedConsultantsConsultantIdRoute
   AuthenticatedTicketsTicketIdRoute: typeof AuthenticatedTicketsTicketIdRoute
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
+  AuthenticatedExitsIndexRoute: typeof AuthenticatedExitsIndexRoute
   AuthenticatedTicketsIndexRoute: typeof AuthenticatedTicketsIndexRoute
 }
 
@@ -328,11 +451,17 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedIncidentEngineRoute: AuthenticatedIncidentEngineRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedAdminClientsRoute: AuthenticatedAdminClientsRoute,
+  AuthenticatedAdminConsultantsRoute: AuthenticatedAdminConsultantsRoute,
+  AuthenticatedAdminTicketsRoute: AuthenticatedAdminTicketsRoute,
+  AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedConsultantsConsultantIdRoute:
     AuthenticatedConsultantsConsultantIdRoute,
   AuthenticatedTicketsTicketIdRoute: AuthenticatedTicketsTicketIdRoute,
+  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
+  AuthenticatedExitsIndexRoute: AuthenticatedExitsIndexRoute,
   AuthenticatedTicketsIndexRoute: AuthenticatedTicketsIndexRoute,
 }
 

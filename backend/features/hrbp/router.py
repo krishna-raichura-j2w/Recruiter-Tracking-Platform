@@ -21,12 +21,15 @@ from features.hrbp.sop_definitions.route import router as sop_router
 from features.hrbp.sop_steps.route import router as sop_steps_router
 from features.hrbp.storage.route import router as storage_router
 from features.hrbp.tickets.route import router as tickets_router
+from features.hrbp.notifications.route import router as notifications_router
+from features.hrbp.admin.route import router as admin_router
+from features.hrbp.exits.route import router as exits_router
 
 hrbp_router = APIRouter(prefix="/hrbp")
 
 # Roles permitted to access HRBP data endpoints.
 # Add new roles here as the system grows — no other file needs to change.
-_HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin", "ops_head", "coo", "priti"))
+_HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin", "ops_head", "coo", "ceo"))
 
 # Auth router is open to any authenticated user (needed for token refresh + profile).
 hrbp_router.include_router(auth_router)
@@ -49,5 +52,8 @@ hrbp_router.include_router(audit_log_router,          dependencies=[_HRBP_ROLES]
 hrbp_router.include_router(cadence_schedules_router,  dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(storage_router,            dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(tickets_router,            dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(notifications_router,      dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(dashboard_router,          dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(ai_router,                 dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(admin_router,              dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(exits_router,              dependencies=[_HRBP_ROLES])

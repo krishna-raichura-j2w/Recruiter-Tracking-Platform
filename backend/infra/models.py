@@ -199,6 +199,7 @@ class User(Base):
         nullable=True,
     )  # e.g. "delivery_lead" for a KAM who is also DL
     recruiter_type = Column(SAEnum(RecruiterType, native_enum=False), nullable=True)
+    phone = Column(String(30), nullable=True)
     is_active = Column(Boolean, default=True)
     must_change_password = Column(Boolean, default=False)
     pod_lead_id = Column(Integer, ForeignKey("users.id"), nullable=True)

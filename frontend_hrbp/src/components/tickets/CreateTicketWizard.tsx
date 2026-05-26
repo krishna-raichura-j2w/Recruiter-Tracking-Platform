@@ -20,6 +20,7 @@ import {
   createTicket,
   listSopDefinitions,
   listAllHrbpUsers,
+  uploadTicketFile,
 } from "@/apiService/ticketApi";
 import type {
   SopDefinition,
@@ -42,6 +43,8 @@ interface CreateTicketWizardProps {
   onCreated: () => void;
   clients: Client[];
   consultants: Consultant[];
+  initialClientId?: number;
+  initialConsultantIds?: number[];
 }
 
 const STEPS = [
@@ -58,6 +61,8 @@ export function CreateTicketWizard({
   onCreated,
   clients,
   consultants,
+  initialClientId,
+  initialConsultantIds,
 }: CreateTicketWizardProps) {
   const { user } = useAuth();
 
@@ -89,8 +94,8 @@ export function CreateTicketWizard({
   const [step1, setStep1] = useState({
     raisedByName: user?.name ?? "",
     escalationMgrId: null as number | null,
-    clientId: null as number | null,
-    consultantIds: [] as number[],
+    clientId: (initialClientId ?? null) as number | null,
+    consultantIds: (initialConsultantIds ?? []) as number[],
   });
   // used to filter consultants by client (already on props, but track change)
   const [, setSelectedClientId] = useState<number | null>(null);
@@ -116,6 +121,7 @@ export function CreateTicketWizard({
     description: "",
     poRiskAmount: null as number | null,
     poRiskOverride: false,
+    attachmentFiles: [] as File[],
   });
 
   // Step 5
@@ -171,9 +177,11 @@ export function CreateTicketWizard({
   function handleClose() {
     setStep(1);
     setStep1({ raisedByName: user?.name ?? "", escalationMgrId: null, clientId: null, consultantIds: [] });
+    // clear any cadence pre-fill from sessionStorage on close
+    sessionStorage.removeItem("raise_ticket_from_cadence");
     setSelectedSopId(null);
     setStep3({ priority: "medium", slaDeadline: "" });
-    setStep4({ description: "", poRiskAmount: null, poRiskOverride: false });
+    setStep4({ description: "", poRiskAmount: null, poRiskOverride: false, attachmentFiles: [] });
     setHierarchy([]);
     onClose();
   }
@@ -183,19 +191,24 @@ export function CreateTicketWizard({
     if (!step1.clientId || !selectedSopId) return;
     setSubmitting(true);
     try {
-      const computedRisk = step4.poRiskOverride
-        ? step4.poRiskAmount
-        : selectedConsultantsData.reduce((sum, c) => {
-            if (c.po_risk !== null) return sum + c.po_risk;
-            if (!c.monthly_po || !c.po_end_date) return sum;
-            const end = new Date(c.po_end_date);
-            const now = new Date();
-            const months = Math.max(
-              0,
-              (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()),
-            );
-            return sum + months * c.monthly_po;
-          }, 0);
+      const autoRisk = selectedConsultantsData.reduce((sum, c) => {
+        if (!c.monthly_po || !c.po_end_date) return sum;
+        const end = new Date(c.po_end_date);
+        const now = new Date();
+        const months = Math.max(
+          0,
+          (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()),
+        );
+        return sum + months * c.monthly_po;
+      }, 0);
+      const computedRisk = step4.poRiskOverride ? step4.poRiskAmount : autoRisk || null;
+
+      // Upload attachments first, collect URLs
+      const attachmentUrls: string[] = [];
+      for (const file of step4.attachmentFiles) {
+        const url = await uploadTicketFile(file);
+        attachmentUrls.push(url);
+      }
 
       await createTicket({
         escalation_mgr_id: step1.escalationMgrId,
@@ -207,6 +220,7 @@ export function CreateTicketWizard({
         description: step4.description,
         po_risk_amount: computedRisk || null,
         hierarchy_json: hierarchy,
+        attachments: attachmentUrls,
       });
 
       toast.success("Ticket created successfully");

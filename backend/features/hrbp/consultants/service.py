@@ -1,9 +1,9 @@
 from core.pagination import PageResult, paginate
 from datetime import date, timedelta
 from fastapi import HTTPException
-from infra.hrbp_models import HRBPClient, HRBPConsultant
+from infra.hrbp_models import HRBPClient, HRBPConsultant, HRBPTicket, hrbp_ticket_consultants
 from infra.models import User
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
@@ -111,7 +111,23 @@ def get_by_emp_id(db: Session, emp_id: str) -> HRBPConsultant:
 
 def update(db: Session, id: int, payload: ConsultantUpdate) -> HRBPConsultant:
     record = get_by_id(db, id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+
+    # Skip po_risk update if the consultant has any open/escalated tickets
+    if "po_risk" in update_data:
+        has_active_ticket = db.execute(
+            select(hrbp_ticket_consultants.c.ticket_id)
+            .join(HRBPTicket, HRBPTicket.id == hrbp_ticket_consultants.c.ticket_id)
+            .where(
+                hrbp_ticket_consultants.c.consultant_id == id,
+                HRBPTicket.status.in_(["open", "escalated"]),
+            )
+            .limit(1)
+        ).first()
+        if has_active_ticket:
+            del update_data["po_risk"]
+
+    for field, value in update_data.items():
         setattr(record, field, value)
     db.commit()
     db.refresh(record)

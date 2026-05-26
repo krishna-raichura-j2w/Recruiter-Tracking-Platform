@@ -19,7 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, RefreshCw } from "lucide-react";
+import { Plus, Search, RefreshCw, Download, Loader2 } from "lucide-react";
+import { fmtDateTime } from "@/lib/formatDate";
+import { TableLoader } from "@/components/Loader";
 import { LottieIcon } from "@/components/LottieIcon";
 import { toast } from "react-toastify";
 import type { Dayjs } from "dayjs";
@@ -31,7 +33,7 @@ import { SLACountdown } from "@/components/tickets/SLACountdown";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { CustomDateRangePicker } from "@/components/CustomDateRangePicker";
 
-import { listTickets } from "@/apiService/ticketApi";
+import { listTickets, exportTicketsExcel } from "@/apiService/ticketApi";
 import type { Ticket } from "@/apiService/ticketTypes";
 import { getClientsApi, getConsultantsApi } from "@/apiService/api";
 
@@ -70,6 +72,22 @@ function TicketsPage() {
   const [loading, setLoading]   = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
 
+  // Pre-fill from cadence "Raise Ticket" navigation
+  const [prefillClientId, setPrefillClientId]         = useState<number | undefined>();
+  const [prefillConsultantIds, setPrefillConsultantIds] = useState<number[] | undefined>();
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("raise_ticket_from_cadence");
+    if (!raw) return;
+    try {
+      const { clientId, consultantId } = JSON.parse(raw);
+      if (clientId) setPrefillClientId(Number(clientId));
+      if (consultantId) setPrefillConsultantIds([Number(consultantId)]);
+    } catch { /* ignore malformed data */ }
+    sessionStorage.removeItem("raise_ticket_from_cadence");
+    setWizardOpen(true);
+  }, []);
+
   // Filters
   const [search, setSearch]               = useState("");
   const [filterStatus, setFilterStatus]   = useState("all");
@@ -79,6 +97,25 @@ function TicketsPage() {
   // Pagination — 0-based (MUI style), converted to 1-based for API
   const [page, setPage]               = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const url = await exportTicketsExcel({
+        status:   filterStatus   !== "all" ? filterStatus   : undefined,
+        priority: filterPriority !== "all" ? filterPriority : undefined,
+        search:   search || undefined,
+      });
+      window.open(url, "_blank");
+      toast.success("Excel report ready — opening download link");
+    } catch (err: any) {
+      toast.error(err?.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // Wizard data
   const [clients, setClients] = useState<{ id: number; name: string; bh_id?: number }[]>([]);
@@ -209,6 +246,22 @@ function TicketsPage() {
             <Button variant="ghost" size="icon" onClick={fetchTickets} title="Refresh">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={exporting}
+              className="gap-1.5 text-sm border-slate-200 text-slate-700 hover:bg-slate-50"
+              title="Export to Excel"
+            >
+              {exporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {exporting ? "Exporting…" : "Export"}
+            </Button>
           </div>
         </div>
 
@@ -226,20 +279,17 @@ function TicketsPage() {
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">SLA</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Current Step</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Raised By</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Created At</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Updated At</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center text-slate-400">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
-                    Loading tickets…
-                  </TableCell>
-                </TableRow>
+                <TableLoader colSpan={11} />
               ) : tickets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-40 text-center text-slate-400">
+                  <TableCell colSpan={11} className="h-40 text-center text-slate-400">
                     <div className="flex justify-center"><LottieIcon src="/json/searching-jobs.json" size={80} /></div>
                     <p className="font-medium -mt-1">No tickets found</p>
                     <p className="text-xs mt-1">
@@ -305,6 +355,14 @@ function TicketsPage() {
                       <TableCell className="text-xs text-slate-600 font-medium">
                         {t.raised_by_name ?? "—"}
                       </TableCell>
+
+                      <TableCell className="text-xs text-slate-500 whitespace-nowrap">
+                        {fmtDateTime(t.created_at)}
+                      </TableCell>
+
+                      <TableCell className="text-xs text-slate-500 whitespace-nowrap">
+                        {fmtDateTime(t.updated_at)}
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -328,10 +386,12 @@ function TicketsPage() {
 
       <CreateTicketWizard
         open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
+        onClose={() => { setWizardOpen(false); setPrefillClientId(undefined); setPrefillConsultantIds(undefined); }}
         onCreated={fetchTickets}
         clients={clients}
         consultants={consultants}
+        initialClientId={prefillClientId}
+        initialConsultantIds={prefillConsultantIds}
       />
     </div>
   );

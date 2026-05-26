@@ -1,6 +1,7 @@
 import { CheckCircle2, Circle, Clock } from "lucide-react";
 import type { HierarchyStep } from "@/apiService/ticketTypes";
 import { cn } from "@/lib/utils";
+import { fmtDateTime } from "@/lib/formatDate";
 
 interface TicketHierarchyProgressProps {
   hierarchy: HierarchyStep[];
@@ -13,17 +14,11 @@ const ROLE_COLOR: Record<string, string> = {
   hrbp:     "bg-blue-100 text-blue-800 border-blue-200",
   bh:       "bg-purple-100 text-purple-800 border-purple-200",
   ops_head: "bg-orange-100 text-orange-800 border-orange-200",
-  priti:    "bg-red-100 text-red-800 border-red-200",
+  ceo:      "bg-red-100 text-red-800 border-red-200",
   coo:      "bg-gray-100 text-gray-700 border-gray-200",
 };
 
-function formatTs(ts: string | null): string {
-  if (!ts) return "";
-  return new Date(ts).toLocaleString("en-IN", {
-    day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+const formatTs = fmtDateTime;
 
 export function TicketHierarchyProgress({
   hierarchy,

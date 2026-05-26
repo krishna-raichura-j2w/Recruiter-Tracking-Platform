@@ -25,6 +25,7 @@ export interface TicketCreate {
   description: string;
   po_risk_amount: number | null;
   hierarchy_json: HierarchyStep[];
+  attachments: string[];
 }
 
 // ── Comment ───────────────────────────────────────────────────────────────
@@ -92,6 +93,10 @@ export interface Ticket {
   status: "open" | "closed";
   hierarchy_json: HierarchyStep[];
   current_step: number;
+  attachments: string[];
+  step_started_at: string | null;
+  step_sla_alerted_at: string | null;
+  step_sla_extended_until: string | null;
   closed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -119,6 +124,22 @@ export interface TicketListResponse {
 export interface TicketDetailResponse {
   data: Ticket;
   meta: { status: boolean; message: string };
+}
+
+// ── Step SLA extension payload ────────────────────────────────────────────
+
+export interface StepSlaExtendPayload {
+  extend_until: string;   // ISO datetime
+  reason: string;
+}
+
+// ── Step reassign payload ─────────────────────────────────────────────────
+
+export interface StepReassignPayload {
+  user_id: number;
+  user_name: string;
+  user_email: string | null;
+  reason: string;
 }
 
 // ── SOP (for wizard step 2) ───────────────────────────────────────────────

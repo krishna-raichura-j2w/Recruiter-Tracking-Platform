@@ -67,6 +67,7 @@ class ConsultantUpdate(BaseModel):
     last_hike_pct: Decimal | None = None
     l_d_status: LDStatus | None = None
     is_active: bool | None = None
+    po_risk: Decimal | None = None
 
 
 class ConsultantResponse(BaseModel):
@@ -91,6 +92,7 @@ class ConsultantResponse(BaseModel):
     last_hike_date: date | None
     last_hike_pct: Decimal | None
     l_d_status: str | None
+    po_risk: Decimal | None
     is_active: bool
     created_at: datetime | None
     updated_at: datetime | None

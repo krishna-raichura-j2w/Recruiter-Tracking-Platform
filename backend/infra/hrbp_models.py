@@ -320,11 +320,16 @@ class HRBPTicket(Base):
     sop_id            = Column(Integer, ForeignKey("hrbp_sop_definitions.id"))
     priority          = Column(Text, nullable=False, default="medium")
     sla_deadline      = Column(DateTime(timezone=True))
+    sla_alerted_at    = Column(DateTime(timezone=True))
     description       = Column(Text)
     po_risk_amount    = Column(Numeric(14, 2))
     status            = Column(Text, nullable=False, default="open")
     hierarchy_json    = Column(JSONB, nullable=False, default=list)
     current_step      = Column(SmallInteger, nullable=False, default=1)
+    attachments       = Column(ARRAY(Text), nullable=False, default=list)
+    step_started_at      = Column(DateTime(timezone=True))
+    step_sla_alerted_at  = Column(DateTime(timezone=True))
+    step_sla_extended_until = Column(DateTime(timezone=True))
     closed_at         = Column(DateTime(timezone=True))
     created_at        = Column(DateTime(timezone=True), default=_now)
     updated_at        = Column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -353,7 +358,40 @@ class HRBPTicketActivityLog(Base):
     created_at  = Column(DateTime(timezone=True), default=_now)
 
 
+class HRBPNotificationHistory(Base):
+    __tablename__ = "hrbp_notification_history"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    ticket_id  = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="SET NULL"))
+    title      = Column(Text, nullable=False)
+    message    = Column(Text, nullable=False)
+    notif_type = Column(Text, nullable=False, default="general")
+    is_read    = Column(Boolean, nullable=False, default=False)
+    read_at    = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+
 # ────────────────────────────────────────────────────────────────────────────
+
+class HRBPExitTracking(Base):
+    __tablename__ = "hrbp_exit_tracking"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id       = Column(Integer, ForeignKey("hrbp_consultants.id"), nullable=False)
+    client_id           = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
+    initiated_by_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    exit_date           = Column(Date)
+    notice_period_start = Column(Date)
+    exit_reason         = Column(Text, nullable=False)
+    exit_type           = Column(Text, nullable=False)
+    po_impact           = Column(Numeric(14, 2))
+    status              = Column(Text, nullable=False, default="initiated")
+    replacement_needed  = Column(Boolean, nullable=False, default=False)
+    notes               = Column(Text)
+    created_at          = Column(DateTime(timezone=True), default=_now)
+    updated_at          = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
 
 class HRBPUserPinnedTicket(Base):
     __tablename__ = "hrbp_user_pinned_tickets"

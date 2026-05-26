@@ -6,7 +6,8 @@ export type Module =
   | "tickets"
   | "incidents"
   | "communication"
-  | "notifications";
+  | "notifications"
+  | "exits";
 
 export type Action = "read" | "create" | "update" | "delete" | "export";
 
@@ -24,6 +25,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     incidents:     { read: true, create: true,  update: true,  delete: false },
     communication: { read: true },
     notifications: { read: true },
+    exits:         { read: true, create: true,  update: true,  delete: false },
   },
 
   bh: {
@@ -35,6 +37,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     incidents:     { read: true, create: true,  update: true,  delete: false },
     communication: { read: true },
     notifications: { read: true },
+    exits:         { read: true, create: false, update: true,  delete: false },
   },
 
   admin: {
@@ -46,6 +49,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     incidents:     { read: true, create: true,  update: true,  delete: true },
     communication: { read: true },
     notifications: { read: true },
+    exits:         { read: true, create: true,  update: true,  delete: true },
   },
 
   ops_head: {
@@ -57,6 +61,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     incidents:     { read: true },
     communication: { read: true },
     notifications: { read: true },
+    exits:         { read: true },
   },
 
   coo: {
@@ -68,9 +73,10 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     incidents:     { read: true },
     communication: { read: true },
     notifications: { read: true },
+    exits:         { read: true },
   },
 
-  priti: {
+  ceo: {
     dashboard:     { read: true },
     clients:       { read: true },
     consultants:   { read: true },
@@ -79,6 +85,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     incidents:     { read: true },
     communication: { read: true },
     notifications: { read: true },
+    exits:         { read: true },
   },
 };
 

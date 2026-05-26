@@ -28,7 +28,7 @@ function LoginPage() {
       .catch((err) => console.error("Error loading Lottie:", err));
   }, []);
 
-  if (ready && user) return <Navigate to="/dashboard" />;
+  if (ready && user) return <Navigate to={user.role === "admin" ? "/admin" : "/dashboard"} />;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +38,9 @@ function LoginPage() {
     }
     setLoading(true);
     try {
-      await login(email, pwd);
+      const loggedInUser = await login(email, pwd);
       toast.success("Successfully signed in");
-      nav({ to: "/dashboard" });
+      nav({ to: loggedInUser?.role === "admin" ? "/admin" : "/dashboard" });
     } catch (err: any) {
       toast.error(err.message || "Invalid credentials");
     } finally {

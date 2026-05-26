@@ -11,12 +11,13 @@ from pydantic import BaseModel
 
 class HierarchyStepSchema(BaseModel):
     order: int
-    role: str                      # hrbp | bh | ops_head | priti | coo | custom
+    role: str                      # hrbp | bh | ops_head | coo | ceo | custom
     label: str
     user_id: int | None = None     # resolved at creation time
     user_name: str | None = None
     user_email: str | None = None
     sla_window: str | None = None
+    sla_hours: int | None = None   # computed from SOP steps_definition at creation
     resolved_at: datetime | None = None
     resolved_by_id: int | None = None
     resolved_by_name: str | None = None
@@ -34,6 +35,7 @@ class TicketCreate(BaseModel):
     description: str
     po_risk_amount: Decimal | None = None
     hierarchy_json: list[HierarchyStepSchema]
+    attachments: list[str] = []
 
 
 # ── Comment ──────────────────────────────────────────────────────────────────
@@ -43,6 +45,22 @@ class TicketCommentCreate(BaseModel):
     is_resolution: bool = False    # True → also advances to next step
 
 
+# ── Step SLA extension ────────────────────────────────────────────────────────
+
+class StepSlaExtendPayload(BaseModel):
+    extend_until: datetime          # new deadline for the current step
+    reason: str
+
+
+# ── Step reassignment ─────────────────────────────────────────────────────────
+
+class StepReassignPayload(BaseModel):
+    user_id: int
+    user_name: str
+    user_email: str | None = None
+    reason: str
+
+
 # ── Update (partial — only creator can update) ───────────────────────────────
 
 class TicketUpdate(BaseModel):
@@ -50,6 +68,7 @@ class TicketUpdate(BaseModel):
     sla_deadline: datetime | None = None
     description: str | None = None
     po_risk_amount: Decimal | None = None
+    attachments: list[str] | None = None
 
 
 # ── Response shapes ──────────────────────────────────────────────────────────
@@ -115,6 +134,10 @@ class TicketResponse(BaseModel):
     status: str
     hierarchy_json: list[dict]
     current_step: int
+    attachments: list[str] = []
+    step_started_at: datetime | None = None
+    step_sla_alerted_at: datetime | None = None
+    step_sla_extended_until: datetime | None = None
     closed_at: datetime | None
     created_at: datetime | None
     updated_at: datetime | None

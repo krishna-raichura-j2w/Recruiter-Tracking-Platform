@@ -25,7 +25,7 @@ VALUES
     {"order": 1, "role": "hrbp",     "label": "HRBP",           "sla_window": "0 to 3 days"},
     {"order": 2, "role": "bh",       "label": "Business Head",  "sla_window": "3 to 14 days"},
     {"order": 3, "role": "ops_head", "label": "Operations Head","sla_window": "14 to 30 days"},
-    {"order": 4, "role": "priti",    "label": "Priti (MD)",     "sla_window": "30+ days if stalled"}
+    {"order": 4, "role": "ceo",    "label": "CEO",     "sla_window": "30+ days if stalled"}
   ]'::jsonb,
   '[
     {"number": 1,
@@ -69,7 +69,7 @@ VALUES
      "action_detail": "HRBP raises with Operations Head. Provide: consultant name, last hike date, days since raised with BH, current status. Ops Head decides whether to escalate further or reset timeline.",
      "owner_role": "ops_head",
      "sla_working_hours": 8,
-     "escalate_to_role": "priti",
+     "escalate_to_role": "ceo",
      "email_template_id": null,
      "hard_gate": null,
      "kra_ref": "K3"},

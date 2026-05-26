@@ -9,7 +9,10 @@ from core.response_format import (
     success_response_with_pagination,
 )
 from features.hrbp.tickets import service
+from features.hrbp.tickets.export import build_and_upload as export_tickets
 from features.hrbp.tickets.schema import (
+    StepReassignPayload,
+    StepSlaExtendPayload,
     TicketCommentCreate,
     TicketCreate,
     TicketUpdate,
@@ -17,6 +20,27 @@ from features.hrbp.tickets.schema import (
 from infra.models import User
 
 router = APIRouter(prefix="/tickets", tags=["hrbp-tickets"])
+
+
+@router.get("/export")
+def export_tickets_excel(
+    status: str | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    client_id: int | None = Query(default=None),
+    sop_id: int | None = Query(default=None),
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        url = export_tickets(
+            db, current_user,
+            status=status, priority=priority,
+            client_id=client_id, sop_id=sop_id, search=search,
+        )
+        return success_response(data={"url": url}, message="Excel exported successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
 
 
 @router.post("")
@@ -108,6 +132,34 @@ def advance_step(
     try:
         data = service.advance_step(db, ticket_id, current_user)
         return success_response(data=data, message="Ticket advanced to next step")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{ticket_id}/extend-step-sla")
+def extend_step_sla(
+    ticket_id: int,
+    payload: StepSlaExtendPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.extend_step_sla(db, ticket_id, payload, current_user)
+        return success_response(data=data, message="Step SLA extended successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{ticket_id}/reassign-step")
+def reassign_step(
+    ticket_id: int,
+    payload: StepReassignPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.reassign_step(db, ticket_id, payload, current_user)
+        return success_response(data=data, message="Step reassigned successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 
