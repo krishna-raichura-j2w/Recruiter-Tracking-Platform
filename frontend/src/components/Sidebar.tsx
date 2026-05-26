@@ -6,7 +6,7 @@ import {
   Briefcase, Users, CheckCircle, Send,
   UserCheck, ClipboardList, LogOut, Activity,
   Building2, BarChart2, GitBranch, TrendingUp, Settings, Trophy,
-  ChevronRight, X, Menu, Sparkles, Network, Target,
+  ChevronRight, X, Menu, Sparkles, Network, Target, Mail,
 } from 'lucide-react';
 import LottieLib from 'lottie-react';
 import goalAnim from '../assets/lottie-goal.json';
@@ -43,6 +43,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Mail Tracker',       path: '/mail-tracker',  icon: <Send size={16} /> },
         { label: 'Recruiter Story',    path: '/followup',      icon: <GitBranch size={16} /> },
+        { label: 'Client Emails',      path: '/client-email-generator', icon: <Mail size={16} /> },
       ],
     },
     {
@@ -72,6 +73,7 @@ const navConfig: Record<string, NavGroup[]> = {
       items: [
         { label: 'Clients',           path: '/clients',       icon: <Building2 size={16} /> },
         { label: 'Demand Status',     path: '/demand-status', icon: <TrendingUp size={16} /> },
+        { label: 'Client Emails',     path: '/client-email-generator', icon: <Mail size={16} /> },
         { label: 'Leaderboard',       path: '/leaderboard',   icon: <Trophy size={16} /> },
         { label: 'Targets',           path: '/targets',       icon: <Target size={16} /> },
         { label: 'Export / Reports',  path: '/export',        icon: <BarChart2 size={16} /> },

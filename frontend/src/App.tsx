@@ -23,6 +23,7 @@ import Leaderboard from './pages/Leaderboard';
 import Skills from './pages/Skills';
 import Pods from './pages/Pods';
 import Targets from './pages/Targets';
+import ClientEmailGenerator from './pages/ClientEmailGenerator';
 
 function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
   const { user, updateUser } = useAuth();
@@ -199,6 +200,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'bh']}>
                 <Targets />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/client-email-generator"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'kam']}>
+                <ClientEmailGenerator />
               </ProtectedRoute>
             }
           />

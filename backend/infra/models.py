@@ -838,6 +838,20 @@ class UserLeave(Base):
     __table_args__ = (UniqueConstraint("user_id", "leave_date", name="uq_user_leave_date"),)
 
 
+class ClientEmail(Base):
+    __tablename__ = "client_emails"
+    id            = Column(Integer, primary_key=True, index=True)
+    job_id        = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    subject       = Column(Text, nullable=True)
+    email_html    = Column(Text, nullable=True)
+    email_json    = Column(Text, nullable=True)  # raw AI JSON
+    created_at    = Column(DateTime, default=now_utc)
+
+    job        = relationship("Job", foreign_keys=[job_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 # ── Job.assigned_email_id auto-refresh ────────────────────────────────────────
 # Recompute `Job.assigned_email_id` from the union of every user-id column on
 # the job whenever the row is inserted or updated. Lives at module scope so
