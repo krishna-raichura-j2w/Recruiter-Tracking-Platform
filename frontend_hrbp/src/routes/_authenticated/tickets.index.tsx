@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, RefreshCw, Download, Loader2, LogOut } from "lucide-react";
+import { Plus, Search, RefreshCw, Download, Loader2, LogOut, AlertCircle, CheckCircle2 } from "lucide-react";
 import { fmtDateTime } from "@/lib/formatDate";
 import { TableLoader } from "@/components/Loader";
 import { LottieIcon } from "@/components/LottieIcon";
@@ -235,6 +235,34 @@ export const Route = createFileRoute("/_authenticated/tickets/")({
   component: TicketsPage,
 });
 
+// Roles that participate in ticket approval steps and get the tab + indicator treatment
+const APPROVER_ROLES = new Set(["bh", "ops_head", "coo", "ceo"]);
+
+type ActionStatus = "required" | "done" | "none";
+
+function getUserActionStatus(t: Ticket, userId: number | undefined): ActionStatus {
+  if (!userId) return "none";
+  const hierarchy = t.hierarchy_json ?? [];
+  const currentIdx = t.current_step - 1; // convert to 0-based
+
+  // Current step assigned to this user and ticket still active → action required
+  if (
+    currentIdx >= 0 &&
+    currentIdx < hierarchy.length &&
+    hierarchy[currentIdx].user_id === userId &&
+    t.status !== "closed"
+  ) {
+    return "required";
+  }
+
+  // Any step before current_step assigned to this user → already acted
+  for (let i = 0; i < currentIdx; i++) {
+    if (hierarchy[i].user_id === userId) return "done";
+  }
+
+  return "none";
+}
+
 function StatCard({
   icon,
   label,
@@ -267,6 +295,9 @@ function TicketsPage() {
   const [wizardOpen, setWizardOpen]     = useState(false);
   const [logExitOpen, setLogExitOpen]   = useState(false);
   const [sops, setSops]                 = useState<SopDefinition[]>([]);
+
+  const isApproverRole = APPROVER_ROLES.has(user?.role ?? "");
+  const [activeTab, setActiveTab] = useState<"action_required" | "all">("action_required");
 
   // Pre-fill from cadence "Raise Ticket" navigation
   const [prefillClientId, setPrefillClientId]           = useState<number | undefined>();
@@ -386,6 +417,16 @@ function TicketsPage() {
     [tickets],
   );
 
+  // Action Required tab — tickets where the logged-in user is the current step owner
+  const actionRequiredTickets = useMemo(
+    () => tickets.filter((t) => getUserActionStatus(t, user?.id) === "required"),
+    [tickets, user?.id],
+  );
+
+  const displayedTickets = isApproverRole && activeTab === "action_required"
+    ? actionRequiredTickets
+    : tickets;
+
   return (
     <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar title="Tickets" subtitle="Raise and track HR operational requests." />
@@ -419,6 +460,41 @@ function TicketsPage() {
             )}
           </div>
         </div>
+
+        {/* Tabs — only for BH / OPS Head / COO / CEO */}
+        {isApproverRole && (
+          <div className="flex gap-1 border-b border-slate-200">
+            <button
+              onClick={() => { setActiveTab("action_required"); setPage(0); }}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                activeTab === "action_required"
+                  ? "border-amber-500 text-amber-700"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <AlertCircle className="w-4 h-4" />
+              Action Required
+              {actionRequiredTickets.length > 0 && (
+                <span className="ml-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                  {actionRequiredTickets.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setActiveTab("all"); setPage(0); }}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                activeTab === "all"
+                  ? "border-sky-500 text-sky-700"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              All Tickets
+              <span className="ml-1 bg-slate-100 text-slate-600 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                {total}
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex items-center gap-3">
@@ -510,6 +586,9 @@ function TicketsPage() {
           <Table>
             <TableHeader className="bg-slate-100 border-b border-slate-200">
               <TableRow className="hover:bg-transparent border-0">
+                {isApproverRole && (
+                  <TableHead className="w-8 text-xs font-semibold text-slate-500 uppercase tracking-wide" />
+                )}
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ticket #</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">SOP Type</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</TableHead>
@@ -526,29 +605,47 @@ function TicketsPage() {
 
             <TableBody>
               {loading ? (
-                <TableLoader colSpan={11} />
-              ) : tickets.length === 0 ? (
+                <TableLoader colSpan={isApproverRole ? 12 : 11} />
+              ) : displayedTickets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-40 text-center text-slate-400">
+                  <TableCell colSpan={isApproverRole ? 12 : 11} className="h-40 text-center text-slate-400">
                     <div className="flex justify-center"><LottieIcon src="/json/searching-jobs.json" size={80} /></div>
                     <p className="font-medium -mt-1">No tickets found</p>
                     <p className="text-xs mt-1">
-                      {can("tickets", "create")
-                        ? 'Click "New Ticket" to raise one.'
-                        : "No tickets match your filters."}
+                      {activeTab === "action_required"
+                        ? "No tickets currently require your action."
+                        : can("tickets", "create")
+                          ? 'Click "New Ticket" to raise one.'
+                          : "No tickets match your filters."}
                     </p>
                   </TableCell>
                 </TableRow>
               ) : (
-                tickets.map((t) => {
+                displayedTickets.map((t) => {
                   const hierarchy = t.hierarchy_json ?? [];
                   const currentStepLabel = hierarchy[t.current_step - 1]?.label ?? `Step ${t.current_step}`;
+                  const actionStatus = getUserActionStatus(t, user?.id);
                   return (
                     <TableRow
                       key={t.id}
                       onClick={() => navigate({ to: `/tickets/${t.id}` })}
                       className="cursor-pointer hover:bg-slate-50 transition-colors"
                     >
+                      {isApproverRole && (
+                        <TableCell className="w-8 pl-3 pr-0">
+                          {actionStatus === "required" && (
+                            <span title="Your action is required">
+                              <AlertCircle className="w-4 h-4 text-amber-500" />
+                            </span>
+                          )}
+                          {actionStatus === "done" && (
+                            <span title="Your action is complete">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            </span>
+                          )}
+                        </TableCell>
+                      )}
+
                       <TableCell className="font-medium">
                         <span className="font-mono text-sky-600 hover:underline text-xs font-semibold">
                           {t.ticket_number}
