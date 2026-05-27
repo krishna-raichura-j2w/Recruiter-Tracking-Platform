@@ -60,7 +60,13 @@ if $DOCKER ps -a --format '{{.Names}}' | grep -qx "recruiter-tracking"; then
   fi
 fi
 
-# ── 2. Build app image ──────────────────────────────────────────────────────
+# ── 2. Save rollback image ──────────────────────────────────────────────────
+if $DOCKER image inspect recruiter-tracking:latest >/dev/null 2>&1; then
+  log "tagging current image as recruiter-tracking:rollback"
+  $DOCKER tag recruiter-tracking:latest recruiter-tracking:rollback
+fi
+
+# ── 3. Build app image ──────────────────────────────────────────────────────
 # BUILD_NONCE busts the cache for the source-copy + build steps in the Dockerfile,
 # so frontend & backend code is always picked up. npm/pip install layers stay
 # cached because the ARG is declared *after* them.
@@ -68,14 +74,14 @@ BUILD_NONCE="$(date +%s)"
 log "building app image (BUILD_NONCE=$BUILD_NONCE)"
 $COMPOSE build --build-arg BUILD_NONCE="$BUILD_NONCE" app
 
-# ── 3. Bring stack up ───────────────────────────────────────────────────────
+# ── 4. Bring stack up ───────────────────────────────────────────────────────
 # --force-recreate ensures caddy picks up Caddyfile edits. (Bind-mounting a single
 # file pins the container to the host inode; editors that write+rename create a
 # new inode, leaving the container with the stale view. Recreating fixes that.)
 log "starting stack (app + caddy)"
 $COMPOSE up -d --remove-orphans --force-recreate
 
-# ── 4. Health probe ─────────────────────────────────────────────────────────
+# ── 5. Health probe ─────────────────────────────────────────────────────────
 log "waiting for /api/health on the public domain (up to 120s — first run includes TLS issuance)"
 ok=""
 for i in $(seq 1 40); do
@@ -90,10 +96,12 @@ done
 
 if [ "$ok" = "https" ]; then
   log "deploy OK — https://${DOMAIN}/"
+  log "HRBP frontend — https://${DOMAIN}/hrbp"
 
   log "removing old recruiter-tracking image tags (keeping :latest)"
   $DOCKER images recruiter-tracking --format '{{.Repository}}:{{.Tag}}' \
     | grep -v ':latest$' \
+    | grep -v ':rollback$' \
     | while read -r old_tag; do
         $DOCKER image rm "$old_tag" >/dev/null 2>&1 || true
       done
@@ -110,8 +118,32 @@ if [ "$ok" = "http" ]; then
   exit 0
 fi
 
-log "health probe failed — recent caddy + app logs:"
+# ── 6. Rollback on failure ─────────────────────────────────────────────────
+log "health probe failed — recent logs:"
 $DOCKER logs --tail 40 recruiter-caddy 2>&1 || true
 echo
 $DOCKER logs --tail 40 recruiter-tracking 2>&1 || true
-die "deploy may have failed; investigate the logs above"
+
+if $DOCKER image inspect recruiter-tracking:rollback >/dev/null 2>&1; then
+  log "rolling back to previous image (recruiter-tracking:rollback)"
+  $DOCKER tag recruiter-tracking:rollback recruiter-tracking:latest
+  $COMPOSE up -d --remove-orphans --force-recreate
+
+  log "waiting for rollback health check (up to 60s)"
+  rollback_ok=""
+  for i in $(seq 1 20); do
+    if curl -fsS --max-time 4 "https://${DOMAIN}/api/health" >/dev/null 2>&1; then
+      rollback_ok="yes"; break
+    fi
+    sleep 3
+  done
+
+  if [ "$rollback_ok" = "yes" ]; then
+    log "rollback successful — site is back on previous version"
+  else
+    log "WARNING: rollback health check also failed"
+  fi
+  die "deploy failed — rolled back to previous version"
+else
+  die "deploy failed and no rollback image available; investigate the logs above"
+fi
