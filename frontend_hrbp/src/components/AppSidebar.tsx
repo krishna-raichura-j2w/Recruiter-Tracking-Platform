@@ -230,7 +230,7 @@ export function AppSidebar() {
             >
               <Link to="/profile" className="flex items-center gap-2.5 w-full">
                 <img
-                  src="/profile-icon.svg"
+                  src={`${import.meta.env.BASE_URL}profile-icon.svg`}
                   alt="Profile"
                   className="h-7 w-7 shrink-0 rounded-full"
                 />

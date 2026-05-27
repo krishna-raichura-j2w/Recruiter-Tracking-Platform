@@ -208,7 +208,7 @@ export function TopBar({
         {user && (
           <div className="flex items-center gap-2.5 pl-3.5 border-l border-slate-200 ml-1">
             <img
-              src="/profile-icon.svg"
+              src={`${import.meta.env.BASE_URL}profile-icon.svg`}
               alt="Profile"
               className="h-8 w-8 shrink-0 rounded-full"
             />
