@@ -193,8 +193,13 @@ export default function Candidates() {
       });
       closeAddModal();
       fetchCandidates();
-    } catch {
-      setApiError('Failed to add candidate. Please check all required fields.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      if (err?.response?.status === 409 && detail) {
+        setApiError(detail);
+      } else {
+        setApiError('Failed to add candidate. Please check all required fields.');
+      }
     } finally {
       setSubmitting(false);
     }
