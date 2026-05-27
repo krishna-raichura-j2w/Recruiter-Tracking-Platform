@@ -1,7 +1,7 @@
 from core.database import get_db
-from core.deps import require_roles
+from core.deps import require_roles, user_has_role
 from fastapi import APIRouter, Depends, HTTPException, Query
-from infra.models import UserRole
+from infra.models import User, UserRole
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -237,7 +237,7 @@ def get_team_assignments(
     """Per-JD assignment progress for each DL's team member (target vs actual)."""
     import json as _json
 
-    from infra.models import Candidate, Job, JobStatus, User
+    from infra.models import Candidate, Job, JobStatus
 
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
     if dl_id is None:
