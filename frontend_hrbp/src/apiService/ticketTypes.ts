@@ -153,6 +153,7 @@ export interface SopDefinition {
   trigger_source: string;
   kra_tags: string[];
   control_level: string;
+  email_templates: string[] | null;
   persons_hierarchy: HierarchyStep[];
   steps_definition: Array<{
     number: number;
@@ -162,6 +163,22 @@ export interface SopDefinition {
     sla_working_hours: number;
     escalate_to_role: string;
   }>;
+}
+
+// ── Email template ────────────────────────────────────────────────────────
+
+export interface EmailTemplateResponse {
+  id: string;
+  name: string;
+  group_name: string;
+  channel: string[];
+  subject_tpl: string | null;
+  body_tpl: string;
+  required_vars: string[] | null;
+  sop_step_ref: string[] | null;
+  send_direction: string;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 // ── User (for hierarchy picker) ───────────────────────────────────────────

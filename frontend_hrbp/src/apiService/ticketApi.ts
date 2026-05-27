@@ -8,6 +8,7 @@ import type {
   StepReassignPayload,
   SopDefinition,
   UserOption,
+  EmailTemplateResponse,
 } from "./ticketTypes";
 import { fetchWithAuth } from "./api";
 
@@ -200,4 +201,14 @@ export async function listAllHrbpUsers(): Promise<UserOption[]> {
   const raw = json?.data;
   if (Array.isArray(raw)) return raw;
   return raw?.items ?? [];
+}
+
+// ── Email templates ───────────────────────────────────────────────────────
+
+export async function listEmailTemplates(): Promise<EmailTemplateResponse[]> {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/email-templates?per_page=-1`);
+  const json = await res.json();
+  if (!res.ok || json?.meta?.status === false) return [];
+  const raw = json?.data;
+  return Array.isArray(raw) ? raw : (raw?.items ?? []);
 }
