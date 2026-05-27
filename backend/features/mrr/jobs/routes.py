@@ -198,6 +198,32 @@ def create_job(
             detail="A Business Head must be selected before creating a JD.",
         )
 
+    # Fields that are compulsory when a KAM creates a JD
+    _KAM_REQUIRED: dict[str, str] = {
+        "designation":        "Designation",
+        "jd_summary":         "Job Description",
+        "min_experience":     "Experience From",
+        "max_experience":     "Experience To",
+        "maximum_submission": "Maximum Submission",
+        "referral_amount":    "Referral Amount",
+        "requested_date":     "Requested Date",
+        "requested_by":       "Requested Name",
+        "deadline":           "Expected Client Closure Date",
+        "expected_submission":"Expected Submission",
+        "billable_leaves":    "Billable Leaves",
+        "po_opportunity_mrr": "PO Opportunity (MRR)",
+        "potential_gm":       "Potential GM %",
+    }
+    missing_labels = [
+        label for field, label in _KAM_REQUIRED.items()
+        if data.get(field) is None or (isinstance(data.get(field), str) and not data[field].strip())
+    ]
+    if missing_labels:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required fields: {', '.join(missing_labels)}",
+        )
+
     # Auto-link jobs.client_id by matching client_name → of_clients.name (case-insensitive).
     # The client must already exist in of_clients; new clients can no longer be created.
     from sqlalchemy import func as _f

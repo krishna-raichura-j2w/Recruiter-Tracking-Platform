@@ -241,7 +241,7 @@ export default function Jobs() {
       defaultValues: {
         headcount: 1, ol_job_type: 'new', ol_job_id: '',
         walkin: false, drive: false,
-        billable_leaves: '', is_vip: 'No',
+        billable_leaves: '', is_vip: 'no',
         salary_from: '0', salary_to: '0',
       },
     });
@@ -1384,10 +1384,11 @@ export default function Jobs() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation *</label>
                   <input type="text" placeholder="e.g. SSE, TL, Architect"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('designation')} />
+                    {...register('designation', { required: !editJob })} />
+                  {errors.designation && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
 
                 <div>
@@ -1576,22 +1577,25 @@ export default function Jobs() {
                   {errors.headcount && <p className="text-red-500 text-xs mt-1">Required (min 1)</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Expected Submission</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Expected Submission *</label>
                   <input type="text" placeholder="e.g. 3 days / 2026-06-01"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('expected_submission')} />
+                    {...register('expected_submission', { required: !editJob })} />
+                  {errors.expected_submission && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Maximum Submission</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Maximum Submission *</label>
                   <input type="number" min={0} placeholder="Max profiles to submit"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('maximum_submission')} />
+                    {...register('maximum_submission', { required: !editJob })} />
+                  {errors.maximum_submission && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount *</label>
                   <input type="number" min={0} placeholder="e.g. 500"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('referral_amount')} />
+                    {...register('referral_amount', { required: !editJob })} />
+                  {errors.referral_amount && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key String</label>
@@ -1600,22 +1604,25 @@ export default function Jobs() {
                     {...register('key_string')} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Date</label>
-                  <input type="date" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('requested_date')} />
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Date *</label>
+                  <input type="date" className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" {...register('requested_date', { required: !editJob })} />
+                  {errors.requested_date && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Name</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Requested Name *</label>
                   <input type="text" placeholder="Requested by"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('requested_by')} />
+                    {...register('requested_by', { required: !editJob })} />
+                  {errors.requested_by && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1">
-                    <Clock size={12} className="text-red-400" /> Expected Client Closure Date
+                    <Clock size={12} className="text-red-400" /> Expected Client Closure Date *
                   </label>
                   <input type="datetime-local"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50"
-                    {...register('deadline')} />
+                    {...register('deadline', { required: !editJob })} />
+                  {errors.deadline && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
 
                 {/* ── SECTION: Flags & Commercial ─────────────────────────── */}
@@ -1628,39 +1635,43 @@ export default function Jobs() {
                   <label className="block text-xs font-semibold text-slate-600 mb-2">Billable Leaves *</label>
                   <div className="flex items-center gap-5">
                     <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" value="yes" className="accent-blue-500" {...register('billable_leaves')} />
+                      <input type="radio" value="yes" className="accent-blue-500" {...register('billable_leaves', { required: !editJob })} />
                       <span className="text-sm text-slate-700">Yes</span>
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" value="no" className="accent-blue-500" {...register('billable_leaves')} />
+                      <input type="radio" value="no" className="accent-blue-500" {...register('billable_leaves', { required: !editJob })} />
                       <span className="text-sm text-slate-700">No</span>
                     </label>
                   </div>
+                  {errors.billable_leaves && <p className="text-red-500 text-xs mt-1">Please select Yes or No</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2">High Priority (VIP) *</label>
                   <div className="flex items-center gap-5">
                     <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" value="yes" className="accent-blue-500" {...register('is_vip')} />
+                      <input type="radio" value="yes" className="accent-blue-500" {...register('is_vip', { required: !editJob })} />
                       <span className="text-sm text-slate-700">Yes</span>
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" value="no" className="accent-blue-500" {...register('is_vip')} />
+                      <input type="radio" value="no" className="accent-blue-500" {...register('is_vip', { required: !editJob })} />
                       <span className="text-sm text-slate-700">No</span>
                     </label>
                   </div>
+                  {errors.is_vip && <p className="text-red-500 text-xs mt-1">Please select Yes or No</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">PO Opportunity (MRR) *</label>
                   <input type="text" placeholder="Enter MRR"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('po_opportunity_mrr')} />
+                    {...register('po_opportunity_mrr', { required: !editJob })} />
+                  {errors.po_opportunity_mrr && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Potential GM% *</label>
                   <input type="text" placeholder="e.g. 25%"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('potential_gm')} />
+                    {...register('potential_gm', { required: !editJob })} />
+                  {errors.potential_gm && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
 
                 {/* ── SECTION: Job Description ─────────────────────────────── */}
@@ -1670,11 +1681,12 @@ export default function Jobs() {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Description</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Description *</label>
                   <textarea rows={4}
                     placeholder="Role summary, key highlights…"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-none"
-                    {...register('jd_summary')} />
+                    {...register('jd_summary', { required: !editJob })} />
+                  {errors.jd_summary && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Responsibilities</label>
