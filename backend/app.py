@@ -138,6 +138,13 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for sql in load_sql_list("041-add_candidate_ol_flags.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         for stmt in [
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",

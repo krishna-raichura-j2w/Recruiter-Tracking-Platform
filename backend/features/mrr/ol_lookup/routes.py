@@ -14,6 +14,7 @@ import psycopg2
 import psycopg2.extras
 import pymysql
 import pymysql.cursors
+from core.sql_loader import load_sql, load_ol_sql
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -70,28 +71,7 @@ def get_candidates():
     pg = _get_pg_conn()
     try:
         with pg.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    c.id           AS mrr_id,
-                    c.full_name    AS name,
-                    c.email,
-                    c.mobile,
-                    c.status       AS mrr_status,
-                    c.sourced_at,
-                    j.id           AS mrr_job_id,
-                    j.job_id       AS ol_job_id,
-                    j.client_name,
-                    j.role_title,
-                    r.name         AS recruiter_name,
-                    s.current_stage,
-                    s.submitted_at
-                FROM candidates c
-                JOIN jobs j        ON j.id = c.job_id
-                LEFT JOIN users r  ON r.id = c.sourced_by_id
-                LEFT JOIN submissions s ON s.candidate_id = c.id
-                WHERE c.email IS NOT NULL AND c.email != ''
-                ORDER BY c.full_name
-            """)
+            cur.execute(load_sql("042-ol_lookup_candidates.sql"))
             rows = [_serialize(dict(r)) for r in cur.fetchall()]
         return JSONResponse(content=rows)
     finally:
@@ -103,13 +83,7 @@ def get_ol_data(email: str):
     ol = _get_ol_conn()
     try:
         with ol.cursor() as cur:
-            cur.execute("""
-                SELECT id,
-                       CONCAT(first_name,' ',COALESCE(middle_name,''),' ',last_name) AS full_name,
-                       email, role_id, type, reporting_to,
-                       official_mail_id, mrr_candidate_id, created_at, confirmed_at
-                FROM users WHERE email = %s LIMIT 1
-            """, (email,))
+            cur.execute(load_ol_sql("get_user_by_email.sql"), (email,))
             ol_user = cur.fetchone()
 
             if not ol_user:
@@ -118,33 +92,43 @@ def get_ol_data(email: str):
             user = _serialize(dict(ol_user))
             uid  = ol_user["id"]
 
-            cur.execute("""
-                SELECT
-                    aj.id,
-                    aj.job_posting_id,
-                    jp.title           AS job_title,
-                    cl.company_name    AS client_name,
-                    aj.status          AS application_status,
-                    aj.current_step,
-                    cwf.workflow_step  AS step_name,
-                    cwf.stage          AS step_stage,
-                    aj.prev_step,
-                    aj.note,
-                    aj.self_applied,
-                    aj.created_at,
-                    aj.updated_at
-                FROM applied_jobs aj
-                LEFT JOIN job_postings jp   ON jp.id = aj.job_posting_id
-                LEFT JOIN clients cl        ON cl.user_id = jp.client_id
-                LEFT JOIN candidate_work_flows cwf ON cwf.step_id = aj.current_step
-                WHERE aj.user_id = %s
-                ORDER BY aj.updated_at DESC
-            """, (uid,))
+            cur.execute(load_ol_sql("get_applied_jobs_by_user.sql"), (uid,))
             jobs = [_serialize(dict(j)) for j in cur.fetchall()]
 
         return JSONResponse(content={"user": user, "applied_jobs": jobs})
     finally:
         ol.close()
+
+
+def check_onboarded_benched(email: str) -> dict:
+    """
+    Returns {"is_onboarded": bool, "is_benched": bool}.
+
+    Step 1 — active onboarded (check_onboarded.sql):
+      present → is_onboarded=True, is_benched=False
+
+    Step 2 (only if step 1 misses) — benched (check_benched.sql):
+      present → is_onboarded=True, is_benched=True
+
+    Neither → both False.
+    """
+    result = {"is_onboarded": False, "is_benched": False}
+    ol = _get_ol_conn()
+    try:
+        with ol.cursor() as cur:
+            cur.execute(load_ol_sql("check_onboarded.sql"), (email,))
+            if (cur.fetchone() or {}).get("is_present") == "YES":
+                result["is_onboarded"] = True
+                result["is_benched"]   = False
+                return result
+
+            cur.execute(load_ol_sql("check_benched.sql"), (email,))
+            if (cur.fetchone() or {}).get("is_present") == "YES":
+                result["is_onboarded"] = True
+                result["is_benched"]   = True
+    finally:
+        ol.close()
+    return result
 
 
 @router.get("/check")
@@ -155,12 +139,7 @@ def check_mapping(
     ol = _get_ol_conn()
     try:
         with ol.cursor() as cur:
-            # 1. resolve email → OL user
-            cur.execute(
-                "SELECT id, CONCAT(first_name,' ',COALESCE(middle_name,''),' ',last_name) AS full_name "
-                "FROM users WHERE email = %s LIMIT 1",
-                (email,),
-            )
+            cur.execute(load_ol_sql("get_user_by_email.sql"), (email,))
             ol_user = cur.fetchone()
             if not ol_user:
                 return JSONResponse(content={
@@ -173,28 +152,7 @@ def check_mapping(
 
             uid = ol_user["id"]
 
-            # 2. check applied_jobs for that user + job_posting_id
-            cur.execute("""
-                SELECT
-                    aj.id              AS applied_job_id,
-                    aj.job_posting_id,
-                    jp.title           AS job_title,
-                    cl.company_name    AS client_name,
-                    aj.status          AS application_status,
-                    aj.current_step,
-                    cwf.workflow_step  AS step_name,
-                    cwf.stage          AS step_stage,
-                    aj.self_applied,
-                    aj.note,
-                    aj.created_at,
-                    aj.updated_at
-                FROM applied_jobs aj
-                LEFT JOIN job_postings jp   ON jp.id = aj.job_posting_id
-                LEFT JOIN clients cl        ON cl.user_id = jp.client_id
-                LEFT JOIN candidate_work_flows cwf ON cwf.step_id = aj.current_step
-                WHERE aj.user_id = %s AND aj.job_posting_id = %s
-                LIMIT 1
-            """, (uid, job_id))
+            cur.execute(load_ol_sql("check_mapping_by_email_job.sql"), (uid, job_id))
             row = cur.fetchone()
 
         if row:

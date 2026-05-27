@@ -541,7 +541,9 @@ class Candidate(Base):
         default="UserCandidate",
         server_default="UserCandidate",
     )
-    is_synced = Column(Boolean, default=False, server_default="false")
+    is_synced      = Column(Boolean, default=False, server_default="false")
+    is_onboarded   = Column(Boolean, default=False, server_default="false")
+    is_benched     = Column(Boolean, default=False, server_default="false")
 
     job = relationship("Job", back_populates="candidates")
     sourced_by = relationship(

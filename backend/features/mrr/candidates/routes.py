@@ -287,16 +287,12 @@ def create_candidate(
     job = db.query(Job).filter(Job.id == body.job_id).first()
     if job and job.job_id and body.email:
         try:
+            from core.sql_loader import load_ol_sql
             from features.mrr.ol_lookup.routes import _get_ol_conn
             _ol = _get_ol_conn()
             try:
                 with _ol.cursor() as _cur:
-                    _cur.execute(
-                        "SELECT IF(COUNT(*) > 0, 'YES', 'NO') AS is_mapped "
-                        "FROM applied_jobs aj JOIN users u ON u.id = aj.user_id "
-                        "WHERE u.email = %s AND aj.job_posting_id = %s",
-                        (body.email, job.job_id),
-                    )
+                    _cur.execute(load_ol_sql("check_duplicate_application.sql"), (body.email, job.job_id))
                     if (_cur.fetchone() or {}).get("is_mapped") == "YES":
                         raise HTTPException(
                             status_code=409,
@@ -317,6 +313,18 @@ def create_candidate(
         sourced_by_id=sourced_by_id,
         created_by_email=current_user.email,
     )
+
+    # OL onboarding/benched flags
+    if body.email:
+        try:
+            from features.mrr.ol_lookup.routes import check_onboarded_benched
+            flags = check_onboarded_benched(body.email)
+            candidate.is_onboarded = flags["is_onboarded"]
+            candidate.is_benched   = flags["is_benched"]
+            db.commit()
+            db.refresh(candidate)
+        except Exception:
+            pass  # OL unreachable — flags stay False, non-blocking
 
     job = db.query(Job).filter(Job.id == candidate.job_id).first()
     from features.mrr.activity.service import log as log_activity
