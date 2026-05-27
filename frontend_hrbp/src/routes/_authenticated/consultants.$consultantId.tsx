@@ -1,16 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { User, Briefcase, IndianRupee, Clock, TrendingDown } from "lucide-react";
+import { User, Briefcase, IndianRupee, Clock, TrendingDown, History } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { getConsultantDetailsApi, getUserProfile, getClientsApi } from "@/apiService/api";
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
 import { format } from "date-fns";
 import { fmtINR } from "@/lib/mockData";
-import { PageLoader } from "@/components/Loader";
+import { PageLoader, TableLoader } from "@/components/Loader";
+import { LottieIcon } from "@/components/LottieIcon";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CustomTablePagination } from "@/components/CustomPagination";
+import { listPoRevisions } from "@/apiService/poRevisionApi";
+import type { PoRevision } from "@/apiService/poRevisionApi";
 
 export const Route = createFileRoute("/_authenticated/consultants/$consultantId")({
   component: ConsultantDetailPage,
@@ -88,12 +100,43 @@ const LD_COLOR: Record<string, string> = {
   pending:     "bg-amber-100 text-amber-800",
 };
 
+const STATUS_STYLE: Record<string, string> = {
+  pending_approval: "bg-amber-100 text-amber-700 border-amber-200",
+  approved:         "bg-emerald-100 text-emerald-700 border-emerald-200",
+  rejected:         "bg-red-100 text-red-700 border-red-200",
+};
+const STATUS_LABEL: Record<string, string> = {
+  pending_approval: "Pending Approval",
+  approved:         "Approved",
+  rejected:         "Rejected",
+};
+
 function ConsultantDetailPage() {
   const { consultantId } = Route.useParams();
   const [consultant, setConsultant] = useState<ConsultantItem | null>(null);
   const [hrbpName, setHrbpName] = useState<string | null>(null);
   const [bhName, setBhName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // PO revision history
+  const [revisions, setRevisions]         = useState<PoRevision[]>([]);
+  const [revTotal, setRevTotal]           = useState(0);
+  const [revLoading, setRevLoading]       = useState(false);
+  const [revPage, setRevPage]             = useState(0);
+  const [revRowsPerPage, setRevRowsPerPage] = useState(5);
+
+  const fetchRevisions = useCallback(async () => {
+    setRevLoading(true);
+    try {
+      const resp = await listPoRevisions(Number(consultantId), revPage + 1, revRowsPerPage);
+      setRevisions(resp.data ?? []);
+      setRevTotal(resp.meta?.total ?? 0);
+    } catch {
+      // silently fail — table will show empty state
+    } finally {
+      setRevLoading(false);
+    }
+  }, [consultantId, revPage, revRowsPerPage]);
 
   useEffect(() => {
     async function fetchConsultant() {
@@ -129,6 +172,8 @@ function ConsultantDetailPage() {
     }
     fetchConsultant();
   }, [consultantId]);
+
+  useEffect(() => { fetchRevisions(); }, [fetchRevisions]);
 
   const tenureLeft = useMemo(
     () => calcTenureLeft(consultant?.po_end_date),
@@ -366,6 +411,88 @@ function ConsultantDetailPage() {
             </p>
           </div>
         </div>
+
+        {/* PO Revision History */}
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#132246]">
+              <History className="w-4 h-4 text-sky-600" />
+              PO Revision History
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-slate-100 border-b border-slate-200">
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-5">Revised On</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Old PO Rate</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New PO Rate</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Hike %</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ticket #</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {revLoading ? (
+                  <TableLoader colSpan={7} />
+                ) : revisions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-40 text-center text-slate-400">
+                      <div className="flex justify-center">
+                        <LottieIcon src="/json/searching-jobs.json" size={80} />
+                      </div>
+                      <p className="font-medium -mt-1">No PO revisions recorded yet</p>
+                      <p className="text-xs mt-1">Revisions will appear here once a rate change is logged via a ticket.</p>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  revisions.map((r) => (
+                    <TableRow key={r.id} className="hover:bg-slate-50 transition-colors">
+                      <TableCell className="text-xs font-medium text-slate-800 px-5">
+                        {formatDate(r.revised_at)}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">
+                        {r.old_po_rate != null ? fmtINR(Number(r.old_po_rate)) : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs font-semibold text-slate-800">
+                        {fmtINR(Number(r.new_po_rate))}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {r.hike_pct != null ? (
+                          <span className={Number(r.hike_pct) >= 0 ? "text-emerald-600 font-semibold" : "text-red-600 font-semibold"}>
+                            {Number(r.hike_pct) >= 0 ? "+" : ""}{Number(r.hike_pct).toFixed(2)}%
+                          </span>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-sky-600">
+                        {r.ticket_number ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-xs font-semibold ${STATUS_STYLE[r.status] ?? ""}`}>
+                          {STATUS_LABEL[r.status] ?? r.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500 max-w-[160px] truncate">{r.notes ?? "—"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            {revTotal > revRowsPerPage && (
+              <div className="flex justify-center py-3 border-t border-slate-100">
+                <CustomTablePagination
+                  rowsPerPageOptions={[5, 10, 25]}
+                  count={revTotal}
+                  rowsPerPage={revRowsPerPage}
+                  page={revPage}
+                  onPageChange={(_: React.MouseEvent<HTMLButtonElement> | null, p: number) => setRevPage(p)}
+                  onRowsPerPageChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setRevRowsPerPage(parseInt(e.target.value, 10)); setRevPage(0); }}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

@@ -345,9 +345,11 @@ def _contract_closure_email_html(consultant_name: str, po_end_date: date, ticket
 
 def check_contract_closures():
     """
-    Runs daily. Creates SOP-3 tickets for consultants whose po_end_date is
-    exactly 4 calendar months from today (±1-day window).
-    Skips consultants that already have an open SOP-3 ticket (dedup).
+    Runs daily. Creates SOP-3 tickets for consultants whose po_end_date falls
+    within the next 4 calendar months (inclusive). Using a rolling window instead
+    of an exact-date match ensures no consultant is missed if the server was down
+    on the day their 4-month trigger would have fired.
+    Dedup guard: skips if a non-closed SOP-3 ticket already exists for that consultant.
     """
     db = SessionLocal()
     try:
@@ -359,9 +361,7 @@ def check_contract_closures():
             return
 
         today = date.today()
-        target = today + relativedelta(months=4)
-        window_start = target - timedelta(days=1)
-        window_end   = target + timedelta(days=1)
+        window_end = today + relativedelta(months=4)
 
         sop = db.query(HRBPSopDefinition).filter_by(sop_type="SOP-3").first()
         if not sop:
@@ -375,7 +375,7 @@ def check_contract_closures():
             db.query(HRBPConsultant)
             .filter(
                 HRBPConsultant.is_active == True,
-                HRBPConsultant.po_end_date >= window_start,
+                HRBPConsultant.po_end_date >= today,
                 HRBPConsultant.po_end_date <= window_end,
             )
             .all()
