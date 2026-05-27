@@ -73,16 +73,20 @@ function TicketsPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
 
   // Pre-fill from cadence "Raise Ticket" navigation
-  const [prefillClientId, setPrefillClientId]         = useState<number | undefined>();
+  const [prefillClientId, setPrefillClientId]           = useState<number | undefined>();
   const [prefillConsultantIds, setPrefillConsultantIds] = useState<number[] | undefined>();
+  const [prefillBhId, setPrefillBhId]                   = useState<number | undefined>();
+  const [prefillDescription, setPrefillDescription]     = useState<string | undefined>();
 
   useEffect(() => {
     const raw = sessionStorage.getItem("raise_ticket_from_cadence");
     if (!raw) return;
     try {
-      const { clientId, consultantId } = JSON.parse(raw);
-      if (clientId) setPrefillClientId(Number(clientId));
+      const { clientId, consultantId, bhId, description } = JSON.parse(raw);
+      if (clientId)    setPrefillClientId(Number(clientId));
       if (consultantId) setPrefillConsultantIds([Number(consultantId)]);
+      if (bhId)        setPrefillBhId(Number(bhId));
+      if (description) setPrefillDescription(String(description));
     } catch { /* ignore malformed data */ }
     sessionStorage.removeItem("raise_ticket_from_cadence");
     setWizardOpen(true);
@@ -386,12 +390,20 @@ function TicketsPage() {
 
       <CreateTicketWizard
         open={wizardOpen}
-        onClose={() => { setWizardOpen(false); setPrefillClientId(undefined); setPrefillConsultantIds(undefined); }}
+        onClose={() => {
+          setWizardOpen(false);
+          setPrefillClientId(undefined);
+          setPrefillConsultantIds(undefined);
+          setPrefillBhId(undefined);
+          setPrefillDescription(undefined);
+        }}
         onCreated={fetchTickets}
         clients={clients}
         consultants={consultants}
         initialClientId={prefillClientId}
         initialConsultantIds={prefillConsultantIds}
+        initialBhId={prefillBhId}
+        initialDescription={prefillDescription}
       />
     </div>
   );

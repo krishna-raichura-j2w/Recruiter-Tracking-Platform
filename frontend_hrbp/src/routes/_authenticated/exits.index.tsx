@@ -600,6 +600,7 @@ function ExitsPage() {
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Reason</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Source Ticket</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">PO Impact/mo</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Exit Date</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
@@ -612,10 +613,10 @@ function ExitsPage() {
 
             <TableBody>
               {loading ? (
-                <TableLoader colSpan={11} />
+                <TableLoader colSpan={12} />
               ) : filteredExits.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-24 text-center text-slate-400">
+                  <TableCell colSpan={12} className="h-24 text-center text-slate-400">
                     No exit records found.
                   </TableCell>
                 </TableRow>
@@ -637,6 +638,15 @@ function ExitsPage() {
                       }`}>
                         {e.exit_type === "voluntary" ? "Voluntary" : "Involuntary"}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-600 whitespace-nowrap">
+                      {e.source_ticket_number ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 text-violet-700 font-mono font-semibold border border-violet-100">
+                          {e.source_ticket_number}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Manual</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm font-semibold text-rose-700">
                       {fmtCurrency(e.po_impact)}

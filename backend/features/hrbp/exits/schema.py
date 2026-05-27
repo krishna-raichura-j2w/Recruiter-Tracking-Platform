@@ -20,6 +20,7 @@ class ExitCreate(BaseModel):
     notice_period_start: date | None = None
     replacement_needed:  bool = False
     notes:               str | None = None
+    source_ticket_id:    int | None = None
 
 
 class ExitUpdate(BaseModel):
@@ -46,6 +47,8 @@ class ExitResponse(BaseModel):
     status:              str
     replacement_needed:  bool
     notes:               str | None
+    source_ticket_id:    int | None = None
+    source_ticket_number: str | None = None
     created_at:          datetime | None
     updated_at:          datetime | None
 

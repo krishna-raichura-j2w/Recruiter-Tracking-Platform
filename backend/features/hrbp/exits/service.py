@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.pagination import PageResult, paginate
-from infra.hrbp_models import HRBPConsultant, HRBPClient, HRBPExitTracking
+from infra.hrbp_models import HRBPConsultant, HRBPClient, HRBPExitTracking, HRBPTicket
 from infra.models import User
 
 from features.hrbp.exits.schema import ExitCreate, ExitUpdate
@@ -30,6 +30,11 @@ def _enrich(db: Session, record: HRBPExitTracking) -> dict:
     d["client_name"]       = client.name if client else None
     d["initiated_by_name"] = initiator.name if initiator else None
     d["po_impact"]         = float(d["po_impact"]) if d["po_impact"] is not None else None
+    if record.source_ticket_id:
+        ticket = db.query(HRBPTicket).filter_by(id=record.source_ticket_id).first()
+        d["source_ticket_number"] = ticket.ticket_number if ticket else None
+    else:
+        d["source_ticket_number"] = None
     return d
 
 

@@ -477,9 +477,15 @@ function CadenceSchedulerPage() {
   const navigate = useNavigate();
 
   function handleRaiseTicket(c: Cadence) {
+    const comment = checkInComments[c.id] || c.comment || "";
     sessionStorage.setItem(
       "raise_ticket_from_cadence",
-      JSON.stringify({ clientId: c.clientId, consultantId: c.consultantId }),
+      JSON.stringify({
+        clientId: c.clientId,
+        consultantId: c.consultantId,
+        bhId: c.bhId ?? null,
+        description: comment,
+      }),
     );
     navigate({ to: "/tickets" });
   }
