@@ -440,6 +440,7 @@ class Job(Base):
     # change to the job's user-FK columns also rewrites this array in the
     # same transaction.
     assigned_email_id = Column(PG_ARRAY(String), nullable=False, server_default="{}")
+    is_synced = Column(Boolean, default=False, server_default="false")
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
@@ -540,6 +541,7 @@ class Candidate(Base):
         default="UserCandidate",
         server_default="UserCandidate",
     )
+    is_synced = Column(Boolean, default=False, server_default="false")
 
     job = relationship("Job", back_populates="candidates")
     sourced_by = relationship(

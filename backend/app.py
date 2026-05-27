@@ -137,6 +137,16 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for stmt in [
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",
+        ]:
+            try:
+                db.execute(text(stmt))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         # Backfill jobs.assigned_email_id for legacy rows (the SQLAlchemy
         # event keeps it in sync going forward, but pre-existing rows need
         # one initial pass). Filter via array_length() IS NULL — that's how
