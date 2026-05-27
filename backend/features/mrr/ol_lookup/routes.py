@@ -2,9 +2,10 @@
 OL Candidate Lookup — integrated into the main backend.
 
 Routes:
-  GET /api/ol-lookup          → interactive HTML UI
-  GET /api/ol-lookup/candidates  → live list from MRR Postgres
-  GET /api/ol-lookup/ol/{email}  → OL MySQL profile + applied_jobs
+  GET /api/ol-lookup                        → interactive HTML UI
+  GET /api/ol-lookup/candidates             → live list from MRR Postgres
+  GET /api/ol-lookup/ol/{email}             → OL MySQL profile + applied_jobs
+  GET /api/ol-lookup/check?email=&job_id=   → is user mapped to that job_posting_id?
 """
 import os
 from datetime import datetime, date
@@ -13,7 +14,7 @@ import psycopg2
 import psycopg2.extras
 import pymysql
 import pymysql.cursors
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 router = APIRouter(prefix="/ol-lookup", tags=["ol-lookup"])
@@ -146,6 +147,76 @@ def get_ol_data(email: str):
         ol.close()
 
 
+@router.get("/check")
+def check_mapping(
+    email: str = Query(..., description="Candidate email"),
+    job_id: int = Query(..., description="OL job_posting_id"),
+):
+    ol = _get_ol_conn()
+    try:
+        with ol.cursor() as cur:
+            # 1. resolve email → OL user
+            cur.execute(
+                "SELECT id, CONCAT(first_name,' ',COALESCE(middle_name,''),' ',last_name) AS full_name "
+                "FROM users WHERE email = %s LIMIT 1",
+                (email,),
+            )
+            ol_user = cur.fetchone()
+            if not ol_user:
+                return JSONResponse(content={
+                    "mapped": False,
+                    "reason": "email_not_found",
+                    "message": f"No OL user with email '{email}'.",
+                    "ol_user_id": None,
+                    "application": None,
+                })
+
+            uid = ol_user["id"]
+
+            # 2. check applied_jobs for that user + job_posting_id
+            cur.execute("""
+                SELECT
+                    aj.id              AS applied_job_id,
+                    aj.job_posting_id,
+                    jp.title           AS job_title,
+                    cl.company_name    AS client_name,
+                    aj.status          AS application_status,
+                    aj.current_step,
+                    cwf.workflow_step  AS step_name,
+                    cwf.stage          AS step_stage,
+                    aj.self_applied,
+                    aj.note,
+                    aj.created_at,
+                    aj.updated_at
+                FROM applied_jobs aj
+                LEFT JOIN job_postings jp   ON jp.id = aj.job_posting_id
+                LEFT JOIN clients cl        ON cl.user_id = jp.client_id
+                LEFT JOIN candidate_work_flows cwf ON cwf.step_id = aj.current_step
+                WHERE aj.user_id = %s AND aj.job_posting_id = %s
+                LIMIT 1
+            """, (uid, job_id))
+            row = cur.fetchone()
+
+        if row:
+            return JSONResponse(content={
+                "mapped": True,
+                "ol_user_id": uid,
+                "ol_user_name": ol_user["full_name"],
+                "application": _serialize(dict(row)),
+            })
+        else:
+            return JSONResponse(content={
+                "mapped": False,
+                "reason": "not_applied",
+                "message": f"OL user {uid} ({ol_user['full_name']}) has no application for job_posting_id {job_id}.",
+                "ol_user_id": uid,
+                "ol_user_name": ol_user["full_name"],
+                "application": None,
+            })
+    finally:
+        ol.close()
+
+
 # ── HTML UI ───────────────────────────────────────────────────────────────────
 
 _HTML = """<!DOCTYPE html>
@@ -249,6 +320,25 @@ _HTML = """<!DOCTYPE html>
 
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+  /* Check bar */
+  .check-bar { background: #fff; border-bottom: 1px solid #e2e8f0;
+               padding: 8px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .check-bar label { font-size: 11px; font-weight: 600; color: #475569; white-space: nowrap; }
+  .check-bar input { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 7px;
+                     font-size: 12px; outline: none; background: #f8fafc; }
+  .check-bar input:focus { border-color: #3b82f6; background: #fff; }
+  .check-bar input.email-in { width: 240px; }
+  .check-bar input.job-in  { width: 110px; }
+  .btn-check { background: #1e3a8a; color: #fff; border: none; padding: 6px 16px;
+               border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .btn-check:hover { background: #1e40af; }
+  .check-result { font-size: 12px; font-weight: 600; padding: 4px 12px;
+                  border-radius: 20px; white-space: nowrap; }
+  .check-result.yes { background: #d1fae5; color: #065f46; }
+  .check-result.no  { background: #fee2e2; color: #991b1b; }
+  .check-result.info { background: #f1f5f9; color: #475569; }
+  .check-detail { font-size: 11px; color: #64748b; flex: 1; }
 </style>
 </head>
 <body>
@@ -261,6 +351,16 @@ _HTML = """<!DOCTYPE html>
       <span class="icon">↻</span> Refresh
     </button>
   </div>
+</div>
+
+<!-- Check bar -->
+<div class="check-bar">
+  <label>Quick Check:</label>
+  <input class="email-in" type="email" id="chk-email" placeholder="candidate@email.com"/>
+  <input class="job-in"   type="number" id="chk-job" placeholder="Job Posting ID"/>
+  <button class="btn-check" onclick="checkMapping()">Check</button>
+  <span class="check-result info" id="chk-result" style="display:none"></span>
+  <span class="check-detail" id="chk-detail"></span>
 </div>
 
 <div class="layout">
@@ -329,6 +429,36 @@ function kv(label, raw) {
     ? '<span class="value missing">Not available</span>'
     : `<span class="value">${raw}</span>`;
   return `<div class="kv"><div class="label">${label}</div>${display}</div>`;
+}
+
+async function checkMapping() {
+  const email  = document.getElementById('chk-email').value.trim();
+  const job_id = document.getElementById('chk-job').value.trim();
+  const resEl  = document.getElementById('chk-result');
+  const detEl  = document.getElementById('chk-detail');
+  if (!email || !job_id) { alert('Enter both email and Job Posting ID'); return; }
+  resEl.style.display = 'inline-block';
+  resEl.className = 'check-result info';
+  resEl.textContent = 'Checking…';
+  detEl.textContent = '';
+  try {
+    const res  = await fetch(`${BASE}/check?email=${encodeURIComponent(email)}&job_id=${encodeURIComponent(job_id)}`);
+    const data = await res.json();
+    if (data.mapped) {
+      resEl.className = 'check-result yes';
+      resEl.textContent = '✅ Already Mapped';
+      const a = data.application;
+      detEl.textContent = `OL User ${data.ol_user_id} (${data.ol_user_name}) · Applied Job ID: ${a.applied_job_id} · Status: ${a.application_status||'—'} · Step: ${a.step_name||a.current_step||'—'}`;
+    } else {
+      resEl.className = 'check-result no';
+      resEl.textContent = data.reason === 'email_not_found' ? '❌ Email Not in OL' : '❌ Not Mapped';
+      detEl.textContent = data.message;
+    }
+  } catch(e) {
+    resEl.className = 'check-result no';
+    resEl.textContent = '❌ Error';
+    detEl.textContent = e.message;
+  }
 }
 
 let ALL = [];

@@ -282,6 +282,33 @@ def create_candidate(
     import json as _json
 
     role = current_user.role.value
+
+    # OL duplicate check — block if this candidate is already applied to this job in OL
+    job = db.query(Job).filter(Job.id == body.job_id).first()
+    if job and job.job_id and body.email:
+        try:
+            from features.mrr.ol_lookup.routes import _get_ol_conn
+            _ol = _get_ol_conn()
+            try:
+                with _ol.cursor() as _cur:
+                    _cur.execute(
+                        "SELECT IF(COUNT(*) > 0, 'YES', 'NO') AS is_mapped "
+                        "FROM applied_jobs aj JOIN users u ON u.id = aj.user_id "
+                        "WHERE u.email = %s AND aj.job_posting_id = %s",
+                        (body.email, job.job_id),
+                    )
+                    if (_cur.fetchone() or {}).get("is_mapped") == "YES":
+                        raise HTTPException(
+                            status_code=409,
+                            detail="This candidate has already applied for this job in OfferLetter.",
+                        )
+            finally:
+                _ol.close()
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # OL unreachable — don't block sourcing
+
     # Both recruiters and DLs are credited as sourcer
     sourced_by_id = current_user.id if role in ("recruiter", "delivery_lead") else None
     candidate = service.create_candidate(
