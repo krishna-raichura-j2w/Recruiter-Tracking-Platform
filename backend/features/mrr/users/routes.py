@@ -334,33 +334,35 @@ def get_team_loads(
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
 
-    if is_admin or is_kam:
+    if is_admin:
         if dl_id:
             members = team_loads(db, dl_id)
         else:
-            # Return all active recruiters across all pods
-            all_recruiters = (
-                db.query(User)
-                .filter(
-                    User.is_active == True,
-                    User.role == UserRole.recruiter,
-                )
-                .order_by(User.name)
-                .all()
-            )
-            members = [
-                {
-                    "id": m.id,
-                    "name": m.name,
-                    "email": m.email,
-                    "role": m.role.value,
-                    "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
-                    "sourcing_load": _sourcer_load(db, m.id),
-                    "calling_load": _caller_load(db, m.id),
-                    "load": _sourcer_load(db, m.id) + _caller_load(db, m.id),
-                }
-                for m in all_recruiters
-            ]
+            return {"sourcers": [], "callers": []}
+    elif is_kam:
+        # KAM sees recruiters from their own DLs' pods only
+        # Step 1: get all DLs whose parent is this KAM
+        kam_dl_ids = [
+            u.id for u in db.query(User).filter(
+                User.parent_user_id == current_user.id,
+                User.is_active == True,
+                User.role == UserRole.delivery_lead,
+            ).all()
+        ]
+        if dl_id and dl_id in kam_dl_ids:
+            members = team_loads(db, dl_id)
+        elif dl_id:
+            members = []  # requested a DL not under this KAM
+        else:
+            # Collect recruiters from all DLs under this KAM
+            seen = set()
+            members = []
+            for did in kam_dl_ids:
+                for m in team_loads(db, did):
+                    if m["id"] not in seen:
+                        seen.add(m["id"])
+                        members.append(m)
+            members.sort(key=lambda x: x["name"])
     else:
         members = team_loads(db, current_user.id)
 

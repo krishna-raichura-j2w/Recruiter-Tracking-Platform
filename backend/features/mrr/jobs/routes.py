@@ -331,9 +331,30 @@ def confirm_jd(
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
 
-    # Validate recruiters are in the confirming DL's team (skipped for admin/KAM)
+    # For KAM: collect all DL IDs under them for validation
+    kam_dl_ids: list[int] = []
+    if is_kam and not is_admin:
+        kam_dl_ids = [
+            u.id for u in db.query(User).filter(
+                User.parent_user_id == current_user.id,
+                User.is_active == True,
+            ).all()
+        ]
+
+    # Validate recruiter is in confirming DL's pod (DL) or any of KAM's DLs' pods (KAM)
     for uid in body.recruiter_ids:
-        if not is_admin and not is_kam:
+        if is_admin:
+            continue
+        if is_kam:
+            in_team = (
+                db.query(PodMembership)
+                .filter(
+                    PodMembership.user_id == uid,
+                    PodMembership.pod_lead_id.in_(kam_dl_ids),
+                )
+                .first()
+            ) if kam_dl_ids else None
+        else:
             in_team = (
                 db.query(PodMembership)
                 .filter(
@@ -342,12 +363,12 @@ def confirm_jd(
                 )
                 .first()
             )
-            if not in_team:
-                u = db.query(User).filter(User.id == uid).first()
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"{u.name if u else uid} is not a member of your team.",
-                )
+        if not in_team:
+            u = db.query(User).filter(User.id == uid).first()
+            raise HTTPException(
+                status_code=400,
+                detail=f"{u.name if u else uid} is not in your pod.",
+            )
 
     # Same cleanup as /reassign — when the confirm flow is used to change the
     # team on an already-assigned JD, transfer active candidates off any
@@ -464,9 +485,29 @@ def reassign_recruiters(
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
 
-    # Validate recruiters are in the job's DL team (skipped for admin/KAM)
+    # For KAM: collect all DL IDs under them for validation
+    kam_dl_ids: list[int] = []
+    if is_kam and not is_admin:
+        kam_dl_ids = [
+            u.id for u in db.query(User).filter(
+                User.parent_user_id == current_user.id,
+                User.is_active == True,
+            ).all()
+        ]
+
     for uid in body.recruiter_ids:
-        if not is_admin and not is_kam:
+        if is_admin:
+            continue
+        if is_kam:
+            in_team = (
+                db.query(PodMembership)
+                .filter(
+                    PodMembership.user_id == uid,
+                    PodMembership.pod_lead_id.in_(kam_dl_ids),
+                )
+                .first()
+            ) if kam_dl_ids else None
+        else:
             in_team = (
                 db.query(PodMembership)
                 .filter(
@@ -475,12 +516,12 @@ def reassign_recruiters(
                 )
                 .first()
             )
-            if not in_team:
-                u = db.query(User).filter(User.id == uid).first()
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"{u.name if u else uid} is not a member of your team.",
-                )
+        if not in_team:
+            u = db.query(User).filter(User.id == uid).first()
+            raise HTTPException(
+                status_code=400,
+                detail=f"{u.name if u else uid} is not in your pod.",
+            )
 
     old_sourcers = set(
         json.loads(job.sourcer_ids or "[]") if isinstance(job.sourcer_ids, str) else [],

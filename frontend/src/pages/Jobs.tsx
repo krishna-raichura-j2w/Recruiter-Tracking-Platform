@@ -309,11 +309,16 @@ export default function Jobs() {
     setConfirmError('');
     setDlTeam([]);
     setSelectedRecruiters([]);
-    // KAM: pre-select current DLs
+    // KAM: pre-select current DLs and ensure DL list is loaded
     if (isKam) {
       const curDls = job.delivery_lead_ids?.length ? job.delivery_lead_ids
         : job.delivery_lead_id ? [job.delivery_lead_id] : [];
       setSelectedDeliveryLeadIds(curDls);
+      if (!deliveryLeads.length) {
+        api.get<{ id: number; name: string; clients: string[] }[]>('/users/delivery-leads')
+          .then(r => setDeliveryLeads(r.data))
+          .catch(() => {});
+      }
     }
     setLoadingTeam(true);
     try {
