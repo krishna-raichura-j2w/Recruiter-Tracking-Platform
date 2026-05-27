@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { FileText, Loader2, Paperclip, Upload, XCircle, RefreshCw, Pin, PinOff, ExternalLink, CalendarClock, UserRoundCog, IndianRupee, Clock, TrendingDown } from "lucide-react";
+import { FileText, Loader2, Paperclip, Upload, XCircle, RefreshCw, Pin, PinOff, ExternalLink, CalendarClock, UserRoundCog, IndianRupee, Clock, TrendingDown, Send, CheckCircle2, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { toast } from "sonner";
 
@@ -38,9 +38,10 @@ import {
   reassignStep,
   listAllHrbpUsers,
   getSopDefinition,
+  listEmailTemplates,
 } from "@/apiService/ticketApi";
 import { fetchPinnedTicket, pinTicket, unpinTicket } from "@/apiService/dashboardApi";
-import type { Ticket, ActivityLogEntry, UserOption, SopDefinition } from "@/apiService/ticketTypes";
+import type { Ticket, ActivityLogEntry, UserOption, SopDefinition, EmailTemplateResponse } from "@/apiService/ticketTypes";
 import {
   Dialog,
   DialogContent,
@@ -98,14 +99,155 @@ function ActivityItem({ entry }: { entry: ActivityLogEntry }) {
   );
 }
 
+// ── Email template card ────────────────────────────────────────────────────
+
+const GROUP_BADGE: Record<string, string> = {
+  routine:   "bg-blue-50 text-blue-700 border-blue-200",
+  incident:  "bg-red-50 text-red-700 border-red-200",
+  commercial:"bg-amber-50 text-amber-700 border-amber-200",
+  medical:   "bg-green-50 text-green-700 border-green-200",
+};
+
+function EmailTemplateCard({ tpl }: { tpl: EmailTemplateResponse }) {
+  const [expanded, setExpanded] = useState(false);
+  const badgeCls = GROUP_BADGE[tpl.group_name] ?? "bg-gray-50 text-gray-600 border-gray-200";
+
+  return (
+    <div className="rounded-xl border border-gray-100 overflow-hidden">
+      <div className="flex items-start justify-between gap-3 px-4 py-3 bg-gray-50">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <p className="text-sm font-semibold text-gray-800">{tpl.name}</p>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium capitalize ${badgeCls}`}>
+              {tpl.group_name}
+            </span>
+          </div>
+          {tpl.subject_tpl && (
+            <p className="text-xs text-gray-500 truncate" title={tpl.subject_tpl}>
+              Subject: {tpl.subject_tpl}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(tpl.body_tpl);
+              toast.success("Body copied");
+            }}
+            className="p-1.5 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 transition-colors"
+            title="Copy body"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="px-4 py-3 border-t border-gray-100">
+          <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+            {tpl.body_tpl}
+          </pre>
+          {tpl.required_vars && tpl.required_vars.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-gray-400">Variables:</span>
+              {tpl.required_vars.map((v) => (
+                <span key={v} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                  {`{{${v}}}`}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmailTemplatesPanel({
+  templates,
+  sopTemplateIds,
+}: {
+  templates: EmailTemplateResponse[];
+  sopTemplateIds: string[] | null;
+}) {
+  const sopTemplates = sopTemplateIds
+    ? templates.filter((t) => sopTemplateIds.includes(t.id))
+    : [];
+
+  return (
+    <Tabs defaultValue="sop-related">
+      <TabsList className="mb-4">
+        <TabsTrigger value="sop-related" className="gap-1.5">
+          SOP Related Templates
+          {sopTemplates.length > 0 && (
+            <span className="ml-1 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+              {sopTemplates.length}
+            </span>
+          )}
+        </TabsTrigger>
+        <TabsTrigger value="all-templates" className="gap-1.5">
+          All Templates
+          {templates.length > 0 && (
+            <span className="ml-1 text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
+              {templates.length}
+            </span>
+          )}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="sop-related">
+        {sopTemplates.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">
+            {sopTemplateIds === null
+              ? "No SOP linked to this ticket."
+              : "No email templates linked to this SOP."}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {sopTemplates.map((tpl) => (
+              <EmailTemplateCard key={tpl.id} tpl={tpl} />
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="all-templates">
+        {templates.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No email templates found.</p>
+        ) : (
+          <div className="space-y-3">
+            {templates.map((tpl) => (
+              <EmailTemplateCard key={tpl.id} tpl={tpl} />
+            ))}
+          </div>
+        )}
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 function TicketDetailPage() {
   const { ticketId } = Route.useParams();
   const { user } = useAuth();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sopDef, setSopDef] = useState<SopDefinition | null>(null);
   const [sopSteps, setSopSteps] = useState<SopDefinition["steps_definition"] | null>(null);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateResponse[]>([]);
   const [closing, setClosing] = useState(false);
+
+  // Sidebar comment input state
+  const [commentText, setCommentText] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [pinLoading, setPinLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -126,11 +268,20 @@ function TicketDetailPage() {
 
   const fetchTicket = useCallback(async () => {
     try {
-      const t = await getTicket(Number(ticketId));
+      const [t, templates] = await Promise.all([
+        getTicket(Number(ticketId)),
+        listEmailTemplates(),
+      ]);
       setTicket(t);
+      setEmailTemplates(templates);
       if (t.sop_id) {
         getSopDefinition(t.sop_id)
-          .then((sop) => { if (sop) setSopSteps(sop.steps_definition); })
+          .then((sop) => {
+            if (sop) {
+              setSopDef(sop);
+              setSopSteps(sop.steps_definition);
+            }
+          })
           .catch(() => {});
       }
     } catch {
@@ -248,6 +399,17 @@ function TicketDetailPage() {
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add comment");
       throw err;
+    }
+  }
+
+  async function handleSidebarComment(isResolution: boolean) {
+    if (!commentText.trim()) return;
+    setCommentSubmitting(true);
+    try {
+      await handleComment(commentText.trim(), isResolution);
+      setCommentText("");
+    } finally {
+      setCommentSubmitting(false);
     }
   }
 
@@ -541,22 +703,24 @@ function TicketDetailPage() {
               </div>
             )}
 
-            {/* Description + Comments + Activity tabs */}
+            {/* Description + Email Templates + Activity + Comments History tabs */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none border-b border-gray-100 bg-gray-50 px-4 pt-2">
                   <TabsTrigger value="description">Description</TabsTrigger>
-                  <TabsTrigger value="comments">
-                    Comments
+                  <TabsTrigger value="email-templates">Email Templates</TabsTrigger>
+                  <TabsTrigger value="activity">Activity Log</TabsTrigger>
+                  <TabsTrigger value="comments-history">
+                    Comments History
                     {ticket.comments.length > 0 && (
                       <span className="ml-1 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
                         {ticket.comments.length}
                       </span>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="activity">Activity Log</TabsTrigger>
                 </TabsList>
 
+                {/* ── Tab 1: Description ── */}
                 <TabsContent value="description" className="p-5 space-y-5">
                   {ticket.description ? (
                     <RichTextEditor value={ticket.description} onChange={() => {}} readOnly />
@@ -647,18 +811,15 @@ function TicketDetailPage() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="comments" className="p-5">
-                  <TicketCommentThread
-                    comments={ticket.comments}
-                    currentStep={ticket.current_step}
-                    hierarchy={ticket.hierarchy_json}
-                    currentUserId={user?.id ?? 0}
-                    ticketStatus={ticket.status}
-                    isMyTurn={isMyTurn}
-                    onAddComment={handleComment}
+                {/* ── Tab 2: Email Templates ── */}
+                <TabsContent value="email-templates" className="p-5">
+                  <EmailTemplatesPanel
+                    templates={emailTemplates}
+                    sopTemplateIds={sopDef?.email_templates ?? null}
                   />
                 </TabsContent>
 
+                {/* ── Tab 3: Activity Log ── */}
                 <TabsContent value="activity" className="p-5">
                   {ticket.activity_log.length === 0 ? (
                     <p className="text-sm text-gray-400 italic">No activity yet.</p>
@@ -668,6 +829,23 @@ function TicketDetailPage() {
                         <ActivityItem key={entry.id} entry={entry} />
                       ))}
                     </div>
+                  )}
+                </TabsContent>
+
+                {/* ── Tab 4: Comments History ── */}
+                <TabsContent value="comments-history" className="p-5">
+                  <TicketCommentThread
+                    comments={ticket.comments}
+                    currentStep={ticket.current_step}
+                    hierarchy={ticket.hierarchy_json}
+                    currentUserId={user?.id ?? 0}
+                    ticketStatus={ticket.status}
+                    isMyTurn={isMyTurn}
+                    onAddComment={handleComment}
+                    readOnly
+                  />
+                  {ticket.comments.length === 0 && (
+                    <p className="text-sm text-gray-400 italic">No comments yet.</p>
                   )}
                 </TabsContent>
               </Tabs>
@@ -690,11 +868,57 @@ function TicketDetailPage() {
                 {currentHierarchyStep.user_name && (
                   <p className="text-sm text-gray-600 mt-0.5">{currentHierarchyStep.user_name}</p>
                 )}
-                {isMyTurn && (
-                  <p className="text-xs text-blue-700 font-medium mt-2">
-                    ✋ Action required from you — go to Comments tab to respond.
+                {/* Comment input in resolution flow */}
+                <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                  <p className="text-xs text-gray-500 font-medium">
+                    {isMyTurn
+                      ? "Your turn — add a comment or resolve to advance."
+                      : "Add an internal note."}
                   </p>
-                )}
+                  <textarea
+                    placeholder="Write a comment…"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    rows={3}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">{commentText.length} chars</span>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!commentText.trim() || commentSubmitting}
+                        onClick={() => handleSidebarComment(false)}
+                        className="gap-1.5 text-xs"
+                      >
+                        {commentSubmitting ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5" />
+                        )}
+                        Comment
+                      </Button>
+                      {isMyTurn && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={!commentText.trim() || commentSubmitting}
+                          onClick={() => handleSidebarComment(true)}
+                          className="gap-1.5 text-xs bg-green-600 hover:bg-green-700"
+                        >
+                          {commentSubmitting ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          )}
+                          Resolve & Pass to Next
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 {isCanManageStep && (
                   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">

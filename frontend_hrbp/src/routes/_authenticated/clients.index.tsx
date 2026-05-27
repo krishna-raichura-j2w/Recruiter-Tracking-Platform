@@ -4,6 +4,7 @@ import { TopBar } from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -19,8 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { fmtINR } from "@/lib/mockData";
-import { Search } from "lucide-react";
+import { Search, Eye, Building2, Users, IndianRupee, Calendar, ExternalLink } from "lucide-react";
 import { getClientsApi } from "@/apiService/api";
 import type { ClientItem } from "@/apiService/types";
 import { toast } from "react-toastify";
@@ -28,8 +35,160 @@ import { CustomTablePagination } from "@/components/CustomPagination";
 import { LottieIcon } from "@/components/LottieIcon";
 import { fetchClientsSummary, type ClientsSummary } from "@/apiService/dashboardApi";
 import { TableLoader } from "@/components/Loader";
+import { format } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/clients/")({ component: ClientsPage });
+
+function formatDate(d: string | null | undefined) {
+  if (!d) return "—";
+  try { return format(new Date(d), "MMM dd, yyyy"); } catch { return d; }
+}
+
+// ── Field pair ─────────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{label}</p>
+      <div className="text-sm font-medium text-slate-800">{children}</div>
+    </div>
+  );
+}
+
+// ── Metric tile ────────────────────────────────────────────────────────────
+
+function MetricTile({
+  label,
+  value,
+  icon,
+  accent = "blue",
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  accent?: "blue" | "emerald" | "amber" | "slate";
+}) {
+  const styles: Record<string, string> = {
+    blue:    "bg-blue-50 border-blue-100 text-blue-900",
+    emerald: "bg-emerald-50 border-emerald-100 text-emerald-900",
+    amber:   "bg-amber-50 border-amber-100 text-amber-900",
+    slate:   "bg-slate-50 border-slate-100 text-slate-800",
+  };
+  const labelColors: Record<string, string> = {
+    blue: "text-blue-600", emerald: "text-emerald-600", amber: "text-amber-600", slate: "text-slate-500",
+  };
+  return (
+    <div className={`rounded-xl border p-3 ${styles[accent]}`}>
+      <div className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide mb-1 ${labelColors[accent]}`}>
+        {icon}
+        {label}
+      </div>
+      <p className="text-base font-bold">{value}</p>
+    </div>
+  );
+}
+
+// ── Client detail dialog ───────────────────────────────────────────────────
+
+function ClientDetailDialog({
+  client,
+  open,
+  onClose,
+}: {
+  client: ClientItem | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!client) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader className="pb-4 border-b border-slate-100">
+          <div className="flex items-start gap-3">
+            <div className="h-12 w-12 bg-sky-100 text-sky-700 rounded-full flex items-center justify-center text-xl font-bold shrink-0 border-2 border-white ring-1 ring-slate-200">
+              {client.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-base font-bold text-[#132246] leading-tight">
+                {client.name}
+              </DialogTitle>
+              <p className="text-xs text-slate-500 mt-0.5">{client.industry || "—"}</p>
+            </div>
+            <Badge className={client.is_active
+              ? "bg-emerald-100 text-emerald-800 border-emerald-200 shrink-0"
+              : "bg-slate-100 text-slate-600 border-slate-200 shrink-0"}>
+              {client.is_active ? "Active" : "Inactive"}
+            </Badge>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* Business metrics */}
+          <div className="grid grid-cols-2 gap-3">
+            <MetricTile
+              label="Headcount"
+              value={String(client.headcount ?? 0)}
+              icon={<Users className="w-3 h-3" />}
+              accent="blue"
+            />
+            <MetricTile
+              label="Monthly PO"
+              value={client.total_monthly_po ? fmtINR(client.total_monthly_po) : "—"}
+              icon={<IndianRupee className="w-3 h-3" />}
+              accent="emerald"
+            />
+          </div>
+
+          {/* Client Details card */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="bg-slate-50/60 border-b border-slate-100 px-4 py-2.5 flex items-center gap-2">
+              <Building2 className="w-3.5 h-3.5 text-sky-600" />
+              <p className="text-xs font-semibold text-[#132246]">Client Details</p>
+            </div>
+            <div className="px-4 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
+              <Field label="Industry">{client.industry || "—"}</Field>
+              <Field label="BH Owner">{client.bh_name || "—"}</Field>
+              <Field label="Status">
+                <Badge variant="outline" className={client.is_active
+                  ? "text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "text-xs bg-slate-50 text-slate-600 border-slate-200"}>
+                  {client.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </Field>
+            </div>
+          </div>
+
+          {/* Timestamps */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="bg-slate-50/60 border-b border-slate-100 px-4 py-2.5 flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-sky-600" />
+              <p className="text-xs font-semibold text-[#132246]">Dates</p>
+            </div>
+            <div className="px-4 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
+              <Field label="Created">{formatDate(client.created_at)}</Field>
+              <Field label="Last Updated">{formatDate(client.updated_at)}</Field>
+            </div>
+          </div>
+
+          {/* View consultants link */}
+          <Link
+            to="/clients/$clientId"
+            params={{ clientId: String(client.id) }}
+            onClick={onClose}
+          >
+            <Button variant="outline" className="w-full gap-2 text-sm">
+              <ExternalLink className="w-4 h-4" />
+              View Consultant Team
+            </Button>
+          </Link>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
 
 function ClientsPage() {
   const [q, setQ] = useState("");
@@ -38,6 +197,7 @@ function ClientsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<ClientsSummary | null>(null);
+  const [selectedClient, setSelectedClient] = useState<ClientItem | null>(null);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -67,11 +227,9 @@ function ClientsPage() {
   }, [page, rowsPerPage]);
 
   const handleChangePage = (
-    event: React.MouseEvent<HTMLButtonElement> | null,
+    _: React.MouseEvent<HTMLButtonElement> | null,
     newPage: number,
-  ) => {
-    setPage(newPage);
-  };
+  ) => setPage(newPage);
 
   const handleChangeRowsPerPage = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -85,13 +243,10 @@ function ClientsPage() {
       c.name.toLowerCase().includes(q.toLowerCase()) ||
       c.industry.toLowerCase().includes(q.toLowerCase());
     const matchesStatus =
-      statusFilter === "all"
-        ? true
-        : statusFilter === "active"
-        ? c.is_active
-        : !c.is_active;
+      statusFilter === "all" ? true : statusFilter === "active" ? c.is_active : !c.is_active;
     return matchesSearch && matchesStatus;
   });
+
   return (
     <div className="flex flex-col min-h-screen bg-white text-slate-800">
       <TopBar
@@ -101,30 +256,10 @@ function ClientsPage() {
       <main className="flex-1 p-6 space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            {
-              label: "Total Clients",
-              value: summary?.total ?? "—",
-              color: "text-sky-600",
-              src: "/json/successful-business-agreement.json",
-            },
-            {
-              label: "Active",
-              value: summary?.active ?? "—",
-              color: "text-emerald-600",
-              src: "/json/reviewed.json",
-            },
-            {
-              label: "Inactive",
-              value: summary?.inactive ?? "—",
-              color: "text-slate-500",
-              src: "/json/office-drawer.json",
-            },
-            {
-              label: "Total Consultants",
-              value: summary?.total_consultants ?? "—",
-              color: "text-violet-600",
-              src: "/json/employee-colored.json",
-            },
+            { label: "Total Clients",      value: summary?.total ?? "—",              color: "text-sky-600",    src: "/json/successful-business-agreement.json" },
+            { label: "Active",             value: summary?.active ?? "—",             color: "text-emerald-600", src: "/json/reviewed.json" },
+            { label: "Inactive",           value: summary?.inactive ?? "—",           color: "text-slate-500",  src: "/json/office-drawer.json" },
+            { label: "Total Consultants",  value: summary?.total_consultants ?? "—",  color: "text-violet-600", src: "/json/employee-colored.json" },
           ].map(({ label, value, color, src }) => (
             <Card key={label} className="flex items-center gap-4 p-4 border border-slate-100 shadow-sm bg-white rounded-xl">
               <div className="shrink-0">
@@ -140,24 +275,24 @@ function ClientsPage() {
 
         <div className="flex items-center justify-between gap-4">
           <div className="relative max-w-sm flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search clients..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
-              />
-            </div>
-            <div className="w-[180px]">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-10 text-sm border-slate-200 shadow-sm bg-white">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search clients..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
+            />
+          </div>
+          <div className="w-[180px]">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-10 text-sm border-slate-200 shadow-sm bg-white">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
             </Select>
           </div>
         </div>
@@ -173,20 +308,21 @@ function ClientsPage() {
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">PO Value</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Active Incidents</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableLoader colSpan={7} />
+                <TableLoader colSpan={8} />
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={8} className="h-24 text-center">
                     No clients found.
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((c) => (
-                  <TableRow key={c.id} className="cursor-pointer hover:bg-slate-50 transition-colors">
+                  <TableRow key={c.id} className="hover:bg-slate-50 transition-colors">
                     <TableCell className="font-medium">
                       <Link
                         to="/clients/$clientId"
@@ -208,13 +344,24 @@ function ClientsPage() {
                         <Badge className="bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200">Inactive</Badge>
                       )}
                     </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50"
+                        onClick={() => setSelectedClient(c)}
+                        title="View details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </div>
-        
+
         <div className="flex justify-center mt-4">
           <CustomTablePagination
             rowsPerPageOptions={[5, 10, 25, 50, 100]}
@@ -226,6 +373,12 @@ function ClientsPage() {
           />
         </div>
       </main>
+
+      <ClientDetailDialog
+        client={selectedClient}
+        open={selectedClient !== null}
+        onClose={() => setSelectedClient(null)}
+      />
     </div>
   );
 }

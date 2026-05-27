@@ -51,6 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<User> => {
     const res = await loginApi(email, password);
+    if (!res.is_hrbp_member) {
+      throw new Error("Access denied. You do not have access to the HRBP system.");
+    }
     const u: User = {
       email: res.email,
       name: res.name,

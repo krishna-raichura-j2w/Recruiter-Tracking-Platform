@@ -200,7 +200,7 @@ function ProfilePage() {
                 <div className="relative group">
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full blur opacity-40 group-hover:opacity-60 transition duration-300" />
                   <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-white border border-slate-200 overflow-hidden shadow-inner">
-                    <img src="/profile-icon.svg" className="h-16 w-16 opacity-90" alt="Profile" />
+                    <img src={`${import.meta.env.BASE_URL}profile-icon.svg`} className="h-16 w-16 opacity-90" alt="Profile" />
                   </div>
                 </div>
 

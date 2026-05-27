@@ -6,6 +6,7 @@ export interface LoginResponse {
   role: string;
   email: string;
   must_change_password: boolean;
+  is_hrbp_member: boolean;
 }
 
 export interface LoginError {

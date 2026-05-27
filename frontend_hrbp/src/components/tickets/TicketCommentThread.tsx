@@ -14,6 +14,7 @@ interface TicketCommentThreadProps {
   ticketStatus: string;
   isMyTurn: boolean;
   onAddComment: (content: string, isResolution: boolean) => Promise<void>;
+  readOnly?: boolean;
 }
 
 function initials(name: string): string {
@@ -35,6 +36,7 @@ export function TicketCommentThread({
   ticketStatus,
   isMyTurn,
   onAddComment,
+  readOnly = false,
 }: TicketCommentThreadProps) {
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -139,7 +141,7 @@ export function TicketCommentThread({
       })}
 
       {/* Input area */}
-      {!isClosed && (
+      {!isClosed && !readOnly && (
         <div className="border-t border-gray-100 pt-4">
           <p className="text-xs text-gray-500 mb-2 font-medium">
             {isMyTurn

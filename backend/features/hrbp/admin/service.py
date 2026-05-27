@@ -14,8 +14,13 @@ from features.hrbp.admin.schema import (
 ALLOWED_ROLES = {"admin", "hrbp", "bh", "ops_head", "coo", "ceo"}
 
 
+def check_hrbp_membership(db: Session, email: str) -> bool:
+    user = db.query(User).filter(User.email == email, User.role.in_(ALLOWED_ROLES), User.is_active == True).first()  # noqa: E712
+    return user is not None
+
+
 def list_users(db: Session, role: str | None = None, include_inactive: bool = False) -> list[User]:
-    q = db.query(User)
+    q = db.query(User).filter(User.role.in_(ALLOWED_ROLES))
     if not include_inactive:
         q = q.filter(User.is_active == True)  # noqa: E712
     if role:
@@ -100,7 +105,7 @@ def assign_consultant(db: Session, consultant_id: int, payload: AdminAssignPaylo
 
 def get_stats(db: Session) -> dict:
     from infra.hrbp_models import HRBPTicket
-    total_users = db.query(User).filter(User.is_active == True).count()  # noqa: E712
+    total_users = db.query(User).filter(User.is_active == True, User.role.in_(ALLOWED_ROLES)).count()  # noqa: E712
     total_clients = db.query(HRBPClient).filter(HRBPClient.is_active == True).count()  # noqa: E712
     total_consultants = db.query(HRBPConsultant).filter(HRBPConsultant.is_active == True).count()  # noqa: E712
     open_tickets = db.query(HRBPTicket).filter(HRBPTicket.status.notin_(["closed", "resolved"])).count()

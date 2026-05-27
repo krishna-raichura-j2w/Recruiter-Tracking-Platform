@@ -19,6 +19,8 @@ class ChangePasswordRequest(BaseModel):
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     from datetime import datetime, timezone
 
+    from features.hrbp.admin.service import check_hrbp_membership
+
     user = authenticate_user(db, body.email, body.password)
     if not user:
         raise HTTPException(
@@ -38,7 +40,9 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         entity_type="user",
         entity_id=user.id,
     )
-    return build_token(user)
+    token_data = build_token(user)
+    token_data["is_hrbp_member"] = check_hrbp_membership(db, user.email)
+    return token_data
 
 
 @router.get("/me")
