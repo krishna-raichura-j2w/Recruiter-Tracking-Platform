@@ -14,3 +14,4 @@ class TokenResponse(BaseModel):
     role: str
     email: str
     must_change_password: bool = False
+    is_hrbp_member: bool = False

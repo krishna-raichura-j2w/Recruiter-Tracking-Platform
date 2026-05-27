@@ -23,6 +23,21 @@ def _require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+@router.get("/check-membership")
+def check_hrbp_membership(
+    email: str = Query(..., description="Email address to check"),
+    db: Session = Depends(get_db),
+):
+    try:
+        is_member = service.check_hrbp_membership(db, email)
+        return success_response(
+            data={"email": email, "is_hrbp_member": is_member},
+            message="Membership check successful",
+        )
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
 @router.get("/stats")
 def get_stats(
     db: Session = Depends(get_db),
