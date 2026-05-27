@@ -283,6 +283,33 @@ def health():
     return {"status": "ok", "service": "J2W Recruiter Tracking API"}
 
 
+# Serve HRBP frontend at /hrbp (must be registered before the main SPA catch-all).
+HRBP_DIST = Path(os.getenv("HRBP_DIST", "/app/frontend_hrbp_dist"))
+if HRBP_DIST.is_dir():
+
+    if (HRBP_DIST / "assets").is_dir():
+        app.mount(
+            "/hrbp/assets",
+            StaticFiles(directory=HRBP_DIST / "assets"),
+            name="hrbp_assets",
+        )
+
+    @app.get("/hrbp")
+    def _hrbp_root():
+        return FileResponse(HRBP_DIST / "index.html")
+
+    @app.get("/hrbp/{full_path:path}")
+    def _hrbp_catch_all(full_path: str):
+        candidate = (HRBP_DIST / full_path).resolve()
+        try:
+            candidate.relative_to(HRBP_DIST.resolve())
+        except ValueError:
+            raise StarletteHTTPException(status_code=404)
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(HRBP_DIST / "index.html")
+
+
 # Serve frontend build (SPA) if present. FRONTEND_DIST can override the path.
 FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", "/app/frontend_dist"))
 if FRONTEND_DIST.is_dir():
@@ -300,7 +327,7 @@ if FRONTEND_DIST.is_dir():
 
     @app.get("/{full_path:path}")
     def _spa_catch_all(full_path: str):
-        if full_path.startswith("api/") or full_path == "api":
+        if full_path.startswith(("api/", "hrbp/", "hrbp")) or full_path == "api":
             raise StarletteHTTPException(status_code=404)
         candidate = (FRONTEND_DIST / full_path).resolve()
         try:

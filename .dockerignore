@@ -12,6 +12,14 @@ frontend/.env
 frontend/.env.local
 frontend/.env.*.local
 
+# HRBP Frontend
+frontend_hrbp/node_modules
+frontend_hrbp/dist
+frontend_hrbp/.output
+frontend_hrbp/.env
+frontend_hrbp/.env.local
+frontend_hrbp/.env.*.local
+
 # Backend
 backend/.venv
 backend/__pycache__

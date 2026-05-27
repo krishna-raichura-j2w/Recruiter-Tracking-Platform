@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  Link,
   Outlet,
   createRootRouteWithContext,
   useRouter,
@@ -16,7 +17,7 @@ import appCss from "../styles.css?url";
 function NotFoundComponent() {
   const [anim, setAnim] = useState<object | null>(null);
   useEffect(() => {
-    fetch("/json/finding.json").then((r) => r.json()).then(setAnim).catch(() => {});
+    fetch(`${import.meta.env.BASE_URL}json/finding.json`).then((r) => r.json()).then(setAnim).catch(() => {});
   }, []);
 
   return (
@@ -30,12 +31,12 @@ function NotFoundComponent() {
         <p className="text-sm text-slate-500 mt-2">
           The page you're looking for doesn't exist or has been moved.
         </p>
-        <a
-          href="/dashboard"
+        <Link
+          to="/dashboard"
           className="mt-6 inline-flex items-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2.5 transition-colors shadow-sm"
         >
           Go to Dashboard
-        </a>
+        </Link>
       </div>
     </div>
   );
@@ -46,7 +47,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   const [anim, setAnim] = useState<object | null>(null);
   useEffect(() => {
-    fetch("/json/business-problem-solving.json").then((r) => r.json()).then(setAnim).catch(() => {});
+    fetch(`${import.meta.env.BASE_URL}json/business-problem-solving.json`).then((r) => r.json()).then(setAnim).catch(() => {});
   }, []);
 
   return (
@@ -66,12 +67,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           >
             Try again
           </button>
-          <a
-            href="/dashboard"
+          <Link
+            to="/dashboard"
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold px-5 py-2.5 transition-colors shadow-sm"
           >
             Go home
-          </a>
+          </Link>
         </div>
       </div>
     </div>

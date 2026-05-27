@@ -11,7 +11,8 @@ export function LottieIcon({ src, size = 80, className = "" }: LottieIconProps) 
   const [anim, setAnim] = useState<object | null>(null);
 
   useEffect(() => {
-    fetch(src).then((r) => r.json()).then(setAnim).catch(() => {});
+    const url = src.startsWith("/") ? `${import.meta.env.BASE_URL}${src.slice(1)}` : src;
+    fetch(url).then((r) => r.json()).then(setAnim).catch(() => {});
   }, [src]);
 
   if (!anim) return <div style={{ width: size, height: size }} className={className} />;

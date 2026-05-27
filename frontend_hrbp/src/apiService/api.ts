@@ -78,7 +78,7 @@ async function doRefresh(currentToken: string): Promise<string> {
           localStorage.removeItem("j2w_token");
           localStorage.removeItem("j2w_user");
           localStorage.removeItem("user_id");
-          window.location.href = "/";
+          window.location.href = import.meta.env.BASE_URL || "/";
         }
         throw e;
       });

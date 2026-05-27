@@ -22,6 +22,18 @@ COPY frontend/ ./
 RUN npx vite build
 
 
+# ─── Stage 1b: build the HRBP frontend (SPA mode) ──────────────────────────
+FROM node:20-alpine AS hrbp-build
+WORKDIR /hrbp
+
+COPY frontend_hrbp/package.json frontend_hrbp/package-lock.json ./
+RUN npm ci
+
+ARG BUILD_NONCE=0
+COPY frontend_hrbp/ ./
+RUN npx vite build --config vite.config.spa.ts
+
+
 # ─── Stage 2: python runtime serving API + built frontend ───────────────────
 FROM python:3.11-slim AS runtime
 WORKDIR /app
@@ -29,7 +41,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    FRONTEND_DIST=/app/frontend_dist
+    FRONTEND_DIST=/app/frontend_dist \
+    HRBP_DIST=/app/frontend_hrbp_dist
 
 # Build deps required by psycopg2 / cryptography wheels on slim images
 RUN apt-get update \
@@ -55,8 +68,9 @@ COPY backend/ ./
 # Copy COO leaderboard BH/AM mapping spreadsheet (lives at repo root)
 COPY Mehr.xlsx ./
 
-# Copy built frontend from stage 1
+# Copy built frontends from stage 1 / 1b
 COPY --from=frontend-build /fe/dist /app/frontend_dist
+COPY --from=hrbp-build /hrbp/dist /app/frontend_hrbp_dist
 
 EXPOSE 8000
 

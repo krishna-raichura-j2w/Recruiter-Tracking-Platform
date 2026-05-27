@@ -22,7 +22,7 @@ function LoginPage() {
   const [animationData, setAnimationData] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/json/checking-resume.json")
+    fetch(`${import.meta.env.BASE_URL}json/checking-resume.json`)
       .then((res) => res.json())
       .then((data) => setAnimationData(data))
       .catch((err) => console.error("Error loading Lottie:", err));
