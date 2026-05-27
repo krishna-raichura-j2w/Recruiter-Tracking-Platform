@@ -319,29 +319,52 @@ def get_team_assignments(
 
 @router.get("/team-loads")
 def get_team_loads(
-    dl_id: int | None = Query(
-        None,
-        description="DL user ID — admin can pass any DL's ID",
-    ),
+    dl_id: int | None = Query(None, description="DL user ID — admin/KAM can pass any DL's ID"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "delivery_lead")),
+    current_user=Depends(require_roles("admin", "delivery_lead", "kam")),
 ):
     """
     Return per-role load counts for each DL's team.
-    DL users always see their own team. Admins may pass ?dl_id=<N> to see a specific DL's team.
+    DL users always see their own team.
+    Admins and KAMs may pass ?dl_id=<N> to filter by a DL's team, or omit to get all recruiters.
     """
+    from infra.models import UserRole
+    from features.mrr.allocation.service import _sourcer_load, _caller_load
+
     is_admin = current_user.role.value == "admin"
-    if is_admin:
-        if dl_id is None:
-            return {"sourcers": [], "callers": []}
-        effective_dl_id = dl_id
+    is_kam   = user_has_role(current_user, "kam")
+
+    if is_admin or is_kam:
+        if dl_id:
+            members = team_loads(db, dl_id)
+        else:
+            # Return all active recruiters across all pods
+            all_recruiters = (
+                db.query(User)
+                .filter(
+                    User.is_active == True,
+                    User.role == UserRole.recruiter,
+                )
+                .order_by(User.name)
+                .all()
+            )
+            members = [
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "email": m.email,
+                    "role": m.role.value,
+                    "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
+                    "sourcing_load": _sourcer_load(db, m.id),
+                    "calling_load": _caller_load(db, m.id),
+                    "load": _sourcer_load(db, m.id) + _caller_load(db, m.id),
+                }
+                for m in all_recruiters
+            ]
     else:
-        effective_dl_id = current_user.id
-    members = team_loads(db, effective_dl_id)
-    return {
-        "sourcers": members,
-        "callers": members,
-    }
+        members = team_loads(db, current_user.id)
+
+    return {"sourcers": members, "callers": members}
 
 
 @router.get("/activity-summary")

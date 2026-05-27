@@ -306,6 +306,7 @@ class AssignJDBody(BaseModel):
 
 class ReassignBody(BaseModel):
     recruiter_ids: list[int]
+    delivery_lead_ids: list[int] | None = None  # KAM can also reassign DLs
 
 
 @router.post("/{job_id}/confirm")
@@ -313,9 +314,9 @@ def confirm_jd(
     job_id: int,
     body: AssignJDBody,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("delivery_lead", "admin")),
+    current_user=Depends(require_roles("delivery_lead", "admin", "kam")),
 ):
-    """Delivery Lead reviews JD, assigns recruiters (single unified pool), sets status = open."""
+    """DL or KAM reviews JD, assigns recruiters (single unified pool), sets status = open."""
     import json
     from datetime import datetime
 
@@ -326,14 +327,13 @@ def confirm_jd(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
-    # The confirming DL is whoever is on the job; admin can confirm any job
-    dl_id = current_user.id
+    dl_id    = current_user.id
     is_admin = current_user.role.value == "admin"
+    is_kam   = user_has_role(current_user, "kam")
 
-    # Validate all recruiter IDs are active members of the confirming DL's team
-    # (use pod_memberships for multi-team support)
+    # Validate recruiters are in the confirming DL's team (skipped for admin/KAM)
     for uid in body.recruiter_ids:
-        if not is_admin:
+        if not is_admin and not is_kam:
             in_team = (
                 db.query(PodMembership)
                 .filter(
@@ -449,9 +449,9 @@ def reassign_recruiters(
     job_id: int,
     body: ReassignBody,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("delivery_lead", "admin")),
+    current_user=Depends(require_roles("delivery_lead", "admin", "kam")),
 ):
-    """DL reassigns recruiters on an already-open job without changing any other state."""
+    """DL or KAM reassigns recruiters (and optionally DLs) on an already-open job."""
     import json
 
     job = service.get_job(db, job_id)
@@ -460,11 +460,13 @@ def reassign_recruiters(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
-    # Validate all recruiter IDs are members of the job's DL team (multi-team support)
-    dl_id = job.delivery_lead_id or current_user.id
+    dl_id    = job.delivery_lead_id or current_user.id
     is_admin = current_user.role.value == "admin"
+    is_kam   = user_has_role(current_user, "kam")
+
+    # Validate recruiters are in the job's DL team (skipped for admin/KAM)
     for uid in body.recruiter_ids:
-        if not is_admin:
+        if not is_admin and not is_kam:
             in_team = (
                 db.query(PodMembership)
                 .filter(
@@ -555,6 +557,11 @@ def reassign_recruiters(
                 entity_id=job.id,
             )
 
+    # KAM can also reassign DLs
+    if is_kam and body.delivery_lead_ids:
+        job.delivery_lead_ids = json.dumps(body.delivery_lead_ids)
+        job.delivery_lead_id  = body.delivery_lead_ids[0]
+
     db.commit()
     db.refresh(job)
 
@@ -563,6 +570,8 @@ def reassign_recruiters(
     detail = f"Reassigned recruiters on {job.role_title} ({job.client_name})"
     if removed_ids:
         detail += f" — {len(removed_ids)} removed, {moved_count} active candidate(s) transferred"
+    if is_kam and body.delivery_lead_ids:
+        detail += f" · DLs updated"
     log_activity(
         db,
         current_user.id,

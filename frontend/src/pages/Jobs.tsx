@@ -274,7 +274,8 @@ export default function Jobs() {
   useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter]);
 
   const fetchDlTeam = async (dlId?: number | null) => {
-    const params = isAdmin && dlId ? { dl_id: dlId } : undefined;
+    // KAM/admin: pass dl_id when known, otherwise backend returns all recruiters
+    const params = (isAdmin || isKam) && dlId ? { dl_id: dlId } : undefined;
     const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads', { params });
     return res.data.sourcers ?? [];
   };
@@ -284,11 +285,17 @@ export default function Jobs() {
     setConfirmError('');
     setDlTeam([]);
     setSelectedRecruiters([]);
+    // KAM: pre-select current DLs so they can change them if needed
+    if (isKam) {
+      const curDls = job.delivery_lead_ids?.length ? job.delivery_lead_ids
+        : job.delivery_lead_id ? [job.delivery_lead_id] : [];
+      setSelectedDeliveryLeadIds(curDls);
+    }
     setLoadingTeam(true);
     try {
-      const team = await fetchDlTeam(job.delivery_lead_id);
+      // KAM has no pod — fetch all recruiters (no dl_id filter)
+      const team = await fetchDlTeam(isKam ? null : job.delivery_lead_id);
       setDlTeam(team);
-      // Auto-select lowest-load recruiter
       if (team.length) {
         const rec = team.reduce((a, b) => (a.sourcing_load + a.calling_load) <= (b.sourcing_load + b.calling_load) ? a : b);
         setSelectedRecruiters([rec.id]);
@@ -302,16 +309,21 @@ export default function Jobs() {
     setConfirmError('');
     setDlTeam([]);
     setSelectedRecruiters([]);
+    // KAM: pre-select current DLs
+    if (isKam) {
+      const curDls = job.delivery_lead_ids?.length ? job.delivery_lead_ids
+        : job.delivery_lead_id ? [job.delivery_lead_id] : [];
+      setSelectedDeliveryLeadIds(curDls);
+    }
     setLoadingTeam(true);
     try {
-      const team = await fetchDlTeam(job.delivery_lead_id);
+      const team = await fetchDlTeam(isKam ? null : job.delivery_lead_id);
       setDlTeam(team);
       const teamIds = new Set(team.map((m) => m.id));
-      // Pre-select currently assigned recruiters that are still in this DL's team
       const rawIds: number[] = Array.isArray(job.recruiter_ids) && job.recruiter_ids.length
         ? job.recruiter_ids
         : [...new Set([...(Array.isArray(job.sourcer_ids) ? job.sourcer_ids : []), ...(Array.isArray(job.caller_ids) ? job.caller_ids : [])])];
-      setSelectedRecruiters(rawIds.filter((id) => teamIds.has(id)));
+      setSelectedRecruiters(rawIds.filter((id) => isKam ? true : teamIds.has(id)));
     } catch { setDlTeam([]); setSelectedRecruiters([]); }
     finally { setLoadingTeam(false); }
   };
@@ -348,7 +360,10 @@ export default function Jobs() {
     if (!selectedRecruiters.length) { setConfirmError('Select at least one recruiter.'); return; }
     setConfirming(true); setConfirmError('');
     try {
-      await api.patch(`/jobs/${reassignJob.id}/reassign`, { recruiter_ids: selectedRecruiters });
+      await api.patch(`/jobs/${reassignJob.id}/reassign`, {
+        recruiter_ids: selectedRecruiters,
+        ...(isKam && selectedDeliveryLeadIds.length ? { delivery_lead_ids: selectedDeliveryLeadIds } : {}),
+      });
       setReassignJob(null);
       fetchJobs();
     } catch {
@@ -909,7 +924,7 @@ export default function Jobs() {
         />
       )}
 
-      {/* DL: Reassign recruiters modal */}
+      {/* DL / KAM: Reassign recruiters modal */}
       {reassignJob && (
         <RecruiterAssignModal
           title="Reassign Recruiters"
@@ -920,9 +935,26 @@ export default function Jobs() {
           onToggle={toggleRecruiter}
           error={confirmError}
           confirming={confirming}
-          onCancel={() => { setReassignJob(null); setConfirmError(''); setSelectedRecruiters([]); setDlTeam([]); }}
+          onCancel={() => { setReassignJob(null); setConfirmError(''); setSelectedRecruiters([]); setDlTeam([]); setSelectedDeliveryLeadIds([]); }}
           onConfirm={handleReassign}
           confirmLabel="Save Reassignment"
+          extraSlot={isKam ? (
+            <div className="mt-4">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Delivery Leads</p>
+              <div className="flex flex-wrap gap-2">
+                {deliveryLeads.map(dl => {
+                  const sel = selectedDeliveryLeadIds.includes(dl.id);
+                  return (
+                    <button key={dl.id} type="button"
+                      onClick={() => setSelectedDeliveryLeadIds(prev => sel ? prev.filter(x => x !== dl.id) : [...prev, dl.id])}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${sel ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}>
+                      {dl.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : undefined}
         />
       )}
 
@@ -1980,8 +2012,8 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
       onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'}
     >
-      {/* ── DL: Prominent pending banner ────────────────────────── */}
-      {isDeliveryLead && isPending && (
+      {/* ── DL / KAM: Prominent pending banner ─────────────────── */}
+      {(isDeliveryLead || isKam) && isPending && (
         <div
           className="px-5 py-2.5 flex items-center justify-between"
           style={{ background: 'linear-gradient(90deg, #FFFBEB, #FEF9EC)', borderBottom: '1px solid #FDE68A' }}
@@ -2078,8 +2110,8 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
               </button>
             )}
 
-            {/* Reassign button for DL/Admin on open jobs */}
-            {(isDeliveryLead || isAdmin) && isOpen && (
+            {/* Reassign button for DL/Admin/KAM on open jobs */}
+            {(isDeliveryLead || isAdmin || isKam) && isOpen && (
               <button onClick={onReassign}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
                 style={{ background: '#EDE9FE', color: '#5B21B6', border: '1px solid #DDD6FE' }}
@@ -2366,13 +2398,14 @@ interface RecruiterAssignModalProps {
   onTargetChange?: (v: string) => void;
   onSourcingDeadlineChange?: (v: string) => void;
   onCallingDeadlineChange?: (v: string) => void;
+  extraSlot?: React.ReactNode;
 }
 
 function RecruiterAssignModal({
   title, subtitle, team, loadingTeam, selected, onToggle, error, confirming,
   onCancel, onConfirm, confirmLabel, showDeadlines,
   sourcingTarget, sourcingDeadline, callingDeadline,
-  onTargetChange, onSourcingDeadlineChange, onCallingDeadlineChange,
+  onTargetChange, onSourcingDeadlineChange, onCallingDeadlineChange, extraSlot,
 }: RecruiterAssignModalProps) {
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const sorted = [...team].sort((a, b) => (a.sourcing_load + a.calling_load) - (b.sourcing_load + b.calling_load));
@@ -2461,6 +2494,8 @@ function RecruiterAssignModal({
               </div>
             </>
           )}
+
+          {extraSlot}
 
           {error && <p className="text-red-500 text-xs bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
         </div>
