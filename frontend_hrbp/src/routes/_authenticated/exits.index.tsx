@@ -508,34 +508,44 @@ function ExitsPage() {
       <TopBar title="Exit Tracking" subtitle="Track consultant exit initiations and PO impact." />
 
       <main className="flex-1 p-6 space-y-4">
-        {/* Stat cards */}
-        <div className="flex gap-4 flex-wrap">
-          <StatCard
-            icon={<LottieIcon src="/json/searching-jobs.json" size={44} />}
-            label="Total Exits"
-            value={stats?.total_exits ?? 0}
-          />
-          <StatCard
-            icon={<LottieIcon src="/json/checking-resume.json" size={44} />}
-            label="This Month"
-            value={stats?.exits_this_month ?? 0}
-            accent="text-amber-600"
-          />
-          <StatCard
-            icon={<LottieIcon src="/json/reviewed.json" size={44} />}
-            label="This Quarter"
-            value={stats?.exits_this_quarter ?? 0}
-            accent="text-blue-600"
-          />
-          <StatCard
-            icon={<LottieIcon src="/json/business-problem-solving.json" size={44} />}
-            label="Total PO Impact / mo"
-            value={fmtCurrency(stats?.total_po_impact ?? 0)}
-            accent="text-rose-600"
-          />
+        {/* Stat cards + Log Exit button */}
+        <div className="flex items-center gap-4">
+          <div className="flex gap-4 flex-1">
+            <StatCard
+              icon={<LottieIcon src="/json/searching-jobs.json" size={44} />}
+              label="Total Exits"
+              value={stats?.total_exits ?? 0}
+            />
+            <StatCard
+              icon={<LottieIcon src="/json/checking-resume.json" size={44} />}
+              label="This Month"
+              value={stats?.exits_this_month ?? 0}
+              accent="text-amber-600"
+            />
+            <StatCard
+              icon={<LottieIcon src="/json/reviewed.json" size={44} />}
+              label="This Quarter"
+              value={stats?.exits_this_quarter ?? 0}
+              accent="text-blue-600"
+            />
+            <StatCard
+              icon={<LottieIcon src="/json/business-problem-solving.json" size={44} />}
+              label="Total PO Impact / mo"
+              value={fmtCurrency(stats?.total_po_impact ?? 0)}
+              accent="text-rose-600"
+            />
+          </div>
+          {can("exits", "create") && (
+            <Button
+              onClick={() => setCreateOpen(true)}
+              className="bg-sky-600 hover:bg-sky-500 text-white font-semibold gap-1.5 shadow-sm shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Log Exit
+            </Button>
+          )}
         </div>
 
-        {/* Toolbar — search, filters, + Log Exit button */}
+        {/* Toolbar — search + filters */}
         <div className="flex items-center gap-3">
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -579,15 +589,6 @@ function ExitsPage() {
             <Button variant="ghost" size="icon" onClick={onRefresh} title="Refresh">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
-
-            {can("exits", "create") && (
-              <Button
-                onClick={() => setCreateOpen(true)}
-                className="bg-sky-600 hover:bg-sky-500 text-white font-semibold gap-1.5 shadow-sm"
-              >
-                <Plus className="w-4 h-4" /> Log Exit
-              </Button>
-            )}
           </div>
         </div>
 
@@ -616,8 +617,14 @@ function ExitsPage() {
                 <TableLoader colSpan={12} />
               ) : filteredExits.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="h-24 text-center text-slate-400">
-                    No exit records found.
+                  <TableCell colSpan={12} className="h-40 text-center text-slate-400">
+                    <div className="flex justify-center"><LottieIcon src="/json/searching-jobs.json" size={80} /></div>
+                    <p className="font-medium -mt-1">No exit records found</p>
+                    <p className="text-xs mt-1">
+                      {can("exits", "create")
+                        ? 'Click "Log Exit" to record one.'
+                        : "No records match your filters."}
+                    </p>
                   </TableCell>
                 </TableRow>
               ) : (

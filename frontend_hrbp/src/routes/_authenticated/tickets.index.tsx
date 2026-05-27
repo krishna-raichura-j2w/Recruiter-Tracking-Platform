@@ -19,7 +19,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, RefreshCw, Download, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Search, RefreshCw, Download, Loader2, LogOut } from "lucide-react";
 import { fmtDateTime } from "@/lib/formatDate";
 import { TableLoader } from "@/components/Loader";
 import { LottieIcon } from "@/components/LottieIcon";
@@ -32,10 +41,195 @@ import { TicketPriorityBadge } from "@/components/tickets/TicketPriorityBadge";
 import { SLACountdown } from "@/components/tickets/SLACountdown";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { CustomDateRangePicker } from "@/components/CustomDateRangePicker";
+import { CustomDatePicker } from "@/components/CustomDatePicker";
 
-import { listTickets, exportTicketsExcel } from "@/apiService/ticketApi";
-import type { Ticket } from "@/apiService/ticketTypes";
-import { getClientsApi, getConsultantsApi } from "@/apiService/api";
+import { listTickets, exportTicketsExcel, listSopDefinitions } from "@/apiService/ticketApi";
+import type { Ticket, SopDefinition } from "@/apiService/ticketTypes";
+import { getClientsApi, getConsultantsApi, fetchWithAuth } from "@/apiService/api";
+import { createExit } from "@/apiService/exitApi";
+import type { ExitCreate, ExitReason } from "@/apiService/exitApi";
+
+const EXIT_REASONS: { value: ExitReason; label: string }[] = [
+  { value: "resignation",       label: "Resignation"       },
+  { value: "end_of_contract",   label: "End of Contract"   },
+  { value: "termination",       label: "Termination"       },
+  { value: "mutual_separation", label: "Mutual Separation" },
+];
+
+function fmtCurrency(val: number | null | undefined) {
+  if (val == null) return "—";
+  return `₹${val.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+interface LogExitDialogProps {
+  open: boolean;
+  onClose: () => void;
+  clients: { id: number; name: string }[];
+  consultants: { id: number; name: string; client_id: number; monthly_po: number | null }[];
+  currentUserId: number;
+}
+
+function LogExitDialog({ open, onClose, clients, consultants, currentUserId }: LogExitDialogProps) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<{
+    client_id:           string;
+    consultant_id:       string;
+    exit_reason:         ExitReason | "";
+    exit_type:           "voluntary" | "involuntary" | "";
+    exit_date:           Dayjs | null;
+    notice_period_start: Dayjs | null;
+    replacement_needed:  boolean;
+    notes:               string;
+  }>({
+    client_id: "", consultant_id: "", exit_reason: "", exit_type: "",
+    exit_date: null, notice_period_start: null, replacement_needed: false, notes: "",
+  });
+
+  const filteredConsultants = useMemo(
+    () => form.client_id ? consultants.filter((c) => c.client_id === Number(form.client_id)) : consultants,
+    [form.client_id, consultants],
+  );
+
+  const selectedConsultant = useMemo(
+    () => consultants.find((c) => c.id === Number(form.consultant_id)),
+    [form.consultant_id, consultants],
+  );
+
+  function reset() {
+    setForm({ client_id: "", consultant_id: "", exit_reason: "", exit_type: "",
+      exit_date: null, notice_period_start: null, replacement_needed: false, notes: "" });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.consultant_id || !form.client_id || !form.exit_reason || !form.exit_type) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload: ExitCreate = {
+        consultant_id:       Number(form.consultant_id),
+        client_id:           Number(form.client_id),
+        initiated_by_id:     currentUserId,
+        exit_reason:         form.exit_reason as ExitReason,
+        exit_type:           form.exit_type as "voluntary" | "involuntary",
+        exit_date:           form.exit_date ? form.exit_date.format("YYYY-MM-DD") : undefined,
+        notice_period_start: form.notice_period_start ? form.notice_period_start.format("YYYY-MM-DD") : undefined,
+        replacement_needed:  form.replacement_needed,
+        notes:               form.notes || undefined,
+      };
+      await createExit(payload);
+      toast.success("Exit record created successfully");
+      reset();
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to create exit record");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose(); } }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Log Exit Initiation</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-1">
+            <Label>Client <span className="text-red-500">*</span></Label>
+            <Select value={form.client_id} onValueChange={(v) => setForm((f) => ({ ...f, client_id: v, consultant_id: "" }))}>
+              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select client…" /></SelectTrigger>
+              <SelectContent>
+                {clients.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Consultant <span className="text-red-500">*</span></Label>
+            <Select value={form.consultant_id} onValueChange={(v) => setForm((f) => ({ ...f, consultant_id: v }))}>
+              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select consultant…" /></SelectTrigger>
+              <SelectContent>
+                {filteredConsultants.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {selectedConsultant?.monthly_po != null && (
+              <p className="text-xs text-slate-500">
+                Monthly PO: <span className="font-semibold text-slate-700">{fmtCurrency(selectedConsultant.monthly_po)}</span>
+                &nbsp;— this will be snapshotted as PO impact.
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Exit Reason <span className="text-red-500">*</span></Label>
+              <Select value={form.exit_reason} onValueChange={(v) => setForm((f) => ({ ...f, exit_reason: v as ExitReason }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Reason…" /></SelectTrigger>
+                <SelectContent>
+                  {EXIT_REASONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Exit Type <span className="text-red-500">*</span></Label>
+              <Select value={form.exit_type} onValueChange={(v) => setForm((f) => ({ ...f, exit_type: v as "voluntary" | "involuntary" }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Type…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="voluntary">Voluntary</SelectItem>
+                  <SelectItem value="involuntary">Involuntary</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Notice Period Start</Label>
+              <CustomDatePicker value={form.notice_period_start} onChange={(v) => setForm((f) => ({ ...f, notice_period_start: v }))} placeholder="Notice start date" />
+            </div>
+            <div className="space-y-1">
+              <Label>Exit Date</Label>
+              <CustomDatePicker value={form.exit_date} onChange={(v) => setForm((f) => ({ ...f, exit_date: v }))} placeholder="Last working day" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="replacement"
+              type="checkbox"
+              checked={form.replacement_needed}
+              onChange={(e) => setForm((f) => ({ ...f, replacement_needed: e.target.checked }))}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            <Label htmlFor="replacement" className="cursor-pointer font-normal">Replacement needed</Label>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Notes</Label>
+            <Textarea
+              placeholder="Any additional context…"
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              className="text-sm resize-none"
+              rows={3}
+            />
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={() => { reset(); onClose(); }}>Cancel</Button>
+            <Button type="submit" disabled={saving} className="bg-rose-600 hover:bg-rose-500 text-white">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              {saving ? "Saving…" : "Log Exit"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export const Route = createFileRoute("/_authenticated/tickets/")({
   component: TicketsPage,
@@ -65,12 +259,14 @@ function StatCard({
 
 function TicketsPage() {
   const navigate = useNavigate();
-  const { can }  = useAuth();
+  const { user, can } = useAuth();
 
   const [tickets, setTickets]   = useState<Ticket[]>([]);
   const [total, setTotal]       = useState(0);
   const [loading, setLoading]   = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardOpen, setWizardOpen]     = useState(false);
+  const [logExitOpen, setLogExitOpen]   = useState(false);
+  const [sops, setSops]                 = useState<SopDefinition[]>([]);
 
   // Pre-fill from cadence "Raise Ticket" navigation
   const [prefillClientId, setPrefillClientId]           = useState<number | undefined>();
@@ -96,6 +292,7 @@ function TicketsPage() {
   const [search, setSearch]               = useState("");
   const [filterStatus, setFilterStatus]   = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
+  const [filterSopId, setFilterSopId]     = useState("all");
   const [dateRange, setDateRange]         = useState<[Dayjs | null, Dayjs | null]>([null, null]);
 
   // Pagination — 0-based (MUI style), converted to 1-based for API
@@ -110,6 +307,7 @@ function TicketsPage() {
       const url = await exportTicketsExcel({
         status:   filterStatus   !== "all" ? filterStatus   : undefined,
         priority: filterPriority !== "all" ? filterPriority : undefined,
+        sop_id:   filterSopId    !== "all" ? Number(filterSopId) : undefined,
         search:   search || undefined,
       });
       window.open(url, "_blank");
@@ -140,6 +338,7 @@ function TicketsPage() {
         per_page: rowsPerPage,
         status:   filterStatus   !== "all" ? filterStatus   : undefined,
         priority: filterPriority !== "all" ? filterPriority : undefined,
+        sop_id:   filterSopId    !== "all" ? Number(filterSopId) : undefined,
         search:   search || undefined,
       });
       setTickets(resp.data ?? []);
@@ -149,7 +348,7 @@ function TicketsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, filterStatus, filterPriority, search]);
+  }, [page, rowsPerPage, filterStatus, filterPriority, filterSopId, search]);
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
@@ -159,6 +358,15 @@ function TicketsPage() {
       .catch(() => {});
     getConsultantsApi({ page_no: 1, per_page: -1 })
       .then((r: any) => setConsultants(r?.data?.items ?? r?.data ?? []))
+      .catch(() => {});
+    // fetch all SOPs (including SOP-1) for the filter dropdown
+    fetchWithAuth(`${import.meta.env.VITE_BASE_URL || "http://localhost:8000/"}api/hrbp/sop-definitions?per_page=-1`)
+      .then((r) => r.json())
+      .then((json) => {
+        const raw = json?.data;
+        const items: SopDefinition[] = Array.isArray(raw) ? raw : (raw?.items ?? []);
+        setSops(items);
+      })
       .catch(() => {});
   }, []);
 
@@ -183,7 +391,7 @@ function TicketsPage() {
       <TopBar title="Tickets" subtitle="Raise and track HR operational requests." />
 
       <main className="flex-1 p-6 space-y-4">
-        {/* Stat cards + New Ticket button */}
+        {/* Stat cards + action buttons */}
         <div className="flex items-center gap-4">
           <div className="flex gap-4 flex-1">
             <StatCard icon={<LottieIcon src="/json/checking-resume.json" size={44} />}          label="Total (this view)" value={total} />
@@ -191,14 +399,25 @@ function TicketsPage() {
             <StatCard icon={<LottieIcon src="/json/helpful-tips-for-business.json" size={44} />} label="SLA Breached"   value={statsBreached} accent="text-red-600" />
             <StatCard icon={<LottieIcon src="/json/business-problem-solving.json" size={44} />}  label="Critical"         value={statsCritical} accent="text-orange-600" />
           </div>
-          {can("tickets", "create") && (
-            <Button
-              onClick={() => setWizardOpen(true)}
-              className="bg-sky-600 hover:bg-sky-500 text-white font-semibold gap-1.5 shadow-sm shrink-0"
-            >
-              <Plus className="w-4 h-4" /> New Ticket
-            </Button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {can("exits", "create") && (
+              <Button
+                onClick={() => setLogExitOpen(true)}
+                variant="outline"
+                className="border-rose-200 text-rose-700 hover:bg-rose-50 font-semibold gap-1.5 shadow-sm"
+              >
+                <LogOut className="w-4 h-4" /> Log Exit
+              </Button>
+            )}
+            {can("tickets", "create") && (
+              <Button
+                onClick={() => setWizardOpen(true)}
+                className="bg-sky-600 hover:bg-sky-500 text-white font-semibold gap-1.5 shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> New Ticket
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Toolbar */}
@@ -238,6 +457,23 @@ function TicketsPage() {
                   <SelectItem value="high">High</SelectItem>
                   <SelectItem value="medium">Medium</SelectItem>
                   <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-[200px]">
+              <Select value={filterSopId} onValueChange={(v) => { setFilterSopId(v); setPage(0); }}>
+                <SelectTrigger className="h-10 text-sm border-slate-200 shadow-sm bg-white">
+                  <SelectValue placeholder="All SOPs" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All SOPs</SelectItem>
+                  {sops.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      <span className="font-mono text-xs text-slate-500 mr-1">{s.sop_type}</span>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -404,6 +640,14 @@ function TicketsPage() {
         initialConsultantIds={prefillConsultantIds}
         initialBhId={prefillBhId}
         initialDescription={prefillDescription}
+      />
+
+      <LogExitDialog
+        open={logExitOpen}
+        onClose={() => setLogExitOpen(false)}
+        clients={clients}
+        consultants={consultants}
+        currentUserId={user?.id ?? 0}
       />
     </div>
   );

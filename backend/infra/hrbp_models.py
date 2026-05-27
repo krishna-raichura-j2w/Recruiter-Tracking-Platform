@@ -394,6 +394,27 @@ class HRBPExitTracking(Base):
     updated_at          = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class HRBPPoRevision(Base):
+    __tablename__ = "hrbp_po_revisions"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id   = Column(Integer, ForeignKey("hrbp_consultants.id", ondelete="CASCADE"), nullable=False)
+    client_id       = Column(Integer, ForeignKey("hrbp_clients.id"), nullable=False)
+    hrbp_id         = Column(Integer, ForeignKey("users.id"))
+    bh_id           = Column(Integer, ForeignKey("users.id"))
+    revised_at      = Column(Date, nullable=False)
+    old_po_rate     = Column(Numeric(12, 2))
+    new_po_rate     = Column(Numeric(12, 2), nullable=False)
+    hike_pct        = Column(Numeric(5, 2))
+    ticket_id       = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="SET NULL"))
+    ticket_number   = Column(Text)
+    status          = Column(Text, nullable=False, default="pending_approval")
+    notes           = Column(Text)
+    created_by_id   = Column(Integer, ForeignKey("users.id"))
+    created_at      = Column(DateTime(timezone=True), default=_now)
+    updated_at      = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class HRBPUserPinnedTicket(Base):
     __tablename__ = "hrbp_user_pinned_tickets"
 
