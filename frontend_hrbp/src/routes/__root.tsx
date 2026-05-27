@@ -102,6 +102,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {
+  // SPA/browser: React mounts into #root directly — don't render HTML document skeleton
+  // or the browser will reject nested <html>/<body> tags and break event delegation.
+  if (typeof document !== "undefined") return <>{children}</>;
+  // SSR/server (TanStack Start Cloudflare mode): render full document structure.
   return (
     <html lang="en">
       <head>

@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { User, Briefcase, IndianRupee, Clock, TrendingDown, History } from "lucide-react";
+import { User, Briefcase, IndianRupee, Clock, TrendingDown, History, BarChart2, Table2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { getConsultantDetailsApi, getUserProfile, getClientsApi } from "@/apiService/api";
 import type { ConsultantItem } from "@/apiService/types";
@@ -23,6 +23,18 @@ import {
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { listPoRevisions } from "@/apiService/poRevisionApi";
 import type { PoRevision } from "@/apiService/poRevisionApi";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+  LabelList,
+  type DotProps,
+} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/consultants/$consultantId")({
   component: ConsultantDetailPage,
@@ -111,6 +123,139 @@ const STATUS_LABEL: Record<string, string> = {
   rejected:         "Rejected",
 };
 
+const DOT_COLOR: Record<string, string> = {
+  approved:         "#10b981",
+  pending_approval: "#f59e0b",
+  rejected:         "#ef4444",
+};
+
+// ── Custom dot coloured by revision status ────────────────────────────────────
+
+interface ChartPoint {
+  date: string;
+  rate: number;
+  old_rate: number | null;
+  hike_pct: number | null;
+  status: string;
+  notes: string | null;
+}
+
+function StatusDot(props: DotProps & { payload?: ChartPoint }) {
+  const { cx, cy, payload } = props;
+  if (cx == null || cy == null || !payload) return null;
+  const fill = DOT_COLOR[payload.status] ?? "#94a3b8";
+  return <circle cx={cx} cy={cy} r={6} fill={fill} stroke="#fff" strokeWidth={2} />;
+}
+
+// ── Hike % label rendered above each point ────────────────────────────────────
+
+function HikeLabel(props: any) {
+  const { x, y, value } = props;
+  if (value == null) return null;
+  const n = Number(value);
+  const color = n >= 0 ? "#059669" : "#dc2626";
+  return (
+    <text x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={600} fill={color}>
+      {n >= 0 ? "+" : ""}{n.toFixed(1)}%
+    </text>
+  );
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+
+function RevisionTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d: ChartPoint = payload[0].payload;
+  const statusBg = d.status === "approved" ? "bg-emerald-50 text-emerald-700"
+    : d.status === "rejected"              ? "bg-red-50 text-red-700"
+    :                                        "bg-amber-50 text-amber-700";
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-xs space-y-1 min-w-[180px]">
+      <p className="font-semibold text-slate-700 text-[11px] uppercase tracking-wide">{d.date}</p>
+      {d.old_rate != null && (
+        <p className="text-slate-500">Old rate: <span className="font-medium text-slate-700">{fmtINR(d.old_rate)}</span></p>
+      )}
+      <p className="text-slate-500">New rate: <span className="font-bold text-slate-800">{fmtINR(d.rate)}</span></p>
+      {d.hike_pct != null && (
+        <p className={`font-semibold ${Number(d.hike_pct) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+          {Number(d.hike_pct) >= 0 ? "+" : ""}{Number(d.hike_pct).toFixed(2)}% hike
+        </p>
+      )}
+      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBg}`}>
+        {STATUS_LABEL[d.status] ?? d.status}
+      </span>
+      {d.notes && <p className="text-slate-400 pt-1 border-t border-slate-100 leading-snug">{d.notes}</p>}
+    </div>
+  );
+}
+
+// ── Chart component ───────────────────────────────────────────────────────────
+
+function PoRevisionChart({ revisions }: { revisions: PoRevision[] }) {
+  const data: ChartPoint[] = useMemo(() => {
+    return [...revisions]
+      .sort((a, b) => new Date(a.revised_at).getTime() - new Date(b.revised_at).getTime())
+      .map((r) => ({
+        date:     format(new Date(r.revised_at), "MMM yyyy"),
+        rate:     Number(r.new_po_rate),
+        old_rate: r.old_po_rate != null ? Number(r.old_po_rate) : null,
+        hike_pct: r.hike_pct != null ? Number(r.hike_pct) : null,
+        status:   r.status,
+        notes:    r.notes ?? null,
+      }));
+  }, [revisions]);
+
+  if (data.length === 0) return null;
+
+  const minRate = Math.min(...data.map((d) => d.old_rate ?? d.rate));
+  const yMin   = Math.max(0, Math.floor((minRate * 0.9) / 10000) * 10000);
+
+  return (
+    <div className="px-5 pt-4 pb-2">
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} margin={{ top: 24, right: 24, left: 16, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`}
+            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            axisLine={false}
+            tickLine={false}
+            domain={[yMin, "auto"]}
+            width={56}
+          />
+          <Tooltip content={<RevisionTooltip />} />
+          <ReferenceLine y={data[0]?.rate} stroke="#e2e8f0" strokeDasharray="4 4" />
+          <Line
+            type="monotone"
+            dataKey="rate"
+            stroke="#0ea5e9"
+            strokeWidth={2}
+            dot={<StatusDot />}
+            activeDot={{ r: 8, stroke: "#0ea5e9", strokeWidth: 2 }}
+          >
+            <LabelList dataKey="hike_pct" content={<HikeLabel />} />
+          </Line>
+        </LineChart>
+      </ResponsiveContainer>
+      {/* Legend */}
+      <div className="flex items-center gap-4 justify-end pb-2 pr-1">
+        {(["approved", "pending_approval", "rejected"] as const).map((s) => (
+          <span key={s} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: DOT_COLOR[s] }} />
+            {STATUS_LABEL[s]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ConsultantDetailPage() {
   const { consultantId } = Route.useParams();
   const [consultant, setConsultant] = useState<ConsultantItem | null>(null);
@@ -119,11 +264,13 @@ function ConsultantDetailPage() {
   const [loading, setLoading] = useState(true);
 
   // PO revision history
-  const [revisions, setRevisions]         = useState<PoRevision[]>([]);
-  const [revTotal, setRevTotal]           = useState(0);
-  const [revLoading, setRevLoading]       = useState(false);
-  const [revPage, setRevPage]             = useState(0);
+  const [revisions, setRevisions]           = useState<PoRevision[]>([]);
+  const [revTotal, setRevTotal]             = useState(0);
+  const [revLoading, setRevLoading]         = useState(false);
+  const [revPage, setRevPage]               = useState(0);
   const [revRowsPerPage, setRevRowsPerPage] = useState(5);
+  const [allRevisions, setAllRevisions]     = useState<PoRevision[]>([]);
+  const [revView, setRevView]               = useState<"chart" | "table">("chart");
 
   const fetchRevisions = useCallback(async () => {
     setRevLoading(true);
@@ -137,6 +284,16 @@ function ConsultantDetailPage() {
       setRevLoading(false);
     }
   }, [consultantId, revPage, revRowsPerPage]);
+
+  // Fetch all revisions (unpaginated) for the chart
+  const fetchAllRevisions = useCallback(async () => {
+    try {
+      const resp = await listPoRevisions(Number(consultantId), 1, 200);
+      setAllRevisions(resp.data ?? []);
+    } catch {
+      // chart simply won't render
+    }
+  }, [consultantId]);
 
   useEffect(() => {
     async function fetchConsultant() {
@@ -174,6 +331,7 @@ function ConsultantDetailPage() {
   }, [consultantId]);
 
   useEffect(() => { fetchRevisions(); }, [fetchRevisions]);
+  useEffect(() => { fetchAllRevisions(); }, [fetchAllRevisions]);
 
   const tenureLeft = useMemo(
     () => calcTenureLeft(consultant?.po_end_date),
@@ -415,81 +573,116 @@ function ConsultantDetailPage() {
         {/* PO Revision History */}
         <Card className="shadow-sm border-slate-200">
           <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#132246]">
-              <History className="w-4 h-4 text-sky-600" />
-              PO Revision History
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#132246]">
+                <History className="w-4 h-4 text-sky-600" />
+                PO Revision History
+              </CardTitle>
+              {allRevisions.length > 0 && (
+                <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setRevView("chart")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      revView === "chart"
+                        ? "bg-white text-slate-800 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <BarChart2 className="w-3.5 h-3.5" />
+                    Chart
+                  </button>
+                  <button
+                    onClick={() => setRevView("table")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      revView === "table"
+                        ? "bg-white text-slate-800 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <Table2 className="w-3.5 h-3.5" />
+                    Table
+                  </button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-slate-100 border-b border-slate-200">
-                <TableRow className="hover:bg-transparent border-0">
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-5">Revised On</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Old PO Rate</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New PO Rate</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Hike %</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ticket #</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {revLoading ? (
-                  <TableLoader colSpan={7} />
-                ) : revisions.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-40 text-center text-slate-400">
-                      <div className="flex justify-center">
-                        <LottieIcon src="/json/searching-jobs.json" size={80} />
-                      </div>
-                      <p className="font-medium -mt-1">No PO revisions recorded yet</p>
-                      <p className="text-xs mt-1">Revisions will appear here once a rate change is logged via a ticket.</p>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  revisions.map((r) => (
-                    <TableRow key={r.id} className="hover:bg-slate-50 transition-colors">
-                      <TableCell className="text-xs font-medium text-slate-800 px-5">
-                        {formatDate(r.revised_at)}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        {r.old_po_rate != null ? fmtINR(Number(r.old_po_rate)) : "—"}
-                      </TableCell>
-                      <TableCell className="text-xs font-semibold text-slate-800">
-                        {fmtINR(Number(r.new_po_rate))}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {r.hike_pct != null ? (
-                          <span className={Number(r.hike_pct) >= 0 ? "text-emerald-600 font-semibold" : "text-red-600 font-semibold"}>
-                            {Number(r.hike_pct) >= 0 ? "+" : ""}{Number(r.hike_pct).toFixed(2)}%
-                          </span>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell className="text-xs font-mono text-sky-600">
-                        {r.ticket_number ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={`text-xs font-semibold ${STATUS_STYLE[r.status] ?? ""}`}>
-                          {STATUS_LABEL[r.status] ?? r.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-500 max-w-[160px] truncate">{r.notes ?? "—"}</TableCell>
+            {revView === "chart" && allRevisions.length > 0 && (
+              <PoRevisionChart revisions={allRevisions} />
+            )}
+            {revView === "table" && (
+              <>
+                <Table>
+                  <TableHeader className="bg-slate-100 border-b border-slate-200">
+                    <TableRow className="hover:bg-transparent border-0">
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-5">Revised On</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Old PO Rate</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New PO Rate</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Hike %</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ticket #</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Notes</TableHead>
                     </TableRow>
-                  ))
+                  </TableHeader>
+                  <TableBody>
+                    {revLoading ? (
+                      <TableLoader colSpan={7} />
+                    ) : revisions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-40 text-center text-slate-400">
+                          <div className="flex justify-center">
+                            <LottieIcon src="/json/searching-jobs.json" size={80} />
+                          </div>
+                          <p className="font-medium -mt-1">No PO revisions recorded yet</p>
+                          <p className="text-xs mt-1">Revisions will appear here once a rate change is logged via a ticket.</p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      revisions.map((r) => (
+                        <TableRow key={r.id} className="hover:bg-slate-50 transition-colors">
+                          <TableCell className="text-xs font-medium text-slate-800 px-5">
+                            {formatDate(r.revised_at)}
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-600">
+                            {r.old_po_rate != null ? fmtINR(Number(r.old_po_rate)) : "—"}
+                          </TableCell>
+                          <TableCell className="text-xs font-semibold text-slate-800">
+                            {fmtINR(Number(r.new_po_rate))}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {r.hike_pct != null ? (
+                              <span className={Number(r.hike_pct) >= 0 ? "text-emerald-600 font-semibold" : "text-red-600 font-semibold"}>
+                                {Number(r.hike_pct) >= 0 ? "+" : ""}{Number(r.hike_pct).toFixed(2)}%
+                              </span>
+                            ) : "—"}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-sky-600">
+                            {r.ticket_number ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-xs font-semibold ${STATUS_STYLE[r.status] ?? ""}`}>
+                              {STATUS_LABEL[r.status] ?? r.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-500 max-w-[160px] truncate">{r.notes ?? "—"}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+                {revTotal > revRowsPerPage && (
+                  <div className="flex justify-center py-3 border-t border-slate-100">
+                    <CustomTablePagination
+                      rowsPerPageOptions={[5, 10, 25]}
+                      count={revTotal}
+                      rowsPerPage={revRowsPerPage}
+                      page={revPage}
+                      onPageChange={(_: React.MouseEvent<HTMLButtonElement> | null, p: number) => setRevPage(p)}
+                      onRowsPerPageChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setRevRowsPerPage(parseInt(e.target.value, 10)); setRevPage(0); }}
+                    />
+                  </div>
                 )}
-              </TableBody>
-            </Table>
-            {revTotal > revRowsPerPage && (
-              <div className="flex justify-center py-3 border-t border-slate-100">
-                <CustomTablePagination
-                  rowsPerPageOptions={[5, 10, 25]}
-                  count={revTotal}
-                  rowsPerPage={revRowsPerPage}
-                  page={revPage}
-                  onPageChange={(_: React.MouseEvent<HTMLButtonElement> | null, p: number) => setRevPage(p)}
-                  onRowsPerPageChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setRevRowsPerPage(parseInt(e.target.value, 10)); setRevPage(0); }}
-                />
-              </div>
+              </>
             )}
           </CardContent>
         </Card>
