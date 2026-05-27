@@ -2,7 +2,7 @@ from core.database import get_db
 from core.deps import get_current_user, require_roles, user_has_role
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from infra.models import Client, JobStatus, NotifType, PodMembership, User
+from infra.models import Client, JobStatus, NotifType, PodMembership, User, UserRole
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -331,17 +331,17 @@ def confirm_jd(
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
 
-    # For KAM: collect all DL IDs under them for validation
-    kam_dl_ids: list[int] = []
-    if is_kam and not is_admin:
-        kam_dl_ids = [
+    # For KAM: get all DL IDs in their pod for recruiter validation
+    kam_pod_dl_ids: list[int] = []
+    if is_kam and not is_admin and current_user.pod_id:
+        kam_pod_dl_ids = [
             u.id for u in db.query(User).filter(
-                User.parent_user_id == current_user.id,
+                User.pod_id == current_user.pod_id,
                 User.is_active == True,
+                User.role == UserRole.delivery_lead,
             ).all()
         ]
 
-    # Validate recruiter is in confirming DL's pod (DL) or any of KAM's DLs' pods (KAM)
     for uid in body.recruiter_ids:
         if is_admin:
             continue
@@ -350,10 +350,10 @@ def confirm_jd(
                 db.query(PodMembership)
                 .filter(
                     PodMembership.user_id == uid,
-                    PodMembership.pod_lead_id.in_(kam_dl_ids),
+                    PodMembership.pod_lead_id.in_(kam_pod_dl_ids),
                 )
                 .first()
-            ) if kam_dl_ids else None
+            ) if kam_pod_dl_ids else None
         else:
             in_team = (
                 db.query(PodMembership)
@@ -485,13 +485,14 @@ def reassign_recruiters(
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
 
-    # For KAM: collect all DL IDs under them for validation
-    kam_dl_ids: list[int] = []
-    if is_kam and not is_admin:
-        kam_dl_ids = [
+    # For KAM: get all DL IDs in their pod for recruiter validation
+    kam_pod_dl_ids: list[int] = []
+    if is_kam and not is_admin and current_user.pod_id:
+        kam_pod_dl_ids = [
             u.id for u in db.query(User).filter(
-                User.parent_user_id == current_user.id,
+                User.pod_id == current_user.pod_id,
                 User.is_active == True,
+                User.role == UserRole.delivery_lead,
             ).all()
         ]
 
@@ -503,10 +504,10 @@ def reassign_recruiters(
                 db.query(PodMembership)
                 .filter(
                     PodMembership.user_id == uid,
-                    PodMembership.pod_lead_id.in_(kam_dl_ids),
+                    PodMembership.pod_lead_id.in_(kam_pod_dl_ids),
                 )
                 .first()
-            ) if kam_dl_ids else None
+            ) if kam_pod_dl_ids else None
         else:
             in_team = (
                 db.query(PodMembership)

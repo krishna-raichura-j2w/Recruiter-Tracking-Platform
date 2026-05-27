@@ -196,16 +196,17 @@ def assign_pod(
 @router.get("/delivery-leads")
 def list_delivery_leads(
     db: Session = Depends(get_db),
-    _=Depends(require_roles("admin", "kam")),
+    current_user=Depends(require_roles("admin", "kam")),
 ):
-    """KAM fetches active delivery leads; includes the clients each DL is currently handling."""
+    """KAM fetches active delivery leads in their pod; admin gets all."""
     from infra.models import Job, JobStatus
 
-    users, _ = service.list_users(db, role=UserRole.delivery_lead)
+    is_admin = current_user.role.value == "admin"
+    q = db.query(User).filter(User.is_active == True, User.role == UserRole.delivery_lead)
+    if not is_admin and current_user.pod_id:
+        q = q.filter(User.pod_id == current_user.pod_id)
     result = []
-    for u in users:
-        if not u.is_active:
-            continue
+    for u in q.order_by(User.name).all():
         client_rows = (
             db.query(Job.client_name)
             .filter(Job.delivery_lead_id == u.id, Job.status != JobStatus.closed)
@@ -340,24 +341,21 @@ def get_team_loads(
         else:
             return {"sourcers": [], "callers": []}
     elif is_kam:
-        # KAM sees recruiters from their own DLs' pods only
-        # Step 1: get all DLs whose parent is this KAM
-        kam_dl_ids = [
+        # KAM sees recruiters from DLs in their own pod only (shared pod_id)
+        pod_dl_ids = [
             u.id for u in db.query(User).filter(
-                User.parent_user_id == current_user.id,
+                User.pod_id == current_user.pod_id,
                 User.is_active == True,
                 User.role == UserRole.delivery_lead,
             ).all()
-        ]
-        if dl_id and dl_id in kam_dl_ids:
-            members = team_loads(db, dl_id)
-        elif dl_id:
-            members = []  # requested a DL not under this KAM
+        ] if current_user.pod_id else []
+
+        if dl_id:
+            members = team_loads(db, dl_id) if dl_id in pod_dl_ids else []
         else:
-            # Collect recruiters from all DLs under this KAM
-            seen = set()
+            seen: set[int] = set()
             members = []
-            for did in kam_dl_ids:
+            for did in pod_dl_ids:
                 for m in team_loads(db, did):
                     if m["id"] not in seen:
                         seen.add(m["id"])
