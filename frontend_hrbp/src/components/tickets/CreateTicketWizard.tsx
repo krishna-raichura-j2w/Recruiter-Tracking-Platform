@@ -28,6 +28,9 @@ import type {
   UserOption,
 } from "@/apiService/ticketTypes";
 
+// SOPs that auto-initiate an exit record on ticket creation (mirrors backend _EXIT_TRIGGER_MAP)
+const EXIT_TRIGGER_SOPS = new Set(["SOP-2", "SOP-5", "SOP-6", "SOP-7"]);
+
 // These come from the existing getClients / getConsultants calls
 interface Client { id: number; name: string; bh_id?: number; }
 interface Consultant {
@@ -45,6 +48,8 @@ interface CreateTicketWizardProps {
   consultants: Consultant[];
   initialClientId?: number;
   initialConsultantIds?: number[];
+  initialBhId?: number;
+  initialDescription?: string;
 }
 
 const STEPS = [
@@ -63,6 +68,8 @@ export function CreateTicketWizard({
   consultants,
   initialClientId,
   initialConsultantIds,
+  initialBhId,
+  initialDescription,
 }: CreateTicketWizardProps) {
   const { user } = useAuth();
 
@@ -94,8 +101,8 @@ export function CreateTicketWizard({
   const [step1, setStep1] = useState({
     raisedByName: user?.name ?? "",
     escalationMgrId: null as number | null,
-    clientId: (initialClientId ?? null) as number | null,
-    consultantIds: (initialConsultantIds ?? []) as number[],
+    clientId: null as number | null,
+    consultantIds: [] as number[],
   });
   // used to filter consultants by client (already on props, but track change)
   const [, setSelectedClientId] = useState<number | null>(null);
@@ -143,6 +150,22 @@ export function CreateTicketWizard({
       );
     }
   }, [selectedSop]);
+
+  // Re-seed state from props each time the dialog opens (props may arrive after first mount)
+  useEffect(() => {
+    if (!open) return;
+    setStep1({
+      raisedByName: user?.name ?? "",
+      escalationMgrId: initialBhId ?? null,
+      clientId: initialClientId ?? null,
+      consultantIds: initialConsultantIds ?? [],
+    });
+    setStep4((s) => ({
+      ...s,
+      description: initialDescription ?? "",
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Sync user name from auth
   useEffect(() => {
@@ -223,7 +246,14 @@ export function CreateTicketWizard({
         attachments: attachmentUrls,
       });
 
-      toast.success("Ticket created successfully");
+      if (selectedSop && EXIT_TRIGGER_SOPS.has(selectedSop.sop_type)) {
+        const n = step1.consultantIds.length;
+        toast.success(
+          `Ticket created. Exit initiation auto-created for ${n} consultant${n !== 1 ? "s" : ""}.`,
+        );
+      } else {
+        toast.success("Ticket created successfully");
+      }
       handleClose();
       onCreated();
     } catch (err: unknown) {

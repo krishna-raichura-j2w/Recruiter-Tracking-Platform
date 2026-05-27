@@ -389,6 +389,7 @@ class HRBPExitTracking(Base):
     status              = Column(Text, nullable=False, default="initiated")
     replacement_needed  = Column(Boolean, nullable=False, default=False)
     notes               = Column(Text)
+    source_ticket_id    = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="SET NULL"), nullable=True)
     created_at          = Column(DateTime(timezone=True), default=_now)
     updated_at          = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 

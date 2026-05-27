@@ -37,9 +37,10 @@ import {
   extendStepSla,
   reassignStep,
   listAllHrbpUsers,
+  getSopDefinition,
 } from "@/apiService/ticketApi";
 import { fetchPinnedTicket, pinTicket, unpinTicket } from "@/apiService/dashboardApi";
-import type { Ticket, ActivityLogEntry, UserOption } from "@/apiService/ticketTypes";
+import type { Ticket, ActivityLogEntry, UserOption, SopDefinition } from "@/apiService/ticketTypes";
 import {
   Dialog,
   DialogContent,
@@ -103,6 +104,7 @@ function TicketDetailPage() {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sopSteps, setSopSteps] = useState<SopDefinition["steps_definition"] | null>(null);
   const [closing, setClosing] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [pinLoading, setPinLoading] = useState(false);
@@ -126,6 +128,11 @@ function TicketDetailPage() {
     try {
       const t = await getTicket(Number(ticketId));
       setTicket(t);
+      if (t.sop_id) {
+        getSopDefinition(t.sop_id)
+          .then((sop) => { if (sop) setSopSteps(sop.steps_definition); })
+          .catch(() => {});
+      }
     } catch {
       toast.error("Failed to load ticket");
     } finally {
@@ -734,6 +741,7 @@ function TicketDetailPage() {
                   currentStep={ticket.current_step}
                   currentUserId={user?.id}
                   status={ticket.status}
+                  sopSteps={sopSteps ?? undefined}
                 />
               )}
             </div>

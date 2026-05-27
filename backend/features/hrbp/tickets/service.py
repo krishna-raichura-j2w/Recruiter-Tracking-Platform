@@ -24,6 +24,15 @@ from features.hrbp.tickets.schema import (
     TicketCreate,
     TicketUpdate,
 )
+from infra.hrbp_models import HRBPExitTracking
+
+# SOPs that automatically initiate an exit record for every linked consultant.
+_EXIT_TRIGGER_MAP: dict[str, dict] = {
+    "SOP-2": {"exit_reason": "resignation",  "exit_type": "voluntary"},
+    "SOP-5": {"exit_reason": "termination",  "exit_type": "involuntary"},
+    "SOP-6": {"exit_reason": "termination",  "exit_type": "involuntary"},
+    "SOP-7": {"exit_reason": "termination",  "exit_type": "involuntary"},
+}
 
 
 def _now() -> datetime:
@@ -208,6 +217,24 @@ def create(db: Session, payload: TicketCreate, raised_by: User) -> dict:
 
     db.commit()
     db.refresh(ticket)
+
+    # Auto-initiate exit records for exit-triggering SOPs
+    exit_meta = _EXIT_TRIGGER_MAP.get(sop.sop_type)
+    if exit_meta:
+        for consultant in consultants:
+            po_impact = float(consultant.monthly_po) if consultant.monthly_po is not None else None
+            db.add(HRBPExitTracking(
+                consultant_id=consultant.id,
+                client_id=ticket.client_id,
+                initiated_by_id=raised_by.id,
+                exit_reason=exit_meta["exit_reason"],
+                exit_type=exit_meta["exit_type"],
+                po_impact=po_impact,
+                replacement_needed=False,
+                source_ticket_id=ticket.id,
+            ))
+        db.commit()
+
     return _enrich_ticket(db, ticket)
 
 

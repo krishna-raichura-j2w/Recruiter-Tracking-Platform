@@ -177,6 +177,13 @@ export async function listSopDefinitions(): Promise<SopDefinition[]> {
   return items.filter((s) => s.sop_type !== "SOP-1");
 }
 
+export async function getSopDefinition(id: number): Promise<SopDefinition | null> {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/sop-definitions/${id}`);
+  const json = await res.json();
+  if (!res.ok || json?.meta?.status === false) return null;
+  return json?.data ?? null;
+}
+
 // ── Users (for hierarchy builder) ────────────────────────────────────────
 
 export async function listUsersByRole(role: string): Promise<UserOption[]> {

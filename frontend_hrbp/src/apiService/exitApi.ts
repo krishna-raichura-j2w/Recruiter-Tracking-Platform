@@ -35,6 +35,8 @@ export interface ExitRecord {
   status:              ExitStatus;
   replacement_needed:  boolean;
   notes:               string | null;
+  source_ticket_id:    number | null;
+  source_ticket_number: string | null;
   created_at:          string | null;
   updated_at:          string | null;
 }

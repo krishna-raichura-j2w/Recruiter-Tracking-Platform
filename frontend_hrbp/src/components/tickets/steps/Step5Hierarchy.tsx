@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical, ClipboardList } from "lucide-react";
 import type { HierarchyStep, SopDefinition, UserOption } from "@/apiService/ticketTypes";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,8 @@ export function Step5Hierarchy({
   allUsers,
 }: Step5HierarchyProps) {
   const [useCustom, setUseCustom] = useState(false);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const dragIdx = useRef<number | null>(null);
 
   function applySOPHierarchy() {
     if (!selectedSop) return;
@@ -103,12 +105,33 @@ export function Step5Hierarchy({
     onChange(hierarchy.map((s, i) => (i === idx ? { ...s, sla_window: sla } : s)));
   }
 
-  function moveStep(idx: number, direction: "up" | "down") {
+  function handleDragStart(idx: number) {
+    dragIdx.current = idx;
+  }
+
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    setDragOverIdx(idx);
+  }
+
+  function handleDrop(dropIdx: number) {
+    const fromIdx = dragIdx.current;
+    if (fromIdx === null || fromIdx === dropIdx) {
+      setDragOverIdx(null);
+      dragIdx.current = null;
+      return;
+    }
     const next = [...hierarchy];
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= next.length) return;
-    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(dropIdx, 0, moved);
     onChange(next.map((s, i) => ({ ...s, order: i + 1 })));
+    dragIdx.current = null;
+    setDragOverIdx(null);
+  }
+
+  function handleDragEnd() {
+    dragIdx.current = null;
+    setDragOverIdx(null);
   }
 
   return (
@@ -158,45 +181,37 @@ export function Step5Hierarchy({
           </p>
         )}
 
+        {useCustom && (
+          <p className="text-xs text-gray-400">Drag cards to reorder the hierarchy.</p>
+        )}
+
         <div className="space-y-2">
           {hierarchy.map((step, idx) => (
             <div
               key={idx}
-              className="flex items-start gap-3 p-3 border border-gray-200 rounded-xl bg-white"
+              draggable={useCustom}
+              onDragStart={useCustom ? () => handleDragStart(idx) : undefined}
+              onDragOver={useCustom ? (e) => handleDragOver(e, idx) : undefined}
+              onDrop={useCustom ? () => handleDrop(idx) : undefined}
+              onDragEnd={useCustom ? handleDragEnd : undefined}
+              className={cn(
+                "flex items-start gap-3 p-3 border rounded-xl bg-white transition-all",
+                useCustom && "cursor-grab active:cursor-grabbing",
+                dragOverIdx === idx && dragIdx.current !== idx
+                  ? "border-blue-400 bg-blue-50 shadow-md scale-[1.01]"
+                  : "border-gray-200",
+              )}
             >
-              {/* Sort controls (custom mode) */}
+              {/* Drag handle (custom mode) or step badge (SOP mode) */}
               {useCustom ? (
-                <div className="flex-shrink-0 flex flex-col items-center gap-0.5 mt-0.5">
-                  <GripVertical className="w-4 h-4 text-gray-300 mb-0.5" />
-                  <button
-                    type="button"
-                    onClick={() => moveStep(idx, "up")}
-                    disabled={idx === 0}
-                    className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    title="Move up"
-                  >
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveStep(idx, "down")}
-                    disabled={idx === hierarchy.length - 1}
-                    className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    title="Move down"
-                  >
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </button>
+                <div className="flex-shrink-0 flex items-center gap-1.5 mt-0.5">
+                  <GripVertical className="w-4 h-4 text-gray-400" />
+                  <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+                    {step.order}
+                  </div>
                 </div>
               ) : (
-                /* Step number badge (SOP mode) */
                 <div className="flex-shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-                  {step.order}
-                </div>
-              )}
-
-              {/* Step number badge (custom mode — shown inline with role) */}
-              {useCustom && (
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
                   {step.order}
                 </div>
               )}
@@ -216,6 +231,25 @@ export function Step5Hierarchy({
                     <span className="text-xs text-gray-500">⏱ {step.sla_window}</span>
                   )}
                 </div>
+
+                {/* Action item from SOP steps_definition */}
+                {(() => {
+                  const sopStep = selectedSop?.steps_definition?.find(
+                    (s) => s.number === step.order || s.owner_role === step.role,
+                  );
+                  if (!sopStep) return null;
+                  return (
+                    <div className="flex items-start gap-1.5 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-2">
+                      <ClipboardList className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-blue-800">{sopStep.action_label}</p>
+                        {sopStep.action_detail && (
+                          <p className="text-xs text-blue-600/80 mt-0.5 leading-relaxed">{sopStep.action_detail}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Assign user */}
                 <Select

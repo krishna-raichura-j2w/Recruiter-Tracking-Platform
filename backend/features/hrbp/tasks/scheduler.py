@@ -1,33 +1,36 @@
 """
-HRBP SLA breach scheduler — runs every minute.
+HRBP scheduler — three periodic jobs:
 
-Ticket-level breach (check_sla_breaches):
-  For each open ticket whose sla_deadline has passed and has not yet been alerted:
-  1. Bump priority one level (low→medium→high→critical).
-  2. Set status = "escalated".
-  3. Set sla_alerted_at = now() so this fires exactly once per ticket.
-  4. Log action="sla_breached" to the activity log.
-  5. Push in-app notification + send email to ticket creator and escalation manager.
+1. check_sla_breaches (every minute):
+   Ticket-level: bump priority + escalate when overall SLA deadline passes.
 
-Per-step breach (check_step_sla_breaches):
-  For each open ticket where the current step owner has exceeded their sla_hours
-  and step_sla_alerted_at is still NULL:
-  1. Log action="step_sla_breached".
-  2. Set step_sla_alerted_at = now() so this fires exactly once per step.
-  3. Push in-app notification + send email (EST1) to the step owner.
-  4. Push in-app notification + send email (EST2) to the escalation manager.
-  (Alert resets automatically when the ticket advances to the next step.)
+2. check_step_sla_breaches (every minute):
+   Per-step: alert step owner + escalation manager when a step's SLA hours expire.
+
+3. check_contract_closures (daily at 08:00 UTC):
+   Auto-create a SOP-3 (Contract Closure and Redeployment) ticket for every
+   active consultant whose po_end_date is exactly 4 calendar months away.
+   Dedup guard: skips if an open SOP-3 ticket already exists for that consultant.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.database import SessionLocal
 from core.email import send_email
-from infra.hrbp_models import HRBPEmailTemplate, HRBPTicket, HRBPTicketActivityLog
+from dateutil.relativedelta import relativedelta
+from infra.hrbp_models import (
+    HRBPClient,
+    HRBPConsultant,
+    HRBPEmailTemplate,
+    HRBPSopDefinition,
+    HRBPTicket,
+    HRBPTicketActivityLog,
+    hrbp_ticket_consultants,
+)
 from infra.models import User
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from features.hrbp.notifications.service import push
 
@@ -306,6 +309,209 @@ def check_step_sla_breaches():
         db.close()
 
 
+# ── Contract closure auto-ticket ─────────────────────────────────────────────
+
+_CONTRACT_CLOSURE_LOCK_KEY = 4244842450   # unique — must not clash with other locks
+
+
+def _sla_hours_for_role(role: str, steps_def: list[dict]) -> int | None:
+    total = sum(s.get("sla_working_hours", 0) for s in steps_def if s.get("owner_role") == role)
+    return total if total > 0 else None
+
+
+def _next_ticket_number_raw(db) -> str:
+    seq_val = db.execute(select(func.nextval("hrbp_ticket_seq"))).scalar()
+    year = datetime.now().year
+    return f"TKT-{year}-{str(seq_val).zfill(4)}"
+
+
+def _contract_closure_email_html(consultant_name: str, po_end_date: date, ticket_number: str) -> str:
+    return f"""
+<html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:auto;padding:24px">
+<div style="background:#0369a1;border-radius:8px 8px 0 0;padding:16px 24px">
+  <h2 style="color:#fff;margin:0;font-size:18px">&#128197; Contract Closure Flagged — {ticket_number}</h2>
+</div>
+<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:24px">
+  <p><strong>Consultant:</strong> {consultant_name}</p>
+  <p><strong>PO End Date:</strong> {po_end_date.strftime("%d %b %Y")}</p>
+  <p>A <strong>SOP-3: Contract Closure and Redeployment</strong> ticket has been automatically
+     created 4 months before the PO end date.</p>
+  <p>Please initiate the renewal conversation with the client and begin redeployment planning now.</p>
+  <p style="color:#6b7280;font-size:12px">Automated alert — J2W HRBP Ticket System.</p>
+</div>
+</body></html>
+"""
+
+
+def check_contract_closures():
+    """
+    Runs daily. Creates SOP-3 tickets for consultants whose po_end_date is
+    exactly 4 calendar months from today (±1-day window).
+    Skips consultants that already have an open SOP-3 ticket (dedup).
+    """
+    db = SessionLocal()
+    try:
+        acquired = db.execute(
+            text("SELECT pg_try_advisory_xact_lock(:k)"),
+            {"k": _CONTRACT_CLOSURE_LOCK_KEY},
+        ).scalar()
+        if not acquired:
+            return
+
+        today = date.today()
+        target = today + relativedelta(months=4)
+        window_start = target - timedelta(days=1)
+        window_end   = target + timedelta(days=1)
+
+        sop = db.query(HRBPSopDefinition).filter_by(sop_type="SOP-3").first()
+        if not sop:
+            log.error("SOP-3 definition not found — contract closure job skipped.")
+            return
+
+        steps_def: list[dict] = sop.steps_definition or []
+        persons_hierarchy: list[dict] = sop.persons_hierarchy or []
+
+        consultants = (
+            db.query(HRBPConsultant)
+            .filter(
+                HRBPConsultant.is_active == True,
+                HRBPConsultant.po_end_date >= window_start,
+                HRBPConsultant.po_end_date <= window_end,
+            )
+            .all()
+        )
+
+        for consultant in consultants:
+            # Dedup: skip if a non-closed SOP-3 ticket already exists for this consultant
+            existing_count = db.execute(
+                select(func.count())
+                .select_from(HRBPTicket)
+                .join(
+                    hrbp_ticket_consultants,
+                    HRBPTicket.id == hrbp_ticket_consultants.c.ticket_id,
+                )
+                .where(
+                    hrbp_ticket_consultants.c.consultant_id == consultant.id,
+                    HRBPTicket.sop_id == sop.id,
+                    HRBPTicket.status != "closed",
+                )
+            ).scalar()
+            if existing_count:
+                log.info(
+                    "Contract closure: skipping %s — open SOP-3 ticket exists.",
+                    consultant.name,
+                )
+                continue
+
+            # Resolve role → user for hierarchy population
+            hrbp_user = db.query(User).filter_by(id=consultant.hrbp_id).first()
+            client    = db.query(HRBPClient).filter_by(id=consultant.client_id).first()
+            bh_user   = db.query(User).filter_by(id=client.bh_id).first() if client else None
+            ops_head  = db.query(User).filter(User.role == "ops_head").first()
+            coo_user  = db.query(User).filter(User.role == "coo").first()
+
+            role_user_map = {
+                "hrbp":     hrbp_user,
+                "bh":       bh_user,
+                "ops_head": ops_head,
+                "coo":      coo_user,
+            }
+
+            hierarchy = [
+                {
+                    **step,
+                    "user_id":          role_user_map.get(step["role"]) and role_user_map[step["role"]].id,
+                    "user_name":        role_user_map.get(step["role"]) and role_user_map[step["role"]].name,
+                    "user_email":       role_user_map.get(step["role"]) and role_user_map[step["role"]].email,
+                    "sla_hours":        _sla_hours_for_role(step["role"], steps_def),
+                    "resolved_at":      None,
+                    "resolved_by_id":   None,
+                    "resolved_by_name": None,
+                }
+                for step in persons_hierarchy
+            ]
+
+            po_impact = float(consultant.monthly_po) if consultant.monthly_po else None
+            sla_dt    = datetime.combine(consultant.po_end_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+
+            ticket = HRBPTicket(
+                ticket_number  = _next_ticket_number_raw(db),
+                title          = f"SOP-3: Contract Closure — {consultant.name}",
+                raised_by_id   = consultant.hrbp_id,
+                escalation_mgr_id = client.bh_id if client else None,
+                client_id      = consultant.client_id,
+                sop_id         = sop.id,
+                priority       = "high",
+                sla_deadline   = sla_dt,
+                po_risk_amount = po_impact,
+                description    = (
+                    f"Auto-generated by the contract closure scheduler.\n"
+                    f"PO end date: {consultant.po_end_date.strftime('%d %b %Y')}. "
+                    f"4-month flag triggered on {today.strftime('%d %b %Y')}."
+                ),
+                status         = "open",
+                hierarchy_json = hierarchy,
+                current_step   = 1,
+                step_started_at = _now(),
+                attachments    = [],
+            )
+            db.add(ticket)
+            db.flush()
+
+            db.execute(
+                hrbp_ticket_consultants.insert().values(
+                    ticket_id=ticket.id,
+                    consultant_id=consultant.id,
+                )
+            )
+
+            db.add(HRBPTicketActivityLog(
+                ticket_id=ticket.id,
+                actor_id=None,
+                action="auto_created",
+                meta_data={
+                    "trigger":       "contract_closure_4m",
+                    "po_end_date":   consultant.po_end_date.isoformat(),
+                    "triggered_on":  today.isoformat(),
+                },
+            ))
+
+            db.commit()
+            db.refresh(ticket)
+
+            # Notify HRBP
+            if hrbp_user:
+                push(
+                    db,
+                    user_id=hrbp_user.id,
+                    title=f"Contract Closure Flagged — {consultant.name}",
+                    message=(
+                        f"SOP-3 ticket {ticket.ticket_number} auto-created. "
+                        f"{consultant.name}'s PO ends {consultant.po_end_date.strftime('%d %b %Y')}. "
+                        f"Initiate renewal with client."
+                    ),
+                    notif_type="contract_closure",
+                    ticket_id=ticket.id,
+                )
+                if hrbp_user.email:
+                    send_email(
+                        [hrbp_user.email],
+                        f"[Action Required] Contract Closure Flagged — {consultant.name} ({ticket.ticket_number})",
+                        _contract_closure_email_html(consultant.name, consultant.po_end_date, ticket.ticket_number),
+                    )
+
+            log.info(
+                "Contract closure ticket created: %s for consultant %s (PO end: %s)",
+                ticket.ticket_number, consultant.name, consultant.po_end_date,
+            )
+
+    except Exception as exc:
+        log.error("HRBP contract closure scheduler error: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 # ── Scheduler lifecycle ───────────────────────────────────────────────────────
 
 def start():
@@ -332,8 +538,18 @@ def start():
         coalesce=True,
     )
 
+    _scheduler.add_job(
+        check_contract_closures,
+        "cron",
+        hour=8,
+        minute=0,
+        id="hrbp_contract_closure",
+        max_instances=1,
+        coalesce=True,
+    )
+
     _scheduler.start()
-    log.info("HRBP SLA breach schedulers started (ticket-level + per-step).")
+    log.info("HRBP schedulers started (SLA breach, step SLA breach, contract closure).")
 
 
 def stop():

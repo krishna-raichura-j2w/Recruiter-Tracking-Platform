@@ -24,6 +24,7 @@ from features.hrbp.tickets.route import router as tickets_router
 from features.hrbp.notifications.route import router as notifications_router
 from features.hrbp.admin.route import router as admin_router
 from features.hrbp.exits.route import router as exits_router
+from features.hrbp.tasks.route import router as tasks_router
 
 hrbp_router = APIRouter(prefix="/hrbp")
 
@@ -57,3 +58,4 @@ hrbp_router.include_router(dashboard_router,          dependencies=[_HRBP_ROLES]
 hrbp_router.include_router(ai_router,                 dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(admin_router,              dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(exits_router,              dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(tasks_router,              dependencies=[_HRBP_ROLES])

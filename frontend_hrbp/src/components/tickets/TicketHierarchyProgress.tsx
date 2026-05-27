@@ -1,5 +1,5 @@
-import { CheckCircle2, Circle, Clock } from "lucide-react";
-import type { HierarchyStep } from "@/apiService/ticketTypes";
+import { CheckCircle2, Circle, Clock, ClipboardList } from "lucide-react";
+import type { HierarchyStep, SopDefinition } from "@/apiService/ticketTypes";
 import { cn } from "@/lib/utils";
 import { fmtDateTime } from "@/lib/formatDate";
 
@@ -8,6 +8,7 @@ interface TicketHierarchyProgressProps {
   currentStep: number;
   currentUserId?: number;
   status: string;
+  sopSteps?: SopDefinition["steps_definition"];
 }
 
 const ROLE_COLOR: Record<string, string> = {
@@ -25,7 +26,17 @@ export function TicketHierarchyProgress({
   currentStep,
   currentUserId,
   status,
+  sopSteps,
 }: TicketHierarchyProgressProps) {
+  function getSopStep(step: HierarchyStep) {
+    if (!sopSteps?.length) return null;
+    return (
+      sopSteps.find((s) => s.number === step.order) ??
+      sopSteps.find((s) => s.owner_role === step.role) ??
+      null
+    );
+  }
+
   return (
     <div className="space-y-0">
       {hierarchy.map((step, idx) => {
@@ -34,6 +45,7 @@ export function TicketHierarchyProgress({
         const isActive = stepNum === currentStep && status === "open";
         const isFuture = stepNum > currentStep;
         const isMyTurn = isActive && step.user_id === currentUserId;
+        const sopStep = getSopStep(step);
 
         return (
           <div key={idx} className="flex gap-4">
@@ -103,6 +115,31 @@ export function TicketHierarchyProgress({
                     )}
                   </div>
                 </div>
+
+                {/* Action item from SOP */}
+                {sopStep && (
+                  <div className={cn(
+                    "mt-2 pt-2 border-t rounded-lg px-2.5 py-2 space-y-0.5",
+                    isDone ? "border-green-200 bg-green-100/40" :
+                    isActive ? "border-blue-200 bg-blue-100/40" :
+                    "border-gray-200 bg-gray-100/60",
+                  )}>
+                    <div className="flex items-center gap-1.5">
+                      <ClipboardList className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                      <p className={cn(
+                        "text-xs font-semibold",
+                        isDone ? "text-green-800" : isActive ? "text-blue-800" : "text-gray-600",
+                      )}>
+                        {sopStep.action_label}
+                      </p>
+                    </div>
+                    {sopStep.action_detail && (
+                      <p className="text-xs text-gray-500 pl-4.5 leading-relaxed">
+                        {sopStep.action_detail}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {isDone && step.resolved_at && (
                   <div className="mt-2 pt-2 border-t border-green-200 text-xs text-green-700">
