@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
 import type { HierarchyStep, SopDefinition, UserOption } from "@/apiService/ticketTypes";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ const ROLE_LABEL: Record<string, string> = {
   hrbp:     "HRBP",
   bh:       "Business Head",
   ops_head: "Operations Head",
-  priti:    "Priti (MD)",
+  ceo:      "CEO",
   coo:      "COO",
 };
 
@@ -31,7 +31,7 @@ const ROLE_COLOR: Record<string, string> = {
   hrbp:     "bg-blue-100 text-blue-800",
   bh:       "bg-purple-100 text-purple-800",
   ops_head: "bg-orange-100 text-orange-800",
-  priti:    "bg-red-100 text-red-800",
+  ceo:      "bg-red-100 text-red-800",
   coo:      "bg-gray-100 text-gray-700",
 };
 
@@ -103,6 +103,14 @@ export function Step5Hierarchy({
     onChange(hierarchy.map((s, i) => (i === idx ? { ...s, sla_window: sla } : s)));
   }
 
+  function moveStep(idx: number, direction: "up" | "down") {
+    const next = [...hierarchy];
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= next.length) return;
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    onChange(next.map((s, i) => ({ ...s, order: i + 1 })));
+  }
+
   return (
     <div className="space-y-4">
       {/* Toggle */}
@@ -156,10 +164,42 @@ export function Step5Hierarchy({
               key={idx}
               className="flex items-start gap-3 p-3 border border-gray-200 rounded-xl bg-white"
             >
-              {/* Step number */}
-              <div className="flex-shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-                {step.order}
-              </div>
+              {/* Sort controls (custom mode) */}
+              {useCustom ? (
+                <div className="flex-shrink-0 flex flex-col items-center gap-0.5 mt-0.5">
+                  <GripVertical className="w-4 h-4 text-gray-300 mb-0.5" />
+                  <button
+                    type="button"
+                    onClick={() => moveStep(idx, "up")}
+                    disabled={idx === 0}
+                    className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    title="Move up"
+                  >
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveStep(idx, "down")}
+                    disabled={idx === hierarchy.length - 1}
+                    className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    title="Move down"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                /* Step number badge (SOP mode) */
+                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                  {step.order}
+                </div>
+              )}
+
+              {/* Step number badge (custom mode — shown inline with role) */}
+              {useCustom && (
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                  {step.order}
+                </div>
+              )}
 
               <div className="flex-1 space-y-2">
                 {/* Role badge + label */}
@@ -177,7 +217,7 @@ export function Step5Hierarchy({
                   )}
                 </div>
 
-                {/* Assign user (custom mode or to resolve actual user in SOP mode) */}
+                {/* Assign user */}
                 <Select
                   value={step.user_id ? String(step.user_id) : ""}
                   onValueChange={(v) => updateStepUser(idx, v)}
@@ -220,7 +260,7 @@ export function Step5Hierarchy({
                 <button
                   type="button"
                   onClick={() => removeStep(idx)}
-                  className="text-gray-400 hover:text-red-500 transition-colors mt-1"
+                  className="text-gray-400 hover:text-red-500 transition-colors mt-1 flex-shrink-0"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

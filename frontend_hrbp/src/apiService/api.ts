@@ -59,44 +59,68 @@ async function refreshTokenApi(oldToken: string): Promise<string> {
   throw new Error("Invalid refresh response");
 }
 
-async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+async function doRefresh(currentToken: string): Promise<string> {
+  if (!isRefreshing) {
+    isRefreshing = true;
+    refreshPromise = refreshTokenApi(currentToken)
+      .then((newToken) => {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("j2w_token", newToken);
+        }
+        isRefreshing = false;
+        refreshPromise = null;
+        return newToken;
+      })
+      .catch((e) => {
+        isRefreshing = false;
+        refreshPromise = null;
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("j2w_token");
+          localStorage.removeItem("j2w_user");
+          localStorage.removeItem("user_id");
+          window.location.href = "/";
+        }
+        throw e;
+      });
+  }
+  return refreshPromise!;
+}
+
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   let token = typeof window !== "undefined" ? localStorage.getItem("j2w_token") : null;
 
+  // Proactive refresh: token is expired before we even send
   if (token && isTokenExpired(token)) {
-    if (!isRefreshing) {
-      isRefreshing = true;
-      refreshPromise = refreshTokenApi(token)
-        .then((newToken) => {
-          if (typeof window !== "undefined") {
-            localStorage.setItem("j2w_token", newToken);
-          }
-          isRefreshing = false;
-          refreshPromise = null;
-          return newToken;
-        })
-        .catch((e) => {
-          isRefreshing = false;
-          refreshPromise = null;
-          if (typeof window !== "undefined") {
-            localStorage.removeItem("j2w_token");
-            window.location.href = "/";
-          }
-          throw e;
-        });
-    }
-    // Wait for the ongoing refresh to finish
-    token = await refreshPromise;
+    token = await doRefresh(token);
   }
 
   const headers = new Headers(options.headers || {});
-  if (!headers.has("Content-Type")) {
+  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  return fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers });
+
+  // Reactive refresh: server returned 401 (e.g. clock skew or server-side expiry)
+  if (response.status === 401 && token) {
+    try {
+      const newToken = await doRefresh(token);
+      const retryHeaders = new Headers(options.headers || {});
+      if (!retryHeaders.has("Content-Type") && !(options.body instanceof FormData)) {
+        retryHeaders.set("Content-Type", "application/json");
+      }
+      retryHeaders.set("Authorization", `Bearer ${newToken}`);
+      return fetch(url, { ...options, headers: retryHeaders });
+    } catch {
+      // doRefresh already redirected to login
+      return response;
+    }
+  }
+
+  return response;
 }
 
 // ---- Endpoints ----

@@ -11,7 +11,7 @@ interface User {
 
 interface AuthCtx {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   loginDemo: () => void;
   logout: () => void;
   updateUserState: (updates: Partial<User>) => void;
@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User> => {
     const res = await loginApi(email, password);
     const u: User = {
       email: res.email,
@@ -62,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("user_id", String(res.user_id));
     sessionStorage.setItem("user_id", String(res.user_id));
     setUser(u);
+    return u;
   };
   const loginDemo = () => {
     const u: User = { email: "demo@j2w.io", name: "Priya Mehta", role: "Senior HRBP", id: 6 };

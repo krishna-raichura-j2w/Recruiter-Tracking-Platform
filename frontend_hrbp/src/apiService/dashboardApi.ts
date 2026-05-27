@@ -1,15 +1,9 @@
+import { fetchWithAuth } from "./api";
+
 const getBaseUrl = () => {
   const base = import.meta.env.VITE_BASE_URL || "http://localhost:8000/";
   return base.endsWith("/") ? base : `${base}/`;
 };
-
-function authHeaders(): HeadersInit {
-  const token = typeof window !== "undefined" ? localStorage.getItem("j2w_token") : null;
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json();
@@ -22,10 +16,14 @@ async function handleResponse<T>(res: Response): Promise<T> {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface DashboardKpis {
-  open_tickets: number;
-  sla_breaches: number;
-  po_at_risk: number;
-  cadence_overdue: number;
+  open_tickets:       number;
+  sla_breaches:       number;
+  po_at_risk:         number;
+  cadence_overdue:    number;
+  exits_initiated:    number;
+  exits_this_month:   number;
+  exits_this_quarter: number;
+  exits_completed:    number;
 }
 
 export interface MyTicketItem {
@@ -69,45 +67,35 @@ export interface AIChatResult {
 // ── API calls ─────────────────────────────────────────────────────────────────
 
 export async function fetchKpis(): Promise<DashboardKpis> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/kpis`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/kpis`);
   return handleResponse<DashboardKpis>(res);
 }
 
 export async function fetchMyTickets(limit = 5): Promise<MyTicketItem[]> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/my-tickets?limit=${limit}`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/my-tickets?limit=${limit}`);
   return handleResponse<MyTicketItem[]>(res);
 }
 
 export async function fetchTodayCadence(): Promise<TodayCadenceItem[]> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/today-cadence`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/today-cadence`);
   return handleResponse<TodayCadenceItem[]>(res);
 }
 
 export async function fetchPinnedTicket(): Promise<object | null> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/pinned-ticket`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/pinned-ticket`);
   return handleResponse<object | null>(res);
 }
 
 export async function pinTicket(ticketId: number): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/pin/${ticketId}`, {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/pin/${ticketId}`, {
     method: "POST",
-    headers: authHeaders(),
   });
   await handleResponse<unknown>(res);
 }
 
 export async function unpinTicket(): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/pin`, {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/pin`, {
     method: "DELETE",
-    headers: authHeaders(),
   });
   await handleResponse<unknown>(res);
 }
@@ -133,16 +121,12 @@ export interface ActivityItem {
 }
 
 export async function fetchConsultantsAtRisk(limit = 8): Promise<ConsultantAtRisk[]> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/consultants-at-risk?limit=${limit}`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/consultants-at-risk?limit=${limit}`);
   return handleResponse<ConsultantAtRisk[]>(res);
 }
 
 export async function fetchRecentActivity(limit = 10): Promise<ActivityItem[]> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/dashboard/recent-activity?limit=${limit}`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/recent-activity?limit=${limit}`);
   return handleResponse<ActivityItem[]>(res);
 }
 
@@ -161,9 +145,7 @@ export interface ConsultantsSummary {
 }
 
 export async function fetchClientsSummary(): Promise<ClientsSummary> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/clients/summary`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/clients/summary`);
   return handleResponse<ClientsSummary>(res);
 }
 
@@ -171,14 +153,13 @@ export async function fetchConsultantsSummary(clientId?: number): Promise<Consul
   const url = clientId
     ? `${getBaseUrl()}api/hrbp/consultants/summary?client_id=${clientId}`
     : `${getBaseUrl()}api/hrbp/consultants/summary`;
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await fetchWithAuth(url);
   return handleResponse<ConsultantsSummary>(res);
 }
 
 export async function chatWithAI(message: string, history: ChatMessage[]): Promise<AIChatResult> {
-  const res = await fetch(`${getBaseUrl()}api/hrbp/ai/chat`, {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/ai/chat`, {
     method: "POST",
-    headers: authHeaders(),
     body: JSON.stringify({ message, history }),
   });
   return handleResponse<AIChatResult>(res);

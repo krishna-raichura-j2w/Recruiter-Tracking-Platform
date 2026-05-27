@@ -100,7 +100,7 @@ VALUES
  '[
    {"order": 1, "role": "hrbp",  "label": "HRBP",         "sla_window": "same day"},
    {"order": 2, "role": "bh",    "label": "Business Head", "sla_window": "24 to 48 hrs"},
-   {"order": 3, "role": "priti", "label": "Priti",         "sla_window": "48 to 72 hrs"},
+   {"order": 3, "role": "ceo", "label": "CEO",         "sla_window": "48 to 72 hrs"},
    {"order": 4, "role": "coo",   "label": "COO",           "sla_window": "72+ hrs"}
  ]'::jsonb,
  '[
@@ -127,7 +127,7 @@ VALUES
    {"order": 1, "role": "hrbp",     "label": "HRBP + Manager", "sla_window": "0 to 5 days"},
    {"order": 2, "role": "bh",       "label": "Business Head",  "sla_window": "5 to 15 days"},
    {"order": 3, "role": "ops_head", "label": "Operations Head","sla_window": "15 to 30 days"},
-   {"order": 4, "role": "priti",    "label": "Priti",          "sla_window": "Day 30 termination decision"}
+   {"order": 4, "role": "ceo",    "label": "CEO",          "sla_window": "Day 30 termination decision"}
  ]'::jsonb,
  '[
    {"number": 1, "action_label": "Manager documents specific incidents with evidence", "action_detail": "Manager documents incidents with dates and evidence. HRBP validates specificity. No vague complaints.", "owner_role": "hrbp", "sla_working_hours": 48, "escalate_to_role": "bh", "email_template_id": null, "hard_gate": null, "kra_ref": "K4"},
@@ -135,7 +135,7 @@ VALUES
    {"number": 3, "action_label": "PIP initiation — J2Wite signs 30-day plan", "action_detail": "HRBP + Manager + J2Wite meeting. Share PIP document with specific goals and 30-day timeline. J2Wite must sign.", "owner_role": "hrbp", "sla_working_hours": 40, "escalate_to_role": "ops_head", "email_template_id": "E7", "hard_gate": null, "kra_ref": "K4"},
    {"number": 4, "action_label": "Weekly PIP review — every 5 working days", "action_detail": "HRBP + Manager + J2Wite. Document progress. Review missed = immediate escalation to BH and Operations Head.", "owner_role": "hrbp", "sla_working_hours": 40, "escalate_to_role": "ops_head", "email_template_id": null, "hard_gate": null, "kra_ref": "K4"},
    {"number": 5, "action_label": "Day 15 mid-assessment", "action_detail": "Improving or not improving. If not improving: start quiet replacement sourcing.", "owner_role": "hrbp", "sla_working_hours": 8, "escalate_to_role": "ops_head", "email_template_id": null, "hard_gate": null, "kra_ref": "K4"},
-   {"number": 6, "action_label": "Day 30 final assessment", "action_detail": "PASS: close PIP and document. FAIL: termination process begins immediately.", "owner_role": "hrbp", "sla_working_hours": 8, "escalate_to_role": "priti", "email_template_id": null, "hard_gate": null, "kra_ref": "K4"},
+   {"number": 6, "action_label": "Day 30 final assessment", "action_detail": "PASS: close PIP and document. FAIL: termination process begins immediately.", "owner_role": "hrbp", "sla_working_hours": 8, "escalate_to_role": "ceo", "email_template_id": null, "hard_gate": null, "kra_ref": "K4"},
    {"number": 7, "action_label": "If FAIL — termination with Priti approval", "action_detail": "Priti MUST be informed and approve before execution. Client informed by BH. Replacement starts Day 0.", "owner_role": "bh", "sla_working_hours": 48, "escalate_to_role": "coo", "email_template_id": null, "hard_gate": "REQUIRE_PRITI_APPROVAL", "kra_ref": "K4"}
  ]'::jsonb),
 
@@ -199,7 +199,7 @@ VALUES
    {"order": 1, "role": "hrbp",     "label": "HRBP",         "sla_window": "within 2 hrs of admission"},
    {"order": 2, "role": "finance",  "label": "Finance",      "sla_window": "within 60 mins of HRBP alert"},
    {"order": 3, "role": "ops_head", "label": "Ops Head",     "sla_window": "same day if critical"},
-   {"order": 4, "role": "priti",    "label": "Priti + COO",  "sla_window": "if bill exceeds limit or death"}
+   {"order": 4, "role": "ceo",    "label": "CEO + COO",  "sla_window": "if bill exceeds limit or death"}
  ]'::jsonb,
  '[
    {"number": 1,  "action_label": "J2Wite or family alerts HRBP within 2 hours", "action_detail": "Planned: J2Wite informs HRBP before admission. Emergency: family calls HRBP within 2 hrs. Never call insurance company directly.", "owner_role": "hrbp", "sla_working_hours": 2, "escalate_to_role": "ops_head", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
@@ -208,10 +208,10 @@ VALUES
    {"number": 4,  "action_label": "Finance assesses coverage within 24 hours", "action_detail": "Confirms insurance limit, current bill, projected total. Flags immediately if bill will exceed limit.", "owner_role": "finance", "sla_working_hours": 24, "escalate_to_role": "ops_head", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
    {"number": 5,  "action_label": "HRBP connects with family same day", "action_detail": "Warm, human, reassuring call. Send E15. J2W is handling insurance and billing. You focus on being with your family member.", "owner_role": "hrbp", "sla_working_hours": 8, "escalate_to_role": "ops_head", "email_template_id": "E15", "hard_gate": null, "kra_ref": "K3"},
    {"number": 6,  "action_label": "Daily updates — HRBP to Operations Head", "action_detail": "HRBP briefs Ops Head daily: condition, bill status, family needs, insurance status.", "owner_role": "hrbp", "sla_working_hours": 24, "escalate_to_role": "ops_head", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
-   {"number": 7,  "action_label": "If bill exceeds insurance limit — escalate to Priti", "action_detail": "Finance confirms overage to Priti and COO. Evaluate ex-gratia support. Family not told until decision made.", "owner_role": "finance", "sla_working_hours": 48, "escalate_to_role": "priti", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
+   {"number": 7,  "action_label": "If bill exceeds insurance limit — escalate to Priti", "action_detail": "Finance confirms overage to Priti and COO. Evaluate ex-gratia support. Family not told until decision made.", "owner_role": "finance", "sla_working_hours": 48, "escalate_to_role": "ceo", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
    {"number": 8,  "action_label": "If J2Wite recovers — return to work plan", "action_detail": "Finance processes reimbursement. HRBP follows up on return-to-work plan. BH informed of return date.", "owner_role": "hrbp", "sla_working_hours": 168, "escalate_to_role": "ops_head", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
-   {"number": 9,  "action_label": "If J2Wite passes away — inform Priti and COO immediately", "action_detail": "HRBP informs Ops Head, COO, Priti immediately. Finance initiates death benefit claim. Priority F&F. HRBP coordinates with family on formalities.", "owner_role": "hrbp", "sla_working_hours": 1, "escalate_to_role": "priti", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
-   {"number": 10, "action_label": "Post-event family support — within 7 days", "action_detail": "HRBP follows up with family within 7 days. Assist with all documentation, F&F settlement, and death benefit disbursement coordination with Finance. Ensure no outstanding obligations remain.", "owner_role": "hrbp", "sla_working_hours": 168, "escalate_to_role": "priti", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"}
+   {"number": 9,  "action_label": "If J2Wite passes away — inform Priti and COO immediately", "action_detail": "HRBP informs Ops Head, COO, Priti immediately. Finance initiates death benefit claim. Priority F&F. HRBP coordinates with family on formalities.", "owner_role": "hrbp", "sla_working_hours": 1, "escalate_to_role": "ceo", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"},
+   {"number": 10, "action_label": "Post-event family support — within 7 days", "action_detail": "HRBP follows up with family within 7 days. Assist with all documentation, F&F settlement, and death benefit disbursement coordination with Finance. Ensure no outstanding obligations remain.", "owner_role": "hrbp", "sla_working_hours": 168, "escalate_to_role": "ceo", "email_template_id": null, "hard_gate": null, "kra_ref": "K3"}
  ]'::jsonb)
 
 ON CONFLICT (sop_type) DO NOTHING;

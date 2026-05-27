@@ -31,6 +31,7 @@ import { format } from "date-fns";
 import dayjs, { Dayjs } from "dayjs";
 import { LottieIcon } from "@/components/LottieIcon";
 import { fetchConsultantsSummary, type ConsultantsSummary } from "@/apiService/dashboardApi";
+import { TableLoader } from "@/components/Loader";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   // Provide an empty loader so HMR doesn't crash if it tries to destructure
@@ -158,7 +159,7 @@ function ClientDetail() {
               src: "/json/reviewed.json",
             },
             {
-              label: "Expiring Soon",
+              label: "Contract Closure Status",
               value: summary?.expiring_soon ?? "—",
               color: "text-amber-600",
               src: "/json/helpful-tips-for-business.json",
@@ -233,11 +234,7 @@ function ClientDetail() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={12} className="h-24 text-center">
-                    Loading consultants...
-                  </TableCell>
-                </TableRow>
+                <TableLoader colSpan={12} />
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={12} className="h-24 text-center text-slate-500 font-medium">

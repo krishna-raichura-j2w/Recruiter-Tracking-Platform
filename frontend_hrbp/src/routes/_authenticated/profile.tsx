@@ -21,6 +21,8 @@ import {
   Check,
   X,
 } from "lucide-react";
+import { fmtDateTime, fmtDate } from "@/lib/formatDate";
+import { PageLoader } from "@/components/Loader";
 import { BackButton } from "@/components/BackButton";
 import { toast } from "react-toastify";
 
@@ -173,14 +175,7 @@ function ProfilePage() {
           )}
         </div>
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-            <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
-            <p className="text-slate-500 text-sm animate-pulse">
-              Retrieving your profile details...
-            </p>
-          </div>
-        )}
+        {loading && <PageLoader message="Retrieving your profile details…" />}
 
         {error && (
           <Card className="bg-red-50 border-red-200 text-red-700">
@@ -383,9 +378,7 @@ function ProfilePage() {
                           Last Login At
                         </span>
                         <p className="text-sm font-semibold text-slate-700">
-                          {profile.last_login_at
-                            ? new Date(profile.last_login_at).toLocaleString()
-                            : "N/A"}
+                          {fmtDateTime(profile.last_login_at) || "N/A"}
                         </p>
                       </div>
                     </div>
@@ -397,9 +390,7 @@ function ProfilePage() {
                           Member Since
                         </span>
                         <p className="text-sm font-semibold text-slate-700">
-                          {profile.created_at
-                            ? new Date(profile.created_at).toLocaleDateString()
-                            : "N/A"}
+                          {fmtDate(profile.created_at) || "N/A"}
                         </p>
                       </div>
                     </div>

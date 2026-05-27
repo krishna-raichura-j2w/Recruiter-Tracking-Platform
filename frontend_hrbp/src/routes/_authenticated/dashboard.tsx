@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { TopBar } from "@/components/TopBar";
@@ -14,6 +14,7 @@ import {
   Clock,
   Activity,
   TrendingDown,
+  DoorOpen,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -38,8 +39,22 @@ import type { Ticket as TicketDetail } from "@/apiService/ticketTypes";
 import { TicketStatusBadge } from "@/components/tickets/TicketStatusBadge";
 import { TicketPriorityBadge } from "@/components/tickets/TicketPriorityBadge";
 import { SLACountdown } from "@/components/tickets/SLACountdown";
+import { SectionLoader } from "@/components/Loader";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  beforeLoad: () => {
+    if (typeof window !== "undefined") {
+      const raw = localStorage.getItem("j2w_user");
+      if (raw) {
+        try {
+          const u = JSON.parse(raw);
+          if (u.role === "admin") throw redirect({ to: "/admin" });
+        } catch (e) {
+          if (e && typeof e === "object" && "href" in (e as any)) throw e;
+        }
+      }
+    }
+  },
   component: Dashboard,
 });
 
@@ -272,6 +287,41 @@ function Dashboard() {
           />
         </div>
 
+        {/* Exit Tracking KPIs */}
+        <div>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">Exit Tracking</p>
+          <div className="flex gap-4 flex-wrap">
+            <KpiCard
+              icon={<LottieIcon src="/json/checking-resume.json" size={40} />}
+              label="Exits Initiated"
+              value={loadingKpis ? "—" : (kpis?.exits_initiated ?? 0)}
+              accentText="text-amber-600"
+              sub="Pending acknowledgement"
+            />
+            <KpiCard
+              icon={<LottieIcon src="/json/searching-jobs.json" size={40} />}
+              label="This Month"
+              value={loadingKpis ? "—" : (kpis?.exits_this_month ?? 0)}
+              accentText="text-rose-600"
+              sub="Exit initiations logged"
+            />
+            <KpiCard
+              icon={<LottieIcon src="/json/reviewed.json" size={40} />}
+              label="This Quarter"
+              value={loadingKpis ? "—" : (kpis?.exits_this_quarter ?? 0)}
+              accentText="text-blue-600"
+              sub="Exits in current quarter"
+            />
+            <KpiCard
+              icon={<LottieIcon src="/json/employee-colored.json" size={40} />}
+              label="Completed Exits"
+              value={loadingKpis ? "—" : (kpis?.exits_completed ?? 0)}
+              accentText="text-emerald-600"
+              sub="Consultants offboarded"
+            />
+          </div>
+        </div>
+
         {/* Quick Actions */}
         <div>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">Quick Actions</p>
@@ -284,29 +334,31 @@ function Dashboard() {
                 : user?.role === "bh"  ? "Raise a ticket for your business unit"
                 : "Raise a new HR operations ticket"
               }
-
               onClick={() => navigate({ to: "/tickets" })}
             />
             <QuickAction
               icon={<LottieIcon src="/json/business-problem-solving.json" size={36} />}
               label="Breached SLAs"
               description="View all overdue tickets"
-
               onClick={() => navigate({ to: "/tickets" })}
             />
             <QuickAction
               icon={<LottieIcon src="/json/successful-business-agreement.json" size={36} />}
               label="Clients"
               description="Manage clients & consultants"
-
               onClick={() => navigate({ to: "/clients" })}
             />
             <QuickAction
               icon={<LottieIcon src="/json/business-colleague-working-on-collaborative-planning.json" size={36} />}
               label="Cadence Scheduler"
               description="View & schedule cadence"
-
               onClick={() => navigate({ to: "/cadence" })}
+            />
+            <QuickAction
+              icon={<DoorOpen className="w-9 h-9 text-rose-500" />}
+              label="Exit Tracking"
+              description="View & log exit initiations"
+              onClick={() => navigate({ to: "/exits" })}
             />
           </div>
         </div>
@@ -327,9 +379,7 @@ function Dashboard() {
               </Button>
             </div>
             {loadingTickets ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-              </div>
+              <SectionLoader />
             ) : myTickets.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                 <LottieIcon src="/json/office-drawer.json" size={72} />
@@ -373,9 +423,7 @@ function Dashboard() {
               </Button>
             </div>
             {loadingCadence ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-              </div>
+              <SectionLoader />
             ) : cadence.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                 <LottieIcon src="/json/business-meeting.json" size={72} />
@@ -432,9 +480,7 @@ function Dashboard() {
               </div>
             </div>
             {loadingAtRisk ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-              </div>
+              <SectionLoader />
             ) : atRisk.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                 <LottieIcon src="/json/employee-development.json" size={72} />
@@ -497,9 +543,7 @@ function Dashboard() {
               </div>
             </div>
             {loadingActivity ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-              </div>
+              <SectionLoader />
             ) : activity.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                 <LottieIcon src="/json/social-communication.json" size={72} />
@@ -557,9 +601,7 @@ function Dashboard() {
           </div>
 
           {loadingPinned ? (
-            <div className="flex items-center justify-center h-28">
-              <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-            </div>
+            <SectionLoader />
           ) : !pinned ? (
             <div className="flex flex-col items-center justify-center h-36 text-slate-400 gap-1 px-6 text-center">
               <LottieIcon src="/json/making-portfolio.json" size={72} />

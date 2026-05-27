@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,8 @@ import {
   Check,
   X,
   History,
+  Download,
+  Loader2,
   FileSpreadsheet,
   Building2,
   User,
@@ -26,6 +28,7 @@ import {
   Undo2,
   Lock,
   AlertCircle,
+  TicketPlus,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAuth } from "@/lib/auth";
@@ -56,6 +59,7 @@ import { CustomDatePicker } from "@/components/CustomDatePicker";
 import { CustomTimePicker } from "@/components/CustomTimePicker";
 import { CustomSelect } from "@/components/CustomSelect";
 import dayjs, { Dayjs } from "dayjs";
+import { SectionLoader } from "@/components/Loader";
 
 export const Route = createFileRoute("/_authenticated/cadence")({
   component: CadenceSchedulerPage,
@@ -86,6 +90,8 @@ interface Cadence {
   scheduleId?: number;
   sessionId?: number;
   bhId?: number | null;
+  clientId?: number;
+  consultantId?: number;
 }
 
 const clientList = [
@@ -371,7 +377,7 @@ function CadenceHistoryTimeline({
   loading?: boolean;
 }) {
   if (loading) {
-    return <div className="text-center text-xs text-slate-400 py-3">Loading history…</div>;
+    return <SectionLoader />;
   }
   if (entries.length === 0) {
     return <div className="text-center text-xs text-slate-400 py-3">No history available.</div>;
@@ -461,11 +467,22 @@ const mapSessionToCadence = (item: any, todayDateStr: string): Cadence => {
     scheduleId: item.schedule_id,
     sessionId: item.id,
     bhId: item.bh_id ?? null,
+    clientId: item.client_id,
+    consultantId: item.consultant_id,
   };
 };
 
 function CadenceSchedulerPage() {
   const { user, can } = useAuth();
+  const navigate = useNavigate();
+
+  function handleRaiseTicket(c: Cadence) {
+    sessionStorage.setItem(
+      "raise_ticket_from_cadence",
+      JSON.stringify({ clientId: c.clientId, consultantId: c.consultantId }),
+    );
+    navigate({ to: "/tickets" });
+  }
   const [cadences, setCadences] = useState<Cadence[]>([]);
   const [summaryPendingCount, setSummaryPendingCount] = useState<number | null>(null);
   const [summaryCompletedCount, setSummaryCompletedCount] = useState<number | null>(null);
@@ -1328,6 +1345,18 @@ function CadenceSchedulerPage() {
                           )}
                         </div>
                       )}
+
+                      {/* Raise Ticket */}
+                      <div className="pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleRaiseTicket(c)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-md transition-colors w-full justify-center border border-red-200 hover:border-red-300"
+                        >
+                          <TicketPlus className="w-3.5 h-3.5" />
+                          Raise Ticket
+                        </button>
+                      </div>
                     </div>
                   ))}
                 {cadences.filter((c) => c.date === TODAY_DATE_STR && c.status !== "completed")
@@ -1735,16 +1764,19 @@ function CadenceSchedulerPage() {
                 </div>
 
                 <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleExportExcel}
                   disabled={exporting || loadingRegistry}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs gap-1.5 shadow-sm py-1.5 h-8 disabled:opacity-70"
+                  className="gap-1.5 text-sm border-slate-200 text-slate-700 hover:bg-slate-50"
+                  title="Export to Excel"
                 >
                   {exporting ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <Download className="w-4 h-4" />
                   )}
-                  {exporting ? "Exporting..." : "Export Excel"}
+                  {exporting ? "Exporting…" : "Export"}
                 </Button>
               </div>
             </div>

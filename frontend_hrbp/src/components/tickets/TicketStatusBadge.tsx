@@ -6,8 +6,9 @@ interface TicketStatusBadgeProps {
 }
 
 const CONFIG: Record<string, { label: string; className: string; dot: string }> = {
-  open:   { label: "Open",   className: "bg-blue-100 text-blue-800",   dot: "bg-blue-500" },
-  closed: { label: "Closed", className: "bg-green-100 text-green-800", dot: "bg-green-500" },
+  open:      { label: "Open",      className: "bg-blue-100 text-blue-800",   dot: "bg-blue-500"   },
+  escalated: { label: "Escalated", className: "bg-red-100 text-red-800",     dot: "bg-red-500"    },
+  closed:    { label: "Closed",    className: "bg-green-100 text-green-800", dot: "bg-green-500"  },
 };
 
 export function TicketStatusBadge({ status, className }: TicketStatusBadgeProps) {

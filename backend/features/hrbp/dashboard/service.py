@@ -10,6 +10,7 @@ from infra.hrbp_models import (
     HRBPCadenceSession,
     HRBPClient,
     HRBPConsultant,
+    HRBPExitTracking,
     HRBPTicket,
     HRBPTicketActivityLog,
     HRBPUserPinnedTicket,
@@ -38,7 +39,7 @@ def _ticket_scope(q, current_user: User):
                 cast(HRBPTicket.hierarchy_json, Text).contains(str(current_user.id)),
             )
         )
-    # admin / ops_head / coo / priti / sa → all tickets
+    # admin / ops_head / coo / ceo / sa → all tickets
     return q
 
 
@@ -68,8 +69,9 @@ def _cadence_schedule_ids_for_bh(db: Session, user_id: int):
 def get_kpis(db: Session, current_user: User) -> dict:
     role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
-    # Base open tickets query (scoped)
-    tq = db.query(HRBPTicket).filter(HRBPTicket.status == "open")
+    # Base active tickets query — open + escalated (scoped)
+    _active = HRBPTicket.status.in_(["open", "escalated"])
+    tq = db.query(HRBPTicket).filter(_active)
     tq = _ticket_scope(tq, current_user)
 
     open_tickets = tq.count()
@@ -80,7 +82,7 @@ def get_kpis(db: Session, current_user: User) -> dict:
 
     po_at_risk_row = (
         db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
-        .filter(HRBPTicket.status == "open")
+        .filter(_active)
     )
     po_at_risk_row = _ticket_scope(po_at_risk_row, current_user)
     po_at_risk = float(po_at_risk_row.scalar() or 0)
@@ -112,11 +114,44 @@ def get_kpis(db: Session, current_user: User) -> dict:
             .count()
         )
 
+    today_date    = _today()
+    month_start   = today_date.replace(day=1)
+    quarter_month = ((today_date.month - 1) // 3) * 3 + 1
+    quarter_start = today_date.replace(month=quarter_month, day=1)
+
+    exits_initiated = (
+        db.query(func.count(HRBPExitTracking.id))
+        .filter(HRBPExitTracking.status == "initiated")
+        .scalar() or 0
+    )
+
+    exits_this_month = (
+        db.query(func.count(HRBPExitTracking.id))
+        .filter(func.date(HRBPExitTracking.created_at) >= month_start)
+        .scalar() or 0
+    )
+
+    exits_this_quarter = (
+        db.query(func.count(HRBPExitTracking.id))
+        .filter(func.date(HRBPExitTracking.created_at) >= quarter_start)
+        .scalar() or 0
+    )
+
+    exits_completed = (
+        db.query(func.count(HRBPExitTracking.id))
+        .filter(HRBPExitTracking.status == "completed")
+        .scalar() or 0
+    )
+
     return {
-        "open_tickets":    open_tickets,
-        "sla_breaches":    sla_breaches,
-        "po_at_risk":      po_at_risk,
-        "cadence_overdue": cadence_overdue,
+        "open_tickets":       open_tickets,
+        "sla_breaches":       sla_breaches,
+        "po_at_risk":         po_at_risk,
+        "cadence_overdue":    cadence_overdue,
+        "exits_initiated":    exits_initiated,
+        "exits_this_month":   exits_this_month,
+        "exits_this_quarter": exits_this_quarter,
+        "exits_completed":    exits_completed,
     }
 
 
@@ -137,7 +172,7 @@ def _sla_status(deadline: datetime | None) -> str:
 
 
 def get_my_tickets(db: Session, current_user: User, limit: int = 5) -> list[dict]:
-    q = db.query(HRBPTicket).filter(HRBPTicket.status == "open")
+    q = db.query(HRBPTicket).filter(HRBPTicket.status.in_(["open", "escalated"]))
     q = _ticket_scope(q, current_user)
     q = q.order_by(HRBPTicket.created_at.desc()).limit(limit)
     tickets = q.all()

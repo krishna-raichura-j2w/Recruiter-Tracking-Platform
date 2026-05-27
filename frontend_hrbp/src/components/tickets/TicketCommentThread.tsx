@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Send, CheckCircle2 } from "lucide-react";
 import type { TicketComment, HierarchyStep } from "@/apiService/ticketTypes";
 import { cn } from "@/lib/utils";
+import { fmtDateTime } from "@/lib/formatDate";
 
 interface TicketCommentThreadProps {
   comments: TicketComment[];
@@ -24,12 +25,7 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-function formatTs(ts: string): string {
-  return new Date(ts).toLocaleString("en-IN", {
-    day: "2-digit", month: "short",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+const formatTs = fmtDateTime;
 
 export function TicketCommentThread({
   comments,

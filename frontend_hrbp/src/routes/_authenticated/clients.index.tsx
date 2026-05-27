@@ -27,6 +27,7 @@ import { toast } from "react-toastify";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { LottieIcon } from "@/components/LottieIcon";
 import { fetchClientsSummary, type ClientsSummary } from "@/apiService/dashboardApi";
+import { TableLoader } from "@/components/Loader";
 
 export const Route = createFileRoute("/_authenticated/clients/")({ component: ClientsPage });
 
@@ -176,11 +177,7 @@ function ClientsPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
-                    Loading clients...
-                  </TableCell>
-                </TableRow>
+                <TableLoader colSpan={7} />
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center">

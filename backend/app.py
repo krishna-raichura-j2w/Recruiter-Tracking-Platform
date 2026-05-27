@@ -48,6 +48,7 @@ from features.mrr.resume_extract.routes import (  # noqa: E402
 from features.mrr.submissions.routes import router as submissions_router  # noqa: E402
 from features.mrr.targets.routes import router as targets_router  # noqa: E402
 from features.mrr.tasks import scheduler as task_scheduler  # noqa: E402
+from features.hrbp.tasks import scheduler as hrbp_scheduler  # noqa: E402
 from features.mrr.upload.routes import router as upload_router  # noqa: E402
 from features.mrr.users.routes import router as users_router  # noqa: E402
 from features.mrr.validation.consultant_profile_routes import (  # noqa: E402
@@ -231,8 +232,10 @@ async def lifespan(app_):  # noqa: RUF029
 
     if settings.start_scheduler_on_startup:
         task_scheduler.start()
+        hrbp_scheduler.start()
     yield
     task_scheduler.stop()
+    hrbp_scheduler.stop()
 
 
 app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0", lifespan=lifespan)

@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from core.pagination import PageResult, paginate
 from features.hrbp.tickets.schema import (
+    StepReassignPayload,
+    StepSlaExtendPayload,
     TicketCommentCreate,
     TicketCreate,
     TicketUpdate,
@@ -132,6 +134,16 @@ def _log(db: Session, ticket_id: int, actor_id: int | None, action: str, metadat
 
 # ── Create ───────────────────────────────────────────────────────────────────
 
+def _sla_hours_for_role(role: str, steps_definition: list[dict]) -> int | None:
+    """Sum sla_working_hours across all SOP steps owned by this role."""
+    total = sum(
+        s.get("sla_working_hours", 0)
+        for s in steps_definition
+        if s.get("owner_role") == role
+    )
+    return total if total > 0 else None
+
+
 def create(db: Session, payload: TicketCreate, raised_by: User) -> dict:
     # Resolve SOP name for the title
     sop = db.query(HRBPSopDefinition).filter_by(id=payload.sop_id).first()
@@ -152,7 +164,12 @@ def create(db: Session, payload: TicketCreate, raised_by: User) -> dict:
         names += f" +{len(consultants) - 3}"
     title = f"{sop.name} — {names}"
 
-    hierarchy = [step.model_dump() for step in payload.hierarchy_json]
+    # Embed computed sla_hours per hierarchy step from the SOP steps_definition
+    steps_def: list[dict] = sop.steps_definition or []
+    hierarchy = [
+        {**step.model_dump(), "sla_hours": _sla_hours_for_role(step.role, steps_def)}
+        for step in payload.hierarchy_json
+    ]
 
     ticket = HRBPTicket(
         ticket_number=_next_ticket_number(db),
@@ -165,9 +182,11 @@ def create(db: Session, payload: TicketCreate, raised_by: User) -> dict:
         sla_deadline=payload.sla_deadline,
         description=payload.description,
         po_risk_amount=payload.po_risk_amount,
+        attachments=payload.attachments or [],
         status="open",
         hierarchy_json=hierarchy,
         current_step=1,
+        step_started_at=_now(),
     )
     db.add(ticket)
     db.flush()  # get ticket.id before inserting associations
@@ -209,7 +228,7 @@ def list_paginated(
 
     # Role-based visibility:
     # - hrbp/bh → tickets they raised OR tickets where their user_id appears in hierarchy_json
-    # - ops_head / coo / priti / admin → all tickets
+    # - ops_head / coo / ceo / admin → all tickets
     role = current_user.role.value
     if role in ("hrbp", "bh"):
         # Tickets raised by me, OR I appear as a step owner in the hierarchy
@@ -325,6 +344,9 @@ def _advance_step(db: Session, ticket: HRBPTicket, actor: User):
         ticket.hierarchy_json = hierarchy
 
     ticket.current_step += 1
+    # Reset per-step SLA clock for the new step
+    ticket.step_started_at = _now()
+    ticket.step_sla_alerted_at = None
     _log(db, ticket.id, actor.id, "step_advanced", {
         "from_step": ticket.current_step - 1,
         "to_step": ticket.current_step,
@@ -363,6 +385,95 @@ def close_ticket(db: Session, ticket_id: int, current_user: User) -> dict:
     return _enrich_ticket(db, ticket)
 
 
+# ── Step SLA extension ───────────────────────────────────────────────────────
+
+_SLA_EXTEND_ROLES = {"admin", "ops_head", "coo", "ceo"}
+
+
+def _can_manage_step(ticket: HRBPTicket, current_user: User) -> bool:
+    """True for creator, escalation manager, and senior roles."""
+    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    return (
+        current_user.id == ticket.raised_by_id
+        or current_user.id == ticket.escalation_mgr_id
+        or role in _SLA_EXTEND_ROLES
+    )
+
+
+def extend_step_sla(
+    db: Session, ticket_id: int, payload: StepSlaExtendPayload, current_user: User
+) -> dict:
+    ticket = db.query(HRBPTicket).filter_by(id=ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status not in ("open", "escalated"):
+        raise HTTPException(status_code=400, detail="Ticket is not open")
+    if not _can_manage_step(ticket, current_user):
+        raise HTTPException(status_code=403, detail="Not authorised to extend step SLA")
+
+    hierarchy: list[dict] = ticket.hierarchy_json or []
+    step_idx = ticket.current_step - 1
+    step_label = hierarchy[step_idx].get("label", f"Step {ticket.current_step}") if step_idx < len(hierarchy) else "—"
+
+    ticket.step_sla_extended_until = payload.extend_until
+    ticket.step_sla_alerted_at = None      # re-arm so alert fires again if extension also expires
+    if ticket.status == "escalated":
+        ticket.status = "open"             # un-escalate when SLA is explicitly extended
+
+    _log(db, ticket_id, current_user.id, "step_sla_extended", {
+        "step": ticket.current_step,
+        "step_label": step_label,
+        "extend_until": payload.extend_until.isoformat(),
+        "reason": payload.reason,
+    })
+
+    db.commit()
+    db.refresh(ticket)
+    return _enrich_ticket(db, ticket)
+
+
+# ── Step reassignment ─────────────────────────────────────────────────────────
+
+def reassign_step(
+    db: Session, ticket_id: int, payload: StepReassignPayload, current_user: User
+) -> dict:
+    ticket = db.query(HRBPTicket).filter_by(id=ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status not in ("open", "escalated"):
+        raise HTTPException(status_code=400, detail="Ticket is not open")
+    if not _can_manage_step(ticket, current_user):
+        raise HTTPException(status_code=403, detail="Not authorised to reassign step")
+
+    hierarchy: list[dict] = list(ticket.hierarchy_json or [])
+    step_idx = ticket.current_step - 1
+    if step_idx < 0 or step_idx >= len(hierarchy):
+        raise HTTPException(status_code=400, detail="Invalid current step")
+
+    prev_owner = hierarchy[step_idx].get("user_name", "—")
+    hierarchy[step_idx]["user_id"]    = payload.user_id
+    hierarchy[step_idx]["user_name"]  = payload.user_name
+    hierarchy[step_idx]["user_email"] = payload.user_email
+    ticket.hierarchy_json = hierarchy
+
+    # Reset the step SLA clock from now for the new owner
+    ticket.step_started_at = _now()
+    ticket.step_sla_alerted_at = None
+    ticket.step_sla_extended_until = None
+
+    _log(db, ticket_id, current_user.id, "step_reassigned", {
+        "step": ticket.current_step,
+        "step_label": hierarchy[step_idx].get("label", "—"),
+        "prev_owner": prev_owner,
+        "new_owner": payload.user_name,
+        "reason": payload.reason,
+    })
+
+    db.commit()
+    db.refresh(ticket)
+    return _enrich_ticket(db, ticket)
+
+
 # ── Update (creator only) ─────────────────────────────────────────────────────
 
 def update_ticket(db: Session, ticket_id: int, payload: TicketUpdate, current_user: User) -> dict:
@@ -379,7 +490,10 @@ def update_ticket(db: Session, ticket_id: int, payload: TicketUpdate, current_us
         old = getattr(ticket, field)
         if old != value:
             setattr(ticket, field, value)
-            changes[field] = {"from": str(old), "to": str(value)}
+            if field != "attachments":
+                changes[field] = {"from": str(old), "to": str(value)}
+            else:
+                changes[field] = {"count": len(value or [])}
 
     if changes:
         _log(db, ticket_id, current_user.id, "updated", changes)
