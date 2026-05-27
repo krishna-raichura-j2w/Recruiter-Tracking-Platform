@@ -39,6 +39,7 @@ from features.mrr.notifications.routes import (  # noqa: E402
     router as notifications_router,
 )
 from features.mrr.client_emails.routes import router as client_emails_router  # noqa: E402
+from features.mrr.ol_lookup.routes import router as ol_lookup_router  # noqa: E402
 from features.mrr.leaves.routes import router as leaves_router  # noqa: E402
 from features.mrr.pods.routes import router as pods_router  # noqa: E402
 from features.mrr.probing.routes import router as probing_router  # noqa: E402
@@ -284,6 +285,7 @@ app.include_router(coo_router,                prefix="/api")
 app.include_router(pods_router,               prefix="/api")
 app.include_router(leaves_router,             prefix="/api")
 app.include_router(client_emails_router,      prefix="/api")
+app.include_router(ol_lookup_router,          prefix="/api")
 app.include_router(targets_router,            prefix="/api")
 app.include_router(hrbp_router,               prefix="/api")
 
