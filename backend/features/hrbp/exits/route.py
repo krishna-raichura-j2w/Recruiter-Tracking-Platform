@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from infra.models import User
 
+from features.hrbp.audit_log.service import log_action
 from features.hrbp.exits import service
 from features.hrbp.exits.schema import ExitCreate, ExitUpdate
 
@@ -35,6 +36,10 @@ def create_exit(
 ):
     try:
         data = service.create(db, payload, current_user)
+        exit_id = data.get("id", 0) if isinstance(data, dict) else 0
+        log_action(db, actor_id=current_user.id, entity_type="exit", entity_id=exit_id,
+                   action="create", new_value={"exit_reason": payload.exit_reason if hasattr(payload, "exit_reason") else None})
+        db.commit()
         return success_response(data=data, message="Exit record created successfully")
     except Exception as exc:
         return error_response(message=str(exc))
@@ -85,7 +90,12 @@ def update_exit(
     current_user: User = Depends(get_current_user),
 ):
     try:
+        update_data = payload.model_dump(exclude_unset=True)
         data = service.update(db, exit_id, payload, current_user)
+        action = "status_change" if "status" in update_data else "update"
+        log_action(db, actor_id=current_user.id, entity_type="exit", entity_id=exit_id,
+                   action=action, new_value=update_data)
+        db.commit()
         return success_response(data=data, message="Exit record updated successfully")
     except Exception as exc:
         return error_response(message=str(exc))
@@ -99,6 +109,9 @@ def delete_exit(
 ):
     try:
         service.delete(db, exit_id, current_user)
+        log_action(db, actor_id=current_user.id, entity_type="exit", entity_id=exit_id,
+                   action="delete")
+        db.commit()
         return success_response(data={}, message="Exit record deleted successfully")
     except Exception as exc:
         return error_response(message=str(exc))

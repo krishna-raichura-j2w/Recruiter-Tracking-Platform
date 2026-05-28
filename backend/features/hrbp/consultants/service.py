@@ -40,11 +40,20 @@ def get_summary(db: Session, current_user: User, client_id: int | None = None) -
         HRBPConsultant.po_risk > 0,
     ).count()
 
+    clients_served = (
+        q.with_entities(func.count(func.distinct(HRBPConsultant.client_id)))
+        .filter(HRBPConsultant.client_id.isnot(None))
+        .scalar()
+        or 0
+    )
+
     return {
         "total":          total,
         "active":         active,
+        "inactive":       total - active,
         "expiring_soon":  expiring_soon,
         "po_at_risk":     po_at_risk,
+        "clients_served": clients_served,
     }
 
 

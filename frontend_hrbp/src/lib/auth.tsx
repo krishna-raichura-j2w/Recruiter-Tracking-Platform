@@ -7,6 +7,7 @@ interface User {
   name: string;
   role: string;
   id?: number;
+  must_change_password?: boolean;
 }
 
 interface AuthCtx {
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: res.name,
       role: res.role,
       id: res.user_id,
+      must_change_password: res.must_change_password,
     };
     localStorage.setItem(KEY, JSON.stringify(u));
     localStorage.setItem(TOKEN_KEY, res.access_token);

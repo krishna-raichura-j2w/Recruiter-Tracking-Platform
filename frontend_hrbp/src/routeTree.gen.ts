@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
@@ -18,6 +19,7 @@ import { Route as AuthenticatedIncidentEngineRouteImport } from './routes/_authe
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedCadenceRouteImport } from './routes/_authenticated/cadence'
+import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
 import { Route as AuthenticatedTicketsIndexRouteImport } from './routes/_authenticated/tickets.index'
 import { Route as AuthenticatedExitsIndexRouteImport } from './routes/_authenticated/exits.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
@@ -33,6 +35,11 @@ import { Route as AuthenticatedAdminClientsRouteImport } from './routes/_authent
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -77,6 +84,12 @@ const AuthenticatedCadenceRoute = AuthenticatedCadenceRouteImport.update({
   path: '/cadence',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedActivityLogRoute =
+  AuthenticatedActivityLogRouteImport.update({
+    id: '/activity-log',
+    path: '/activity-log',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedTicketsIndexRoute =
   AuthenticatedTicketsIndexRouteImport.update({
     id: '/tickets/',
@@ -143,7 +156,9 @@ const AuthenticatedAdminClientsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/activity-log': typeof AuthenticatedActivityLogRoute
   '/cadence': typeof AuthenticatedCadenceRoute
   '/communication': typeof AuthenticatedCommunicationRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -164,7 +179,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/activity-log': typeof AuthenticatedActivityLogRoute
   '/cadence': typeof AuthenticatedCadenceRoute
   '/communication': typeof AuthenticatedCommunicationRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -187,7 +204,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/_authenticated/activity-log': typeof AuthenticatedActivityLogRoute
   '/_authenticated/cadence': typeof AuthenticatedCadenceRoute
   '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -210,7 +229,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/change-password'
     | '/login'
+    | '/activity-log'
     | '/cadence'
     | '/communication'
     | '/dashboard'
@@ -231,7 +252,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/change-password'
     | '/login'
+    | '/activity-log'
     | '/cadence'
     | '/communication'
     | '/dashboard'
@@ -253,7 +276,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/change-password'
     | '/login'
+    | '/_authenticated/activity-log'
     | '/_authenticated/cadence'
     | '/_authenticated/communication'
     | '/_authenticated/dashboard'
@@ -276,6 +301,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  ChangePasswordRoute: typeof ChangePasswordRoute
   LoginRoute: typeof LoginRoute
 }
 
@@ -286,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -342,6 +375,13 @@ declare module '@tanstack/react-router' {
       path: '/cadence'
       fullPath: '/cadence'
       preLoaderRoute: typeof AuthenticatedCadenceRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/activity-log': {
+      id: '/_authenticated/activity-log'
+      path: '/activity-log'
+      fullPath: '/activity-log'
+      preLoaderRoute: typeof AuthenticatedActivityLogRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/tickets/': {
@@ -425,6 +465,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedActivityLogRoute: typeof AuthenticatedActivityLogRoute
   AuthenticatedCadenceRoute: typeof AuthenticatedCadenceRoute
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -445,6 +486,7 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedActivityLogRoute: AuthenticatedActivityLogRoute,
   AuthenticatedCadenceRoute: AuthenticatedCadenceRoute,
   AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
@@ -472,6 +514,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  ChangePasswordRoute: ChangePasswordRoute,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport

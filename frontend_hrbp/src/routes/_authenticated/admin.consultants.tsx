@@ -21,6 +21,8 @@ import { CustomTablePagination } from "@/components/CustomPagination";
 import { CustomDatePicker } from "@/components/CustomDatePicker";
 import { CustomSelect } from "@/components/CustomSelect";
 import { getConsultantsApi, getClientsApi, fetchWithAuth, bulkUpsertConsultantsApi } from "@/apiService/api";
+import { fetchConsultantsSummary } from "@/apiService/dashboardApi";
+import type { ConsultantsSummary } from "@/apiService/dashboardApi";
 import { getAdminUsers, assignConsultant, type AdminUser } from "@/apiService/adminApi";
 import type { ConsultantItem, ClientItem } from "@/apiService/types";
 
@@ -52,6 +54,7 @@ function AdminConsultantsPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<ConsultantsSummary | null>(null);
 
   const [hrbpUsers, setHrbpUsers] = useState<AdminUser[]>([]);
   const [clients, setClients] = useState<ClientItem[]>([]);
@@ -100,10 +103,11 @@ function AdminConsultantsPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [consultantRes, hrbpRes, clientRes] = await Promise.all([
+      const [consultantRes, hrbpRes, clientRes, summaryRes] = await Promise.all([
         getConsultantsApi({ page_no: page + 1, per_page: rowsPerPage }),
         getAdminUsers({ role: "hrbp" }),
         getClientsApi({ per_page: -1 }),
+        fetchConsultantsSummary(),
       ]);
       if (consultantRes.meta.status) {
         setConsultants(consultantRes.data ?? []);
@@ -111,6 +115,7 @@ function AdminConsultantsPage() {
       }
       setHrbpUsers(hrbpRes.data ?? []);
       setClients(clientRes.data ?? []);
+      setSummary(summaryRes);
     } catch (e: any) {
       toast.error(e.message || "Failed to load data");
     } finally {
@@ -129,11 +134,11 @@ function AdminConsultantsPage() {
   );
 
   const stats = useMemo(() => ({
-    total,
-    active: consultants.filter((c) => c.is_active).length,
-    inactive: consultants.filter((c) => !c.is_active).length,
-    clients: new Set(consultants.map((c) => c.client_id).filter(Boolean)).size,
-  }), [consultants, total]);
+    total: summary?.total ?? total,
+    active: summary?.active ?? 0,
+    inactive: summary?.inactive ?? 0,
+    clients: summary?.clients_served ?? 0,
+  }), [summary, total]);
 
   const openAssign = (c: ConsultantItem) => {
     setAssignTarget(c);
