@@ -4,6 +4,99 @@
 
 {% block content %}
 
+<!-- ── Recruiter Alignment Summary Table ──────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <div>
+      <h3>Recruiter Alignment — How Many Needed per Customer</h3>
+      <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
+        Benchmark: <strong>{{ setup.subs_per_recruiter_day }} subs/rec/day</strong> (from
+        <a href="/assumptions" style="color:#2563eb;">Assumptions</a>) ·
+        Assignments managed in <a href="/recruiters" style="color:#2563eb;">Recruiters</a> tab ·
+        Formula: Recs Needed = ⌈Monthly Subs ÷ ({{ setup.subs_per_recruiter_day }} × {{ working_days|length }} days)⌉
+      </div>
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th class="right">Monthly Subs</th>
+          <th class="right" style="background:#eff6ff;color:#1d4ed8;">Recs Needed<br><span style="font-weight:400;font-size:9px;">at {{ setup.subs_per_recruiter_day }} subs/day</span></th>
+          <th class="right">Assigned<br><span style="font-weight:400;font-size:9px;">primary + secondary</span></th>
+          <th class="right">Count Gap<br><span style="font-weight:400;font-size:9px;">assigned − needed</span></th>
+          <th class="right">Assigned Cap/Day<br><span style="font-weight:400;font-size:9px;">actual subs/day</span></th>
+          <th class="right">Cap/Month</th>
+          <th class="right">Capacity Gap<br><span style="font-weight:400;font-size:9px;">cap − target</span></th>
+          <th class="center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cp in customer_plans %}
+        <tr {% if loop.index is even %}style="background:#f8fafc;"{% endif %}>
+          <td style="font-weight:600;">{{ cp.name }}</td>
+          <td class="right">{{ cp.monthly_target }}</td>
+          <td class="right" style="background:#eff6ff;color:#1d4ed8;font-weight:800;">{{ cp.recs_needed_full }}</td>
+          <td class="right" style="font-weight:700;">
+            {{ cp.assigned_count }}
+            <span style="font-size:10px;color:#94a3b8;font-weight:400;">
+              ({{ cp.primary_recs|length }}P + {{ cp.secondary_recs|length }}S)
+            </span>
+          </td>
+          <td class="right" style="font-weight:800;color:{% if cp.rec_count_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            {{ '%+d'|format(cp.rec_count_gap) }}
+          </td>
+          <td class="right">{{ cp.assigned_cap_day }}/day</td>
+          <td class="right">{{ cp.assigned_cap_month }}</td>
+          <td class="right" style="font-weight:700;color:{% if cp.rec_cap_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            {{ '%+d'|format(cp.rec_cap_gap) }}
+          </td>
+          <td class="center">
+            {% if cp.rec_cap_gap >= 0 %}
+              <span class="badge badge-ok">✅ Sufficient</span>
+            {% else %}
+              <span class="badge badge-err">⚠️ Shortfall</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td style="font-weight:800;">Pod Total</td>
+          <td class="right" style="font-weight:800;">{{ metrics.total_subs_needed }}</td>
+          <td class="right" style="background:#eff6ff;color:#1d4ed8;font-weight:800;">
+            {{ customer_plans | sum(attribute='recs_needed_full') }}
+          </td>
+          <td class="right" style="font-weight:700;">{{ customer_plans | sum(attribute='assigned_count') }}</td>
+          <td class="right" style="font-weight:800;color:{% if (customer_plans | sum(attribute='rec_count_gap')) >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            {{ '%+d'|format(customer_plans | sum(attribute='rec_count_gap')) }}
+          </td>
+          <td class="right">{{ metrics.rec_cap_day }}/day</td>
+          <td class="right">{{ metrics.rec_cap_day * working_days|length }}</td>
+          <td class="right" style="font-weight:800;color:{% if metrics.rec_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            {{ '%+d'|format(metrics.rec_gap * working_days|length) }}
+          </td>
+          <td class="center">
+            {% if metrics.rec_gap >= 0 %}
+              <span class="badge badge-ok">OK</span>
+            {% else %}
+              <span class="badge badge-err">Gap: {{ metrics.recs_needed }} recs</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <div style="padding:10px 16px 14px;font-size:11px;color:#64748b;display:flex;gap:24px;flex-wrap:wrap;">
+    <span>P = Primary assignment &nbsp;·&nbsp; S = Secondary assignment</span>
+    <span>Count Gap = how many more/fewer recruiters than the formula needs</span>
+    <span>Capacity Gap = (assigned subs/month) − (target subs/month) — the real submission gap</span>
+    <span style="color:#2563eb;">Recs Needed uses global benchmark ({{ setup.subs_per_recruiter_day }} subs/rec/day) from Assumptions. Capacity Gap uses each recruiter's actual subs/day from Recruiters tab.</span>
+  </div>
+</div>
+
 <!-- ── Summary KPI strip ──────────────────────────────────────────── -->
 <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
   {% for cp in customer_plans %}
@@ -97,16 +190,58 @@
     </div>
   </div>
 
-  <!-- Row totals check -->
-  <div style="padding:0 16px 14px;display:flex;gap:20px;font-size:12px;color:#64748b;">
-    <span>Sum check: <strong style="color:#1e293b;">{{ cp.daily_plan | sum }}</strong> / {{ cp.monthly_target }}</span>
-    <span>Active days: <strong style="color:#2563eb;">{{ cp.days_needed }}</strong></span>
-    <span>Buffer days: <strong style="color:#94a3b8;">{{ cp.buffer_days }}</strong></span>
-    {% if cp.shortfall %}
-    <span style="color:#dc2626;font-weight:700;">⚠️ Need more recruiter capacity — max is {{ cp.max_per_day }}/day but need {{ cp.daily_target | round(0) | int }}/day</span>
-    {% else %}
-    <span style="color:#16a34a;">✅ Plan achievable within capacity</span>
-    {% endif %}
+  <!-- Recruiter assignment inline -->
+  <div style="padding:0 16px 14px 16px;border-top:1px solid #f1f5f9;margin-top:4px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:10px;margin-top:10px;">
+      <div style="background:#eff6ff;border-radius:8px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Recs Needed</div>
+        <div style="font-size:22px;font-weight:900;color:#1d4ed8;">{{ cp.recs_needed_full }}</div>
+        <div style="font-size:10px;color:#64748b;">at {{ cp.spd_benchmark }} subs/day each</div>
+      </div>
+      <div style="background:{% if cp.rec_count_gap >= 0 %}#f0fdf4{% else %}#fef2f2{% endif %};border-radius:8px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Assigned</div>
+        <div style="font-size:22px;font-weight:900;color:{% if cp.rec_count_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">{{ cp.assigned_count }}</div>
+        <div style="font-size:10px;color:#64748b;">{{ cp.primary_recs|length }} primary · {{ cp.secondary_recs|length }} secondary</div>
+      </div>
+      <div style="background:{% if cp.rec_count_gap >= 0 %}#f0fdf4{% else %}#fef2f2{% endif %};border-radius:8px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Count Gap</div>
+        <div style="font-size:22px;font-weight:900;color:{% if cp.rec_count_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">{{ '%+d'|format(cp.rec_count_gap) }}</div>
+        <div style="font-size:10px;color:#64748b;">{% if cp.rec_count_gap >= 0 %}surplus recruiters{% else %}need {{ cp.rec_count_gap | abs }} more{% endif %}</div>
+      </div>
+      <div style="background:{% if cp.rec_cap_gap >= 0 %}#f0fdf4{% else %}#fef2f2{% endif %};border-radius:8px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Capacity Gap (Subs)</div>
+        <div style="font-size:22px;font-weight:900;color:{% if cp.rec_cap_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">{{ '%+d'|format(cp.rec_cap_gap) }}</div>
+        <div style="font-size:10px;color:#64748b;">{{ cp.assigned_cap_day }}/day · {{ cp.assigned_cap_month }}/month cap</div>
+      </div>
+    </div>
+
+    <!-- Recruiter name chips -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;">
+      <span style="font-size:10px;font-weight:700;color:#475569;margin-right:4px;">Primary:</span>
+      {% for name in cp.primary_recs %}
+        <span style="background:#dbeafe;color:#1e40af;font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;">{{ name }}</span>
+      {% endfor %}
+      {% if not cp.primary_recs %}<span style="color:#94a3b8;font-size:11px;font-style:italic;">none</span>{% endif %}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;">
+      <span style="font-size:10px;font-weight:700;color:#475569;margin-right:4px;">Secondary:</span>
+      {% for name in cp.secondary_recs %}
+        <span style="background:#e0f2fe;color:#0369a1;font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;">{{ name }}</span>
+      {% endfor %}
+      {% if not cp.secondary_recs %}<span style="color:#94a3b8;font-size:11px;font-style:italic;">none</span>{% endif %}
+    </div>
+
+    <!-- Sum + status row -->
+    <div style="display:flex;gap:20px;font-size:12px;color:#64748b;flex-wrap:wrap;">
+      <span>Sum check: <strong style="color:#1e293b;">{{ cp.daily_plan | sum }}</strong> / {{ cp.monthly_target }}</span>
+      <span>Active days: <strong style="color:#2563eb;">{{ cp.days_needed }}</strong></span>
+      <span>Buffer days: <strong style="color:#94a3b8;">{{ cp.buffer_days }}</strong></span>
+      {% if cp.shortfall %}
+      <span style="color:#dc2626;font-weight:700;">⚠️ Max cap {{ cp.max_per_day }}/day but daily need {{ cp.daily_target | round(0) | int }}/day — add recruiters</span>
+      {% else %}
+      <span style="color:#16a34a;font-weight:600;">✅ Plan achievable within capacity</span>
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endfor %}

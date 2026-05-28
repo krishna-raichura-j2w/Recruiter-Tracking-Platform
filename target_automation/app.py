@@ -568,7 +568,13 @@ def _get_working_days(ref_date_str: str):
 def monthly_plan():
     import math
     setup, customers, recruiters, metrics = get_active_setup()
-    working_days = _get_working_days(date.today().isoformat())
+    # Use setup.month (e.g. "June 2026") to derive working days for the right month
+    try:
+        ref = datetime.strptime(setup['month'], '%B %Y').replace(day=1)
+        ref_str = ref.date().isoformat()
+    except Exception:
+        ref_str = date.today().isoformat()
+    working_days = _get_working_days(ref_str)
 
     customer_plans = []
     for c in metrics['customers']:
@@ -607,6 +613,23 @@ def monthly_plan():
 
         active_days = sum(1 for d in daily_plan if d > 0)
         buffer_days = len(working_days) - active_days
+
+        # Recruiter alignment — per customer breakdown
+        spd = setup['subs_per_recruiter_day']  # benchmark from Assumptions tab
+        primary_recs   = [r for r in recruiters if r['primary_customer']   == c['name']]
+        secondary_recs = [r for r in recruiters if r['secondary_customer'] == c['name']]
+        assigned_all   = primary_recs + secondary_recs
+        assigned_count = len(assigned_all)
+        assigned_cap_day   = sum(r['subs_per_day'] for r in assigned_all)
+        assigned_cap_month = assigned_cap_day * len(working_days)
+
+        # How many full-time recs needed at the benchmark rate
+        recs_needed_full = math.ceil(monthly_target / (spd * len(working_days))) if spd else 0
+        # How many recs needed using their actual individual subs_per_day (may differ from benchmark)
+        recs_needed_actual = math.ceil(monthly_target / len(working_days) / spd) if spd else 0
+        rec_count_gap  = assigned_count - recs_needed_full   # +ve = surplus, -ve = need more
+        rec_cap_gap    = assigned_cap_month - monthly_target  # capacity gap in subs
+
         customer_plans.append({
             'name': c['name'],
             'monthly_target': monthly_target,
@@ -616,6 +639,16 @@ def monthly_plan():
             'buffer_days': buffer_days,
             'daily_plan': daily_plan,
             'shortfall': flat > max_per_day if max_per_day else True,
+            # recruiter fields
+            'spd_benchmark': spd,
+            'primary_recs':   [r['name'] for r in primary_recs],
+            'secondary_recs': [r['name'] for r in secondary_recs],
+            'assigned_count': assigned_count,
+            'assigned_cap_day': assigned_cap_day,
+            'assigned_cap_month': assigned_cap_month,
+            'recs_needed_full': recs_needed_full,
+            'rec_count_gap': rec_count_gap,
+            'rec_cap_gap': rec_cap_gap,
         })
 
     return render_template('plan.html',
