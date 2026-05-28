@@ -38,13 +38,13 @@ Avg PO/OB Blended    = 105 ÷ 40 = 2.625 ₹L
 Each customer has its own Net PO target, exit allocation, and avg revenue per onboard.  
 Five fields are auto-calculated from these inputs.
 
-| Output Field | Formula | Inputs Used | Why |
-|---|---|---|---|
-| **Gross PO** | `Net PO Target + Exit Alloc` | c.net_po_target, c.exit_alloc | Total revenue target for this customer including the exit buffer portion allocated to them |
-| **OBs Needed** | `round(Gross PO ÷ Avg PO/OB)` | gross_po, c.avg_po_per_ob | How many people need to onboard at this customer to hit the revenue target, given their average offer value |
-| **Selects Needed** | `round(OBs Needed ÷ Sel→OB Rate)` | obs_needed, setup.sel_ob_rate | Because not all selects onboard (offer drops, rejections), you need more selects than OBs. Uses the global sel→OB rate |
-| **Daily Selects** | `Selects Needed ÷ Working Days` | selects_needed, setup.working_days | Selects target broken into a daily number so recruiters know how many to close per day |
-| **Daily OBs** | `OBs Needed ÷ Working Days` | obs_needed, setup.working_days | Daily onboarding pace needed to hit the monthly OB target |
+| UI Column Name | Output Field | Formula | Inputs Used | Why |
+|---|---|---|---|---|
+| **Gross PO** | `c.gross_po` | `Net PO Target + Exit Alloc` | c.net_po_target, c.exit_alloc | Total revenue target for this customer including the exit buffer portion allocated to them |
+| **OBs Needed** | `c.obs_needed` | `round(Gross PO ÷ Avg PO/OB)` | gross_po, c.avg_po_per_ob | How many people need to onboard at this customer to hit the revenue target, given their average offer value |
+| **Selects** | `c.selects_needed` | `round(OBs Needed ÷ Sel→OB Rate)` | obs_needed, setup.sel_ob_rate | Because not all selects onboard (offer drops, rejections), you need more selects than OBs. Uses the global sel→OB rate |
+| **Daily Sels** | `c.daily_selects` | `Selects Needed ÷ Working Days` | selects_needed, setup.working_days | Selects target broken into a daily number so recruiters know how many to close per day |
+| **Daily OBs** | `c.daily_obs` | `OBs Needed ÷ Working Days` | obs_needed, setup.working_days | Daily onboarding pace needed to hit the monthly OB target |
 
 **Example** (Deloitte MB defaults):
 ```

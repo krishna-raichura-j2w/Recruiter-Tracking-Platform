@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+{% block page_title %}22-Day Submission Plan{% endblock %}
+{% block page_sub %}{{ setup.pod_name }} · {{ setup.month }} · How {{ metrics.total_subs_needed }} submissions are distributed across {{ working_days|length }} working days{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary KPI strip ──────────────────────────────────────────── -->
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+  {% for cp in customer_plans %}
+  <div class="kpi" style="border-left:3px solid {% if cp.shortfall %}#dc2626{% else %}#2563eb{% endif %};">
+    <div class="kpi-label">{{ cp.name }}</div>
+    <div class="kpi-value" style="font-size:22px;color:{% if cp.shortfall %}#dc2626{% else %}#2563eb{% endif %};">
+      {{ cp.monthly_target }}
+    </div>
+    <div class="kpi-sub">
+      Max {{ cp.max_per_day }}/day ·
+      {% if cp.shortfall %}
+        <span style="color:#dc2626;font-weight:700;">SHORTFALL</span>
+      {% else %}
+        <span style="color:#16a34a;font-weight:700;">{{ cp.days_needed }}d active</span>
+        {% if cp.buffer_days > 0 %} · {{ cp.buffer_days }}d buffer{% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Legend ─────────────────────────────────────────────────────── -->
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;align-items:center;">
+  <span style="font-weight:700;color:#475569;">Legend:</span>
+  <span style="display:flex;align-items:center;gap:5px;">
+    <span style="display:inline-block;width:18px;height:18px;background:#1e3a8a;border-radius:3px;"></span> Full load (≥ 90% of max)
+  </span>
+  <span style="display:flex;align-items:center;gap:5px;">
+    <span style="display:inline-block;width:18px;height:18px;background:#93c5fd;border-radius:3px;"></span> Partial (&lt; 90%)
+  </span>
+  <span style="display:flex;align-items:center;gap:5px;">
+    <span style="display:inline-block;width:18px;height:18px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;"></span> Buffer day (0 subs)
+  </span>
+  <span style="display:flex;align-items:center;gap:5px;">
+    <span style="display:inline-block;width:18px;height:18px;background:#fee2e2;border-radius:3px;"></span> Exceeds capacity (shortfall)
+  </span>
+</div>
+
+<!-- ── Per-customer plan tables ───────────────────────────────────── -->
+{% for cp in customer_plans %}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header" style="background:{% if cp.shortfall %}#fef2f2{% else %}#f8fafc{% endif %};">
+    <div style="flex:1;">
+      <h3>{{ cp.name }}</h3>
+      <div style="font-size:11px;color:#64748b;margin-top:2px;">
+        Monthly target: <strong>{{ cp.monthly_target }}</strong> subs &nbsp;·&nbsp;
+        Recruiter capacity: <strong>{{ cp.max_per_day }}/day</strong> &nbsp;·&nbsp;
+        Daily target: <strong>{{ cp.daily_target }}</strong>/day &nbsp;·&nbsp;
+        Days needed: <strong>{{ cp.days_needed }}/{{ working_days|length }}</strong> &nbsp;·&nbsp;
+        Buffer days: <strong>{{ cp.buffer_days }}</strong>
+      </div>
+    </div>
+    {% if cp.shortfall %}
+    <span class="badge badge-err">⚠️ Exceeds daily capacity</span>
+    {% else %}
+    <span class="badge badge-ok">✅ Achievable</span>
+    {% endif %}
+  </div>
+
+  <!-- Day grid -->
+  <div style="overflow-x:auto;padding:16px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      {% for i in range(working_days|length) %}
+        {% set d = working_days[i] %}
+        {% set subs = cp.daily_plan[i] %}
+        {% set pct = (subs / cp.max_per_day * 100) if cp.max_per_day > 0 else 0 %}
+        {% if subs == 0 %}
+          {% set bg = '#f1f5f9' %}{% set fg = '#94a3b8' %}{% set brd = '#e2e8f0' %}
+        {% elif pct >= 90 %}
+          {% set bg = '#1e3a8a' %}{% set fg = '#ffffff' %}{% set brd = '#1e3a8a' %}
+        {% elif cp.shortfall %}
+          {% set bg = '#fee2e2' %}{% set fg = '#b91c1c' %}{% set brd = '#fecaca' %}
+        {% else %}
+          {% set bg = '#dbeafe' %}{% set fg = '#1e40af' %}{% set brd = '#93c5fd' %}
+        {% endif %}
+        <div style="
+            width:52px;text-align:center;border-radius:8px;border:1px solid {{ brd }};
+            background:{{ bg }};padding:6px 4px;
+          ">
+          <div style="font-size:9px;font-weight:700;color:{{ fg }};opacity:0.75;margin-bottom:2px;">
+            {{ d[8:] }}/{{ d[5:7] }}
+          </div>
+          <div style="font-size:15px;font-weight:900;color:{{ fg }};line-height:1;">
+            {% if subs == 0 %}—{% else %}{{ subs }}{% endif %}
+          </div>
+          <div style="font-size:9px;color:{{ fg }};opacity:0.7;margin-top:1px;">
+            {% if subs > 0 %}subs{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Row totals check -->
+  <div style="padding:0 16px 14px;display:flex;gap:20px;font-size:12px;color:#64748b;">
+    <span>Sum check: <strong style="color:#1e293b;">{{ cp.daily_plan | sum }}</strong> / {{ cp.monthly_target }}</span>
+    <span>Active days: <strong style="color:#2563eb;">{{ cp.days_needed }}</strong></span>
+    <span>Buffer days: <strong style="color:#94a3b8;">{{ cp.buffer_days }}</strong></span>
+    {% if cp.shortfall %}
+    <span style="color:#dc2626;font-weight:700;">⚠️ Need more recruiter capacity — max is {{ cp.max_per_day }}/day but need {{ cp.daily_target | round(0) | int }}/day</span>
+    {% else %}
+    <span style="color:#16a34a;">✅ Plan achievable within capacity</span>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<!-- ── Pod Daily Total row ─────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><h3>Pod Daily Total — All Customers Combined</h3></div>
+  <div style="overflow-x:auto;padding:16px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      {% for i in range(working_days|length) %}
+        {% set d = working_days[i] %}
+        {% set total_subs = namespace(val=0) %}
+        {% for cp in customer_plans %}{% set total_subs.val = total_subs.val + cp.daily_plan[i] %}{% endfor %}
+        {% set pod_max = metrics.rec_cap_day %}
+        {% set pct = (total_subs.val / pod_max * 100) if pod_max > 0 else 0 %}
+        {% if pct >= 90 %}
+          {% set bg = '#1e3a8a' %}{% set fg = '#fff' %}{% set brd = '#1e3a8a' %}
+        {% elif pct > 0 %}
+          {% set bg = '#dbeafe' %}{% set fg = '#1e40af' %}{% set brd = '#93c5fd' %}
+        {% else %}
+          {% set bg = '#f1f5f9' %}{% set fg = '#94a3b8' %}{% set brd = '#e2e8f0' %}
+        {% endif %}
+        <div style="width:52px;text-align:center;border-radius:8px;border:1px solid {{ brd }};background:{{ bg }};padding:6px 4px;">
+          <div style="font-size:9px;font-weight:700;color:{{ fg }};opacity:0.75;margin-bottom:2px;">{{ d[8:] }}/{{ d[5:7] }}</div>
+          <div style="font-size:15px;font-weight:900;color:{{ fg }};line-height:1;">{{ total_subs.val }}</div>
+          <div style="font-size:9px;color:{{ fg }};opacity:0.7;margin-top:1px;">{{ pct | round(0) | int }}%</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div style="padding:0 16px 14px;display:flex;gap:20px;font-size:12px;color:#64748b;">
+    {% set grand = customer_plans | sum(attribute='monthly_target') %}
+    <span>Pod total: <strong style="color:#1e293b;">{{ grand }}</strong> subs / month</span>
+    <span>Max capacity: <strong>{{ metrics.rec_cap_day }}/day</strong> ({{ metrics.rec_cap_day * working_days|length }} / month)</span>
+    <span style="color:{% if metrics.rec_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};font-weight:700;">
+      Gap: {{ '%+d'|format(metrics.rec_gap) }}/day
+    </span>
+  </div>
+</div>
+
+<!-- ── Per-customer breakdown table (numerical) ───────────────────── -->
+<div class="card">
+  <div class="card-header"><h3>Numerical Breakdown — Subs per Day per Customer</h3></div>
+  <div class="tbl-wrap">
+    <table style="font-size:12px;">
+      <thead>
+        <tr>
+          <th style="min-width:120px;">Customer</th>
+          <th class="right" style="background:#e0f2fe;color:#0369a1;font-size:10px;">Max/Day</th>
+          {% for d in working_days %}
+          <th class="right" style="font-size:10px;padding:6px 7px;">{{ d[8:] }}</th>
+          {% endfor %}
+          <th class="right" style="background:#f0fdf4;color:#15803d;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cp in customer_plans %}
+        <tr>
+          <td style="font-weight:600;">{{ cp.name }}</td>
+          <td class="right" style="background:#e0f2fe;color:#0369a1;font-weight:700;">{{ cp.max_per_day }}</td>
+          {% for subs in cp.daily_plan %}
+            {% if subs == 0 %}
+              <td class="right" style="color:#cbd5e1;">—</td>
+            {% elif subs >= cp.max_per_day * 0.9 %}
+              <td class="right" style="background:#dbeafe;color:#1e40af;font-weight:700;">{{ subs }}</td>
+            {% else %}
+              <td class="right" style="color:#475569;">{{ subs }}</td>
+            {% endif %}
+          {% endfor %}
+          <td class="right" style="background:#f0fdf4;color:#15803d;font-weight:800;">{{ cp.daily_plan | sum }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td style="font-weight:800;">Pod Total</td>
+          <td class="right" style="background:#e0f2fe;color:#0369a1;font-weight:700;">{{ metrics.rec_cap_day }}</td>
+          {% for i in range(working_days|length) %}
+            {% set col_total = namespace(val=0) %}
+            {% for cp in customer_plans %}{% set col_total.val = col_total.val + cp.daily_plan[i] %}{% endfor %}
+            <td class="right" style="font-weight:700;color:{% if col_total.val >= metrics.rec_cap_day %}#dc2626{% else %}#1e293b{% endif %};">
+              {{ col_total.val }}
+            </td>
+          {% endfor %}
+          {% set grand_total = customer_plans | sum(attribute='monthly_target') %}
+          <td class="right" style="background:#f0fdf4;color:#15803d;font-weight:800;">{{ grand_total }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

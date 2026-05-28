@@ -88,6 +88,29 @@ def init_db():
             actual_obs INTEGER DEFAULT 0,
             UNIQUE(customer_id, date)
         );
+
+        CREATE TABLE IF NOT EXISTS weekly_ob_targets (
+            id INTEGER PRIMARY KEY,
+            setup_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL,
+            week_num INTEGER NOT NULL,
+            week_label TEXT NOT NULL,
+            week_start TEXT NOT NULL,
+            week_end TEXT NOT NULL,
+            ob_target INTEGER DEFAULT 0,
+            UNIQUE(customer_id, week_num)
+        );
+
+        CREATE TABLE IF NOT EXISTS kams (
+            id INTEGER PRIMARY KEY,
+            setup_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            customer_targets TEXT DEFAULT '{}',
+            total_int_day INTEGER DEFAULT 0,
+            monthly_int INTEGER DEFAULT 0,
+            tat_focus TEXT DEFAULT '',
+            key_action TEXT DEFAULT ''
+        );
     ''')
 
     c.execute('SELECT COUNT(*) as cnt FROM setup')
@@ -138,8 +161,66 @@ def init_db():
             c.execute('''INSERT INTO recruiters (setup_id, name, subs_per_day, primary_customer, secondary_customer)
                          VALUES (?,?,?,?,?)''', (sid, *row))
 
+        _seed_weekly_obs(c, sid)
+        _seed_kams(c, sid)
+
+    else:
+        # Seed new tables for existing setup if empty
+        sid = c.execute('SELECT id FROM setup ORDER BY id DESC LIMIT 1').fetchone()['id']
+        if c.execute('SELECT COUNT(*) FROM weekly_ob_targets WHERE setup_id=?', (sid,)).fetchone()[0] == 0:
+            _seed_weekly_obs(c, sid)
+        if c.execute('SELECT COUNT(*) FROM kams WHERE setup_id=?', (sid,)).fetchone()[0] == 0:
+            _seed_kams(c, sid)
+
     conn.commit()
     conn.close()
+
+
+def _seed_weekly_obs(c, sid):
+    # Weekly OB targets from Deepak Pod June 2026 Excel Sheet 2
+    # Weeks: W1=Jun1-5, W2=Jun8-12, W3=Jun15-19, W4=Jun22-26, W5=Jun29-30
+    weeks = [
+        (1, 'Week 1 (Jun 1–5)',   '2026-06-01', '2026-06-05'),
+        (2, 'Week 2 (Jun 8–12)',  '2026-06-08', '2026-06-12'),
+        (3, 'Week 3 (Jun 15–19)', '2026-06-15', '2026-06-19'),
+        (4, 'Week 4 (Jun 22–26)', '2026-06-22', '2026-06-26'),
+        (5, 'Week 5 (Jun 29–30)', '2026-06-29', '2026-06-30'),
+    ]
+    # customer_name → [W1, W2, W3, W4, W5]
+    ob_data = {
+        'Deloitte MB':    [6, 7, 6, 6, 3],
+        'DTICI':          [3, 4, 3, 4, 1],
+        'BSH':            [2, 2, 2, 2, 1],
+        'Arcelor Mittal': [1, 1, 1, 1, 0],
+        'Pure Storage':   [1, 1, 1, 1, 0],
+    }
+    for cname, targets in ob_data.items():
+        row = c.execute('SELECT id FROM customers WHERE setup_id=? AND name=?', (sid, cname)).fetchone()
+        if not row:
+            continue
+        cid = row['id'] if hasattr(row, '__getitem__') and 'id' in row.keys() else row[0]
+        for (wnum, wlabel, wstart, wend), ob_tgt in zip(weeks, targets):
+            c.execute('''INSERT OR IGNORE INTO weekly_ob_targets
+                         (setup_id, customer_id, week_num, week_label, week_start, week_end, ob_target)
+                         VALUES (?,?,?,?,?,?,?)''',
+                      (sid, cid, wnum, wlabel, wstart, wend, ob_tgt))
+
+
+def _seed_kams(c, sid):
+    kams_data = [
+        ('Saravanan P',     {'Deloitte MB': 4, 'DTICI': 2, 'BSH': 2, 'Arcelor Mittal': 2, 'Pure Storage': 1}, 11, 242,
+         'Reduce TAT → target 7–8 days', 'BSH & Deloitte — confirm slots 24h ahead. Reduce TAT for L1 to ≤8 days'),
+        ('Tamil C',         {'Deloitte MB': 4, 'DTICI': 2, 'BSH': 1, 'Arcelor Mittal': 1, 'Pure Storage': 1}, 9, 198,
+         'Reduce TAT → target 7–8 days', 'DTICI & BSH — ensure L2 slots available. Feedback within 24h'),
+        ('Smithesh Sukumar', {'Deloitte MB': 3, 'DTICI': 2, 'BSH': 2, 'Arcelor Mittal': 1, 'Pure Storage': 1}, 9, 198,
+         'Reduce TAT → target 7–8 days', 'Arcelor & Deloitte — lock slots with procurement team. Proactive follow-up'),
+        ('Rajat Tyagi',     {'Deloitte MB': 3, 'DTICI': 1, 'BSH': 1, 'Arcelor Mittal': 2, 'Pure Storage': 1}, 8, 176,
+         'Reduce TAT → target 7–8 days', 'DTICI & Arcelor — build relationship with hiring managers. Weekly call'),
+    ]
+    for name, targets, total_day, monthly, tat, action in kams_data:
+        c.execute('''INSERT INTO kams (setup_id, name, customer_targets, total_int_day, monthly_int, tat_focus, key_action)
+                     VALUES (?,?,?,?,?,?,?)''',
+                  (sid, name, json.dumps(targets), total_day, monthly, tat, action))
 
 
 def compute_metrics(setup, customers, recruiters):
@@ -244,6 +325,22 @@ def compute_metrics(setup, customers, recruiters):
     }
 
 
+def _get_week_info(date_str):
+    """Return (week_num, week_start, week_end, week_label) for the given date, or None if not in a known week."""
+    d = date.fromisoformat(date_str)
+    weeks = [
+        (1, date(2026,6,1),  date(2026,6,5),  'Week 1 (Jun 1–5)'),
+        (2, date(2026,6,8),  date(2026,6,12), 'Week 2 (Jun 8–12)'),
+        (3, date(2026,6,15), date(2026,6,19), 'Week 3 (Jun 15–19)'),
+        (4, date(2026,6,22), date(2026,6,26), 'Week 4 (Jun 22–26)'),
+        (5, date(2026,6,29), date(2026,6,30), 'Week 5 (Jun 29–30)'),
+    ]
+    for wnum, wstart, wend, wlabel in weeks:
+        if wstart <= d <= wend:
+            return wnum, wstart.isoformat(), wend.isoformat(), wlabel
+    return None, None, None, None
+
+
 def get_active_setup():
     conn = get_db()
     setup = row_to_dict(conn.execute('SELECT * FROM setup ORDER BY id DESC LIMIT 1').fetchone())
@@ -263,7 +360,18 @@ def get_active_setup():
 @app.route('/')
 def dashboard():
     setup, customers, recruiters, metrics = get_active_setup()
-    return render_template('dashboard.html', setup=setup, metrics=metrics)
+    conn = get_db()
+    sid = setup['id']
+    kams_raw = rows_to_list(conn.execute('SELECT * FROM kams WHERE setup_id=? ORDER BY id', (sid,)).fetchall())
+    for k in kams_raw:
+        k['customer_targets'] = json.loads(k['customer_targets'])
+    # Weekly OB targets: {customer_id: {week_num: ob_target}}
+    weekly_rows = rows_to_list(conn.execute(
+        'SELECT * FROM weekly_ob_targets WHERE setup_id=? ORDER BY customer_id, week_num', (sid,)).fetchall())
+    weeks_meta = [(1,'W1\nJun 1–5'),(2,'W2\nJun 8–12'),(3,'W3\nJun 15–19'),(4,'W4\nJun 22–26'),(5,'W5\nJun 29–30')]
+    conn.close()
+    return render_template('dashboard.html', setup=setup, metrics=metrics, kams=kams_raw,
+                           weekly_rows=weekly_rows, weeks_meta=weeks_meta)
 
 
 @app.route('/assumptions', methods=['GET', 'POST'])
@@ -408,6 +516,23 @@ def daily():
     ).fetchall()
     monthly_actuals = {r['customer_id']: dict(r) for r in monthly_rows}
 
+    # Weekly OB data for current week
+    wnum, wstart, wend, wlabel = _get_week_info(sel_date)
+    week_ob_targets = {}
+    week_ob_actuals = {}
+    if wnum:
+        wtgts = rows_to_list(conn.execute(
+            'SELECT customer_id, ob_target, week_label FROM weekly_ob_targets WHERE setup_id=? AND week_num=?',
+            (sid, wnum)).fetchall())
+        week_ob_targets = {r['customer_id']: r for r in wtgts}
+
+        wact_rows = conn.execute(
+            '''SELECT customer_id, SUM(actual_obs) as obs
+               FROM daily_actuals WHERE setup_id=? AND date>=? AND date<=?
+               GROUP BY customer_id''',
+            (sid, wstart, wend)).fetchall()
+        week_ob_actuals = {r['customer_id']: r['obs'] or 0 for r in wact_rows}
+
     working_days_list = _get_working_days(sel_date)
     conn.close()
 
@@ -418,7 +543,11 @@ def daily():
                            monthly_actuals=monthly_actuals,
                            sel_date=sel_date,
                            working_days=working_days_list,
-                           metrics=metrics)
+                           metrics=metrics,
+                           week_num=wnum,
+                           week_label=wlabel,
+                           week_ob_targets=week_ob_targets,
+                           week_ob_actuals=week_ob_actuals)
 
 
 def _get_working_days(ref_date_str: str):
@@ -433,6 +562,66 @@ def _get_working_days(ref_date_str: str):
             days.append(cur.isoformat())
         cur += timedelta(days=1)
     return days
+
+
+@app.route('/plan')
+def monthly_plan():
+    import math
+    setup, customers, recruiters, metrics = get_active_setup()
+    working_days = _get_working_days(date.today().isoformat())
+
+    customer_plans = []
+    for c in metrics['customers']:
+        monthly_target = c['monthly_subs']
+        # Max subs this customer can receive per day (all assigned recruiters)
+        max_per_day = sum(
+            r['subs_per_day'] for r in recruiters
+            if r['primary_customer'] == c['name'] or r['secondary_customer'] == c['name']
+        )
+        if max_per_day == 0:
+            daily_plan = [0] * len(working_days)
+            days_needed = 0
+        else:
+            days_needed = math.ceil(monthly_target / max_per_day)
+            days_needed = min(days_needed, len(working_days))
+            flat = monthly_target / len(working_days)
+
+            if flat <= max_per_day:
+                # Distribute evenly — base + 1 for the first `remainder` days
+                base = monthly_target // len(working_days)
+                extra = monthly_target % len(working_days)
+                daily_plan = [base + (1 if i < extra else 0) for i in range(len(working_days))]
+            else:
+                # Shortfall: max out each day until target is met, rest = 0
+                daily_plan = []
+                remaining = monthly_target
+                for i in range(len(working_days)):
+                    if remaining >= max_per_day:
+                        daily_plan.append(max_per_day)
+                        remaining -= max_per_day
+                    elif remaining > 0:
+                        daily_plan.append(remaining)
+                        remaining = 0
+                    else:
+                        daily_plan.append(0)
+
+        active_days = sum(1 for d in daily_plan if d > 0)
+        buffer_days = len(working_days) - active_days
+        customer_plans.append({
+            'name': c['name'],
+            'monthly_target': monthly_target,
+            'max_per_day': max_per_day,
+            'daily_target': c['daily_subs'],
+            'days_needed': days_needed,
+            'buffer_days': buffer_days,
+            'daily_plan': daily_plan,
+            'shortfall': flat > max_per_day if max_per_day else True,
+        })
+
+    return render_template('plan.html',
+                           setup=setup, metrics=metrics,
+                           working_days=working_days,
+                           customer_plans=customer_plans)
 
 
 @app.route('/api/metrics')

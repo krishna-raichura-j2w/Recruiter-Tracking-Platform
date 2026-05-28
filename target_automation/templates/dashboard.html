@@ -12,6 +12,158 @@
 {% set m = metrics %}
 {% set custs = m.customers %}
 
+<!-- ── June Summary Panel (mirrors Sheet 2 top) ───────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>June 2026 — Monthly Targets at a Glance</h3>
+    <div style="font-size:11px;color:#94a3b8;">Source: Deepak Pod Target Model · All targets auto-calculated</div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th class="right" style="color:#fbbf24;">TOTAL</th>
+          {% for c in custs %}<th class="right">{{ c.name }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:600;">Monthly Subs Needed</td>
+          <td class="right" style="font-weight:800;color:#2563eb;">{{ m.total_subs_needed }}</td>
+          {% for c in custs %}<td class="right">{{ c.monthly_subs }}</td>{% endfor %}
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="font-weight:600;">Monthly Interviews Needed</td>
+          <td class="right" style="font-weight:800;color:#7c3aed;">{{ m.total_monthly_interviews }}</td>
+          {% for c in custs %}<td class="right">{{ c.monthly_interviews }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td style="font-weight:600;">Monthly Selects Target</td>
+          <td class="right" style="font-weight:800;color:#059669;">{{ m.total_selects_needed }}</td>
+          {% for c in custs %}<td class="right">{{ c.selects_needed }}</td>{% endfor %}
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="font-weight:600;">Monthly Onboards Target</td>
+          <td class="right" style="font-weight:800;color:#dc2626;">{{ m.total_obs_needed }}</td>
+          {% for c in custs %}<td class="right">{{ c.obs_needed }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td style="font-weight:600;">Daily Subs Target</td>
+          <td class="right" style="font-weight:800;color:#2563eb;">{{ m.subs_day }}</td>
+          {% for c in custs %}<td class="right" style="color:#64748b;">{{ c.daily_subs }}</td>{% endfor %}
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="font-weight:600;">Daily Interviews Target</td>
+          <td class="right" style="font-weight:800;color:#7c3aed;">{{ m.int_day }}</td>
+          {% for c in custs %}<td class="right" style="color:#64748b;">{{ c.target_interviews_day }}</td>{% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Weekly OB Targets (Sheet 2 Friday checkpoints) ─────────────── -->
+{% if weekly_rows %}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>Weekly OB Targets — June 2026 (Friday Checkpoints)</h3>
+    <div style="font-size:11px;color:#94a3b8;">OBs are front-loaded; May selections joining in June count toward Week 1</div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          {% for wnum, wlabel in weeks_meta %}
+          <th class="right" style="white-space:pre-line;font-size:10px;">{{ wlabel }}</th>
+          {% endfor %}
+          <th class="right" style="color:#7c3aed;">Total OBs</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set ns = namespace(pod_totals=[0,0,0,0,0]) %}
+        {% for c in custs %}
+          {% set cust_wobs = weekly_rows | selectattr('customer_id','equalto',c.id) | list %}
+          {% set wob_map = {} %}
+          {% for r in cust_wobs %}{% if wob_map.update({r.week_num: r.ob_target}) %}{% endif %}{% endfor %}
+          <tr {% if loop.index is odd %}{% else %}style="background:#f8fafc;"{% endif %}>
+            <td style="font-weight:600;">{{ c.name }}</td>
+            {% for wnum, _ in weeks_meta %}
+              {% set tgt = wob_map.get(wnum, 0) %}
+              <td class="right" style="font-weight:700;color:{% if tgt > 0 %}#7c3aed{% else %}#cbd5e1{% endif %};">
+                {% if tgt > 0 %}{{ tgt }}{% else %}·{% endif %}
+              </td>
+            {% endfor %}
+            <td class="right" style="font-weight:800;color:#7c3aed;">{{ c.obs_needed }}</td>
+          </tr>
+        {% endfor %}
+        <tr style="border-top:2px solid #e2e8f0;">
+          <td style="font-weight:800;">Pod Total</td>
+          {% for wnum, _ in weeks_meta %}
+            {% set week_sum = weekly_rows | selectattr('week_num','equalto',wnum) | sum(attribute='ob_target') %}
+            <td class="right" style="font-weight:800;color:#1e293b;">{{ week_sum }}</td>
+          {% endfor %}
+          <td class="right" style="font-weight:800;color:#7c3aed;">{{ m.total_obs_needed }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── KAM Interview Breakdown ─────────────────────────────────────── -->
+{% if kams %}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>KAM Interview Assignments — Per Customer</h3>
+    <div style="font-size:11px;color:#94a3b8;">Target: reduce TAT to ≤8 days · {{ setup.num_kams }} KAMs × {{ setup.interviews_per_kam_day }} int/day = {{ m.kam_cap_day }} capacity · Need {{ m.int_day }}/day · Gap:
+      <strong style="color:{% if m.kam_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">{{ '%+d'|format(m.kam_gap) }}</strong>
+      {% if m.kams_needed > 0 %}<span style="color:#dc2626;"> — Need {{ m.kams_needed }} more KAM</span>{% endif %}
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>KAM Name</th>
+          {% for c in custs %}<th class="right" style="font-size:10px;">{{ c.name }}<br><span style="color:#94a3b8;font-weight:400;">Int/Day</span></th>{% endfor %}
+          <th class="right">Total/Day</th>
+          <th class="right">Monthly Int</th>
+          <th style="min-width:200px;">Key Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for k in kams %}
+        <tr {% if loop.index is even %}style="background:#f8fafc;"{% endif %}>
+          <td style="font-weight:600;">{{ k.name }}</td>
+          {% for c in custs %}
+            {% set v = k.customer_targets.get(c.name, 0) %}
+            <td class="right" style="color:{% if v > 0 %}#2563eb{% else %}#cbd5e1{% endif %};font-weight:{% if v > 0 %}700{% else %}400{% endif %};">
+              {% if v > 0 %}{{ v }}{% else %}—{% endif %}
+            </td>
+          {% endfor %}
+          <td class="right" style="font-weight:800;">{{ k.total_int_day }}</td>
+          <td class="right" style="color:#64748b;">{{ k.monthly_int }}</td>
+          <td style="font-size:11px;color:#475569;max-width:220px;white-space:normal;">{{ k.key_action }}</td>
+        </tr>
+        {% endfor %}
+        <tr style="border-top:2px solid #e2e8f0;">
+          <td style="font-weight:800;">Total / Day</td>
+          {% for c in custs %}
+            {% set col_total = kams | sum(attribute='customer_targets.' + c.name) %}
+            <td class="right" style="font-weight:800;">{{ col_total }}</td>
+          {% endfor %}
+          <td class="right" style="font-weight:800;">{{ kams | sum(attribute='total_int_day') }}</td>
+          <td class="right" style="color:#64748b;">{{ kams | sum(attribute='monthly_int') }}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── Section A: KPI Grid (6 cols) ───────────────────────────────── -->
 <div class="kpi-grid" style="grid-template-columns: repeat(6, 1fr); margin-bottom: 24px;">
 

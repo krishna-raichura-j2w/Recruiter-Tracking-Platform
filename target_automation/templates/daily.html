@@ -83,6 +83,71 @@
   </form>
 </div>
 
+<!-- Weekly OB Checkpoint -->
+{% if week_num and week_ob_targets %}
+<div class="card" style="margin-bottom:16px;border-left:4px solid #7c3aed;">
+  <div class="card-header">
+    <div>
+      <h3>Weekly OB Checkpoint — {{ week_label }}</h3>
+      <div style="font-size:11px;color:#94a3b8;margin-top:2px;">OBs are tracked weekly (Friday checkpoints). Cumulative actuals for this week shown below.</div>
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th class="right" style="color:#7c3aed;">Week OB Target</th>
+          <th class="right">Actual OBs This Week</th>
+          <th class="right">Remaining</th>
+          <th class="center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set pod_tgt = 0 %}{% set pod_act = 0 %}
+        {% for c in customers %}
+          {% set wtgt = week_ob_targets.get(c.id, {}).get('ob_target', 0) %}
+          {% set wact = week_ob_actuals.get(c.id, 0) %}
+          {% set rem = wtgt - wact %}
+          {% set pod_tgt = pod_tgt + wtgt %}{% set pod_act = pod_act + wact %}
+          <tr>
+            <td><strong>{{ c.name }}</strong></td>
+            <td class="right" style="font-weight:800;color:#7c3aed;">{{ wtgt }}</td>
+            <td class="right" style="font-weight:700;">{{ wact }}</td>
+            <td class="right" style="font-weight:600;color:{% if rem <= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+              {% if rem <= 0 %}✅ Done{% else %}{{ rem }} left{% endif %}
+            </td>
+            <td class="center">
+              {% if wtgt == 0 %}
+                <span class="badge" style="background:#f1f5f9;color:#64748b;">No target</span>
+              {% elif wact >= wtgt %}
+                <span class="badge badge-ok">On Track</span>
+              {% elif wact > 0 %}
+                <span class="badge" style="background:#fef9c3;color:#92400e;">In Progress</span>
+              {% else %}
+                <span class="badge badge-err">Not Started</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        <tr style="border-top:2px solid #e2e8f0;">
+          <td style="font-weight:800;">Pod Total</td>
+          <td class="right" style="font-weight:800;color:#7c3aed;">{{ pod_tgt }}</td>
+          <td class="right" style="font-weight:800;">{{ pod_act }}</td>
+          <td class="right" style="font-weight:800;color:{% if pod_act >= pod_tgt %}#16a34a{% else %}#dc2626{% endif %};">
+            {% if pod_act >= pod_tgt %}✅{% else %}{{ pod_tgt - pod_act }} left{% endif %}
+          </td>
+          <td class="center">
+            {% if pod_act >= pod_tgt %}<span class="badge badge-ok">On Track</span>
+            {% else %}<span class="badge badge-err">Behind</span>{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <!-- Monthly Progress -->
 <div class="card" style="margin-bottom:20px;">
   <div class="card-header"><h3>Monthly Progress — {{ sel_date[:7] }}</h3></div>
