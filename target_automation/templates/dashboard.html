@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block page_sub %}{{ setup.pod_name }} · {{ setup.month }} · {{ setup.working_days }} working days{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{{ url_for('assumptions') }}" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">Edit Assumptions →</a>
+{% endblock %}
+
+{% block content %}
+{% set m = metrics %}
+{% set custs = m.customers %}
+
+<!-- ── Section A: KPI Grid (6 cols) ───────────────────────────────── -->
+<div class="kpi-grid" style="grid-template-columns: repeat(6, 1fr); margin-bottom: 24px;">
+
+  <div class="kpi">
+    <div class="kpi-label">Net PO Target</div>
+    <div class="kpi-value c-blue">₹{{ setup.net_po_target }}L</div>
+    <div class="kpi-sub">June 2026 goal</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Gross PO Needed</div>
+    <div class="kpi-value c-slate">₹{{ m.gross_po_needed }}L</div>
+    <div class="kpi-sub">incl. exit budget</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">OBs Needed</div>
+    <div class="kpi-value c-violet">{{ m.total_obs_needed }}</div>
+    <div class="kpi-sub">onboardings</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Selects Needed</div>
+    <div class="kpi-value c-blue">{{ m.total_selects_needed }}</div>
+    <div class="kpi-sub">sel→OB {{ (setup.sel_ob_rate * 100) | int }}%</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Monthly Subs</div>
+    <div class="kpi-value c-orange">{{ m.total_subs_needed }}</div>
+    <div class="kpi-sub">submissions target</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Monthly Interviews</div>
+    <div class="kpi-value c-rose">{{ m.total_monthly_interviews }}</div>
+    <div class="kpi-sub">{{ m.int_day }}/day target</div>
+  </div>
+
+</div>
+
+<!-- ── Capacity Alert Cards ────────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+
+  <!-- Recruiter Capacity -->
+  <div class="cap-card {% if m.rec_gap >= 0 %}ok{% else %}err{% endif %}">
+    <div style="font-size:12px;font-weight:800;color:{% if m.rec_gap >= 0 %}#15803d{% else %}#b91c1c{% endif %};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">
+      Recruiter Capacity
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Need / Day</div>
+        <div style="font-size:20px;font-weight:900;color:#1e293b;">{{ m.subs_day }}</div>
+        <div style="font-size:11px;color:#64748b;">subs/day</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Capacity / Day</div>
+        <div style="font-size:20px;font-weight:900;color:#1e293b;">{{ m.rec_cap_day }}</div>
+        <div style="font-size:11px;color:#64748b;">{{ setup.num_recruiters }} recs × {{ setup.subs_per_recruiter_day }}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Gap</div>
+        <div style="font-size:20px;font-weight:900;color:{% if m.rec_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+          {% if m.rec_gap >= 0 %}+{% endif %}{{ m.rec_gap }}
+        </div>
+        {% if m.recs_needed is defined and m.recs_needed > 0 %}
+        <div style="font-size:11px;color:#dc2626;font-weight:600;">Need {{ m.recs_needed }} more recruiters</div>
+        {% else %}
+        <div style="font-size:11px;color:#16a34a;font-weight:600;">Sufficient capacity</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- KAM Interview Capacity -->
+  <div class="cap-card {% if m.kam_gap >= 0 %}ok{% else %}err{% endif %}">
+    <div style="font-size:12px;font-weight:800;color:{% if m.kam_gap >= 0 %}#15803d{% else %}#b91c1c{% endif %};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">
+      KAM Interview Capacity
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Need / Day</div>
+        <div style="font-size:20px;font-weight:900;color:#1e293b;">{{ m.int_day }}</div>
+        <div style="font-size:11px;color:#64748b;">interviews/day</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Capacity / Day</div>
+        <div style="font-size:20px;font-weight:900;color:#1e293b;">{{ m.kam_cap_day }}</div>
+        <div style="font-size:11px;color:#64748b;">{{ setup.num_kams }} KAMs × {{ setup.interviews_per_kam_day }}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px;">Gap</div>
+        <div style="font-size:20px;font-weight:900;color:{% if m.kam_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+          {% if m.kam_gap >= 0 %}+{% endif %}{{ m.kam_gap }}
+        </div>
+        <div style="font-size:11px;color:{% if m.kam_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};font-weight:600;">
+          {% if m.kam_gap >= 0 %}Sufficient capacity{% else %}Shortfall{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Section B: Customer Targets Table ──────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>Section B — Customer Targets</h3>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th class="right">Net PO ₹L</th>
+          <th class="right">Exit ₹L</th>
+          <th class="right" style="color:#2563eb;">Gross PO ₹L</th>
+          <th class="right">Avg PO/OB</th>
+          <th class="right" style="color:#7c3aed;">OBs Needed</th>
+          <th class="right">Selects</th>
+          <th class="right">Daily Sels</th>
+          <th class="right">Daily OBs</th>
+          <th class="right">Carry-Fwd</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in custs %}
+        <tr>
+          <td style="font-weight:600;">{{ c.name }}</td>
+          <td class="right">{{ c.net_po_target }}</td>
+          <td class="right" style="color:#64748b;">{{ c.exit_alloc }}</td>
+          <td class="right" style="color:#2563eb;font-weight:700;">{{ c.gross_po }}</td>
+          <td class="right">{{ c.avg_po_per_ob }}</td>
+          <td class="right" style="color:#7c3aed;font-weight:700;">{{ c.obs_needed }}</td>
+          <td class="right">{{ c.selects_needed }}</td>
+          <td class="right">{{ c.daily_selects }}</td>
+          <td class="right">{{ c.daily_obs }}</td>
+          <td class="right" style="color:#64748b;">{{ c.may_carryforward_obs }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td style="font-weight:800;">TOTAL</td>
+          <td class="right">{{ setup.net_po_target }}</td>
+          <td class="right">{{ setup.exit_budget }}</td>
+          <td class="right" style="color:#2563eb;">{{ m.gross_po_needed }}</td>
+          <td class="right" style="color:#64748b;font-weight:400;font-style:italic;">blended</td>
+          <td class="right" style="color:#7c3aed;">{{ m.total_obs_needed }}</td>
+          <td class="right">{{ m.total_selects_needed }}</td>
+          <td class="right" style="color:#94a3b8;">—</td>
+          <td class="right" style="color:#94a3b8;">—</td>
+          <td class="right" style="color:#94a3b8;">—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- ── Sections B2 & C: Demand + Funnel Table ─────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>Sections B2 &amp; C — Demand Pool &amp; Funnel</h3>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th class="right">Demand Pool</th>
+          <th class="right">Mthly Subs</th>
+          <th class="right">Subs/Day</th>
+          <th class="right">Int/Day</th>
+          <th class="right">Mthly Int</th>
+          <th class="right" style="color:#d97706;">Sub→Int Req</th>
+          <th class="right">Int→Sel Tgt</th>
+          <th class="right" style="color:#059669;">Exp Selects</th>
+          <th class="right">Capacity</th>
+          <th class="right">Gap</th>
+          <th class="center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in custs %}
+        {% set gap_positive = c.subs_gap >= 0 %}
+        <tr>
+          <td style="font-weight:600;">{{ c.name }}</td>
+          <td class="right">{{ c.open_demand_pool }}</td>
+          <td class="right" style="font-weight:700;">{{ c.monthly_subs }}</td>
+          <td class="right">{{ c.daily_subs }}</td>
+          <td class="right">{{ c.target_interviews_day }}</td>
+          <td class="right">{{ c.monthly_interviews }}</td>
+          <td class="right" style="color:#d97706;font-weight:600;">{{ (c.sub_int_required * 100) | round(1) }}%</td>
+          <td class="right">{{ (c.int_sel_target * 100) | round(1) }}%</td>
+          <td class="right" style="color:#059669;font-weight:700;">{{ c.expected_selects }}</td>
+          <td class="right">{{ c.monthly_subs_capacity }}</td>
+          <td class="right" style="font-weight:700;color:{% if gap_positive %}#16a34a{% else %}#dc2626{% endif %};">
+            {% if gap_positive %}+{% endif %}{{ c.subs_gap }}
+          </td>
+          <td class="center">
+            {% if gap_positive %}
+              <span class="badge badge-ok">On Track</span>
+            {% else %}
+              <span class="badge badge-err">At Risk</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td style="font-weight:800;">TOTAL</td>
+          <td class="right">—</td>
+          <td class="right" style="font-weight:800;">{{ m.total_subs_needed }}</td>
+          <td class="right">{{ m.subs_day }}</td>
+          <td class="right">{{ m.int_day }}</td>
+          <td class="right">{{ m.total_monthly_interviews }}</td>
+          <td class="right" style="color:#d97706;">—</td>
+          <td class="right">—</td>
+          <td class="right" style="color:#059669;">{{ m.total_selects_needed }}</td>
+          <td class="right">{{ m.rec_cap_day * setup.working_days }}</td>
+          <td class="right" style="font-weight:800;color:{% if m.rec_gap >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            {% if m.rec_gap >= 0 %}+{% endif %}{{ m.rec_gap }}
+          </td>
+          <td class="center">
+            {% if m.rec_gap >= 0 %}
+              <span class="badge badge-ok">OK</span>
+            {% else %}
+              <span class="badge badge-err">Gap</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- ── Section A Summary Strip (4-col) ────────────────────────────── -->
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+
+  <div class="kpi">
+    <div class="kpi-label">Target Selects / Month</div>
+    <div class="kpi-value c-blue">{{ m.total_selects_needed }}</div>
+    <div class="kpi-sub">across all customers</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Sel → OB Rate</div>
+    <div class="kpi-value c-orange">{{ (setup.sel_ob_rate * 100) | int }}%</div>
+    <div class="kpi-sub">conversion assumption</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Target Onboards</div>
+    <div class="kpi-value c-emerald">{{ m.total_obs_needed }}</div>
+    <div class="kpi-sub">this month</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Avg PO/OB Blended</div>
+    <div class="kpi-value c-violet">
+      ₹{% if m.total_obs_needed > 0 %}{{ ((m.gross_po_needed / m.total_obs_needed) | round(1)) }}{% else %}—{% endif %}L
+    </div>
+    <div class="kpi-sub">blended across customers</div>
+  </div>
+
+</div>
+
+{% endblock %}
