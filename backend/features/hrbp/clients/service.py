@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from infra.hrbp_models import HRBPClient, HRBPConsultant
 from infra.models import User
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from features.hrbp.clients.schema import ClientCreate, ClientUpdate
 
@@ -63,20 +63,26 @@ def list_paginated(
         .subquery()
     )
 
+    HrbpUser = aliased(User)
+    BhUser = aliased(User)
+
     q = (
         db.query(
             HRBPClient.id,
             HRBPClient.name,
             HRBPClient.industry,
+            HRBPClient.hrbp_id,
+            HrbpUser.name.label("hrbp_name"),
             HRBPClient.bh_id,
-            User.name.label("bh_name"),
+            BhUser.name.label("bh_name"),
             HRBPClient.is_active,
             HRBPClient.created_at,
             HRBPClient.updated_at,
             func.coalesce(consultant_sub.c.headcount, 0).label("headcount"),
             func.coalesce(consultant_sub.c.total_monthly_po, 0).label("total_monthly_po"),
         )
-        .outerjoin(User, HRBPClient.bh_id == User.id)
+        .outerjoin(HrbpUser, HRBPClient.hrbp_id == HrbpUser.id)
+        .outerjoin(BhUser, HRBPClient.bh_id == BhUser.id)
         .outerjoin(consultant_sub, HRBPClient.id == consultant_sub.c.client_id)
     )
 
