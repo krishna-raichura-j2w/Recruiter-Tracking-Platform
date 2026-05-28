@@ -36,6 +36,9 @@ class ConsultantCreate(BaseModel):
     perf_tier: PerfTierType | None = None
     monthly_po: Decimal | None = None
     monthly_ctc: Decimal | None = None
+    yearly_ctc: Decimal | None = None
+    designation: str | None = None
+    margin: Decimal | None = None
     po_end_date: date | None = None
     join_date: date | None = None
     bh_feedback: BhFeedback | None = None
@@ -54,11 +57,14 @@ class ConsultantUpdate(BaseModel):
     phone: str | None = None
     manager_name: str | None = None
     modality: str | None = None
+    designation: str | None = None
     skill: str | None = None
     cohort: CohortType | None = None
     perf_tier: PerfTierType | None = None
     monthly_po: Decimal | None = None
     monthly_ctc: Decimal | None = None
+    yearly_ctc: Decimal | None = None
+    margin: Decimal | None = None
     po_end_date: date | None = None
     join_date: date | None = None
     bh_feedback: BhFeedback | None = None
@@ -80,11 +86,14 @@ class ConsultantResponse(BaseModel):
     hrbp_id: int
     manager_name: str | None
     modality: str | None
+    designation: str | None
     skill: str | None
     cohort: str | None
     perf_tier: str | None
     monthly_po: Decimal | None
     monthly_ctc: Decimal | None
+    yearly_ctc: Decimal | None
+    margin: Decimal | None
     po_end_date: date | None
     join_date: date | None
     bh_feedback: str | None

@@ -192,9 +192,9 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
 
             monthly_po = _parse_number(_get("monthly_po"))
 
-            # ctc in Excel is annual CTC; convert to monthly
-            ctc_annual = _parse_number(_get("ctc"))
-            monthly_ctc = (ctc_annual / 12).quantize(Decimal("0.01")) if ctc_annual else None
+            # ctc in Excel is annual CTC; store as yearly_ctc and derive monthly_ctc
+            yearly_ctc = _parse_number(_get("ctc")) or _parse_number(_get("yearly_ctc"))
+            monthly_ctc = (yearly_ctc / 12).quantize(Decimal("0.01")) if yearly_ctc else None
 
             is_active_val = _get("is_active")
             is_active = bool(is_active_val) if is_active_val is not None else True
@@ -203,7 +203,10 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
             skill = str(skill_val).strip() if skill_val else None
 
             designation_val = _get("designation")
-            modality = str(designation_val).strip() if designation_val else None
+            designation = str(designation_val).strip() if designation_val else None
+            modality = designation  # keep modality in sync with designation
+
+            margin = _parse_number(_get("margin"))
 
             po_end_dt = _get("po_end_date")
             po_end_date = po_end_dt.date() if isinstance(po_end_dt, datetime) else po_end_dt
@@ -228,12 +231,18 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
                     existing.monthly_po = monthly_po
                 if monthly_ctc is not None:
                     existing.monthly_ctc = monthly_ctc
+                if yearly_ctc is not None:
+                    existing.yearly_ctc = yearly_ctc
+                if margin is not None:
+                    existing.margin = margin
                 if join_date:
                     existing.join_date = join_date
                 if po_end_date:
                     existing.po_end_date = po_end_date
                 if skill:
                     existing.skill = skill
+                if designation:
+                    existing.designation = designation
                 if modality:
                     existing.modality = modality
                 if client_id is not None:
@@ -257,9 +266,12 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
                     email=email,
                     monthly_po=monthly_po,
                     monthly_ctc=monthly_ctc,
+                    yearly_ctc=yearly_ctc,
+                    margin=margin,
                     join_date=join_date,
                     po_end_date=po_end_date,
                     skill=skill,
+                    designation=designation,
                     modality=modality,
                     client_id=client_id,
                     hrbp_id=hrbp_id,
