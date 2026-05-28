@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, UserCog, Loader2 } from "lucide-react";
+import { Plus, Search, UserCog, Loader2, Upload, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "react-toastify";
 import dayjs, { type Dayjs } from "dayjs";
 import { LottieIcon } from "@/components/LottieIcon";
@@ -20,7 +20,7 @@ import { TableLoader } from "@/components/Loader";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { CustomDatePicker } from "@/components/CustomDatePicker";
 import { CustomSelect } from "@/components/CustomSelect";
-import { getConsultantsApi, getClientsApi, fetchWithAuth } from "@/apiService/api";
+import { getConsultantsApi, getClientsApi, fetchWithAuth, bulkUpsertConsultantsApi } from "@/apiService/api";
 import { getAdminUsers, assignConsultant, type AdminUser } from "@/apiService/adminApi";
 import type { ConsultantItem, ClientItem } from "@/apiService/types";
 
@@ -59,6 +59,32 @@ function AdminConsultantsPage() {
   const [assignTarget, setAssignTarget] = useState<ConsultantItem | null>(null);
   const [assignForm, setAssignForm] = useState<{ hrbp_id: string }>({ hrbp_id: "" });
   const [saving, setSaving] = useState(false);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ inserted: number; updated: number; errors: { row: number; error: string }[] } | null>(null);
+
+  const handleBulkUpload = async () => {
+    if (!bulkFile) return;
+    try {
+      setBulkUploading(true);
+      const res = await bulkUpsertConsultantsApi(bulkFile);
+      if (res.meta.status === false) throw new Error(res.meta.message);
+      setBulkResult(res.data);
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.message || "Bulk upload failed");
+    } finally {
+      setBulkUploading(false);
+    }
+  };
+
+  const closeBulk = () => {
+    setBulkOpen(false);
+    setBulkFile(null);
+    setBulkResult(null);
+  };
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -219,9 +245,18 @@ function AdminConsultantsPage() {
             />
           </div>
           <span className="text-sm text-slate-500">{total} consultants total</span>
-          <Button onClick={() => setCreateOpen(true)} className="ml-auto gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm">
-            <Plus className="h-4 w-4" /> Add Consultant
-          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkOpen(true)}
+              className="gap-2 border-sky-200 text-sky-700 hover:bg-sky-50 font-semibold shadow-sm"
+            >
+              <Upload className="h-4 w-4" /> Bulk Upload
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm">
+              <Plus className="h-4 w-4" /> Add Consultant
+            </Button>
+          </div>
         </div>
 
         {/* Table */}
@@ -287,6 +322,96 @@ function AdminConsultantsPage() {
           }}
         />
       </main>
+
+      {/* Bulk Upload Modal */}
+      <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o) closeBulk(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Upload Consultants</DialogTitle>
+          </DialogHeader>
+
+          {!bulkResult ? (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-slate-500">
+                Upload an <strong>.xlsx</strong> file with columns:{" "}
+                <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">
+                  emp_id, name, join_date, phone, email, monthly_PO, margin, ctc, is_active, designation, skill, po_end_date, cleint_id, hrbp_id
+                </code>
+              </p>
+              <p className="text-xs text-slate-400">
+                Existing records (matched by emp_id) will be updated. New records will be inserted with{" "}
+                <code className="bg-slate-100 px-1 rounded">created_at</code> set from join_date.
+                CTC is treated as annual and divided by 12 to get monthly_ctc.
+              </p>
+
+              <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-sky-300 hover:bg-sky-50 transition-colors">
+                <Upload className="h-8 w-8 text-slate-400 mb-2" />
+                {bulkFile ? (
+                  <span className="text-sm font-medium text-sky-700">{bulkFile.name}</span>
+                ) : (
+                  <>
+                    <span className="text-sm text-slate-500">Click to choose file</span>
+                    <span className="text-xs text-slate-400 mt-1">.xlsx only</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="py-4 space-y-4">
+              <div className="flex gap-6 justify-center">
+                <div className="flex flex-col items-center gap-1">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                  <span className="text-2xl font-bold text-emerald-600">{bulkResult.inserted}</span>
+                  <span className="text-xs text-slate-500">Inserted</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <CheckCircle2 className="h-8 w-8 text-sky-500" />
+                  <span className="text-2xl font-bold text-sky-600">{bulkResult.updated}</span>
+                  <span className="text-xs text-slate-500">Updated</span>
+                </div>
+                {bulkResult.errors.length > 0 && (
+                  <div className="flex flex-col items-center gap-1">
+                    <AlertCircle className="h-8 w-8 text-red-400" />
+                    <span className="text-2xl font-bold text-red-500">{bulkResult.errors.length}</span>
+                    <span className="text-xs text-slate-500">Errors</span>
+                  </div>
+                )}
+              </div>
+              {bulkResult.errors.length > 0 && (
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-red-100 bg-red-50 p-3 space-y-1">
+                  {bulkResult.errors.map((e) => (
+                    <p key={e.row} className="text-xs text-red-600">
+                      Row {e.row}: {e.error}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeBulk}>
+              {bulkResult ? "Close" : "Cancel"}
+            </Button>
+            {!bulkResult && (
+              <Button
+                onClick={handleBulkUpload}
+                disabled={bulkUploading || !bulkFile}
+                className="bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm gap-2"
+              >
+                {bulkUploading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Upload & Process
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Assign HRBP Modal */}
       <Dialog open={!!assignTarget} onOpenChange={(o) => { if (!o) setAssignTarget(null); }}>

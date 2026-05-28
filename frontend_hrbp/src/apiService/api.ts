@@ -269,6 +269,20 @@ export async function getConsultantDetailsApi(consultantId: number): Promise<{ m
   return response.json();
 }
 
+export async function bulkUpsertConsultantsApi(file: File): Promise<{
+  meta: { status: boolean; message: string };
+  data: { inserted: number; updated: number; errors: { row: number; error: string }[] };
+}> {
+  const baseUrl = getBaseUrl();
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/consultants/bulk-upsert`, {
+    method: "POST",
+    body: form,
+  });
+  return response.json();
+}
+
 export async function createCadenceScheduleApi(
   payload: CreateCadenceScheduleRequest,
 ): Promise<CreateCadenceScheduleResponse> {

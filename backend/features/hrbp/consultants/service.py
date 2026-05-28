@@ -1,5 +1,6 @@
 from core.pagination import PageResult, paginate
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPClient, HRBPConsultant, HRBPTicket, hrbp_ticket_consultants
 from infra.models import User
@@ -138,3 +139,139 @@ def delete(db: Session, id: int) -> None:
     record = get_by_id(db, id)
     db.delete(record)
     db.commit()
+
+
+def _parse_number(val) -> Decimal | None:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return Decimal(str(val))
+    cleaned = str(val).replace(",", "").strip()
+    try:
+        return Decimal(cleaned)
+    except Exception:
+        return None
+
+
+def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
+    import io
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+    ws = wb.active
+
+    raw_headers = [str(c.value).strip().lower() if c.value is not None else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    col = {h: i for i, h in enumerate(raw_headers)}
+
+    inserted = 0
+    updated = 0
+    errors: list[dict] = []
+    now = datetime.now(timezone.utc)
+
+    for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        try:
+            raw_emp = row[col["emp_id"]] if "emp_id" in col else None
+            emp_id = str(raw_emp).strip() if raw_emp is not None else None
+            if not emp_id or emp_id.lower() == "none":
+                continue
+
+            def _get(header: str):
+                return row[col[header]] if header in col else None
+
+            name_val = _get("name")
+            name = str(name_val).strip() if name_val else None
+
+            join_dt = _get("join_date")
+            join_date = join_dt.date() if isinstance(join_dt, datetime) else join_dt
+
+            phone_val = _get("phone")
+            phone = str(int(phone_val)) if isinstance(phone_val, float) else (str(phone_val).strip() if phone_val else None)
+
+            email_val = _get("email")
+            email = str(email_val).strip() if email_val else None
+
+            monthly_po = _parse_number(_get("monthly_po"))
+
+            # ctc in Excel is annual CTC; convert to monthly
+            ctc_annual = _parse_number(_get("ctc"))
+            monthly_ctc = (ctc_annual / 12).quantize(Decimal("0.01")) if ctc_annual else None
+
+            is_active_val = _get("is_active")
+            is_active = bool(is_active_val) if is_active_val is not None else True
+
+            skill_val = _get("skill")
+            skill = str(skill_val).strip() if skill_val else None
+
+            designation_val = _get("designation")
+            modality = str(designation_val).strip() if designation_val else None
+
+            po_end_dt = _get("po_end_date")
+            po_end_date = po_end_dt.date() if isinstance(po_end_dt, datetime) else po_end_dt
+
+            # Excel has typo "cleint_id"
+            client_id_val = _get("cleint_id") or _get("client_id")
+            client_id = int(client_id_val) if client_id_val is not None else None
+
+            hrbp_raw = _get("hrbp_id")
+            hrbp_id = int(hrbp_raw) if hrbp_raw is not None else None
+
+            existing = db.query(HRBPConsultant).filter_by(emp_id=emp_id).first()
+
+            if existing:
+                if name:
+                    existing.name = name
+                if phone:
+                    existing.phone = phone
+                if email:
+                    existing.email = email
+                if monthly_po is not None:
+                    existing.monthly_po = monthly_po
+                if monthly_ctc is not None:
+                    existing.monthly_ctc = monthly_ctc
+                if join_date:
+                    existing.join_date = join_date
+                if po_end_date:
+                    existing.po_end_date = po_end_date
+                if skill:
+                    existing.skill = skill
+                if modality:
+                    existing.modality = modality
+                if client_id is not None:
+                    existing.client_id = client_id
+                if hrbp_id is not None:
+                    existing.hrbp_id = hrbp_id
+                existing.is_active = is_active
+                existing.updated_at = now
+                updated += 1
+            else:
+                # Pre-populate created_at from join_date so historical records look correct
+                created_at = (
+                    datetime(join_date.year, join_date.month, join_date.day, tzinfo=timezone.utc)
+                    if join_date
+                    else now
+                )
+                record = HRBPConsultant(
+                    emp_id=emp_id,
+                    name=name or emp_id,
+                    phone=phone,
+                    email=email,
+                    monthly_po=monthly_po,
+                    monthly_ctc=monthly_ctc,
+                    join_date=join_date,
+                    po_end_date=po_end_date,
+                    skill=skill,
+                    modality=modality,
+                    client_id=client_id,
+                    hrbp_id=hrbp_id,
+                    is_active=is_active,
+                    created_at=created_at,
+                    updated_at=now,
+                )
+                db.add(record)
+                inserted += 1
+
+        except Exception as exc:
+            errors.append({"row": row_num, "error": str(exc)})
+
+    db.commit()
+    return {"inserted": inserted, "updated": updated, "errors": errors}

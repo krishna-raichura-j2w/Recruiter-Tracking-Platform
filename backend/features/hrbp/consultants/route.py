@@ -8,7 +8,7 @@ from core.response_format import (
     success_response,
     success_response_with_pagination,
 )
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from infra.models import User
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,24 @@ def get_summary(
     try:
         data = service.get_summary(db, current_user, client_id)
         return success_response(data=data, message="Consultants summary fetched")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/bulk-upsert")
+async def bulk_upsert_consultants(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    allowed = {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+               "application/vnd.ms-excel"}
+    if file.content_type and file.content_type not in allowed:
+        return error_response(message="Only .xlsx files are supported")
+    try:
+        file_bytes = await file.read()
+        result = service.bulk_upsert_from_excel(db, file_bytes)
+        return success_response(data=result, message=f"Bulk upsert complete: {result['inserted']} inserted, {result['updated']} updated")
     except Exception as exc:
         return error_response(message=str(exc))
 
