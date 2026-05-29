@@ -52,6 +52,8 @@ def list_paginated(
     hrbp_ids: list[int] | None = None,
     bh_id: int | None = None,
     is_active: bool | None = None,
+    search: str | None = None,
+    industry: str | None = None,
 ) -> dict:
     consultant_sub = (
         db.query(
@@ -93,6 +95,10 @@ def list_paginated(
         q = q.filter(HRBPClient.bh_id == bh_id)
     if is_active is not None:
         q = q.filter(HRBPClient.is_active == is_active)
+    if search:
+        q = q.filter(HRBPClient.name.ilike(f"%{search}%"))
+    if industry:
+        q = q.filter(HRBPClient.industry.ilike(f"%{industry}%"))
     q = q.order_by(HRBPClient.name)
     return paginate_raw(q, page_no, per_page)
 

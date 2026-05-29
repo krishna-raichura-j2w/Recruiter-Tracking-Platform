@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Building2,
   Ticket,
-  Mail,
   Bell,
   LogOut,
   CalendarClock,
@@ -16,6 +15,7 @@ import {
   Users,
   UserCheck,
   DoorOpen,
+  ActivitySquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -43,14 +43,16 @@ const ALL_NAV_ITEMS: { title: string; url: string; icon: React.ElementType; modu
   // { title: "Communication Hub", url: "/communication",   icon: Mail,            module: "communication" },
   { title: "Exit Tracking",     url: "/exits",           icon: DoorOpen,        module: "exits"         },
   { title: "Notifications",     url: "/notifications",   icon: Bell,            module: "notifications" },
+  { title: "Activity Log",      url: "/activity-log",    icon: ActivitySquare,  module: "activity_log"  },
 ];
 
 const ADMIN_NAV_ITEMS: { title: string; url: string; icon: React.ElementType }[] = [
-  { title: "Admin Overview",  url: "/admin",              icon: ShieldCheck },
-  { title: "Users",           url: "/admin/users",        icon: Users       },
-  { title: "Clients",         url: "/admin/clients",      icon: Building2   },
-  { title: "Consultants",     url: "/admin/consultants",  icon: UserCheck   },
-  { title: "Tickets",         url: "/admin/tickets",      icon: Ticket      },
+  { title: "Admin Overview",  url: "/admin",              icon: ShieldCheck     },
+  { title: "Users",           url: "/admin/users",        icon: Users           },
+  { title: "Clients",         url: "/admin/clients",      icon: Building2       },
+  { title: "Consultants",     url: "/admin/consultants",  icon: UserCheck       },
+  { title: "Tickets",         url: "/admin/tickets",      icon: Ticket          },
+  { title: "Activity Log",    url: "/activity-log",       icon: ActivitySquare  },
 ];
 
 export function AppSidebar() {

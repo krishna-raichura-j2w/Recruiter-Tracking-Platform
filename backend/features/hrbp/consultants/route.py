@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from infra.models import User
 from sqlalchemy.orm import Session
 
+from features.hrbp.audit_log.service import log_action
 from features.hrbp.consultants import service
 from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
 
@@ -35,7 +36,7 @@ def get_summary(
 async def bulk_upsert_consultants(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     allowed = {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                "application/vnd.ms-excel"}
@@ -44,6 +45,9 @@ async def bulk_upsert_consultants(
     try:
         file_bytes = await file.read()
         result = service.bulk_upsert_from_excel(db, file_bytes)
+        log_action(db, actor_id=current_user.id, entity_type="consultant", entity_id=0,
+                   action="bulk_upsert", new_value=result)
+        db.commit()
         return success_response(data=result, message=f"Bulk upsert complete: {result['inserted']} inserted, {result['updated']} updated")
     except Exception as exc:
         return error_response(message=str(exc))
@@ -53,14 +57,14 @@ async def bulk_upsert_consultants(
 def create_consultant(
     payload: ConsultantCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         data = service.create(db, payload)
-        return success_response(
-            data=data.__dict__,
-            message="Consultant created successfully",
-        )
+        log_action(db, actor_id=current_user.id, entity_type="consultant", entity_id=data.id,
+                   action="create", new_value={"name": data.name, "emp_id": data.emp_id})
+        db.commit()
+        return success_response(data=data.__dict__, message="Consultant created successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -89,17 +93,8 @@ def list_consultants(
         bh_client_ids = [r[0] for r in rows]
 
     result = service.list_paginated(
-        db,
-        page_no,
-        per_page,
-        hrbp_ids,
-        bh_client_ids,
-        client_id,
-        cohort,
-        perf_tier,
-        is_active,
-        date_from,
-        date_to,
+        db, page_no, per_page, hrbp_ids, bh_client_ids,
+        client_id, cohort, perf_tier, is_active, date_from, date_to,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
@@ -119,10 +114,7 @@ def get_consultant_by_emp_id(
 ):
     try:
         data = service.get_by_emp_id(db, emp_id)
-        return success_response(
-            data=data.__dict__,
-            message="Consultant fetched successfully",
-        )
+        return success_response(data=data.__dict__, message="Consultant fetched successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -135,10 +127,7 @@ def get_consultant(
 ):
     try:
         data = service.get_by_id(db, id)
-        return success_response(
-            data=data.__dict__,
-            message="Consultant fetched successfully",
-        )
+        return success_response(data=data.__dict__, message="Consultant fetched successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -148,14 +137,17 @@ def update_consultant(
     id: int,
     payload: ConsultantUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     try:
+        old = service.get_by_id(db, id)
+        old_data = payload.model_dump(exclude_unset=True)
+        old_snapshot = {k: getattr(old, k, None) for k in old_data}
         data = service.update(db, id, payload)
-        return success_response(
-            data=data.__dict__,
-            message="Consultant updated successfully",
-        )
+        log_action(db, actor_id=current_user.id, entity_type="consultant", entity_id=id,
+                   action="update", old_value=old_snapshot, new_value=old_data)
+        db.commit()
+        return success_response(data=data.__dict__, message="Consultant updated successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 
@@ -164,10 +156,15 @@ def update_consultant(
 def delete_consultant(
     id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     try:
+        record = service.get_by_id(db, id)
+        name = record.name
         service.delete(db, id)
+        log_action(db, actor_id=current_user.id, entity_type="consultant", entity_id=id,
+                   action="delete", old_value={"name": name})
+        db.commit()
         return success_response(data={}, message="Consultant deleted successfully")
     except Exception as exc:
         return error_response(message=str(exc))

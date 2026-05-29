@@ -8,6 +8,7 @@ from core.response_format import (
     success_response,
     success_response_with_pagination,
 )
+from features.hrbp.audit_log.service import log_action
 from features.hrbp.tickets import service
 from features.hrbp.tickets.export import build_and_upload as export_tickets
 from features.hrbp.tickets.schema import (
@@ -51,6 +52,9 @@ def create_ticket(
 ):
     try:
         data = service.create(db, payload, current_user)
+        log_action(db, actor_id=current_user.id, entity_type="ticket", entity_id=data.get("id", 0),
+                   action="create", new_value={"title": data.get("title"), "priority": data.get("priority")})
+        db.commit()
         return success_response(data=data, message="Ticket created successfully")
     except Exception as exc:
         return error_response(message=str(exc))
@@ -104,6 +108,10 @@ def update_ticket(
 ):
     try:
         data = service.update_ticket(db, ticket_id, payload, current_user)
+        update_data = payload.model_dump(exclude_unset=True)
+        log_action(db, actor_id=current_user.id, entity_type="ticket", entity_id=ticket_id,
+                   action="update", new_value=update_data)
+        db.commit()
         return success_response(data=data, message="Ticket updated successfully")
     except Exception as exc:
         return error_response(message=str(exc))
@@ -172,6 +180,9 @@ def close_ticket(
 ):
     try:
         data = service.close_ticket(db, ticket_id, current_user)
+        log_action(db, actor_id=current_user.id, entity_type="ticket", entity_id=ticket_id,
+                   action="close")
+        db.commit()
         return success_response(data=data, message="Ticket closed successfully")
     except Exception as exc:
         return error_response(message=str(exc))

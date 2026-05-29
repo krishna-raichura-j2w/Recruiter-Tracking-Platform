@@ -7,7 +7,8 @@ export type Module =
   | "incidents"
   | "communication"
   | "notifications"
-  | "exits";
+  | "exits"
+  | "activity_log";
 
 export type Action = "read" | "create" | "update" | "delete" | "export";
 
@@ -62,6 +63,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     communication: { read: true },
     notifications: { read: true },
     exits:         { read: true },
+    activity_log:  { read: true },
   },
 
   coo: {
@@ -74,6 +76,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     communication: { read: true },
     notifications: { read: true },
     exits:         { read: true },
+    activity_log:  { read: true },
   },
 
   ceo: {
@@ -86,6 +89,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     communication: { read: true },
     notifications: { read: true },
     exits:         { read: true },
+    activity_log:  { read: true },
   },
 };
 

@@ -192,25 +192,55 @@ function ClientDetailDialog({
 
 function ClientsPage() {
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [clientNameFilter, setClientNameFilter] = useState("");
+  const [industryFilter, setIndustryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [apiClients, setApiClients] = useState<ClientItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<ClientsSummary | null>(null);
   const [selectedClient, setSelectedClient] = useState<ClientItem | null>(null);
+  const [allClientNames, setAllClientNames] = useState<string[]>([]);
+  const [allIndustries, setAllIndustries] = useState<string[]>([]);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  // Debounce text search — clears clientNameFilter so they don't conflict
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (q) setClientNameFilter("");
+      setDebouncedQ(q);
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // Fetch all clients once on mount to populate name + industry dropdowns
   useEffect(() => {
     fetchClientsSummary().then(setSummary).catch(() => {});
+    getClientsApi({ per_page: -1 }).then((res) => {
+      if (res.meta.status) {
+        const items: ClientItem[] = res.data ?? [];
+        setAllClientNames(items.map((c) => c.name).filter(Boolean).sort());
+        setAllIndustries([...new Set(items.map((c) => c.industry).filter(Boolean) as string[])].sort());
+      }
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
     async function fetchClients() {
       try {
         setLoading(true);
-        const res = await getClientsApi({ page_no: page + 1, per_page: rowsPerPage });
+        const effectiveSearch = clientNameFilter || debouncedQ || undefined;
+        const res = await getClientsApi({
+          page_no: page + 1,
+          per_page: rowsPerPage,
+          search: effectiveSearch,
+          industry: industryFilter || undefined,
+          is_active: statusFilter === "all" ? undefined : statusFilter === "active",
+        });
         if (res.meta.status) {
           setApiClients(res.data || []);
           setTotalCount(res.meta.total || 0);
@@ -224,7 +254,7 @@ function ClientsPage() {
       }
     }
     fetchClients();
-  }, [page, rowsPerPage]);
+  }, [page, rowsPerPage, debouncedQ, clientNameFilter, industryFilter, statusFilter]);
 
   const handleChangePage = (
     _: React.MouseEvent<HTMLButtonElement> | null,
@@ -238,14 +268,7 @@ function ClientsPage() {
     setPage(0);
   };
 
-  const filtered = apiClients.filter((c) => {
-    const matchesSearch =
-      c.name.toLowerCase().includes(q.toLowerCase()) ||
-      c.industry.toLowerCase().includes(q.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all" ? true : statusFilter === "active" ? c.is_active : !c.is_active;
-    return matchesSearch && matchesStatus;
-  });
+  const filtered = apiClients;
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-slate-800">
@@ -273,7 +296,7 @@ function ClientsPage() {
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -283,18 +306,42 @@ function ClientsPage() {
               className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
             />
           </div>
-          <div className="w-[180px]">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-10 text-sm border-slate-200 shadow-sm bg-white">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Select
+            value={clientNameFilter || "all"}
+            onValueChange={(v) => { setClientNameFilter(v === "all" ? "" : v); setQ(""); setDebouncedQ(""); setPage(0); }}
+          >
+            <SelectTrigger className="w-48 h-10 border-slate-200 shadow-sm bg-white">
+              <SelectValue placeholder="All Clients" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clients</SelectItem>
+              {allClientNames.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={industryFilter || "all"} onValueChange={(v) => { setIndustryFilter(v === "all" ? "" : v); setPage(0); }}>
+            <SelectTrigger className="w-44 h-10 border-slate-200 shadow-sm bg-white">
+              <SelectValue placeholder="All Industries" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Industries</SelectItem>
+              {allIndustries.map((ind) => (
+                <SelectItem key={ind} value={ind}>{ind}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+            <SelectTrigger className="w-36 h-10 text-sm border-slate-200 shadow-sm bg-white">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-slate-500">{totalCount} clients total</span>
         </div>
 
         <div className="rounded-lg overflow-hidden border border-slate-200 bg-white shadow-sm">

@@ -15,14 +15,16 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, UserCog, Loader2 } from "lucide-react";
+import { Plus, Search, UserCog, Loader2, Download } from "lucide-react";
 import { toast } from "react-toastify";
 import { LottieIcon } from "@/components/LottieIcon";
 import { TableLoader } from "@/components/Loader";
 import { CustomTablePagination } from "@/components/CustomPagination";
-import { getClientsApi, fetchWithAuth } from "@/apiService/api";
+import { getClientsApi, exportClientsApi, fetchWithAuth } from "@/apiService/api";
 import { getAdminUsers, assignClient, type AdminUser } from "@/apiService/adminApi";
 import type { ClientItem } from "@/apiService/types";
+import { fetchClientsSummary } from "@/apiService/dashboardApi";
+import type { ClientsSummary } from "@/apiService/dashboardApi";
 
 const getBaseUrl = () => {
   const base = import.meta.env.VITE_BASE_URL || "http://localhost:8000/";
@@ -46,9 +48,16 @@ function AdminClientsPage() {
   const [clients, setClients] = useState<ClientItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [industry, setIndustry] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<ClientsSummary | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [industries, setIndustries] = useState<string[]>([]);
+  const [allClientNames, setAllClientNames] = useState<string[]>([]);
+  const [clientNameFilter, setClientNameFilter] = useState("");
 
   const [hrbpUsers, setHrbpUsers] = useState<AdminUser[]>([]);
   const [bhUsers, setBhUsers] = useState<AdminUser[]>([]);
@@ -61,13 +70,42 @@ function AdminClientsPage() {
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", industry: "", hrbp_id: "", bh_id: "" });
 
+  // Debounce text search — clears clientNameFilter so they don't conflict
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (search) setClientNameFilter("");
+      setDebouncedSearch(search);
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Fetch all clients once on mount to populate name + industry dropdowns
+  useEffect(() => {
+    getClientsApi({ per_page: -1 }).then((res) => {
+      if (res.meta.status) {
+        const items: ClientItem[] = res.data ?? [];
+        setAllClientNames(items.map((c) => c.name).filter(Boolean).sort());
+        setIndustries([...new Set(items.map((c) => c.industry).filter(Boolean) as string[])].sort());
+      }
+    }).catch(() => {});
+  }, []);
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [clientRes, hrbpRes, bhRes] = await Promise.all([
-        getClientsApi({ page_no: page + 1, per_page: rowsPerPage }),
+      // clientNameFilter takes precedence over the text search box
+      const effectiveSearch = clientNameFilter || debouncedSearch || undefined;
+      const [clientRes, hrbpRes, bhRes, summaryRes] = await Promise.all([
+        getClientsApi({
+          page_no: page + 1,
+          per_page: rowsPerPage,
+          search: effectiveSearch,
+          industry: industry || undefined,
+        }),
         getAdminUsers({ role: "hrbp" }),
         getAdminUsers({ role: "bh" }),
+        fetchClientsSummary(),
       ]);
       if (clientRes.meta.status) {
         setClients(clientRes.data ?? []);
@@ -75,6 +113,7 @@ function AdminClientsPage() {
       }
       setHrbpUsers(hrbpRes.data ?? []);
       setBhUsers(bhRes.data ?? []);
+      setSummary(summaryRes);
     } catch (e: any) {
       toast.error(e.message || "Failed to load data");
     } finally {
@@ -82,19 +121,16 @@ function AdminClientsPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [page, rowsPerPage]);
+  useEffect(() => { fetchData(); }, [page, rowsPerPage, debouncedSearch, clientNameFilter, industry]);
 
-  const filtered = useMemo(
-    () => clients.filter((c) => (c.name ?? "").toLowerCase().includes(search.toLowerCase())),
-    [clients, search],
-  );
+  const filtered = clients;
 
   const stats = useMemo(() => ({
-    total,
-    active: clients.filter((c) => c.is_active).length,
-    inactive: clients.filter((c) => !c.is_active).length,
-    consultants: clients.reduce((sum, c) => sum + (c.headcount ?? 0), 0),
-  }), [clients, total]);
+    total: summary?.total ?? total,
+    active: summary?.active ?? 0,
+    inactive: summary?.inactive ?? 0,
+    consultants: summary?.total_consultants ?? 0,
+  }), [summary, total]);
 
   const openAssign = (c: ClientItem) => {
     setAssignTarget(c);
@@ -151,6 +187,22 @@ function AdminClientsPage() {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const url = await exportClientsApi({
+        search: clientNameFilter || debouncedSearch || undefined,
+        industry: industry || undefined,
+      });
+      window.open(url, "_blank");
+      toast.success("Excel report ready — opening download link");
+    } catch (err: any) {
+      toast.error(err?.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const getUserName = (users: AdminUser[], id: number | null | undefined) => {
     if (!id) return "—";
     return users.find((u) => u.id === id)?.name ?? `#${id}`;
@@ -181,20 +233,57 @@ function AdminClientsPage() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
               placeholder="Search clients…"
               className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <span className="text-sm text-slate-500">{total} clients total</span>
-          <Button onClick={() => setCreateOpen(true)} className="ml-auto gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm">
-            <Plus className="h-4 w-4" /> New Client
-          </Button>
+          <Select
+            value={clientNameFilter || "all"}
+            onValueChange={(v) => { setClientNameFilter(v === "all" ? "" : v); setSearch(""); setDebouncedSearch(""); setPage(0); }}
+          >
+            <SelectTrigger className="w-48 h-10 border-slate-200 shadow-sm bg-white">
+              <SelectValue placeholder="All Clients" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clients</SelectItem>
+              {allClientNames.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={industry || "all"} onValueChange={(v) => { setIndustry(v === "all" ? "" : v); setPage(0); }}>
+            <SelectTrigger className="w-44 h-10 border-slate-200 shadow-sm bg-white">
+              <SelectValue placeholder="All Industries" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Industries</SelectItem>
+              {industries.map((ind) => (
+                <SelectItem key={ind} value={ind}>{ind}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* <span className="text-sm text-slate-500">{total} clients total</span> */}
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={exporting}
+              className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 font-semibold shadow-sm"
+              title="Export to Excel"
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting ? "Exporting…" : "Export"}
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm">
+              <Plus className="h-4 w-4" /> New Client
+            </Button>
+          </div>
         </div>
 
         {/* Table */}
