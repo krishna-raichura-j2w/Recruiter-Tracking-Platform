@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSignal } from '../context/RealtimeContext';
-import { X, Clock, Search, SlidersHorizontal } from 'lucide-react';
+import { X, Clock, Search, SlidersHorizontal, Phone, Users, CalendarClock, CalendarDays, ChevronDown } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/client';
+import type { OverallInterview } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -150,6 +151,143 @@ function StageBadge({ stage }: { stage: string }) {
   );
 }
 
+// Keyword-based colour for the OL "workflow_step" label (free-text from the OL DB,
+// not the MRR stage enum), so the Overall tab gets sensible badge colours too.
+function olStepColor(step: string | null): string {
+  const s = (step ?? '').toLowerCase();
+  if (s.includes('join'))                                   return 'bg-green-200 text-green-800';
+  if (s.includes('offer'))                                  return 'bg-emerald-100 text-emerald-700';
+  if (s.includes('reject') || s.includes('fail') || s.includes('drop')) return 'bg-red-100 text-red-600';
+  if (s.includes('clear') || s.includes('pass') || s.includes('select')) return 'bg-teal-100 text-teal-700';
+  if (s.includes('pending'))                                return 'bg-amber-100 text-amber-700';
+  if (s.includes('schedul') || s.includes('interview'))     return 'bg-purple-100 text-purple-700';
+  return 'bg-slate-100 text-slate-600';
+}
+
+function OlStepBadge({ step }: { step: string | null }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${olStepColor(step)}`}>
+      {step || '—'}
+    </span>
+  );
+}
+
+// Single-select dropdown with a built-in search box (used for the Client filter).
+function SearchableSelect({ value, options, placeholder, onChange }: {
+  value: string;
+  options: string[];
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const filtered = useMemo(
+    () => (q.trim() ? options.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : options),
+    [q, options]);
+
+  const select = (v: string) => { onChange(v); setOpen(false); setQ(''); };
+
+  return (
+    <div className="relative" ref={boxRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex items-center justify-between gap-1.5 min-w-40 max-w-44"
+      >
+        <span className={`truncate ${value ? 'text-slate-700 font-medium' : 'text-slate-500'}`}>{value || placeholder}</span>
+        <ChevronDown size={12} className={`flex-shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1.5 left-0 w-60 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-slate-100">
+            <div className="relative">
+              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search client…"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                className="w-full pl-7 pr-2 py-1.5 rounded-md text-xs bg-slate-50 border border-transparent focus:border-slate-200 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            <button
+              onClick={() => select('')}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 ${!value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600'}`}
+            >
+              {placeholder}
+            </button>
+            {filtered.length === 0 ? (
+              <p className="text-center text-xs py-4 text-slate-400">No matches.</p>
+            ) : filtered.map(o => (
+              <button
+                key={o}
+                onClick={() => select(o)}
+                className={`w-full text-left px-3 py-1.5 text-xs truncate hover:bg-slate-50 ${value === o ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'}`}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// YYYY-MM-DD in local time, for the date-window <input type="date"> defaults.
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// "HH:MM" (24h) -> "h:MM AM/PM" for the interview slot chip.
+function fmtTime12(t: string | null): string {
+  if (!t) return '—';
+  const [hStr, m] = t.split(':');
+  let h = parseInt(hStr, 10);
+  if (isNaN(h)) return t;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${m ?? '00'} ${ampm}`;
+}
+
+// Time-of-day slabs for the Today filter chips. start/end are 24h hours; range is [start, end).
+const SLABS: { key: string; label: string; start: number; end: number }[] = [
+  { key: '6-9',   label: '6–9 AM',     start: 6,  end: 9  },
+  { key: '9-12',  label: '9 AM–12 PM', start: 9,  end: 12 },
+  { key: '12-15', label: '12–3 PM',    start: 12, end: 15 },
+  { key: '15-18', label: '3–6 PM',     start: 15, end: 18 },
+  { key: '18-21', label: '6–9 PM',     start: 18, end: 21 },
+  { key: '21-24', label: '9 PM–12 AM', start: 21, end: 24 },
+];
+
+// Integer hour parsed from a 24h "HH:MM" interview_time (null if missing/unparseable).
+function slotHour(t: string | null): number | null {
+  if (!t) return null;
+  const h = parseInt(t.split(':')[0], 10);
+  return isNaN(h) ? null : h;
+}
+
+function inSlab(t: string | null, slabKey: string): boolean {
+  if (slabKey === 'all') return true;
+  const s = SLABS.find(x => x.key === slabKey);
+  const h = slotHour(t);
+  return !!s && h != null && h >= s.start && h < s.end;
+}
+
 function Divider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2">
@@ -223,6 +361,7 @@ function dayLabel(iso: string | null | undefined): string {
   const item = new Date(d); item.setHours(0, 0, 0, 0);
   const diff = Math.round((item.getTime() - today.getTime()) / 86_400_000);
   if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
   if (diff === -1) return 'Yesterday';
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
@@ -243,9 +382,23 @@ function groupByDay<T>(items: T[], getDate: (item: T) => string | null | undefin
 export default function Pipeline() {
   const [active, setActive]       = useState<Sub[]>([]);
   const [closed, setClosed]       = useState<Sub[]>([]);
-  const [showClosed, setShowClosed] = useState(false);
+  const [tab, setTab]             = useState<'overall' | 'active' | 'closed'>('overall');
   const [loading, setLoading]     = useState(true);
   const [overlay, setOverlay]     = useState<Sub | null>(null);
+
+  // ── Overall tab (org-wide interviews from the OL replica) ───────────────────
+  const [overall, setOverall]         = useState<OverallInterview[]>([]);
+  const [overallLoading, setOverallLoading] = useState(true);
+  const [bucket, setBucket]           = useState<'all' | 'today' | 'tomorrow' | 'week'>('all');
+  const [slab, setSlab]               = useState<string>('all'); // time-of-day filter for the Today group
+  const [clientFilter, setClientFilter] = useState<string>('');  // Client (company) filter ('' = all)
+  const defaultWindow = useMemo(() => {
+    const from = new Date();
+    const to   = new Date(); to.setDate(to.getDate() + 60);
+    return { from: isoDate(from), to: isoDate(to) };
+  }, []);
+  const [olFromDate, setOlFromDate] = useState(defaultWindow.from);
+  const [olToDate,   setOlToDate]   = useState(defaultWindow.to);
 
   // ── Filter state ──────────────────────────────────────────────────────────
   const [search,         setSearch]         = useState('');
@@ -279,7 +432,18 @@ export default function Pipeline() {
   const pipelineSignal = useSignal('pipeline');
   useEffect(() => { fetchData(); }, [pipelineSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const baseList = showClosed ? closed : active;
+  // Fetch the Overall (OL replica) interviews whenever the date window changes.
+  useEffect(() => {
+    let cancelled = false;
+    setOverallLoading(true);
+    api.get('/ol-lookup/interview-tracking', { params: { from_date: olFromDate, to_date: olToDate } })
+      .then(r => { if (!cancelled) setOverall(Array.isArray(r.data) ? r.data as OverallInterview[] : []); })
+      .catch(() => { if (!cancelled) setOverall([]); })
+      .finally(() => { if (!cancelled) setOverallLoading(false); });
+    return () => { cancelled = true; };
+  }, [olFromDate, olToDate]);
+
+  const baseList = tab === 'closed' ? closed : active;
 
   // ── Derived dropdown options ───────────────────────────────────────────────
   const companies = useMemo(() =>
@@ -335,6 +499,60 @@ export default function Pipeline() {
   }, [baseList, search, filterCompany, filterJob, filterGroup, filterStage, filterAction, filterFromDate, filterToDate]);
 
   const grouped = useMemo(() => groupByDay(list, s => s.updated_at), [list]);
+
+  // ── Client filter: distinct companies + client-scoped base list ─────────────
+  const clients = useMemo(
+    () => [...new Set(overall.map(o => o.company_name).filter(Boolean))].sort() as string[],
+    [overall]);
+  const scopedOverall = useMemo(
+    () => (clientFilter ? overall.filter(o => o.company_name === clientFilter) : overall),
+    [overall, clientFilter]);
+
+  // ── Overall list: bucket + search filter, sorted chronologically ────────────
+  const overallList = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayIso    = isoDate(today);
+    const tomorrowIso = isoDate(new Date(today.getTime() + 86_400_000));
+    const weekEndIso  = isoDate(new Date(today.getTime() + 7 * 86_400_000));
+    const q = search.toLowerCase();
+    const rows = scopedOverall.filter(o => {
+      if (search) {
+        const hay = `${o.candidate ?? ''} ${o.company_name ?? ''} ${o.recruiter ?? ''} ${o.email ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      const d = o.interview_date;
+      if (bucket === 'today')    return d === todayIso;
+      if (bucket === 'tomorrow') return d === tomorrowIso;
+      if (bucket === 'week')     return !!d && d >= todayIso && d <= weekEndIso;
+      return true;
+    });
+    // earliest first: interview_date then interview_time (zero-padded → lexicographic = chronological)
+    return [...rows].sort((a, b) =>
+      `${a.interview_date ?? ''} ${a.interview_time ?? ''}`.localeCompare(`${b.interview_date ?? ''} ${b.interview_time ?? ''}`));
+  }, [scopedOverall, search, bucket]);
+
+  const overallGrouped = useMemo(
+    () => groupByDay(overallList, o => o.interview_date),
+    [overallList]);
+
+  // ── Upcoming-interview summary tiles (computed over the fetched window) ──────
+  const overallStats = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayIso    = isoDate(today);
+    const tomorrow    = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const tomorrowIso = isoDate(tomorrow);
+    const weekEnd     = new Date(today); weekEnd.setDate(today.getDate() + 7);
+    const weekEndIso  = isoDate(weekEnd);
+    let todayCount = 0, tomorrowCount = 0, weekCount = 0;
+    for (const o of scopedOverall) {
+      const d = o.interview_date;
+      if (!d) continue;
+      if (d === todayIso)    todayCount++;
+      if (d === tomorrowIso) tomorrowCount++;
+      if (d >= todayIso && d <= weekEndIso) weekCount++;
+    }
+    return { today: todayCount, tomorrow: tomorrowCount, week: weekCount, total: scopedOverall.length };
+  }, [scopedOverall]);
 
   const activeFilters = [search, filterCompany, filterJob, filterGroup, filterStage, filterAction, filterFromDate, filterToDate].filter(Boolean).length;
 
@@ -477,25 +695,34 @@ export default function Pipeline() {
   return (
     <Layout title="Interview Tracking">
 
-      {/* ── Top bar: Active/Closed + Search + Filter toggle ── */}
+      {/* ── Top bar: Overall/Active/Closed + Search + Filter toggle ── */}
       <div className="space-y-3 mb-5">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Active / Closed tabs */}
+          {/* Overall / Active / Closed tabs */}
           <button
-            onClick={() => setShowClosed(false)}
+            onClick={() => setTab('overall')}
             className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-              !showClosed ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
+              tab === 'overall' ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
             }`}
-            style={!showClosed ? { backgroundColor: '#1a2744' } : {}}
+            style={tab === 'overall' ? { backgroundColor: '#1a2744' } : {}}
+          >
+            Overall <span className="ml-1 text-xs opacity-70">({overall.length})</span>
+          </button>
+          <button
+            onClick={() => setTab('active')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              tab === 'active' ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
+            }`}
+            style={tab === 'active' ? { backgroundColor: '#1a2744' } : {}}
           >
             Active <span className="ml-1 text-xs opacity-70">({active.length})</span>
           </button>
           <button
-            onClick={() => setShowClosed(true)}
+            onClick={() => setTab('closed')}
             className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-              showClosed ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
+              tab === 'closed' ? 'text-white shadow' : 'text-slate-500 hover:text-slate-700'
             }`}
-            style={showClosed ? { backgroundColor: '#1a2744' } : {}}
+            style={tab === 'closed' ? { backgroundColor: '#1a2744' } : {}}
           >
             Closed <span className="ml-1 text-xs opacity-70">({closed.length})</span>
           </button>
@@ -512,37 +739,66 @@ export default function Pipeline() {
             />
           </div>
 
-          {/* Filter toggle */}
-          <button
-            onClick={() => setShowFilters(v => !v)}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
-              showFilters || activeFilters > 0
-                ? 'bg-blue-50 border-blue-300 text-blue-700'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <SlidersHorizontal size={13} />
-            Filters
-            {activeFilters > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[10px] font-bold">
-                {activeFilters}
-              </span>
-            )}
-          </button>
-
-          {/* Results count + clear */}
-          {activeFilters > 0 && (
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span>{list.length} of {baseList.length} shown</span>
-              <button onClick={clearAllFilters} className="text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-0.5">
-                <X size={11} /> Clear
-              </button>
+          {/* Overall tab: Client filter + date-window pickers */}
+          {tab === 'overall' ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <SearchableSelect
+                value={clientFilter}
+                options={clients}
+                placeholder="All Clients"
+                onChange={setClientFilter}
+              />
+              <input
+                type="date"
+                value={olFromDate}
+                max={olToDate || undefined}
+                onChange={e => setOlFromDate(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              />
+              <span className="text-slate-400 text-xs">to</span>
+              <input
+                type="date"
+                value={olToDate}
+                min={olFromDate || undefined}
+                onChange={e => setOlToDate(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              />
             </div>
+          ) : (
+            <>
+              {/* Filter toggle */}
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+                  showFilters || activeFilters > 0
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <SlidersHorizontal size={13} />
+                Filters
+                {activeFilters > 0 && (
+                  <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[10px] font-bold">
+                    {activeFilters}
+                  </span>
+                )}
+              </button>
+
+              {/* Results count + clear */}
+              {activeFilters > 0 && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>{list.length} of {baseList.length} shown</span>
+                  <button onClick={clearAllFilters} className="text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-0.5">
+                    <X size={11} /> Clear
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* ── Expanded filter row ── */}
-        {showFilters && (
+        {tab !== 'overall' && showFilters && (
           <div className="bg-white border border-slate-100 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 shadow-sm">
 
             {/* Company */}
@@ -629,8 +885,149 @@ export default function Pipeline() {
         )}
       </div>
 
+      {/* ── Upcoming-interview summary dashboard (Overall tab only) — tiles filter the list ── */}
+      {tab === 'overall' && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          {([
+            { b: 'today',    label: 'Today',     value: overallStats.today,    Icon: CalendarClock, accent: true },
+            { b: 'tomorrow', label: 'Tomorrow',  value: overallStats.tomorrow, Icon: CalendarDays,  accent: false },
+            { b: 'week',     label: 'This Week', value: overallStats.week,     Icon: CalendarDays,  accent: false },
+            { b: 'all',      label: 'Total Upcoming', value: overallStats.total, Icon: Users,        accent: false },
+          ] as const).map(({ b, label, value, Icon, accent }) => {
+            const selected = bucket === b;
+            return (
+              <button
+                key={b}
+                onClick={() => setBucket(prev => (prev === b ? 'all' : b))}
+                className={`text-left rounded-2xl border shadow-sm p-4 flex items-center justify-between transition-all hover:shadow-md ${
+                  accent ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100'
+                } ${selected ? 'ring-2 ring-blue-400' : ''}`}
+              >
+                <div>
+                  <p className={`text-[11px] font-semibold uppercase tracking-wider ${accent ? 'text-blue-600' : 'text-slate-400'}`}>{label}</p>
+                  <p className={`text-2xl font-bold tabular-nums mt-0.5 ${accent ? 'text-blue-700' : 'text-slate-800'}`}>{value}</p>
+                </div>
+                <Icon size={22} className={accent ? 'text-blue-400' : 'text-slate-300'} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Card list */}
-      {loading ? (
+      {tab === 'overall' ? (
+        overallLoading ? (
+          <div className="space-y-2.5 animate-pulse">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-16 bg-white rounded-2xl border border-slate-100" />
+            ))}
+          </div>
+        ) : overallList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-slate-400">
+            <Clock size={40} className="opacity-20 mb-3" />
+            <p className="font-medium text-slate-500">
+              {search ? 'No results match your search.' : 'No interviews in this date range.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {overallGrouped.map(group => {
+              const isToday = group.label === 'Today';
+              const isPastSlot = (o: OverallInterview) =>
+                isToday && !!o.interview_date && !!o.interview_time &&
+                new Date(`${o.interview_date}T${o.interview_time}:00`).getTime() < Date.now();
+              // Today: apply the time-slab filter, then show upcoming first / past at the bottom.
+              const base = isToday && slab !== 'all'
+                ? group.items.filter(o => inSlab(o.interview_time, slab))
+                : group.items;
+              const items = isToday
+                ? [...base.filter(o => !isPastSlot(o)), ...base.filter(isPastSlot)]
+                : base;
+              return (
+              <div key={group.label}>
+                {/* Day header */}
+                <div className="flex items-center gap-2 py-2 px-1">
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                    group.label === 'Today' ? 'bg-blue-100 text-blue-700' :
+                    group.label === 'Yesterday' ? 'bg-slate-100 text-slate-600' :
+                    'bg-slate-50 text-slate-500'
+                  }`}>{group.label}</span>
+                  <span className="text-[10px] text-slate-400">{items.length} candidate{items.length !== 1 ? 's' : ''}</span>
+                  <span className="flex-1 border-t border-slate-100" />
+                  {isToday && (
+                    <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">Upcoming</span>
+                  )}
+                </div>
+                {/* Time-slab filter chips (Today only) */}
+                {isToday && (
+                  <div className="flex flex-wrap gap-1.5 mb-2 px-1">
+                    {([{ key: 'all', label: 'All times' }, ...SLABS] as { key: string; label: string }[]).map(s => {
+                      const count = s.key === 'all'
+                        ? group.items.length
+                        : group.items.filter(o => inSlab(o.interview_time, s.key)).length;
+                      const selected = slab === s.key;
+                      return (
+                        <button
+                          key={s.key}
+                          onClick={() => setSlab(prev => (prev === s.key ? 'all' : s.key))}
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-all ${
+                            selected
+                              ? 'text-white'
+                              : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                          style={selected ? { backgroundColor: '#1a2744' } : {}}
+                        >
+                          {s.label} <span className="opacity-70">({count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-sm">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                        <th className="py-2 px-3 whitespace-nowrap">Time</th>
+                        <th className="py-2 px-3">Candidate</th>
+                        <th className="py-2 px-3">Company</th>
+                        <th className="py-2 px-3 whitespace-nowrap">Phone</th>
+                        <th className="py-2 px-3">Recruiter</th>
+                        <th className="py-2 px-3">Round</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((o, i) => {
+                        const slot = o.interview_date && o.interview_time
+                          ? new Date(`${o.interview_date}T${o.interview_time}:00`)
+                          : null;
+                        const isPast = slot != null && slot.getTime() < Date.now();
+                        return (
+                        <tr
+                          key={`${o.email ?? 'na'}-${o.job_id ?? 'na'}-${i}`}
+                          className={`border-t border-slate-50 hover:bg-slate-50/60 transition-colors ${isPast ? 'opacity-50' : ''}`}
+                        >
+                          <td className="py-2.5 px-3 whitespace-nowrap font-semibold text-blue-700">{fmtTime12(o.interview_time)}</td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-800">{o.candidate ?? '—'}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{o.company_name ?? '—'}</td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            {o.contact
+                              ? <a href={`tel:${o.contact}`} className="inline-flex items-center gap-1 text-slate-700 hover:text-blue-600"><Phone size={12} className="text-slate-400" />{o.contact}</a>
+                              : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">{o.recruiter ?? '—'}</td>
+                          <td className="py-2.5 px-3"><OlStepBadge step={o.workflow_step} /></td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        )
+      ) : loading ? (
         <div className="space-y-2.5 animate-pulse">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="h-16 bg-white rounded-2xl border border-slate-100" />
@@ -640,7 +1037,7 @@ export default function Pipeline() {
         <div className="flex flex-col items-center justify-center py-24 text-slate-400">
           <Clock size={40} className="opacity-20 mb-3" />
           <p className="font-medium text-slate-500">
-            {activeFilters > 0 ? 'No results match your filters.' : showClosed ? 'No closed submissions.' : 'No active submissions.'}
+            {activeFilters > 0 ? 'No results match your filters.' : tab === 'closed' ? 'No closed submissions.' : 'No active submissions.'}
           </p>
           {activeFilters > 0 && (
             <button onClick={clearAllFilters} className="mt-2 text-sm text-blue-500 hover:text-blue-700 font-semibold">

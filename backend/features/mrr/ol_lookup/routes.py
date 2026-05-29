@@ -14,8 +14,9 @@ import psycopg2
 import psycopg2.extras
 import pymysql
 import pymysql.cursors
+from core.deps import get_current_user
 from core.sql_loader import load_sql, load_ol_sql
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 router = APIRouter(prefix="/ol-lookup", tags=["ol-lookup"])
@@ -171,6 +172,23 @@ def check_mapping(
                 "ol_user_name": ol_user["full_name"],
                 "application": None,
             })
+    finally:
+        ol.close()
+
+
+@router.get("/interview-tracking")
+def interview_tracking_overall(
+    from_date: str = Query(..., description="Window start, 'YYYY-MM-DD'"),
+    to_date:   str = Query(..., description="Window end, 'YYYY-MM-DD'"),
+    _user = Depends(get_current_user),
+):
+    """Org-wide upcoming interviews from the OL replica (the 'Overall' tab)."""
+    ol = _get_ol_conn()
+    try:
+        with ol.cursor() as cur:
+            cur.execute(load_ol_sql("interview_tracking_overall.sql"), (from_date, to_date))
+            rows = [_serialize(dict(r)) for r in cur.fetchall()]
+        return JSONResponse(content=rows)
     finally:
         ol.close()
 
