@@ -20,6 +20,7 @@ import {
   createTicket,
   listSopDefinitions,
   listAllHrbpUsers,
+  listUsersByRole,
   uploadTicketFile,
 } from "@/apiService/ticketApi";
 import type {
@@ -76,7 +77,8 @@ export function CreateTicketWizard({
   // ── Remote data ──────────────────────────────────────────────────────────
   const [sops, setSops] = useState<SopDefinition[]>([]);
   const [sopsLoading, setSopsLoading] = useState(false);
-  const [allUsers, setAllUsers] = useState<UserOption[]>([]);
+  const [bhUsers, setBhUsers] = useState<UserOption[]>([]);
+  const [usersByRole, setUsersByRole] = useState<Record<string, UserOption[]>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -85,13 +87,10 @@ export function CreateTicketWizard({
       .then(setSops)
       .catch((err) => toast.error(`Failed to load request types: ${err.message}`))
       .finally(() => setSopsLoading(false));
-    listAllHrbpUsers().then(setAllUsers).catch(() => {});
+    listAllHrbpUsers()
+      .then((users) => setBhUsers(users.filter((u) => u.role === "bh")))
+      .catch(() => {});
   }, [open]);
-
-  const bhUsers = useMemo(
-    () => allUsers.filter((u) => u.role === "bh"),
-    [allUsers],
-  );
 
   // ── Wizard state ─────────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
@@ -150,6 +149,19 @@ export function CreateTicketWizard({
       );
     }
   }, [selectedSop]);
+
+  // Fetch users per role whenever the hierarchy roles change
+  useEffect(() => {
+    const roles = [...new Set(hierarchy.map((s) => s.role).filter(Boolean))];
+    if (roles.length === 0) return;
+    roles.forEach((role) => {
+      if (usersByRole[role]) return; // already fetched
+      listUsersByRole(role)
+        .then((users) => setUsersByRole((prev) => ({ ...prev, [role]: users })))
+        .catch(() => {});
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hierarchy]);
 
   // Re-seed state from props each time the dialog opens (props may arrive after first mount)
   useEffect(() => {
@@ -349,7 +361,7 @@ export function CreateTicketWizard({
               hierarchy={hierarchy}
               onChange={setHierarchy}
               selectedSop={selectedSop}
-              allUsers={allUsers}
+              usersByRole={usersByRole}
             />
           )}
         </div>

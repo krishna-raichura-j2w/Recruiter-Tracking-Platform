@@ -286,7 +286,7 @@ export function RichTextEditor({
       <div className="relative">
         <EditorContent
           editor={editor}
-          className="min-h-[200px] max-h-[400px] overflow-y-auto px-4 py-3 prose prose-sm max-w-none focus-within:outline-none"
+          className="min-h-[200px] max-h-[400px] overflow-y-auto px-4 py-3 prose prose-sm max-w-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:text-gray-800 [&_.ProseMirror]:min-h-[160px]"
         />
         {editor.isEmpty && (
           <p className="absolute top-3 left-4 pointer-events-none select-none text-gray-400 text-sm">

@@ -10,6 +10,7 @@ from core.response_format import (
     success_response_with_pagination,
 )
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from infra.models import User
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,24 @@ def get_summary(
     try:
         data = service.get_summary(db, current_user, client_id)
         return success_response(data=data, message="Consultants summary fetched")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.get("/download-template")
+def download_template(
+    client_id: int | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        file_bytes = service.build_template(hrbp_id=current_user.id, client_id=client_id)
+        filename = "Consultants_Bulk_Upload_Template.xlsx"
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(
+            file_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
     except Exception as exc:
         return error_response(message=str(exc))
 

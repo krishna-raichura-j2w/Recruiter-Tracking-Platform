@@ -1,3 +1,7 @@
+import io
+import os
+import openpyxl
+
 from core.pagination import PageResult, paginate
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -174,6 +178,32 @@ def _parse_number(val) -> Decimal | None:
         return None
 
 
+def build_template(hrbp_id: int, client_id: int | None):
+    template_path = os.path.normpath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "static", "Consultants_Bulk_Upload_Template.xlsx"
+    ))
+    wb = openpyxl.load_workbook(template_path)
+    ws = wb.active
+
+    headers = [cell.value for cell in ws[1]]
+    client_col = headers.index("client_id") + 1 if "client_id" in headers else None
+    hrbp_col = headers.index("hrbp_id") + 1 if "hrbp_id" in headers else None
+    is_active_col = headers.index("is_active") + 1 if "is_active" in headers else None
+
+    for row in range(2, 7):
+        if client_col and client_id is not None:
+            ws.cell(row=row, column=client_col, value=client_id)
+        if hrbp_col:
+            ws.cell(row=row, column=hrbp_col, value=hrbp_id)
+        if is_active_col:
+            ws.cell(row=row, column=is_active_col, value=True)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
     import io
     import openpyxl
@@ -239,6 +269,9 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
             hrbp_raw = _get("hrbp_id")
             hrbp_id = int(hrbp_raw) if hrbp_raw is not None else None
 
+            manager_name_val = _get("consultants_manager_name") or _get("manager_name")
+            manager_name = str(manager_name_val).strip() if manager_name_val else None
+
             existing = db.query(HRBPConsultant).filter_by(emp_id=emp_id).first()
 
             if existing:
@@ -266,6 +299,8 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
                     existing.designation = designation
                 if modality:
                     existing.modality = modality
+                if manager_name:
+                    existing.manager_name = manager_name
                 if client_id is not None:
                     existing.client_id = client_id
                 if hrbp_id is not None:
@@ -285,6 +320,7 @@ def bulk_upsert_from_excel(db: Session, file_bytes: bytes) -> dict:
                     name=name or emp_id,
                     phone=phone,
                     email=email,
+                    manager_name=manager_name,
                     monthly_po=monthly_po,
                     monthly_ctc=monthly_ctc,
                     yearly_ctc=yearly_ctc,

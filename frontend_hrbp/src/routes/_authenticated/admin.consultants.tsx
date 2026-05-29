@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, UserCog, Loader2, Upload, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Search, UserCog, Loader2, Upload, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
 import dayjs, { type Dayjs } from "dayjs";
 import { LottieIcon } from "@/components/LottieIcon";
@@ -20,7 +20,8 @@ import { TableLoader } from "@/components/Loader";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { CustomDatePicker } from "@/components/CustomDatePicker";
 import { CustomSelect } from "@/components/CustomSelect";
-import { getConsultantsApi, getClientsApi, fetchWithAuth, bulkUpsertConsultantsApi } from "@/apiService/api";
+import { getConsultantsApi, getClientsApi, fetchWithAuth, bulkUpsertConsultantsApi, deleteConsultantApi } from "@/apiService/api";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { fetchConsultantsSummary } from "@/apiService/dashboardApi";
 import type { ConsultantsSummary } from "@/apiService/dashboardApi";
 import { getAdminUsers, assignConsultant, type AdminUser } from "@/apiService/adminApi";
@@ -88,6 +89,23 @@ function AdminConsultantsPage() {
     setBulkFile(null);
     setBulkResult(null);
   };
+
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  async function handleDelete(id: number) {
+    try {
+      const res = await deleteConsultantApi(id);
+      if (res.meta.status) {
+        toast.success("Consultant deleted successfully");
+        setConsultants((prev) => prev.filter((c) => c.id !== id));
+        setTotal((prev) => prev - 1);
+      } else {
+        toast.error(res.meta.message || "Delete failed");
+      }
+    } catch {
+      toast.error("Delete failed");
+    }
+  }
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -276,6 +294,7 @@ function AdminConsultantsPage() {
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cohort</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-right">Assign</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -309,6 +328,16 @@ function AdminConsultantsPage() {
                         <UserCog className="h-4 w-4" /> Assign
                       </Button>
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        onClick={() => setDeleteId(c.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -327,6 +356,16 @@ function AdminConsultantsPage() {
           }}
         />
       </main>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(o) => { if (!o) setDeleteId(null); }}
+        title="Delete Consultant"
+        description="Are you sure you want to delete this consultant? This action cannot be undone."
+        confirmText="Delete"
+        variant="destructive"
+        onConfirm={() => { if (deleteId !== null) handleDelete(deleteId); }}
+      />
 
       {/* Bulk Upload Modal */}
       <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o) closeBulk(); }}>
