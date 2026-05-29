@@ -334,7 +334,8 @@ rec_cap_gap[c]   = assigned_cap_month[c] − monthly_subs[c]
 
 ### June 2026 Recruiter Alignment (full table)
 
-| Customer | Monthly Subs | Recs Needed | Assigned (P+S) | Cap/Day | Cap/Month | Count Gap | Capacity Gap |
+| Customer | Monthly Subs | Recs Needed
+ | Assigned (P+S) | Cap/Day | Cap/Month | Count Gap | Capacity Gap |
 |---|---|---|---|---|---|---|---|
 | Deloitte MB | 1000 | 8 | 8 (6P+2S) | 48 | 1056 | 0 | +56 |
 | DTICI | 800 | 7 | 9 (4P+5S) | 54 | 1188 | +2 | +388 |

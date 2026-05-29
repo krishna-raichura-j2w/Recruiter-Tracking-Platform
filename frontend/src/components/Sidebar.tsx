@@ -140,9 +140,10 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'My Pod',
       items: [
-        { label: 'Leaderboard', path: '/leaderboard',   icon: <Trophy size={16} /> },
-        { label: 'My Pod',      path: '/pods',          icon: <Network size={16} /> },
-        { label: 'Targets',     path: '/targets',       icon: <Target size={16} /> },
+        { label: 'Leaderboard',   path: '/leaderboard',  icon: <Trophy size={16} /> },
+        { label: 'My Pod',        path: '/pods',         icon: <Network size={16} /> },
+        { label: 'Targets',       path: '/targets',      icon: <Target size={16} /> },
+        { label: 'Monthly Plan',  path: '/pod-plan',     icon: <BarChart2 size={16} /> },
       ],
     },
     {
