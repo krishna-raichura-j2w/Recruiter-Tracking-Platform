@@ -95,9 +95,10 @@ def _resolve_client_bh_path() -> str:
     if env_override:
         return env_override
     base = os.path.dirname(__file__)
+    # __file__ is backend/features/mrr/coo/routes.py → 4 levels up = repo root
     candidates = [
+        os.path.normpath(os.path.join(base, "..", "..", "..", "..", "client_bh_mapping.csv")),
         os.path.normpath(os.path.join(base, "..", "..", "..", "client_bh_mapping.csv")),
-        os.path.normpath(os.path.join(base, "..", "..", "client_bh_mapping.csv")),
         "/client_bh_mapping.csv",
     ]
     for p in candidates:
@@ -108,13 +109,16 @@ def _resolve_client_bh_path() -> str:
 
 @lru_cache(maxsize=1)
 def _load_client_bh_map() -> dict[str, str]:
-    """Returns {client_name_lower: bh_name} from client_bh_mapping file."""
+    """Returns {client_name_lower: bh_name} from client_bh_mapping file (xlsx saved as .csv)."""
     path = _resolve_client_bh_path()
     mapping: dict[str, str] = {}
     try:
+        import io
         import openpyxl
-        # file has .csv extension but is actually xlsx
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        # File has .csv extension but is actually xlsx — load via BytesIO to bypass ext check
+        with open(path, "rb") as f:
+            data = io.BytesIO(f.read())
+        wb = openpyxl.load_workbook(data, read_only=True, data_only=True)
         ws = wb.active
         for row in ws.iter_rows(min_row=2, values_only=True):
             client, bh = row[0], row[1]
