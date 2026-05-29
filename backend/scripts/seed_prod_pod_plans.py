@@ -93,65 +93,69 @@ setup_id_d = insert_setup(5, 848, {
     'net_po_target': 100, 'exit_budget': 5, 'working_days': 22,
     'target_selects_month': 50, 'sel_ob_rate': 0.8,
     'subs_per_recruiter_day': 6, 'num_recruiters': 16,
-    'interviews_per_kam_day': 12, 'num_kams': 2,
+    'interviews_per_kam_day': 12, 'num_kams': 1,
 })
 print(f"  Setup id={setup_id_d}")
 
+# Customers — updated from Deepak_Pod_June2026_Target_Model_v1 3.xlsx
+# Section B (revenue) + B2 (demand) + Daily Rhythm (int_day)
+# "Pure Storage" tracks existing pipeline OBs (0 new subs/interviews in June)
 d_customers = [
-    {'name': 'Deloitte MB',    'client_id': 1367710, 'net_po': 40,  'exit_alloc': 1.5, 'avg_po': 1.52, 'demand_pool': 250, 'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 20, 'int_sel': 0.08},
-    {'name': 'DTICI',          'client_id': 1219430, 'net_po': 25,  'exit_alloc': 1.5, 'avg_po': 1.8,  'demand_pool': 200, 'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 14, 'int_sel': 0.18},
-    {'name': 'BSH',            'client_id': 1128423, 'net_po': 20,  'exit_alloc': 1.0, 'avg_po': 2.61, 'demand_pool': 60,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 7,  'int_sel': 0.10},
-    {'name': 'Arcelor Mittal', 'client_id': 1378268, 'net_po': 10,  'exit_alloc': 0.5, 'avg_po': 3.23, 'demand_pool': 50,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 5,  'int_sel': 0.07},
-    {'name': 'Pure Storage',   'client_id': 1128456, 'net_po': 5,   'exit_alloc': 0.5, 'avg_po': 1.5,  'demand_pool': 25,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 4,  'int_sel': 0.08},
+    {'name': 'Deloitte MB',    'client_id': 1367710, 'net_po': 50,  'exit_alloc': 1.5, 'avg_po': 1.52, 'demand_pool': 60,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 20, 'int_sel': 0.08},
+    {'name': 'DTICI',          'client_id': 1219430, 'net_po': 15,  'exit_alloc': 1.5, 'avg_po': 1.8,  'demand_pool': 70,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 8,  'int_sel': 0.18},
+    {'name': 'BSH',            'client_id': 1128423, 'net_po': 10,  'exit_alloc': 1.0, 'avg_po': 2.61, 'demand_pool': 17,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 2,  'int_sel': 0.10},
+    {'name': 'Arcelor Mittal', 'client_id': 1378268, 'net_po': 15,  'exit_alloc': 0.5, 'avg_po': 3.23, 'demand_pool': 26,  'repeat_pct': 0.8, 'subs_repeat': 4, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 5,  'int_sel': 0.07},
+    {'name': 'Pure Storage',   'client_id': 1128456, 'net_po': 10,  'exit_alloc': 0.5, 'avg_po': 1.5,  'demand_pool': 11,  'repeat_pct': 0.0, 'subs_repeat': 0, 'subs_new1': 2, 'subs_new2': 2, 'int_day': 0,  'int_sel': 0.08},
 ]
 d_cust_ids = {}
 for i, c in enumerate(d_customers):
     d_cust_ids[c['name']] = insert_customer(setup_id_d, c, i)
     print(f"  Customer '{c['name']}' id={d_cust_ids[c['name']]}")
 
-# Recruiters — mapped from SQLite names to prod user IDs
+# Recruiters — subs/day updated from Section D of v1 3 Excel
 d_recruiters = [
-    {'user_id': 858, 'name': 'A Arun Kumar',  'primary': 'Deloitte MB',    'secondary': 'DTICI',          'spd': 6},
-    {'user_id': 824, 'name': 'Aishwarya',     'primary': 'Deloitte MB',    'secondary': 'BSH',            'spd': 6},
-    {'user_id': 855, 'name': 'Akula Swathi',  'primary': 'Deloitte MB',    'secondary': 'BSH',            'spd': 6},
+    {'user_id': 858, 'name': 'A Arun Kumar',  'primary': 'Deloitte MB',    'secondary': 'DTICI',          'spd': 5},
+    {'user_id': 824, 'name': 'Aishwarya',     'primary': 'Deloitte MB',    'secondary': 'BSH',            'spd': 4},
+    {'user_id': 855, 'name': 'Akula Swathi',  'primary': 'Deloitte MB',    'secondary': 'BSH',            'spd': 5},
     {'user_id': 852, 'name': 'Aravindhan',    'primary': 'DTICI',          'secondary': 'Deloitte MB',    'spd': 6},
-    {'user_id': 856, 'name': 'G Rekha',       'primary': 'DTICI',          'secondary': 'Arcelor Mittal', 'spd': 6},
-    {'user_id': 854, 'name': 'Gopal',         'primary': 'BSH',            'secondary': 'DTICI',          'spd': 6},
-    {'user_id': 850, 'name': 'Harish',        'primary': 'BSH',            'secondary': 'Arcelor Mittal', 'spd': 6},
-    {'user_id': 859, 'name': 'Harshitha',     'primary': 'Arcelor Mittal', 'secondary': 'BSH',            'spd': 6},
-    {'user_id': 821, 'name': 'Kiren',         'primary': 'Deloitte MB',    'secondary': 'DTICI',          'spd': 6},
-    {'user_id': 860, 'name': 'Nagalakshmi',   'primary': 'Deloitte MB',    'secondary': 'Arcelor Mittal', 'spd': 6},
+    {'user_id': 856, 'name': 'G Rekha',       'primary': 'DTICI',          'secondary': 'Arcelor Mittal', 'spd': 5},
+    {'user_id': 854, 'name': 'Gopal',         'primary': 'BSH',            'secondary': 'DTICI',          'spd': 5},
+    {'user_id': 850, 'name': 'Harish',        'primary': 'BSH',            'secondary': 'Arcelor Mittal', 'spd': 2},
+    {'user_id': 859, 'name': 'Harshitha',     'primary': 'Arcelor Mittal', 'secondary': 'BSH',            'spd': 5},
+    {'user_id': 821, 'name': 'Kiren',         'primary': 'Deloitte MB',    'secondary': 'DTICI',          'spd': 4},
+    {'user_id': 860, 'name': 'Nagalakshmi',   'primary': 'Deloitte MB',    'secondary': 'Arcelor Mittal', 'spd': 5},
     {'user_id': 822, 'name': 'Nikita',        'primary': 'DTICI',          'secondary': 'Deloitte MB',    'spd': 6},
     {'user_id': 823, 'name': 'Nithya',        'primary': 'Deloitte MB',    'secondary': 'DTICI',          'spd': 6},
     {'user_id': 853, 'name': 'Shivani',       'primary': 'BSH',            'secondary': 'Pure Storage',   'spd': 6},
-    {'user_id': 857, 'name': 'Sravani RA',    'primary': 'DTICI',          'secondary': 'BSH',            'spd': 6},
+    {'user_id': 857, 'name': 'Sravani RA',    'primary': 'DTICI',          'secondary': 'BSH',            'spd': 5},
     {'user_id': 849, 'name': 'Shridhar',      'primary': 'Pure Storage',   'secondary': 'DTICI',          'spd': 6},
-    {'user_id': 851, 'name': 'Vyasam Lalith', 'primary': 'Arcelor Mittal', 'secondary': 'Pure Storage',   'spd': 6},
+    {'user_id': 851, 'name': 'Vyasam Lalith', 'primary': 'Arcelor Mittal', 'secondary': 'Pure Storage',   'spd': 4},
 ]
 for r in d_recruiters:
     insert_recruiter(setup_id_d, r['user_id'], d_cust_ids, r)
-    print(f"  Recruiter {r['name']}: {r['primary']} / {r['secondary']}")
+    print(f"  Recruiter {r['name']}: {r['primary']} / {r['secondary']} @ {r['spd']}/day")
 
-# KAMs — only actual KAMs in pod 5
-# P Saravanan (id=827): {Deloitte:4, DTICI:2, BSH:2, Arcelor:2, Pure:1} = 11/day
-# Smithesh Sukumar (id=861): {Deloitte:3, DTICI:2, BSH:2, Arcelor:1, Pure:1} = 9/day
+# KAMs — P Saravanan (id=827) and Smithesh Sukumar (id=861)
+# Interview targets updated to match new int_day: Deloitte=20, DTICI=8, BSH=2, Arcelor=5, Pure=0
+# Split ~18/day Saravanan + 17/day Smithesh = 35 total
 insert_kam(setup_id_d, 827,
-    {'Deloitte MB': 4, 'DTICI': 2, 'BSH': 2, 'Arcelor Mittal': 2, 'Pure Storage': 1},
+    {'Deloitte MB': 10, 'DTICI': 4, 'BSH': 1, 'Arcelor Mittal': 3, 'Pure Storage': 0},
     'Reduce TAT → target 7–8 days',
-    'BSH & Deloitte — confirm slots 24h ahead. Reduce L1 TAT to ≤8 days')
+    'Deloitte & DTICI primary. Confirm slots 24h ahead. Target L1 TAT ≤8 days.')
 insert_kam(setup_id_d, 861,
-    {'Deloitte MB': 3, 'DTICI': 2, 'BSH': 2, 'Arcelor Mittal': 1, 'Pure Storage': 1},
+    {'Deloitte MB': 10, 'DTICI': 4, 'BSH': 1, 'Arcelor Mittal': 2, 'Pure Storage': 0},
     'Reduce TAT → target 7–8 days',
-    'Arcelor & Deloitte — lock slots with procurement. Proactive follow-up')
+    'Arcelor & Deloitte — lock slots with procurement. Proactive follow-up.')
 print("  KAMs: P Saravanan, Smithesh Sukumar")
 
-# Weekly OBs — from SQLite
+# Weekly OBs — from Daily Rhythm sheet, v1 3 Excel
+# Weeks: W1=Jun1-5, W2=Jun8-12, W3=Jun15-19, W4=Jun22-26, W5=Jun29-30
 insert_weekly_obs(setup_id_d, d_cust_ids, {
-    'Deloitte MB':    [6, 7, 6, 6, 3],
-    'DTICI':          [3, 4, 3, 4, 1],
-    'BSH':            [2, 2, 2, 2, 1],
-    'Arcelor Mittal': [1, 1, 1, 1, 0],
-    'Pure Storage':   [1, 1, 1, 1, 0],
+    'Deloitte MB':    [8, 7, 8, 8, 3],
+    'DTICI':          [2, 3, 2, 2, 1],
+    'BSH':            [1, 1, 1, 2, 0],
+    'Arcelor Mittal': [1, 1, 1, 2, 0],
+    'Pure Storage':   [2, 1, 2, 1, 1],
 })
 print("  Weekly OBs inserted")
 
