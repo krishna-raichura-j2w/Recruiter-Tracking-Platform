@@ -53,7 +53,8 @@ export interface ClientItem {
   id: number;
   name: string;
   industry: string;
-  hrbp_id: number;
+  hrbp_id: number | null;
+  hrbp_ids: number[];
   is_active: boolean;
   bh_id?: number;
   bh_name?: string;

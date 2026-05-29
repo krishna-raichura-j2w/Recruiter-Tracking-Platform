@@ -14,8 +14,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, UserCog, Loader2, Download } from "lucide-react";
+import { Plus, Search, UserCog, Loader2, Download, ChevronDown } from "lucide-react";
 import { toast } from "react-toastify";
 import { LottieIcon } from "@/components/LottieIcon";
 import { TableLoader } from "@/components/Loader";
@@ -63,12 +65,12 @@ function AdminClientsPage() {
   const [bhUsers, setBhUsers] = useState<AdminUser[]>([]);
 
   const [assignTarget, setAssignTarget] = useState<ClientItem | null>(null);
-  const [assignForm, setAssignForm] = useState<{ hrbp_id: string; bh_id: string }>({ hrbp_id: "", bh_id: "" });
+  const [assignForm, setAssignForm] = useState<{ hrbp_ids: number[]; bh_id: string }>({ hrbp_ids: [], bh_id: "" });
   const [saving, setSaving] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", industry: "", hrbp_id: "", bh_id: "" });
+  const [createForm, setCreateForm] = useState<{ name: string; industry: string; hrbp_ids: number[]; bh_id: string }>({ name: "", industry: "", hrbp_ids: [], bh_id: "" });
 
   // Debounce text search — clears clientNameFilter so they don't conflict
   useEffect(() => {
@@ -134,8 +136,9 @@ function AdminClientsPage() {
 
   const openAssign = (c: ClientItem) => {
     setAssignTarget(c);
+    const ids = c.hrbp_ids?.length ? c.hrbp_ids : (c.hrbp_id ? [c.hrbp_id] : []);
     setAssignForm({
-      hrbp_id: c.hrbp_id ? String(c.hrbp_id) : "none",
+      hrbp_ids: ids,
       bh_id: c.bh_id ? String(c.bh_id) : "none",
     });
   };
@@ -145,7 +148,7 @@ function AdminClientsPage() {
     try {
       setSaving(true);
       await assignClient(assignTarget.id, {
-        hrbp_id: assignForm.hrbp_id && assignForm.hrbp_id !== "none" ? Number(assignForm.hrbp_id) : undefined,
+        hrbp_ids: assignForm.hrbp_ids,
         bh_id: assignForm.bh_id && assignForm.bh_id !== "none" ? Number(assignForm.bh_id) : undefined,
       });
       toast.success("Client assignment updated");
@@ -167,7 +170,7 @@ function AdminClientsPage() {
       setCreating(true);
       const payload: Record<string, any> = { name: createForm.name.trim() };
       if (createForm.industry) payload.industry = createForm.industry;
-      if (createForm.hrbp_id && createForm.hrbp_id !== "none") payload.hrbp_id = Number(createForm.hrbp_id);
+      if (createForm.hrbp_ids.length) payload.hrbp_ids = createForm.hrbp_ids;
       if (createForm.bh_id && createForm.bh_id !== "none") payload.bh_id = Number(createForm.bh_id);
 
       const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/clients`, {
@@ -178,7 +181,7 @@ function AdminClientsPage() {
       if (!res.ok || json?.meta?.status === false) throw new Error(json?.meta?.message || "Failed");
       toast.success("Client created successfully");
       setCreateOpen(false);
-      setCreateForm({ name: "", industry: "", hrbp_id: "", bh_id: "" });
+      setCreateForm({ name: "", industry: "", hrbp_ids: [], bh_id: "" });
       fetchData();
     } catch (e: any) {
       toast.error(e.message || "Failed to create client");
@@ -312,7 +315,9 @@ function AdminClientsPage() {
                   <TableRow key={c.id} className="hover:bg-slate-50">
                     <TableCell className="font-medium text-slate-800">{c.name}</TableCell>
                     <TableCell className="text-slate-500 text-sm">{c.industry ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-slate-600">{getUserName(hrbpUsers, c.hrbp_id)}</TableCell>
+                    <TableCell className="text-sm text-slate-600">
+                      {(c.hrbp_ids?.length ? c.hrbp_ids : (c.hrbp_id ? [c.hrbp_id] : [])).map((id) => getUserName(hrbpUsers, id)).join(", ") || "—"}
+                    </TableCell>
                     <TableCell className="text-sm text-slate-600">{getUserName(bhUsers, c.bh_id)}</TableCell>
                     <TableCell className="text-sm text-slate-600">{c.headcount ?? 0}</TableCell>
                     <TableCell>
@@ -369,15 +374,28 @@ function AdminClientsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Assign HRBP</Label>
-              <Select value={createForm.hrbp_id} onValueChange={(v) => setCreateForm((p) => ({ ...p, hrbp_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select HRBP (optional)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal text-slate-700">
+                    {createForm.hrbp_ids.length
+                      ? createForm.hrbp_ids.map((id) => hrbpUsers.find((u) => u.id === id)?.name ?? `#${id}`).join(", ")
+                      : "Select HRBPs (optional)"}
+                    <ChevronDown className="h-4 w-4 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2">
                   {hrbpUsers.map((u) => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                    <div key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
+                      onClick={() => setCreateForm((p) => ({
+                        ...p,
+                        hrbp_ids: p.hrbp_ids.includes(u.id) ? p.hrbp_ids.filter((id) => id !== u.id) : [...p.hrbp_ids, u.id],
+                      }))}>
+                      <Checkbox checked={createForm.hrbp_ids.includes(u.id)} />
+                      <span className="text-sm">{u.name}</span>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1.5">
               <Label>Assign Business Head</Label>
@@ -411,15 +429,28 @@ function AdminClientsPage() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label>HRBP</Label>
-              <Select value={assignForm.hrbp_id} onValueChange={(v) => setAssignForm((p) => ({ ...p, hrbp_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select HRBP" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal text-slate-700">
+                    {assignForm.hrbp_ids.length
+                      ? assignForm.hrbp_ids.map((id) => hrbpUsers.find((u) => u.id === id)?.name ?? `#${id}`).join(", ")
+                      : "Select HRBPs"}
+                    <ChevronDown className="h-4 w-4 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2">
                   {hrbpUsers.map((u) => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                    <div key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
+                      onClick={() => setAssignForm((p) => ({
+                        ...p,
+                        hrbp_ids: p.hrbp_ids.includes(u.id) ? p.hrbp_ids.filter((id) => id !== u.id) : [...p.hrbp_ids, u.id],
+                      }))}>
+                      <Checkbox checked={assignForm.hrbp_ids.includes(u.id)} />
+                      <span className="text-sm">{u.name}</span>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1.5">
               <Label>Business Head (BH)</Label>
