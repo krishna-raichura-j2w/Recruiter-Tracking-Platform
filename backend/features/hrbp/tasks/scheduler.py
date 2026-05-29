@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.database import SessionLocal
-from core.email import send_email
+from core.email import send_outlook_email as send_email
 from dateutil.relativedelta import relativedelta
 from infra.hrbp_models import (
     HRBPClient,

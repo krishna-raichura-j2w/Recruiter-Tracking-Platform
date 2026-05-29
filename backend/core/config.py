@@ -52,6 +52,18 @@ class Settings(BaseSettings):
         validation_alias="GMAIL_APP_PASSWORD",
     )
 
+    # Outlook SMTP
+    outlook_email: str | None = Field(default=None, validation_alias="OUTLOOK_EMAIL")
+    outlook_password: str | None = Field(
+        default=None,
+        validation_alias="OUTLOOK_PASSWORD",
+    )
+    outlook_smtp_host: str = Field(
+        default="smtp.office365.com",
+        validation_alias="OUTLOOK_SMTP_HOST",
+    )
+    outlook_smtp_port: int = Field(default=587, validation_alias="OUTLOOK_SMTP_PORT")
+
     # OL Replica MySQL (read-only)
     ol_replica_host: str | None = Field(
         default=None,
