@@ -321,6 +321,23 @@ export interface Submission {
 }
 
 
+// Org-wide interview row from the OfferLetter (OL) replica — the "Overall" tab
+// on the Interview Tracking page. Distinct from Submission (this tool's DB).
+export interface OverallInterview {
+  candidate: string | null;
+  email: string | null;
+  contact: string | null;
+  workflow_step: string | null;
+  job_id: number | null;
+  recruiter: string | null;
+  recruiter_email: string | null;
+  interview_date: string | null;
+  interview_time: string | null;
+  company_name: string | null;
+  client_id: number | null;
+}
+
+
 export interface Notification {
   id: number;
   message: string;
