@@ -957,6 +957,7 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
   const [workingDays, setWorkingDays] = useState<string[]>([]);
   const [selDate, setSelDate] = useState('');
   const [actuals, setActuals] = useState<Record<number, { actual_subs: number; actual_interviews: number; actual_selects: number; actual_obs: number }>>({});
+  const [dlSubs, setDlSubs] = useState<Record<number, number>>({});
   const [weekInfo, setWeekInfo] = useState<WeekInfo | null>(null);
   const [weekOBTargets, setWeekOBTargets] = useState<Record<number, number>>({});
   const [weekOBActuals, setWeekOBActuals] = useState<Record<number, number>>({});
@@ -978,7 +979,20 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
       podPlanApi.getDaily(setupId, selDate),
       podPlanApi.getMonthlyProgress(setupId),
     ]).then(([daily, monthly]) => {
-      setActuals(daily.actuals ?? {});
+      const loadedActuals = daily.actuals ?? {};
+      const loadedDlSubs: Record<number, number> = daily.dl_subs ?? {};
+      setDlSubs(loadedDlSubs);
+      // Auto-fill actual_subs from DL system data where no manual entry exists
+      const merged: typeof loadedActuals = { ...loadedActuals };
+      for (const [cidStr, count] of Object.entries(loadedDlSubs)) {
+        const cid = Number(cidStr);
+        if (!merged[cid]) {
+          merged[cid] = { actual_subs: count, actual_interviews: 0, actual_selects: 0, actual_obs: 0 };
+        } else if (merged[cid].actual_subs === 0) {
+          merged[cid] = { ...merged[cid], actual_subs: count };
+        }
+      }
+      setActuals(merged);
       setWeekInfo(daily.week_info);
       setWeekOBTargets(daily.week_ob_targets ?? {});
       setWeekOBActuals(daily.week_ob_actuals ?? {});
@@ -1040,18 +1054,18 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Entry for {selDate}</h3>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Targets shown in grey · Blue inputs are editable</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Targets shown in grey · Green = DL submissions auto-pulled from system · Blue inputs are editable</div>
             </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#f9fafb' }}>
-                  {['Customer', 'Subs Target/Day', 'Actual Subs ✏️', 'Int Target/Day', 'Actual Int ✏️', 'Sel Target/Day', 'Actual Sel ✏️', 'Actual OBs ✏️'].map(h => (
+                  {['Customer', 'Subs Target/Day', 'DL Subs (System)', 'Actual Subs ✏️', 'Int Target/Day', 'Actual Int ✏️', 'Sel Target/Day', 'Actual Sel ✏️', 'Actual OBs ✏️'].map(h => (
                     <th key={h} style={{
                       padding: '8px 12px', border: '1px solid #e5e7eb', fontWeight: 700, fontSize: 12,
-                      background: h.includes('✏️') ? '#eff6ff' : '#f9fafb',
-                      color: h.includes('✏️') ? '#1d4ed8' : '#374151',
+                      background: h === 'DL Subs (System)' ? '#f0fdf4' : h.includes('✏️') ? '#eff6ff' : '#f9fafb',
+                      color: h === 'DL Subs (System)' ? '#15803d' : h.includes('✏️') ? '#1d4ed8' : '#374151',
                       textAlign: h === 'Customer' ? 'left' : 'center',
                     }}>{h}</th>
                   ))}
@@ -1062,6 +1076,11 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
                   <tr key={c.id}>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', fontWeight: 700 }}>{c.customer_name}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{c.target_interviews_day ? Math.round(c.open_demand_pool * (c.repeat_demand_pct * c.subs_repeat + (1 - c.repeat_demand_pct) * (c.subs_new_phase1 + c.subs_new_phase2)) / Math.max(1, setup.working_days ?? 22)) : '—'}</td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4' }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: dlSubs[c.id] ? '#15803d' : '#9ca3af' }}>
+                        {dlSubs[c.id] ?? 0}
+                      </span>
+                    </td>
                     <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_subs')}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{c.target_interviews_day}</td>
                     <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_interviews')}</td>

@@ -175,6 +175,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
     pod_id = _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id)
     actuals = service.get_daily_actuals(db, setup_id, entry_date)
+    dl_subs = service.get_dl_subs_for_date(db, setup_id, pod_id, entry_date)
     week_info = service.week_for_date(entry_date, s["month"])
     week_ob_actuals: dict[int, int] = {}
     if week_info:
@@ -187,6 +188,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
     }
     return {
         "actuals": actuals,
+        "dl_subs": dl_subs,
         "week_info": week_info,
         "week_ob_actuals": week_ob_actuals,
         "week_ob_targets": week_ob_targets,

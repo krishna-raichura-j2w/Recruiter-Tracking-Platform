@@ -307,6 +307,25 @@ def get_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[int, 
     return {r["customer_target_id"]: dict(r) for r in rows}
 
 
+def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: str) -> dict[int, int]:
+    """Count submissions made by delivery leads in this pod per customer target for the given date."""
+    rows = db.execute(
+        text("""
+            SELECT ct.id AS customer_target_id, COUNT(s.id) AS dl_subs
+            FROM submissions s
+            JOIN jobs j ON j.id = s.job_id
+            JOIN bh_customer_targets ct ON ct.client_id = j.client_id AND ct.setup_id = :setup_id
+            WHERE DATE(s.submitted_at) = :entry_date
+              AND s.delivery_lead_id IN (
+                  SELECT id FROM users WHERE pod_id = :pod_id AND role = 'delivery_lead' AND is_active = true
+              )
+            GROUP BY ct.id
+        """),
+        {"setup_id": setup_id, "pod_id": pod_id, "entry_date": entry_date},
+    ).mappings().all()
+    return {r["customer_target_id"]: int(r["dl_subs"]) for r in rows}
+
+
 def get_monthly_actuals(db: Session, setup_id: int, month_str: str) -> dict[int, dict]:
     ref = datetime.strptime(month_str, "%B %Y")
     m_start = ref.date().isoformat()
