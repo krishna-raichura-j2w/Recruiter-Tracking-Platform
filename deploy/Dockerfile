@@ -68,6 +68,10 @@ COPY backend/ ./
 # Copy COO leaderboard BH/AM mapping spreadsheet (lives at repo root)
 COPY Mehr.xlsx ./
 
+# Copy client → BH mapping (xlsx with .csv extension; loaded by features/mrr/coo).
+# Lands at /app/client_bh_mapping.csv, the first path _resolve_client_bh_path() checks.
+COPY client_bh_mapping.csv ./
+
 # Copy built frontends from stage 1 / 1b
 COPY --from=frontend-build /fe/dist /app/frontend_dist
 COPY --from=hrbp-build /hrbp/dist /app/frontend_hrbp_dist
