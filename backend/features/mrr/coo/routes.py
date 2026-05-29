@@ -87,6 +87,68 @@ def _resolve_excel_path() -> str:
 EXCEL_PATH = _resolve_excel_path()
 
 
+# ── Client → BH mapping (from client_bh_mapping.csv / xlsx) ──────────────────
+
+
+def _resolve_client_bh_path() -> str:
+    env_override = os.environ.get("CLIENT_BH_MAP_PATH")
+    if env_override:
+        return env_override
+    base = os.path.dirname(__file__)
+    candidates = [
+        os.path.normpath(os.path.join(base, "..", "..", "..", "client_bh_mapping.csv")),
+        os.path.normpath(os.path.join(base, "..", "..", "client_bh_mapping.csv")),
+        "/client_bh_mapping.csv",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+
+@lru_cache(maxsize=1)
+def _load_client_bh_map() -> dict[str, str]:
+    """Returns {client_name_lower: bh_name} from client_bh_mapping file."""
+    path = _resolve_client_bh_path()
+    mapping: dict[str, str] = {}
+    try:
+        import openpyxl
+        # file has .csv extension but is actually xlsx
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        ws = wb.active
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            client, bh = row[0], row[1]
+            if client and isinstance(client, str):
+                bh_str = str(bh).strip() if bh and bh != 0 else ""
+                if bh_str.lower() in ("none", "0", ""):
+                    bh_str = ""
+                mapping[client.strip().lower()] = bh_str
+        wb.close()
+    except Exception as exc:
+        print(f"[coo] client_bh_mapping load failed: {exc}")
+    return mapping
+
+
+def _lookup_bh(client: str) -> str:
+    """Returns BH name for a client, or empty string if not found."""
+    if not client:
+        return ""
+    bh_map = _load_client_bh_map()
+    key = client.strip().lower()
+    if key in bh_map:
+        return bh_map[key]
+    # Normalize and try fuzzy match
+    norm = re.sub(r"[^a-z0-9 ]", "", key).strip()
+    for k, bh in bh_map.items():
+        if re.sub(r"[^a-z0-9 ]", "", k).strip() == norm:
+            return bh
+    for k, bh in bh_map.items():
+        kn = re.sub(r"[^a-z0-9 ]", "", k).strip()
+        if norm in kn or kn in norm:
+            return bh
+    return ""
+
+
 @lru_cache(maxsize=1)
 def _load_bh_am_map() -> dict[str, dict[str, str]]:
     """Returns {client_lower: {bh, am}} from Mehr.xlsx 'AM and BH' sheet."""
@@ -281,6 +343,7 @@ def client_pipeline(
     rows = [
         {
             "client_name": client,
+            "bh_name":     _lookup_bh(client),
             "cols": {str(sid): {"day": data.get(sid, 0)} for sid, _ in visible_cols},
         }
         for client, data in sorted(agg.items())

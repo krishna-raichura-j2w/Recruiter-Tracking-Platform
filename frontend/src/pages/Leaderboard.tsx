@@ -926,6 +926,7 @@ function RecruiterLeaderboardSection() {
 
 interface ClientPipelineRow {
   client_name: string;
+  bh_name:     string;
   cols:        Record<string, { day: number }>;
 }
 
@@ -972,13 +973,14 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
 }
 
 function ClientPipelineSection() {
-  const [data, setData]           = useState<ClientPipelineApiResponse | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
-  const [selDate, setSelDate]     = useState(todayISO());
-  const [sortKey, setSortKey]     = useState('');
-  const [sortDir, setSortDir]     = useState<SortDir>('desc');
+  const [data, setData]       = useState<ClientPipelineApiResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [search, setSearch]   = useState('');
+  const [fBh, setFBh]         = useState<Set<string>>(new Set());
+  const [selDate, setSelDate] = useState(todayISO());
+  const [sortKey, setSortKey] = useState('');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const fetchData = (d = selDate) => {
     setLoading(true);
@@ -1001,15 +1003,25 @@ function ClientPipelineSection() {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
+  const bhOptions = useMemo(
+    () => uniq((data?.rows ?? []).map(r => r.bh_name || 'Unknown').sort()),
+    [data]
+  );
+
   const filteredRows = useMemo(() => {
     if (!data) return [];
     let rows = data.rows;
+    if (fBh.size) rows = rows.filter(r => fBh.has(r.bh_name || 'Unknown'));
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(r => r.client_name.toLowerCase().includes(q));
     }
     if (sortKey) {
       rows = [...rows].sort((a, b) => {
+        if (sortKey === 'bh') {
+          const cmp = (a.bh_name || '').localeCompare(b.bh_name || '');
+          return sortDir === 'desc' ? -cmp : cmp;
+        }
         if (sortKey === 'client') {
           const cmp = a.client_name.localeCompare(b.client_name);
           return sortDir === 'desc' ? -cmp : cmp;
@@ -1020,29 +1032,28 @@ function ClientPipelineSection() {
       });
     }
     return rows;
-  }, [data, search, sortKey, sortDir]);
+  }, [data, fBh, search, sortKey, sortDir]);
 
   const dayTotals = useMemo(() => {
     const t: Record<string, number> = {};
-    for (const col of (data?.columns ?? [])) {
+    for (const col of (data?.columns ?? []))
       t[col.key] = filteredRows.reduce((s, r) => s + (r.cols[col.key]?.day ?? 0), 0);
-    }
     return t;
   }, [filteredRows, data]);
 
   const cols      = data?.columns ?? [];
-  const totalCols = 1 + cols.length;
+  const totalCols = 2 + cols.length; // BH + Client + stages
   const dayLabel  = selDate === todayISO() ? 'Today' : fmtDate(selDate);
 
   return (
     <div>
-      {/* ── Header row with date filter ── */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="text-base font-bold text-slate-800">
           Client Pipeline&nbsp;
           <span className="text-slate-400 font-normal text-sm">— {dayLabel}</span>
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600">
             <Calendar size={12} className="text-blue-500" />
             <input
@@ -1061,17 +1072,31 @@ function ClientPipelineSection() {
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <div className="relative">
-            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search client…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-44"
-            />
-          </div>
         </div>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100">
+        <Filter size={13} className="text-slate-400" />
+        <MultiSelectFilter label="BH" options={bhOptions} selected={fBh} onChange={setFBh} />
+        <div className="relative">
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search client…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-44 bg-white"
+          />
+        </div>
+        {(fBh.size > 0 || search) && (
+          <button
+            onClick={() => { setFBh(new Set()); setSearch(''); }}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
+          >
+            <X size={11} /> Clear
+          </button>
+        )}
       </div>
 
       {error && (
@@ -1080,7 +1105,7 @@ function ClientPipelineSection() {
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: Math.max(500, 180 + cols.length * 100) }}>
+          <table className="w-full border-collapse text-sm" style={{ minWidth: Math.max(600, 320 + cols.length * 90) }}>
             {loading ? (
               <tbody>
                 <tr>
@@ -1094,8 +1119,13 @@ function ClientPipelineSection() {
               <>
                 <thead>
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-green-700"
-                      style={{ background: '#15803D', minWidth: 160 }}
+                    <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-indigo-700"
+                      style={{ background: '#3730A3', minWidth: 130 }}
+                      onClick={() => handleSort('bh')}>
+                      <span className="flex items-center gap-1">BH <SortIcon active={sortKey === 'bh'} dir={sortDir} /></span>
+                    </th>
+                    <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-green-700"
+                      style={{ background: '#15803D', minWidth: 140 }}
                       onClick={() => handleSort('client')}>
                       <span className="flex items-center gap-1">Client <SortIcon active={sortKey === 'client'} dir={sortDir} /></span>
                     </th>
@@ -1119,14 +1149,18 @@ function ClientPipelineSection() {
                   {filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan={totalCols} className="py-14 text-center text-sm text-slate-400">
-                        {search ? 'No matches found.' : 'No data available.'}
+                        {search || fBh.size ? 'No matches found.' : 'No data available.'}
                       </td>
                     </tr>
                   ) : (
                     <>
                       {filteredRows.map((row, ri) => (
                         <tr key={row.client_name} className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors">
-                          <td className="py-2.5 px-4 text-xs font-semibold border-r border-slate-200 whitespace-nowrap"
+                          <td className="py-2.5 px-3 text-xs font-semibold border-r border-indigo-100 whitespace-nowrap"
+                            style={{ color: '#3730A3', background: ri % 2 === 0 ? '#EEF2FF' : '#E0E7FF' }}>
+                            {row.bh_name || <span className="text-slate-400 italic">—</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs font-semibold border-r border-slate-200 whitespace-nowrap"
                             style={{ color: '#15803D', background: ri % 2 === 0 ? '#F0FDF4' : '#ECFDF5' }}>
                             {row.client_name}
                           </td>
@@ -1144,7 +1178,7 @@ function ClientPipelineSection() {
                       ))}
 
                       <tr className="border-t-2 border-slate-300">
-                        <td className="py-3 px-4 text-xs font-black border-r border-slate-200 whitespace-nowrap" style={{ color: '#15803D', background: '#D1FAE5' }}>
+                        <td colSpan={2} className="py-3 px-3 text-xs font-black border-r border-slate-200 whitespace-nowrap" style={{ color: '#15803D', background: '#D1FAE5' }}>
                           TOTAL&nbsp;({filteredRows.length} clients)
                         </td>
                         {cols.map(col => {
