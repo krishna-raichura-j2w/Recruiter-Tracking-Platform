@@ -56,6 +56,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Export / Reports', path: '/export',        icon: <BarChart2 size={16} /> },
         { label: 'Users',            path: '/users',         icon: <UserCheck size={16} /> },
         { label: 'Pods',             path: '/pods',          icon: <Network size={16} /> },
+        { label: 'Pod Monthly Plans', path: '/pod-plan',      icon: <BarChart2 size={16} /> },
         { label: 'Form Builder',     path: '/form-builder',  icon: <Settings size={16} /> },
       ],
     },

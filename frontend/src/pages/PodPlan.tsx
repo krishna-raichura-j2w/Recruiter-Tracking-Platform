@@ -5,6 +5,7 @@ import {
   RefreshCw, X,
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 import {
   podPlanApi,
   type ClientOption,
@@ -67,7 +68,7 @@ function NumInput({ value, onChange, min = 0, step = 1, style = {} }: {
 
 // ── Setup Tab ─────────────────────────────────────────────────────────────────
 
-function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange, setupId, weeks }: {
+function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange, setupId, weeks, asBh }: {
   setup: Partial<PodSetup>;
   onSetupChange: (s: Partial<PodSetup>) => void;
   clients: ClientOption[];
@@ -75,6 +76,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
   onCustomersChange: (c: CustomerTarget[]) => void;
   setupId: number | null;
   weeks: WeekInfo[];
+  asBh?: number;
 }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -101,7 +103,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
   const handleSaveSetup = async () => {
     setSaving(true);
     try {
-      await podPlanApi.upsertSetup(setup);
+      await podPlanApi.upsertSetup(setup, asBh);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally { setSaving(false); }
@@ -1198,6 +1200,9 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function PodPlan() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
   const [activeTab, setActiveTab] = useState<TabKey>('setup');
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -1216,11 +1221,13 @@ export default function PodPlan() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [existingMonths, setExistingMonths] = useState<string[]>([]);
+  const [bhs, setBhs] = useState<{ id: number; name: string; email: string; pod_id: number }[]>([]);
+  const [selectedBhUserId, setSelectedBhUserId] = useState<number | null>(null);
 
-  const loadSetup = useCallback((month: string) => {
+  const loadSetup = useCallback((month: string, asBh?: number) => {
     setLoading(true);
     setError('');
-    podPlanApi.getSetup(month)
+    podPlanApi.getSetup(month, asBh)
       .then(data => {
         if (data.setup) {
           setSetup(data.setup);
@@ -1238,26 +1245,56 @@ export default function PodPlan() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    podPlanApi.listClients().then(setClients);
-    podPlanApi.listSetups()
+  const loadForBh = useCallback((bhId: number, fallbackMonth: string) => {
+    podPlanApi.listSetups(bhId)
       .then(data => {
         setExistingMonths(data.setups.map(s => s.month));
-        if (data.setups.length > 0) {
-          const existingMonth = data.setups[0].month;
-          setSelectedMonth(existingMonth);
-          loadSetup(existingMonth);
-        } else {
-          loadSetup(selectedMonth);
-        }
+        const month = data.setups.length > 0 ? data.setups[0].month : fallbackMonth;
+        setSelectedMonth(month);
+        loadSetup(month, bhId);
       })
-      .catch(() => loadSetup(selectedMonth));
+      .catch(() => loadSetup(fallbackMonth, bhId));
+  }, [loadSetup]);
+
+  useEffect(() => {
+    podPlanApi.listClients().then(setClients);
+    if (isAdmin) {
+      podPlanApi.listBHs().then(data => {
+        setBhs(data.bhs);
+        if (data.bhs.length > 0) {
+          const firstBh = data.bhs[0];
+          setSelectedBhUserId(firstBh.id);
+          loadForBh(firstBh.id, selectedMonth);
+        } else {
+          setLoading(false);
+        }
+      }).catch(() => setLoading(false));
+    } else {
+      podPlanApi.listSetups()
+        .then(data => {
+          setExistingMonths(data.setups.map(s => s.month));
+          if (data.setups.length > 0) {
+            const existingMonth = data.setups[0].month;
+            setSelectedMonth(existingMonth);
+            loadSetup(existingMonth);
+          } else {
+            loadSetup(selectedMonth);
+          }
+        })
+        .catch(() => loadSetup(selectedMonth));
+    }
   }, []);
+
+  const handleBhChange = (bhId: number) => {
+    setSelectedBhUserId(bhId);
+    setActiveTab('setup');
+    loadForBh(bhId, selectedMonth);
+  };
 
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month);
     setActiveTab('setup');
-    loadSetup(month);
+    loadSetup(month, selectedBhUserId ?? undefined);
   };
 
   const handleSetupChange = (s: Partial<PodSetup>) => setSetup(s);
@@ -1282,6 +1319,17 @@ export default function PodPlan() {
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {isAdmin && bhs.length > 0 && (
+              <>
+                <span style={{ fontSize: 13, color: '#6b7280' }}>BH:</span>
+                <select
+                  value={selectedBhUserId ?? ''}
+                  onChange={e => handleBhChange(Number(e.target.value))}
+                  style={{ padding: '7px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#fff' }}>
+                  {bhs.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </>
+            )}
             <span style={{ fontSize: 13, color: '#6b7280' }}>Month:</span>
             <select value={selectedMonth} onChange={e => handleMonthChange(e.target.value)}
               style={{ padding: '7px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#fff' }}>
@@ -1327,6 +1375,7 @@ export default function PodPlan() {
             onCustomersChange={setCustomers}
             setupId={setupId}
             weeks={weeks}
+            asBh={selectedBhUserId ?? undefined}
           />
         )}
         {activeTab === 'dashboard' && setupId && <DashboardTab setupId={setupId} />}
