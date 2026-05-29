@@ -91,7 +91,7 @@ function LoginForm() {
     }
     setLoading(true);
     try {
-      const loggedInUser = await login(email, pwd);
+      const loggedInUser = await login(email.trim().toLowerCase(), pwd);
       toast.success("Successfully signed in");
       if (loggedInUser?.must_change_password) {
         nav({ to: "/change-password" });

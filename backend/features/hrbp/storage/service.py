@@ -2,27 +2,38 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+import boto3
 from azure.storage.blob import BlobServiceClient
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException, UploadFile
 
-ACCOUNT_NAME = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
-ACCOUNT_KEY = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
-CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+# ── Azure config ──────────────────────────────────────────────────────────────
+AZURE_ACCOUNT_NAME = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+AZURE_ACCOUNT_KEY = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
+AZURE_CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
+
+# ── AWS S3 config ─────────────────────────────────────────────────────────────
+AWS_ACCESS_KEY = os.getenv("AWS_S3_ACCESS_KEY")
+AWS_SECRET_KEY = os.getenv("AWS_S3_SECRET_KEY")
+AWS_REGION = os.getenv("AWS_REGION")
+AWS_BUCKET = os.getenv("AWS_BUCKET_NAME")
 
 
-def _client() -> BlobServiceClient:
+# ── Azure (kept for reference) ────────────────────────────────────────────────
+
+def _azure_client() -> BlobServiceClient:
     connection_string = (
         f"DefaultEndpointsProtocol=https;"
-        f"AccountName={ACCOUNT_NAME};"
-        f"AccountKey={ACCOUNT_KEY};"
+        f"AccountName={AZURE_ACCOUNT_NAME};"
+        f"AccountKey={AZURE_ACCOUNT_KEY};"
         f"EndpointSuffix=core.windows.net"
     )
     return BlobServiceClient.from_connection_string(connection_string)
 
 
-def upload_bytes(data: bytes, filename: str) -> str:
-    """Upload raw bytes directly (no UploadFile wrapper needed)."""
-    if not ACCOUNT_NAME or not ACCOUNT_KEY or not CONTAINER_NAME:
+def upload_bytes_azure(data: bytes, filename: str) -> str:
+    """Upload raw bytes to Azure Blob Storage."""
+    if not AZURE_ACCOUNT_NAME or not AZURE_ACCOUNT_KEY or not AZURE_CONTAINER_NAME:
         raise HTTPException(status_code=500, detail="Azure Blob Storage is not configured")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -30,17 +41,18 @@ def upload_bytes(data: bytes, filename: str) -> str:
     blob_name = f"exports/{unique_name}"
 
     try:
-        client = _client()
-        blob_client = client.get_blob_client(container=CONTAINER_NAME, blob=blob_name)
+        client = _azure_client()
+        blob_client = client.get_blob_client(container=AZURE_CONTAINER_NAME, blob=blob_name)
         blob_client.upload_blob(data, overwrite=True)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Azure upload failed: {exc}") from exc
 
-    return f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{blob_name}"
+    return f"https://{AZURE_ACCOUNT_NAME}.blob.core.windows.net/{AZURE_CONTAINER_NAME}/{blob_name}"
 
 
-def upload_file(file: UploadFile) -> str:
-    if not ACCOUNT_NAME or not ACCOUNT_KEY or not CONTAINER_NAME:
+def upload_file_azure(file: UploadFile) -> str:
+    """Upload a file to Azure Blob Storage."""
+    if not AZURE_ACCOUNT_NAME or not AZURE_ACCOUNT_KEY or not AZURE_CONTAINER_NAME:
         raise HTTPException(status_code=500, detail="Azure Blob Storage is not configured")
 
     ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else ""
@@ -49,10 +61,68 @@ def upload_file(file: UploadFile) -> str:
     blob_name = f"uploads/{unique_name}"
 
     try:
-        client = _client()
-        blob_client = client.get_blob_client(container=CONTAINER_NAME, blob=blob_name)
+        client = _azure_client()
+        blob_client = client.get_blob_client(container=AZURE_CONTAINER_NAME, blob=blob_name)
         blob_client.upload_blob(file.file, overwrite=True)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Azure upload failed: {exc}") from exc
 
-    return f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER_NAME}/{blob_name}"
+    return f"https://{AZURE_ACCOUNT_NAME}.blob.core.windows.net/{AZURE_CONTAINER_NAME}/{blob_name}"
+
+
+# ── AWS S3 ────────────────────────────────────────────────────────────────────
+
+def _s3_client():
+    return boto3.client(
+        "s3",
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+        region_name=AWS_REGION,
+    )
+
+
+def upload_bytes_s3(data: bytes, filename: str) -> str:
+    """Upload raw bytes to AWS S3."""
+    if not AWS_ACCESS_KEY or not AWS_SECRET_KEY or not AWS_BUCKET:
+        raise HTTPException(status_code=500, detail="AWS S3 is not configured")
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    unique_name = f"{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
+    key = f"exports/{unique_name}"
+
+    try:
+        _s3_client().put_object(Bucket=AWS_BUCKET, Key=key, Body=data)
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(status_code=500, detail=f"S3 upload failed: {exc}") from exc
+
+    return f"https://{AWS_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
+
+
+def upload_file_s3(file: UploadFile) -> str:
+    """Upload a file to AWS S3."""
+    if not AWS_ACCESS_KEY or not AWS_SECRET_KEY or not AWS_BUCKET:
+        raise HTTPException(status_code=500, detail="AWS S3 is not configured")
+
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else ""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    unique_name = f"{timestamp}_{uuid.uuid4().hex[:8]}.{ext}" if ext else f"{timestamp}_{uuid.uuid4().hex[:8]}"
+    key = f"uploads/{unique_name}"
+
+    try:
+        _s3_client().upload_fileobj(file.file, AWS_BUCKET, key)
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(status_code=500, detail=f"S3 upload failed: {exc}") from exc
+
+    return f"https://{AWS_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
+
+
+# ── Active provider — AWS S3 ──────────────────────────────────────────────────
+# All callers use upload_bytes / upload_file.
+# To switch back to Azure, point these at upload_bytes_azure / upload_file_azure.
+
+def upload_bytes(data: bytes, filename: str) -> str:
+    return upload_bytes_s3(data, filename)
+
+
+def upload_file(file: UploadFile) -> str:
+    return upload_file_s3(file)

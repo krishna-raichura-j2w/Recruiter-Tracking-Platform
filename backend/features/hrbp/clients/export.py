@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased
 
 from features.hrbp.storage.service import upload_bytes
@@ -61,7 +61,7 @@ def _fmt(dt) -> str:
 _HEADERS = [
     ("CLIENT NAME",       28),
     ("INDUSTRY",          18),
-    ("HRBP",              22),
+    ("HRBP",              30),
     ("BH OWNER",          22),
     ("HEADCOUNT",         12),
     ("MONTHLY PO (₹)",    18),
@@ -79,6 +79,12 @@ def build_and_upload(
 ) -> str:
     role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+    # Build id → name lookup for all HRBP users so we can resolve hrbp_ids array
+    hrbp_name_map: dict[int, str] = {
+        u.id: u.name
+        for u in db.query(User.id, User.name).filter(User.role == "hrbp").all()
+    }
+
     consultant_sub = (
         db.query(
             HRBPConsultant.client_id,
@@ -89,27 +95,35 @@ def build_and_upload(
         .subquery()
     )
 
-    HrbpUser = aliased(User)
     BhUser = aliased(User)
 
     q = (
         db.query(
             HRBPClient.name,
             HRBPClient.industry,
-            HrbpUser.name.label("hrbp_name"),
+            HRBPClient.hrbp_id,
+            HRBPClient.hrbp_ids,
             BhUser.name.label("bh_name"),
             func.coalesce(consultant_sub.c.headcount, 0).label("headcount"),
             func.coalesce(consultant_sub.c.total_monthly_po, 0).label("total_monthly_po"),
             HRBPClient.is_active,
             HRBPClient.created_at,
         )
-        .outerjoin(HrbpUser, HRBPClient.hrbp_id == HrbpUser.id)
         .outerjoin(BhUser, HRBPClient.bh_id == BhUser.id)
         .outerjoin(consultant_sub, HRBPClient.id == consultant_sub.c.client_id)
     )
 
     if role == "hrbp":
-        q = q.filter(HRBPClient.hrbp_id == current_user.id)
+        uid = current_user.id
+        q = q.filter(
+            or_(
+                HRBPClient.hrbp_ids.contains([uid]),
+                and_(
+                    func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
+                    HRBPClient.hrbp_id == uid,
+                ),
+            )
+        )
     elif role == "bh":
         q = q.filter(HRBPClient.bh_id == current_user.id)
 
@@ -137,10 +151,14 @@ def build_and_upload(
         status_fill = ACTIVE_FILL if r.is_active else INACTIVE_FILL
         po = float(r.total_monthly_po or 0)
 
+        # Resolve HRBP names: use hrbp_ids array if populated, else fall back to hrbp_id
+        ids = r.hrbp_ids if r.hrbp_ids else ([r.hrbp_id] if r.hrbp_id else [])
+        hrbp_display = ", ".join(hrbp_name_map.get(i, f"#{i}") for i in ids) or "—"
+
         values = [
             r.name or "—",
             r.industry or "—",
-            r.hrbp_name or "—",
+            hrbp_display,
             r.bh_name or "—",
             r.headcount or 0,
             f"₹{po:,.0f}" if po else "—",
