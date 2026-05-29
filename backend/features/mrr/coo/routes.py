@@ -177,64 +177,42 @@ def _get_mysql_conn():
 
 from core.sql_loader import load_sql  # noqa: E402
 
-_SQL = load_sql("002-coo_leaderboard_pipeline.sql")
+_SQL         = load_sql("002-coo_leaderboard_pipeline.sql")
+_CLIENT_SQL  = load_sql("003-coo_client_pipeline.sql")
 
 
-# ── Endpoint ──────────────────────────────────────────────────────────────────
+# ── BH Dashboard (commented out — replaced by client-pipeline) ────────────────
+#
+# @router.get("/leaderboard")
+# def coo_leaderboard(compare_date: str | None = None, _=Depends(get_current_user)):
+#     ...  (original BH × client pipeline endpoint — see git history)
 
 
-def _zero():
-    return {"total": 0, "today": 0, "compare": 0}
+# ── Client Pipeline endpoint ──────────────────────────────────────────────────
 
-
-def _utc_day_range(d) -> tuple[str, str]:
-    """Return UTC start/end strings for one IST calendar day."""
-    start = datetime(d.year, d.month, d.day) - timedelta(hours=5, minutes=30)
-    end = datetime(d.year, d.month, d.day) + timedelta(hours=18, minutes=30)
-    return start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")
-
-
-@router.get("/leaderboard")
-def coo_leaderboard(
-    compare_date: str | None = None,
+@router.get("/client-pipeline")
+def client_pipeline(
+    date: str | None = None,
     _=Depends(get_current_user),
 ):
     """
-    Returns per-BH × per-client pipeline counts — total (all-time), today, and
-    optional comparison date.  compare_date: ISO date string (YYYY-MM-DD).
+    Per-client pipeline counts for a single IST day (default: today).
+    Counts applied_jobs where created_at IST = date and current_step > 6.
     """
     from datetime import date as _date
 
-    ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-    today_d = ist_now.date()
+    ist_now   = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    today_ist = ist_now.date()
 
-    today_utc_start, tomorrow_utc_start = _utc_day_range(today_d)
-
-    # Validate + resolve compare_date; use a dead range when absent so compare_cnt = 0
-    cmp_d: _date | None = None
-    if compare_date:
+    if date:
         try:
-            cmp_d = _date.fromisoformat(compare_date)
+            sel_date = _date.fromisoformat(date)
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="compare_date must be YYYY-MM-DD",
-            )
-        cmp_utc_start, cmp_utc_end = _utc_day_range(cmp_d)
+            raise HTTPException(400, "date must be YYYY-MM-DD")
     else:
-        # Dead range → compare_cnt always 0
-        cmp_utc_start = "1970-01-01 00:00:00"
-        cmp_utc_end = "1970-01-01 00:00:01"
+        sel_date = today_ist
 
-    params = {
-        "today_utc_start": today_utc_start,
-        "tomorrow_utc_start": tomorrow_utc_start,
-        "cmp_utc_start": cmp_utc_start,
-        "cmp_utc_end": cmp_utc_end,
-        "step_ids": STEP_IDS,
-    }
-
-    bh_am_map = _load_bh_am_map()
+    params = {"sel_date": sel_date.isoformat()}
 
     conn = None
     try:
@@ -242,15 +220,15 @@ def coo_leaderboard(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"DB connection failed: {exc}")
+        raise HTTPException(503, f"DB connection failed: {exc}")
 
     db_rows = []
     try:
         with conn.cursor() as cur:
-            cur.execute(_SQL, params)
+            cur.execute(_CLIENT_SQL, params)
             db_rows = cur.fetchall()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Query failed: {exc}")
+        raise HTTPException(500, f"Query failed: {exc}")
     finally:
         if conn:
             try:
@@ -258,39 +236,63 @@ def coo_leaderboard(
             except Exception:
                 pass
 
-    # Aggregate into (bh, am, client) → {col_key → {total, today, compare}}
-    agg: dict[tuple[str, str, str], dict[str, dict[str, int]]] = {}
+    # ── Column definition — add a row here to show a new column ─────────────
+    # Order here = column order in the table. Only these step_ids ever appear.
+    # step_id comes from candidate_work_flows.step_id in the OL replica.
+    PIPELINE_COLUMNS: list[tuple[int, str]] = [
+        (7,  "Client Submit"),
+        (8,  "Screen Reject"),
+        (9,  "Schedule L1"),
+        (12, "L1 Reject"),
+        (13, "L1 Select"),
+        (14, "Schedule L2"),
+        (17, "L2 Reject"),
+        (18, "L2 Select"),
+        (19, "Schedule L3"),
+        (22, "L3 Reject"),
+        (23, "L3 Select"),
+        (33, "Offer Accepted"),
+        (34, "Offer Rejected"),
+        (44, "Onboarded"),
+    ]
+    # step_ids that always appear even when count = 0 for the selected date
+    PINNED = {7, 13, 18, 44}
 
+    allowed_ids = {sid for sid, _ in PIPELINE_COLUMNS}
+
+    # Aggregate: client → step_id → count
+    agg: dict[str, dict[int, int]] = {}
     for r in db_rows:
         raw_client = r.get("client")
         if not raw_client:
             continue
-        client = str(raw_client).strip()
+        client  = str(raw_client).strip()
         step_id = int(float(r.get("step_id") or 0))
-        col_key = STEP_TO_COL.get(step_id)
-        if not col_key:
+        if step_id not in allowed_ids:
             continue
-        bh, am = _lookup(client, bh_am_map)
-        if bh == "Unknown":
-            continue
-        key = (bh, am, client)
-        if key not in agg:
-            agg[key] = {k: _zero() for k, _ in COLUMNS}
-        agg[key][col_key]["total"] += int(r.get("total_cnt") or 0)
-        agg[key][col_key]["today"] += int(r.get("today_cnt") or 0)
-        agg[key][col_key]["compare"] += int(r.get("compare_cnt") or 0)
+        if client not in agg:
+            agg[client] = {}
+        agg[client][step_id] = agg[client].get(step_id, 0) + int(r.get("day_cnt") or 0)
+
+    # Which step_ids actually have data today (union with pinned)
+    active_ids = PINNED | {sid for data in agg.values() for sid in data if data[sid] > 0}
+    visible_cols = [(sid, lbl) for sid, lbl in PIPELINE_COLUMNS if sid in active_ids]
 
     rows = [
-        {"bh_name": bh, "am_name": am, "client_name": client, "cols": data}
-        for (bh, am, client), data in sorted(agg.items())
-        if any(data[c]["total"] > 0 or data[c]["today"] > 0 for c, _ in COLUMNS)
+        {
+            "client_name": client,
+            "cols": {str(sid): {"day": data.get(sid, 0)} for sid, _ in visible_cols},
+        }
+        for client, data in sorted(agg.items())
+        if any(data.get(sid, 0) > 0 for sid, _ in visible_cols)
     ]
 
+    columns = [{"key": str(sid), "label": lbl} for sid, lbl in visible_cols]
+
     return {
-        "rows": rows,
-        "compare_date": compare_date,
-        "columns": [{"key": k, "label": lbl} for k, lbl in COLUMNS],
-        "today": today_d.isoformat(),
+        "rows":    rows,
+        "columns": columns,
+        "date":    sel_date.isoformat(),
     }
 
 
