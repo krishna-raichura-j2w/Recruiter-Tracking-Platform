@@ -233,7 +233,7 @@ export default function Jobs() {
 
   // Pagination state
   const [jobPage,    setJobPage]    = useState(1);
-  const [jobPerPage, setJobPerPage] = useState(50);
+  const [jobPerPage, setJobPerPage] = useState(1000);
   const [jobTotal,   setJobTotal]   = useState(0);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
@@ -1628,11 +1628,10 @@ export default function Jobs() {
                   {errors.maximum_submission && <p className="text-red-500 text-xs mt-1">Required</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount *</label>
-                  <input type="number" min={0} placeholder="e.g. 500"
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Referral Amount</label>
+                  <input type="number" min={0} placeholder="e.g. 500 (optional)"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50"
-                    {...register('referral_amount', { required: !editJob })} />
-                  {errors.referral_amount && <p className="text-red-500 text-xs mt-1">Required</p>}
+                    {...register('referral_amount')} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Key String</label>

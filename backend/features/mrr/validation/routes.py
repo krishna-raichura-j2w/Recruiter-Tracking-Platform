@@ -40,7 +40,7 @@ def _serialize_candidate(c) -> dict:
 @router.get("/queue")
 def pending_queue(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=0, le=500),
+    limit: int = Query(50, ge=0, le=1000),
     # Filters (admin can use freely; DLs are still scoped to their own queue)
     search: str | None = Query(None),
     client_name: str | None = Query(None),
