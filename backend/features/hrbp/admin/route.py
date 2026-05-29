@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from infra.models import User
 from sqlalchemy.orm import Session
 
+from features.hrbp.audit_log.service import log_action
 from features.hrbp.admin import service
 from features.hrbp.admin.schema import (
     AdminAssignPayload,
@@ -83,10 +84,13 @@ def list_users(
 def create_user(
     payload: AdminUserCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ):
     try:
         user = service.create_user(db, payload)
+        log_action(db, actor_id=current_user.id, entity_type="user", entity_id=user.id,
+                   action="create_user", new_value={"name": user.name, "email": user.email, "role": payload.role})
+        db.commit()
         return success_response(
             data={
                 "id": user.id,
@@ -136,10 +140,13 @@ def reset_password(
     user_id: int,
     payload: AdminResetPassword,
     db: Session = Depends(get_db),
-    _: User = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ):
     try:
         service.reset_password(db, user_id, payload)
+        log_action(db, actor_id=current_user.id, entity_type="user", entity_id=user_id,
+                   action="reset_password")
+        db.commit()
         return success_response(data={}, message="Password reset. User must change on next login.")
     except HTTPException:
         raise

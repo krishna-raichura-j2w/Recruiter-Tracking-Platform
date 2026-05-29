@@ -2,10 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { User, Briefcase, IndianRupee, Clock, TrendingDown, History, BarChart2, Table2 } from "lucide-react";
+import { CustomDatePicker } from "@/components/CustomDatePicker";
+import { CustomSelect } from "@/components/CustomSelect";
+import { User, Briefcase, IndianRupee, Clock, TrendingDown, History, BarChart2, Table2, Pencil, X } from "lucide-react";
+import dayjs, { type Dayjs } from "dayjs";
 import { BackButton } from "@/components/BackButton";
-import { getConsultantDetailsApi, getUserProfile, getClientsApi } from "@/apiService/api";
+import { getConsultantDetailsApi, getUserProfile, getClientsApi, updateConsultantApi } from "@/apiService/api";
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
 import { format } from "date-fns";
@@ -256,12 +261,115 @@ function PoRevisionChart({ revisions }: { revisions: PoRevision[] }) {
   );
 }
 
+const COHORT_OPTIONS = ["star","high_performer","rising","bedrock","new_joiner","watch_exit","watch_rate_rev","watch_general","rescue"].map((c) => ({ label: c.replace(/_/g, " "), value: c }));
+const PERF_OPTIONS   = ["top_20","mid_60","bottom_20","unrated"].map((t) => ({ label: t.replace(/_/g, " "), value: t }));
+const LD_OPTIONS     = ["enrolled","not_started","completed","pending"].map((s) => ({ label: s.replace(/_/g, " "), value: s }));
+const BH_OPTIONS     = ["great","good","mediocre","bad","not_given"].map((f) => ({ label: f.replace(/_/g, " "), value: f }));
+const STATUS_OPTIONS = [{ label: "Active", value: "true" }, { label: "Inactive", value: "false" }];
+
 function ConsultantDetailPage() {
   const { consultantId } = Route.useParams();
   const [consultant, setConsultant] = useState<ConsultantItem | null>(null);
   const [hrbpName, setHrbpName] = useState<string | null>(null);
   const [bhName, setBhName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Inline edit
+  const [editMode, setEditMode] = useState(false);
+  type EForm = {
+    name: string; email: string; phone: string; manager_name: string;
+    skill: string; designation: string; modality: string;
+    join_date: Dayjs | null; is_active: string;
+    cohort: string; perf_tier: string; nps_score: string;
+    l_d_status: string; bh_feedback: string;
+    monthly_po: string; monthly_ctc: string; yearly_ctc: string;
+    margin: string; po_end_date: Dayjs | null;
+    last_hike_pct: string; last_hike_date: Dayjs | null;
+  };
+  const [editForm, setEditForm] = useState<EForm>({
+    name: "", email: "", phone: "", manager_name: "",
+    skill: "", designation: "", modality: "",
+    join_date: null, is_active: "true",
+    cohort: "", perf_tier: "", nps_score: "",
+    l_d_status: "", bh_feedback: "",
+    monthly_po: "", monthly_ctc: "", yearly_ctc: "",
+    margin: "", po_end_date: null,
+    last_hike_pct: "", last_hike_date: null,
+  });
+  const [saving, setSaving] = useState(false);
+  const set = <K extends keyof EForm>(k: K) => (v: EForm[K]) => setEditForm((p) => ({ ...p, [k]: v }));
+  const setStr = (k: keyof EForm) => (e: React.ChangeEvent<HTMLInputElement>) => setEditForm((p) => ({ ...p, [k]: e.target.value }));
+
+  function startEdit() {
+    if (!consultant) return;
+    setEditForm({
+      name: consultant.name ?? "",
+      email: consultant.email ?? "",
+      phone: consultant.phone ?? "",
+      manager_name: consultant.manager_name ?? "",
+      skill: consultant.skill ?? "",
+      designation: consultant.designation ?? "",
+      modality: consultant.modality ?? "",
+      join_date: consultant.join_date ? dayjs(consultant.join_date) : null,
+      is_active: consultant.is_active ? "true" : "false",
+      cohort: consultant.cohort ?? "",
+      perf_tier: consultant.perf_tier ?? "",
+      nps_score: consultant.nps_score != null ? String(consultant.nps_score) : "",
+      l_d_status: consultant.l_d_status ?? "",
+      bh_feedback: consultant.bh_feedback ?? "",
+      monthly_po: consultant.monthly_po != null ? String(consultant.monthly_po) : "",
+      monthly_ctc: consultant.monthly_ctc != null ? String(consultant.monthly_ctc) : "",
+      yearly_ctc: consultant.yearly_ctc != null ? String(consultant.yearly_ctc) : "",
+      margin: consultant.margin != null ? String(consultant.margin) : "",
+      po_end_date: consultant.po_end_date ? dayjs(consultant.po_end_date) : null,
+      last_hike_pct: consultant.last_hike_pct != null ? String(consultant.last_hike_pct) : "",
+      last_hike_date: consultant.last_hike_date ? dayjs(consultant.last_hike_date) : null,
+    });
+    setEditMode(true);
+  }
+
+  async function handleSave() {
+    if (!consultant) return;
+    try {
+      setSaving(true);
+      const payload: Record<string, any> = {
+        name: editForm.name,
+        is_active: editForm.is_active === "true",
+      };
+      if (editForm.email) payload.email = editForm.email;
+      if (editForm.phone) payload.phone = editForm.phone;
+      if (editForm.manager_name) payload.manager_name = editForm.manager_name;
+      if (editForm.skill) payload.skill = editForm.skill;
+      if (editForm.designation) payload.designation = editForm.designation;
+      if (editForm.modality) payload.modality = editForm.modality;
+      if (editForm.join_date) payload.join_date = editForm.join_date.format("YYYY-MM-DD");
+      if (editForm.cohort) payload.cohort = editForm.cohort;
+      if (editForm.perf_tier) payload.perf_tier = editForm.perf_tier;
+      if (editForm.nps_score !== "") payload.nps_score = Number(editForm.nps_score);
+      if (editForm.l_d_status) payload.l_d_status = editForm.l_d_status;
+      if (editForm.bh_feedback) payload.bh_feedback = editForm.bh_feedback;
+      if (editForm.monthly_po !== "") payload.monthly_po = Number(editForm.monthly_po);
+      if (editForm.monthly_ctc !== "") payload.monthly_ctc = Number(editForm.monthly_ctc);
+      if (editForm.yearly_ctc !== "") payload.yearly_ctc = Number(editForm.yearly_ctc);
+      if (editForm.margin !== "") payload.margin = Number(editForm.margin);
+      if (editForm.po_end_date) payload.po_end_date = editForm.po_end_date.format("YYYY-MM-DD");
+      if (editForm.last_hike_pct !== "") payload.last_hike_pct = Number(editForm.last_hike_pct);
+      if (editForm.last_hike_date) payload.last_hike_date = editForm.last_hike_date.format("YYYY-MM-DD");
+
+      const res = await updateConsultantApi(consultant.id, payload);
+      if (res.meta.status) {
+        toast.success("Consultant updated successfully");
+        setConsultant((prev) => prev ? { ...prev, ...res.data } : prev);
+        setEditMode(false);
+      } else {
+        toast.error(res.meta.message || "Update failed");
+      }
+    } catch {
+      toast.error("Update failed");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // PO revision history
   const [revisions, setRevisions]           = useState<PoRevision[]>([]);
@@ -380,11 +488,27 @@ function ConsultantDetailPage() {
             params={consultant.client_id ? { clientId: String(consultant.client_id) } : undefined}
             label={consultant.client_id ? "Back to Client Team" : "Back to Clients"}
           />
-          <Badge className={consultant.is_active
-            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-            : "bg-slate-100 text-slate-600 border-slate-200"}>
-            {consultant.is_active ? "Active" : "Inactive"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {editMode ? (
+              <>
+                <Button variant="ghost" size="sm" className="gap-1.5 text-slate-500" onClick={() => setEditMode(false)} disabled={saving}>
+                  <X className="h-3.5 w-3.5" /> Cancel
+                </Button>
+                <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving…" : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={startEdit}>
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </Button>
+            )}
+            <Badge className={consultant.is_active
+              ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+              : "bg-slate-100 text-slate-600 border-slate-200"}>
+              {consultant.is_active ? "Active" : "Inactive"}
+            </Badge>
+          </div>
         </div>
 
         {/* Profile hero */}
@@ -430,23 +554,25 @@ function ConsultantDetailPage() {
               </CardHeader>
               <CardContent className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
                 <Field label="Email">
-                  {consultant.email
-                    ? <a href={`mailto:${consultant.email}`} className="text-sky-600 hover:underline truncate block">{consultant.email}</a>
-                    : "-"}
+                  {editMode
+                    ? <Input className="h-8 text-sm" value={editForm.email} onChange={setStr("email")} />
+                    : consultant.email ? <a href={`mailto:${consultant.email}`} className="text-sky-600 hover:underline truncate block">{consultant.email}</a> : "-"}
                 </Field>
                 <Field label="Phone">
-                  {consultant.phone
-                    ? <a href={`tel:${consultant.phone}`} className="text-sky-600 hover:underline">{consultant.phone}</a>
-                    : "-"}
+                  {editMode
+                    ? <Input className="h-8 text-sm" value={editForm.phone} onChange={setStr("phone")} />
+                    : consultant.phone ? <a href={`tel:${consultant.phone}`} className="text-sky-600 hover:underline">{consultant.phone}</a> : "-"}
                 </Field>
-                <Field label="Skill">{consultant.skill || "-"}</Field>
-                <Field label="Join Date">{formatDate(consultant.join_date)}</Field>
-                <Field label="HRBP">
-                  {hrbpName || consultant.hrbp_name || "-"}
+                <Field label="Skill">
+                  {editMode ? <Input className="h-8 text-sm" value={editForm.skill} onChange={setStr("skill")} /> : consultant.skill || "-"}
                 </Field>
-                <Field label="Business Head">
-                  {bhName || consultant.bh_name || "-"}
+                <Field label="Join Date">
+                  {editMode
+                    ? <CustomDatePicker value={editForm.join_date} onChange={set("join_date")} />
+                    : formatDate(consultant.join_date)}
                 </Field>
+                <Field label="HRBP">{hrbpName || consultant.hrbp_name || "-"}</Field>
+                <Field label="Business Head">{bhName || consultant.bh_name || "-"}</Field>
               </CardContent>
             </Card>
 
@@ -459,38 +585,39 @@ function ConsultantDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
-                <Field label="Manager Name">{consultant.manager_name || "-"}</Field>
-                <Field label="Modality">{consultant.modality || "-"}</Field>
+                <Field label="Manager Name">
+                  {editMode ? <Input className="h-8 text-sm" value={editForm.manager_name} onChange={setStr("manager_name")} /> : consultant.manager_name || "-"}
+                </Field>
+                <Field label="Modality">
+                  {editMode ? <Input className="h-8 text-sm" value={editForm.modality} onChange={setStr("modality")} /> : consultant.modality || "-"}
+                </Field>
+                <Field label="Designation">
+                  {editMode ? <Input className="h-8 text-sm" value={editForm.designation} onChange={setStr("designation")} /> : consultant.designation || "-"}
+                </Field>
                 <Field label="Cohort">
-                  {consultant.cohort
-                    ? <Badge variant="outline" className={`capitalize text-xs ${COHORT_COLOR[consultant.cohort] ?? "bg-slate-100 text-slate-700"}`}>
-                        {consultant.cohort.replace(/_/g, " ")}
-                      </Badge>
-                    : "-"}
+                  {editMode
+                    ? <CustomSelect value={editForm.cohort} onChange={set("cohort")} options={COHORT_OPTIONS} placeholder="Select cohort" />
+                    : consultant.cohort ? <Badge variant="outline" className={`capitalize text-xs ${COHORT_COLOR[consultant.cohort] ?? "bg-slate-100 text-slate-700"}`}>{consultant.cohort.replace(/_/g, " ")}</Badge> : "-"}
                 </Field>
                 <Field label="Performance Tier">
-                  {consultant.perf_tier
-                    ? <Badge variant="outline" className={`capitalize text-xs ${PERF_COLOR[consultant.perf_tier] ?? "bg-slate-100 text-slate-600"}`}>
-                        {consultant.perf_tier.replace(/_/g, " ")}
-                      </Badge>
-                    : "-"}
+                  {editMode
+                    ? <CustomSelect value={editForm.perf_tier} onChange={set("perf_tier")} options={PERF_OPTIONS} placeholder="Select tier" />
+                    : consultant.perf_tier ? <Badge variant="outline" className={`capitalize text-xs ${PERF_COLOR[consultant.perf_tier] ?? "bg-slate-100 text-slate-600"}`}>{consultant.perf_tier.replace(/_/g, " ")}</Badge> : "-"}
                 </Field>
                 <Field label="NPS Score">
-                  {consultant.nps_score != null
-                    ? <span className="text-sky-700 font-bold text-base">{consultant.nps_score}<span className="text-xs font-normal text-slate-400"> / 10</span></span>
-                    : "-"}
+                  {editMode
+                    ? <Input className="h-8 text-sm" type="number" min={0} max={10} value={editForm.nps_score} onChange={setStr("nps_score")} />
+                    : consultant.nps_score != null ? <span className="text-sky-700 font-bold text-base">{consultant.nps_score}<span className="text-xs font-normal text-slate-400"> / 10</span></span> : "-"}
                 </Field>
                 <Field label="L&D Status">
-                  {consultant.l_d_status
-                    ? <Badge variant="outline" className={`capitalize text-xs ${LD_COLOR[consultant.l_d_status] ?? "bg-slate-100 text-slate-600"}`}>
-                        {consultant.l_d_status.replace(/_/g, " ")}
-                      </Badge>
-                    : "-"}
+                  {editMode
+                    ? <CustomSelect value={editForm.l_d_status} onChange={set("l_d_status")} options={LD_OPTIONS} placeholder="Select" />
+                    : consultant.l_d_status ? <Badge variant="outline" className={`capitalize text-xs ${LD_COLOR[consultant.l_d_status] ?? "bg-slate-100 text-slate-600"}`}>{consultant.l_d_status.replace(/_/g, " ")}</Badge> : "-"}
                 </Field>
                 <Field label="BH Feedback">
-                  {consultant.bh_feedback
-                    ? <span className="capitalize">{consultant.bh_feedback.replace(/_/g, " ")}</span>
-                    : "-"}
+                  {editMode
+                    ? <CustomSelect value={editForm.bh_feedback} onChange={set("bh_feedback")} options={BH_OPTIONS} placeholder="Select" />
+                    : consultant.bh_feedback ? <span className="capitalize">{consultant.bh_feedback.replace(/_/g, " ")}</span> : "-"}
                 </Field>
               </CardContent>
             </Card>
@@ -506,58 +633,70 @@ function ConsultantDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 py-4 space-y-3">
-                <FinTile
-                  label="Monthly PO Rate"
-                  value={consultant.monthly_po ? fmtINR(consultant.monthly_po) : "-"}
-                  accent="blue"
-                />
-                <FinTile
-                  label="Total PO at Risk"
-                  value={totalPoValue != null && totalPoValue > 0 ? fmtINR(totalPoValue) : "-"}
-                  accent={totalPoValue ? "red" : "slate"}
-                />
-                <FinTile
-                  label="Monthly CTC"
-                  value={consultant.monthly_ctc ? fmtINR(consultant.monthly_ctc) : "-"}
-                  accent="slate"
-                />
-
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1 text-amber-500">
-                      <Clock className="w-3 h-3" />
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">Tenure Left</p>
+                {editMode ? (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <Field label="Monthly PO">
+                      <Input className="h-8 text-sm" type="number" value={editForm.monthly_po} onChange={setStr("monthly_po")} />
+                    </Field>
+                    <Field label="Monthly CTC">
+                      <Input className="h-8 text-sm" type="number" value={editForm.monthly_ctc} onChange={setStr("monthly_ctc")} />
+                    </Field>
+                    <Field label="Yearly CTC">
+                      <Input className="h-8 text-sm" type="number" value={editForm.yearly_ctc} onChange={setStr("yearly_ctc")} />
+                    </Field>
+                    <Field label="Margin">
+                      <Input className="h-8 text-sm" type="number" value={editForm.margin} onChange={setStr("margin")} />
+                    </Field>
+                    <Field label="PO End Date">
+                      <CustomDatePicker value={editForm.po_end_date} onChange={set("po_end_date")} />
+                    </Field>
+                    <Field label="Last Hike %">
+                      <Input className="h-8 text-sm" type="number" value={editForm.last_hike_pct} onChange={setStr("last_hike_pct")} />
+                    </Field>
+                    <Field label="Last Hike Date">
+                      <CustomDatePicker value={editForm.last_hike_date} onChange={set("last_hike_date")} />
+                    </Field>
+                    <Field label="Status">
+                      <CustomSelect value={editForm.is_active} onChange={set("is_active")} options={STATUS_OPTIONS} />
+                    </Field>
+                  </div>
+                ) : (
+                  <>
+                    <FinTile label="Monthly PO Rate" value={consultant.monthly_po ? fmtINR(consultant.monthly_po) : "-"} accent="blue" />
+                    <FinTile label="Total PO at Risk" value={totalPoValue != null && totalPoValue > 0 ? fmtINR(totalPoValue) : "-"} accent={totalPoValue ? "red" : "slate"} />
+                    <FinTile label="Monthly CTC" value={consultant.monthly_ctc ? fmtINR(consultant.monthly_ctc) : "-"} accent="slate" />
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1 text-amber-500">
+                          <Clock className="w-3 h-3" />
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">Tenure Left</p>
+                        </div>
+                        <p className="text-sm font-bold text-amber-700">{consultant.po_end_date ? `${tenureLeft} mo` : "-"}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">PO End Date</p>
+                        <p className="text-sm font-medium text-slate-800">{formatDate(consultant.po_end_date)}</p>
+                      </div>
                     </div>
-                    <p className="text-sm font-bold text-amber-700">
-                      {consultant.po_end_date ? `${tenureLeft} mo` : "-"}
-                    </p>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">PO End Date</p>
-                    <p className="text-sm font-medium text-slate-800">{formatDate(consultant.po_end_date)}</p>
-                  </div>
-                </div>
-
-                {consultant.po_risk != null && consultant.po_risk > 0 && (
-                  <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
-                    <TrendingDown className="w-4 h-4 text-red-500 shrink-0" />
-                    <div>
-                      <p className="text-[11px] font-semibold text-red-500 uppercase tracking-wide">PO Risk Amount</p>
-                      <p className="text-sm font-bold text-red-700">{fmtINR(consultant.po_risk)}</p>
-                    </div>
-                  </div>
-                )}
-
-                {(consultant.last_hike_pct || consultant.last_hike_date) && (
-                  <div className="pt-2 border-t border-slate-100 space-y-0.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Last Hike</p>
-                    <p className="text-sm font-medium text-slate-800">
-                      {consultant.last_hike_pct ? `${consultant.last_hike_pct}%` : "-"}
-                      {consultant.last_hike_date && (
-                        <span className="text-xs text-slate-400 ml-1.5">({formatDate(consultant.last_hike_date)})</span>
-                      )}
-                    </p>
-                  </div>
+                    {consultant.po_risk != null && consultant.po_risk > 0 && (
+                      <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                        <TrendingDown className="w-4 h-4 text-red-500 shrink-0" />
+                        <div>
+                          <p className="text-[11px] font-semibold text-red-500 uppercase tracking-wide">PO Risk Amount</p>
+                          <p className="text-sm font-bold text-red-700">{fmtINR(consultant.po_risk)}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(consultant.last_hike_pct || consultant.last_hike_date) && (
+                      <div className="pt-2 border-t border-slate-100 space-y-0.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Last Hike</p>
+                        <p className="text-sm font-medium text-slate-800">
+                          {consultant.last_hike_pct ? `${consultant.last_hike_pct}%` : "-"}
+                          {consultant.last_hike_date && <span className="text-xs text-slate-400 ml-1.5">({formatDate(consultant.last_hike_date)})</span>}
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -687,6 +826,7 @@ function ConsultantDetailPage() {
           </CardContent>
         </Card>
       </main>
+
     </div>
   );
 }

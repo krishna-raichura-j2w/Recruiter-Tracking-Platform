@@ -48,6 +48,7 @@ from features.mrr.resume_extract.routes import (  # noqa: E402
 )
 from features.mrr.submissions.routes import router as submissions_router  # noqa: E402
 from features.mrr.targets.routes import router as targets_router  # noqa: E402
+from features.mrr.pod_plan.routes import router as pod_plan_router  # noqa: E402
 from features.mrr.tasks import scheduler as task_scheduler  # noqa: E402
 from features.hrbp.tasks import scheduler as hrbp_scheduler  # noqa: E402
 from features.mrr.upload.routes import router as upload_router  # noqa: E402
@@ -139,6 +140,20 @@ def ensure_schema():
                 db.rollback()
 
         for sql in load_sql_list("041-add_candidate_ol_flags.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        for sql in load_sql_list("043-bh_pod_plan.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        for sql in load_sql_list("044-bh_recruiter_primary_subs.sql"):
             try:
                 db.execute(text(sql))
                 db.commit()
@@ -294,6 +309,7 @@ app.include_router(leaves_router,             prefix="/api")
 app.include_router(client_emails_router,      prefix="/api")
 app.include_router(ol_lookup_router,          prefix="/api")
 app.include_router(targets_router,            prefix="/api")
+app.include_router(pod_plan_router,           prefix="/api")
 app.include_router(hrbp_router,               prefix="/api")
 
 

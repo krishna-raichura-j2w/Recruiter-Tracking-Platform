@@ -98,6 +98,7 @@ class HRBPClient(Base):
     industry = Column(Text)
     bh_id = Column(Integer, ForeignKey("users.id"))
     hrbp_id = Column(Integer, ForeignKey("users.id"))
+    hrbp_ids = Column(ARRAY(Integer), nullable=False, default=list, server_default="{}")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)

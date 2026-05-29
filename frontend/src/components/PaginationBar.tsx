@@ -12,7 +12,7 @@ interface PaginationBarProps {
 
 export default function PaginationBar({
   page, total, perPage, onPageChange, onPerPageChange,
-  perPageOptions = [20, 50, 100],
+  perPageOptions = [20, 50, 100, 500, 1000],
   loading = false,
 }: PaginationBarProps) {
   const pages    = Math.max(1, Math.ceil(total / perPage));

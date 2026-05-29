@@ -24,6 +24,7 @@ import Skills from './pages/Skills';
 import Pods from './pages/Pods';
 import Targets from './pages/Targets';
 import ClientEmailGenerator from './pages/ClientEmailGenerator';
+import PodPlan from './pages/PodPlan';
 
 function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
   const { user, updateUser } = useAuth();
@@ -209,6 +210,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'kam']}>
                 <ClientEmailGenerator />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/pod-plan"
+            element={
+              <ProtectedRoute allowedRoles={['bh', 'admin']}>
+                <PodPlan />
               </ProtectedRoute>
             }
           />

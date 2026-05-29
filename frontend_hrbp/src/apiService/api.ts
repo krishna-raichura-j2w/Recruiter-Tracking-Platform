@@ -149,6 +149,72 @@ export async function loginApi(email: string, password: string): Promise<LoginRe
   return response.json();
 }
 
+export async function changePasswordApi(newPassword: string, confirmPassword: string): Promise<void> {
+  const baseUrl = getBaseUrl();
+  const response = await fetchWithAuth(`${baseUrl}api/auth/change-password`, {
+    method: "POST",
+    body: JSON.stringify({ new_password: newPassword, confirm_password: confirmPassword }),
+  });
+  if (!response.ok) {
+    let errMsg = "Failed to change password";
+    try {
+      const errData = await response.json();
+      if (errData?.detail) errMsg = errData.detail;
+    } catch {}
+    throw new Error(errMsg);
+  }
+}
+
+export interface AuditLogItem {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  action: string;
+  actor_id: number | null;
+  actor_name: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  ts: string;
+}
+
+export interface AuditLogParams {
+  page_no?: number;
+  per_page?: number;
+  entity_type?: string;
+  actor_id?: number;
+  action?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
+export async function fetchAuditLog(params: AuditLogParams = {}): Promise<{
+  items: AuditLogItem[];
+  total: number;
+  page_no: number;
+  per_page: number;
+  total_pages: number;
+}> {
+  const baseUrl = getBaseUrl();
+  const q = new URLSearchParams();
+  if (params.page_no) q.set("page_no", String(params.page_no));
+  if (params.per_page) q.set("per_page", String(params.per_page));
+  if (params.entity_type) q.set("entity_type", params.entity_type);
+  if (params.actor_id) q.set("actor_id", String(params.actor_id));
+  if (params.action) q.set("action", params.action);
+  if (params.date_from) q.set("date_from", params.date_from);
+  if (params.date_to) q.set("date_to", params.date_to);
+  const res = await fetchWithAuth(`${baseUrl}api/hrbp/audit-log?${q.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch activity log");
+  const json = await res.json();
+  return {
+    items: json.data ?? [],
+    total: json.meta?.total ?? 0,
+    page_no: json.meta?.page_no ?? 1,
+    per_page: json.meta?.per_page ?? 20,
+    total_pages: json.meta?.total_pages ?? 1,
+  };
+}
+
 export async function getUserProfile(userId: number): Promise<UserProfileResponse> {
   const baseUrl = getBaseUrl();
   const response = await fetchWithAuth(`${baseUrl}api/hrbp/users/${userId}`, {
@@ -193,6 +259,8 @@ export async function getClientsApi(params: {
   date_from?: string;
   date_to?: string;
   is_active?: boolean;
+  search?: string;
+  industry?: string;
 } = {}): Promise<ClientListResponse> {
   const baseUrl = getBaseUrl();
   const queryParams = new URLSearchParams({
@@ -202,6 +270,8 @@ export async function getClientsApi(params: {
   if (params.date_from) queryParams.append("date_from", params.date_from);
   if (params.date_to) queryParams.append("date_to", params.date_to);
   if (params.is_active !== undefined) queryParams.append("is_active", String(params.is_active));
+  if (params.search) queryParams.append("search", params.search);
+  if (params.industry) queryParams.append("industry", params.industry);
 
   const response = await fetchWithAuth(`${baseUrl}api/hrbp/clients?${queryParams.toString()}`, {
     method: "GET",
@@ -216,6 +286,23 @@ export async function getClientsApi(params: {
     throw new Error(errMsg);
   }
   return response.json();
+}
+
+export async function exportClientsApi(params: {
+  search?: string;
+  industry?: string;
+  is_active?: boolean;
+} = {}): Promise<string> {
+  const baseUrl = getBaseUrl();
+  const queryParams = new URLSearchParams();
+  if (params.search) queryParams.append("search", params.search);
+  if (params.industry) queryParams.append("industry", params.industry);
+  if (params.is_active !== undefined) queryParams.append("is_active", String(params.is_active));
+
+  const res = await fetchWithAuth(`${baseUrl}api/hrbp/clients/export?${queryParams.toString()}`);
+  const json = await res.json();
+  if (!res.ok || json?.meta?.status === false) throw new Error(json?.meta?.message || "Export failed");
+  return json.data.url;
 }
 
 export async function getConsultantsApi(params: {
@@ -267,6 +354,38 @@ export async function getConsultantDetailsApi(consultantId: number): Promise<{ m
     throw new Error(errMsg);
   }
   return response.json();
+}
+
+export async function updateConsultantApi(
+  id: number,
+  payload: Record<string, any>,
+): Promise<{ meta: { status: boolean; message: string }; data: any }> {
+  const baseUrl = getBaseUrl();
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/consultants/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
+export async function deleteConsultantApi(
+  id: number,
+): Promise<{ meta: { status: boolean; message: string }; data: any }> {
+  const baseUrl = getBaseUrl();
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/consultants/${id}`, {
+    method: "DELETE",
+  });
+  return response.json();
+}
+
+export async function downloadConsultantTemplateApi(client_id?: number): Promise<Blob> {
+  const baseUrl = getBaseUrl();
+  const url = new URL(`${baseUrl}api/hrbp/consultants/download-template`);
+  if (client_id !== undefined) url.searchParams.set("client_id", String(client_id));
+  const response = await fetchWithAuth(url.toString());
+  if (!response.ok) throw new Error("Failed to download template");
+  return response.blob();
 }
 
 export async function bulkUpsertConsultantsApi(file: File): Promise<{

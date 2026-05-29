@@ -58,7 +58,7 @@ def list_candidates(
     assigned_to: int | None = Query(None),
     search: str | None = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=0, le=500),
+    limit: int = Query(50, ge=0, le=1000),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):

@@ -2,10 +2,25 @@ from core.pagination import paginate_raw
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPClient, HRBPConsultant
 from infra.models import User
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased
 
 from features.hrbp.clients.schema import ClientCreate, ClientUpdate
+
+
+def _hrbp_client_filter(uid: int):
+    """Return a SQLAlchemy filter that matches clients visible to the given HRBP.
+
+    A client is visible when hrbp_ids contains the user id, or when hrbp_ids is
+    empty and the legacy hrbp_id matches.
+    """
+    return or_(
+        HRBPClient.hrbp_ids.contains([uid]),
+        and_(
+            func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
+            HRBPClient.hrbp_id == uid,
+        ),
+    )
 
 
 def get_summary(db: Session, current_user: User) -> dict:
@@ -13,7 +28,7 @@ def get_summary(db: Session, current_user: User) -> dict:
 
     q = db.query(HRBPClient)
     if role == "hrbp":
-        q = q.filter(HRBPClient.hrbp_id == current_user.id)
+        q = q.filter(_hrbp_client_filter(current_user.id))
     elif role == "bh":
         q = q.filter(HRBPClient.bh_id == current_user.id)
 
@@ -52,6 +67,8 @@ def list_paginated(
     hrbp_ids: list[int] | None = None,
     bh_id: int | None = None,
     is_active: bool | None = None,
+    search: str | None = None,
+    industry: str | None = None,
 ) -> dict:
     consultant_sub = (
         db.query(
@@ -72,6 +89,7 @@ def list_paginated(
             HRBPClient.name,
             HRBPClient.industry,
             HRBPClient.hrbp_id,
+            HRBPClient.hrbp_ids,
             HrbpUser.name.label("hrbp_name"),
             HRBPClient.bh_id,
             BhUser.name.label("bh_name"),
@@ -86,13 +104,25 @@ def list_paginated(
         .outerjoin(consultant_sub, HRBPClient.id == consultant_sub.c.client_id)
     )
 
-    # hrbp sees their own clients; bh sees clients where they are the owner
+    # hrbp sees clients where they appear in hrbp_ids or legacy hrbp_id
     if hrbp_ids is not None:
-        q = q.filter(HRBPClient.hrbp_id.in_(hrbp_ids))
+        q = q.filter(
+            or_(
+                HRBPClient.hrbp_ids.overlap(hrbp_ids),
+                and_(
+                    func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
+                    HRBPClient.hrbp_id.in_(hrbp_ids),
+                ),
+            )
+        )
     elif bh_id is not None:
         q = q.filter(HRBPClient.bh_id == bh_id)
     if is_active is not None:
         q = q.filter(HRBPClient.is_active == is_active)
+    if search:
+        q = q.filter(HRBPClient.name.ilike(f"%{search}%"))
+    if industry:
+        q = q.filter(HRBPClient.industry.ilike(f"%{industry}%"))
     q = q.order_by(HRBPClient.name)
     return paginate_raw(q, page_no, per_page)
 

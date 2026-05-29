@@ -81,7 +81,9 @@ def assign_client(db: Session, client_id: int, payload: AdminAssignPayload) -> H
     client = db.query(HRBPClient).filter_by(id=client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    if payload.hrbp_id is not None:
+    if payload.hrbp_ids is not None:
+        client.hrbp_ids = payload.hrbp_ids
+    elif payload.hrbp_id is not None:
         client.hrbp_id = payload.hrbp_id
     if payload.bh_id is not None:
         client.bh_id = payload.bh_id

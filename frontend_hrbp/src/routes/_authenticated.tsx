@@ -6,9 +6,24 @@ import { AICopilotWidget } from "@/components/AICopilotWidget";
 import { isAuthed } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated")({
-  beforeLoad: () => {
-    if (typeof window !== "undefined" && !isAuthed()) {
-      throw redirect({ to: "/login" });
+  beforeLoad: async () => {
+    if (typeof window !== "undefined") {
+      if (!isAuthed()) {
+        throw redirect({ to: "/login" });
+      }
+      // Enforce password change — check the stored user object
+      try {
+        const raw = localStorage.getItem("j2w_user");
+        if (raw) {
+          const u = JSON.parse(raw);
+          if (u.must_change_password) {
+            throw redirect({ to: "/change-password" });
+          }
+        }
+      } catch (e) {
+        // If it's our redirect, re-throw it; otherwise ignore parse errors
+        if (e && typeof e === "object" && "to" in e) throw e;
+      }
     }
   },
   component: AuthLayout,

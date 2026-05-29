@@ -91,9 +91,13 @@ function LoginForm() {
     }
     setLoading(true);
     try {
-      const loggedInUser = await login(email, pwd);
+      const loggedInUser = await login(email.trim().toLowerCase(), pwd);
       toast.success("Successfully signed in");
-      nav({ to: loggedInUser?.role === "admin" ? "/admin" : "/dashboard" });
+      if (loggedInUser?.must_change_password) {
+        nav({ to: "/change-password" });
+      } else {
+        nav({ to: loggedInUser?.role === "admin" ? "/admin" : "/dashboard" });
+      }
     } catch (err: any) {
       toast.error(err.message || "Invalid credentials");
     } finally {
@@ -198,7 +202,7 @@ function LoginForm() {
 function LoginPage() {
   const { user, ready } = useAuth();
 
-  if (ready && user) return <Navigate to={user.role === "admin" ? "/admin" : "/dashboard"} />;
+  if (ready && user && !user.must_change_password) return <Navigate to={user.role === "admin" ? "/admin" : "/dashboard"} />;
 
   return (
     <div className="fixed inset-0 flex bg-white text-slate-900 overflow-hidden">

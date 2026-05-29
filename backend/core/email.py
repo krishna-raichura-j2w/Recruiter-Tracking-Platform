@@ -1,4 +1,4 @@
-"""Thin Gmail SMTP helper used by background jobs."""
+"""SMTP email helpers — Gmail (background jobs) and Outlook (HRBP)."""
 
 import logging
 import smtplib
@@ -31,3 +31,28 @@ def send_email(to_addresses: list[str], subject: str, html_body: str) -> None:
         log.info("Email sent to %s | subject: %s", to_addresses, subject)
     except Exception as exc:
         log.error("Failed to send email to %s: %s", to_addresses, exc)
+
+
+def send_outlook_email(to_addresses: list[str], subject: str, html_body: str) -> None:
+    """Send an HTML email via Outlook SMTP (office365). Used by HRBP features."""
+    if not settings.outlook_email or not settings.outlook_password:
+        log.warning("Email not sent — OUTLOOK_EMAIL/OUTLOOK_PASSWORD not configured.")
+        return
+    if not to_addresses:
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.outlook_email
+    msg["To"] = ", ".join(to_addresses)
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(settings.outlook_smtp_host, settings.outlook_smtp_port) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.login(settings.outlook_email, settings.outlook_password)
+            smtp.sendmail(settings.outlook_email, to_addresses, msg.as_string())
+        log.info("Outlook email sent to %s | subject: %s", to_addresses, subject)
+    except Exception as exc:
+        log.error("Failed to send Outlook email to %s: %s", to_addresses, exc)

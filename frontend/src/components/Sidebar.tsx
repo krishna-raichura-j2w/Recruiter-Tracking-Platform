@@ -56,6 +56,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Export / Reports', path: '/export',        icon: <BarChart2 size={16} /> },
         { label: 'Users',            path: '/users',         icon: <UserCheck size={16} /> },
         { label: 'Pods',             path: '/pods',          icon: <Network size={16} /> },
+        { label: 'Pod Monthly Plans', path: '/pod-plan',      icon: <BarChart2 size={16} /> },
         { label: 'Form Builder',     path: '/form-builder',  icon: <Settings size={16} /> },
       ],
     },
@@ -140,9 +141,10 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'My Pod',
       items: [
-        { label: 'Leaderboard', path: '/leaderboard',   icon: <Trophy size={16} /> },
-        { label: 'My Pod',      path: '/pods',          icon: <Network size={16} /> },
-        { label: 'Targets',     path: '/targets',       icon: <Target size={16} /> },
+        { label: 'Leaderboard',   path: '/leaderboard',  icon: <Trophy size={16} /> },
+        { label: 'My Pod',        path: '/pods',         icon: <Network size={16} /> },
+        { label: 'Targets',       path: '/targets',      icon: <Target size={16} /> },
+        { label: 'Monthly Plan',  path: '/pod-plan',     icon: <BarChart2 size={16} /> },
       ],
     },
     {

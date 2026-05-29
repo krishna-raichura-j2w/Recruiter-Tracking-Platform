@@ -140,8 +140,10 @@ export interface ClientsSummary {
 export interface ConsultantsSummary {
   total: number;
   active: number;
+  inactive: number;
   expiring_soon: number;
   po_at_risk: number;
+  clients_served: number;
 }
 
 export async function fetchClientsSummary(): Promise<ClientsSummary> {
