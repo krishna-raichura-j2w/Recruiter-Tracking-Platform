@@ -89,7 +89,7 @@ export async function resetAdminUserPassword(userId: number, newPassword: string
 
 // ── Client assignment ──────────────────────────────────────────────────────
 
-export async function assignClient(clientId: number, payload: { hrbp_id?: number; bh_id?: number }): Promise<{ meta: any; data: any }> {
+export async function assignClient(clientId: number, payload: { hrbp_ids?: number[]; hrbp_id?: number; bh_id?: number }): Promise<{ meta: any; data: any }> {
   const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/admin/clients/${clientId}/assign`, {
     method: "PATCH",
     body: JSON.stringify(payload),

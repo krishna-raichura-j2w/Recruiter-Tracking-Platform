@@ -25,4 +25,5 @@ class AdminResetPassword(BaseModel):
 
 class AdminAssignPayload(BaseModel):
     hrbp_id: int | None = None
+    hrbp_ids: list[int] | None = None
     bh_id: int | None = None

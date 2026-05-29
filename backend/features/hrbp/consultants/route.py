@@ -3,6 +3,7 @@ from datetime import date
 from core.database import get_db
 from core.deps import get_current_user
 from infra.hrbp_models import HRBPClient
+from sqlalchemy import and_, func, or_
 from core.response_format import (
     error_response,
     success_response,
@@ -87,7 +88,17 @@ def list_consultants(
     bh_client_ids: list[int] | None = None
 
     if role == "hrbp":
-        hrbp_ids = [current_user.id]
+        uid = current_user.id
+        rows = db.query(HRBPClient.id).filter(
+            or_(
+                HRBPClient.hrbp_ids.contains([uid]),
+                and_(
+                    func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
+                    HRBPClient.hrbp_id == uid,
+                ),
+            )
+        ).all()
+        bh_client_ids = [r[0] for r in rows]
     elif role == "bh":
         rows = db.query(HRBPClient.id).filter(HRBPClient.bh_id == current_user.id).all()
         bh_client_ids = [r[0] for r in rows]

@@ -10,6 +10,7 @@ class ClientCreate(BaseModel):
     industry: str | None = None
     bh_id: int | None = None
     hrbp_id: int | None = None
+    hrbp_ids: list[int] = []
     is_active: bool = True
 
 
@@ -18,6 +19,7 @@ class ClientUpdate(BaseModel):
     industry: str | None = None
     bh_id: int | None = None
     hrbp_id: int | None = None
+    hrbp_ids: list[int] | None = None
     is_active: bool | None = None
 
 
@@ -27,6 +29,7 @@ class ClientResponse(BaseModel):
     industry: str | None
     bh_id: int | None
     hrbp_id: int | None
+    hrbp_ids: list[int]
     is_active: bool
     created_at: datetime | None
     updated_at: datetime | None

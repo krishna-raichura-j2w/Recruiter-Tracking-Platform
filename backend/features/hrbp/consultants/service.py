@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPClient, HRBPConsultant, HRBPTicket, hrbp_ticket_consultants
 from infra.models import User
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from features.hrbp.consultants.schema import ConsultantCreate, ConsultantUpdate
@@ -15,7 +15,19 @@ def get_summary(db: Session, current_user: User, client_id: int | None = None) -
 
     q = db.query(HRBPConsultant)
     if role == "hrbp":
-        q = q.filter(HRBPConsultant.hrbp_id == current_user.id)
+        uid = current_user.id
+        client_ids = [
+            r.id for r in db.query(HRBPClient.id).filter(
+                or_(
+                    HRBPClient.hrbp_ids.contains([uid]),
+                    and_(
+                        func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
+                        HRBPClient.hrbp_id == uid,
+                    ),
+                )
+            ).all()
+        ]
+        q = q.filter(HRBPConsultant.client_id.in_(client_ids))
     elif role == "bh":
         bh_client_ids = [
             r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()
