@@ -43,9 +43,7 @@ function calcTenureLeft(poEndDate: string | null): number {
 
 function formatInr(amount: number): string {
   if (!isFinite(amount)) return "—";
-  if (amount >= 10_00_000) return `₹${(amount / 10_00_000).toFixed(2)}L`;
-  if (amount >= 1_000) return `₹${(amount / 1_000).toFixed(1)}K`;
-  return `₹${amount.toFixed(0)}`;
+  return `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 export function Step4Description({ data, onChange, consultants }: Step4DescriptionProps) {

@@ -100,28 +100,6 @@ export function Step1Entities({
         <Input value={data.raisedByName} readOnly className="bg-gray-50 text-gray-600 cursor-default" />
       </div>
 
-      {/* Escalation Manager (BH) */}
-      <div className="space-y-1.5">
-        <Label>
-          Escalation Manager <span className="text-gray-400 text-xs font-normal">(Business Head)</span>
-        </Label>
-        <Select
-          value={data.escalationMgrId ? String(data.escalationMgrId) : ""}
-          onValueChange={(v) => onChange({ ...data, escalationMgrId: Number(v) })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select Business Head…" />
-          </SelectTrigger>
-          <SelectContent>
-            {bhUsers.map((u) => (
-              <SelectItem key={u.id} value={String(u.id)}>
-                {u.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Client */}
       <div className="space-y-1.5">
         <Label>
@@ -222,6 +200,28 @@ export function Step1Entities({
             })}
           </div>
         )}
+      </div>
+
+      {/* Escalation Manager (BH) */}
+      <div className="space-y-1.5">
+        <Label>
+          Escalation Manager <span className="text-gray-400 text-xs font-normal">(Business Head)</span>
+        </Label>
+        <Select
+          value={data.escalationMgrId ? String(data.escalationMgrId) : ""}
+          onValueChange={(v) => onChange({ ...data, escalationMgrId: Number(v) })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select Business Head…" />
+          </SelectTrigger>
+          <SelectContent>
+            {bhUsers.map((u) => (
+              <SelectItem key={u.id} value={String(u.id)}>
+                {u.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

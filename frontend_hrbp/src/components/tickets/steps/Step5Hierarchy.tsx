@@ -16,7 +16,7 @@ interface Step5HierarchyProps {
   hierarchy: HierarchyStep[];
   onChange: (steps: HierarchyStep[]) => void;
   selectedSop: SopDefinition | null;
-  allUsers: UserOption[];
+  usersByRole: Record<string, UserOption[]>;
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -39,7 +39,7 @@ export function Step5Hierarchy({
   hierarchy,
   onChange,
   selectedSop,
-  allUsers,
+  usersByRole,
 }: Step5HierarchyProps) {
   const [useCustom, setUseCustom] = useState(false);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -84,8 +84,8 @@ export function Step5Hierarchy({
     onChange(updated);
   }
 
-  function updateStepUser(idx: number, userId: string) {
-    const user = allUsers.find((u) => u.id === Number(userId));
+  function updateStepUser(idx: number, userId: string, role: string) {
+    const user = (usersByRole[role] ?? []).find((u: UserOption) => u.id === Number(userId));
     const updated = hierarchy.map((s, i) =>
       i === idx
         ? {
@@ -254,7 +254,7 @@ export function Step5Hierarchy({
                 {/* Assign user */}
                 <Select
                   value={step.user_id ? String(step.user_id) : ""}
-                  onValueChange={(v) => updateStepUser(idx, v)}
+                  onValueChange={(v) => updateStepUser(idx, v, step.role)}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue
@@ -266,12 +266,9 @@ export function Step5Hierarchy({
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {allUsers.map((u) => (
+                    {(usersByRole[step.role] ?? []).map((u: UserOption) => (
                       <SelectItem key={u.id} value={String(u.id)} className="text-xs">
-                        {u.name}{" "}
-                        <span className="text-gray-400 ml-1">
-                          ({ROLE_LABEL[u.role] ?? u.role})
-                        </span>
+                        {u.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

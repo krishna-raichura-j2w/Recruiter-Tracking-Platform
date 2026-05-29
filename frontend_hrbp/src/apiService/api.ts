@@ -356,6 +356,38 @@ export async function getConsultantDetailsApi(consultantId: number): Promise<{ m
   return response.json();
 }
 
+export async function updateConsultantApi(
+  id: number,
+  payload: Record<string, any>,
+): Promise<{ meta: { status: boolean; message: string }; data: any }> {
+  const baseUrl = getBaseUrl();
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/consultants/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
+export async function deleteConsultantApi(
+  id: number,
+): Promise<{ meta: { status: boolean; message: string }; data: any }> {
+  const baseUrl = getBaseUrl();
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/consultants/${id}`, {
+    method: "DELETE",
+  });
+  return response.json();
+}
+
+export async function downloadConsultantTemplateApi(client_id?: number): Promise<Blob> {
+  const baseUrl = getBaseUrl();
+  const url = new URL(`${baseUrl}api/hrbp/consultants/download-template`);
+  if (client_id !== undefined) url.searchParams.set("client_id", String(client_id));
+  const response = await fetchWithAuth(url.toString());
+  if (!response.ok) throw new Error("Failed to download template");
+  return response.blob();
+}
+
 export async function bulkUpsertConsultantsApi(file: File): Promise<{
   meta: { status: boolean; message: string };
   data: { inserted: number; updated: number; errors: { row: number; error: string }[] };
