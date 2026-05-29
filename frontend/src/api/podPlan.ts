@@ -174,14 +174,17 @@ export interface PlanData {
 // ── API calls ─────────────────────────────────────────────────────────────────
 
 export const podPlanApi = {
-  listSetups: () =>
-    api.get('/pod-plan/setups').then(r => r.data as { setups: { id: number; month: string }[]; pod_id: number }),
+  listBHs: () =>
+    api.get('/pod-plan/bhs').then(r => r.data as { bhs: { id: number; name: string; email: string; pod_id: number }[] }),
 
-  getSetup: (month?: string) =>
-    api.get('/pod-plan/setup', { params: month ? { month } : {} }).then(r => r.data),
+  listSetups: (asBh?: number) =>
+    api.get('/pod-plan/setups', { params: asBh ? { as_bh: asBh } : {} }).then(r => r.data as { setups: { id: number; month: string }[]; pod_id: number }),
 
-  upsertSetup: (data: Partial<PodSetup>) =>
-    api.post('/pod-plan/setup', data).then(r => r.data),
+  getSetup: (month?: string, asBh?: number) =>
+    api.get('/pod-plan/setup', { params: { ...(month ? { month } : {}), ...(asBh ? { as_bh: asBh } : {}) } }).then(r => r.data),
+
+  upsertSetup: (data: Partial<PodSetup>, asBh?: number) =>
+    api.post('/pod-plan/setup', data, { params: asBh ? { as_bh: asBh } : {} }).then(r => r.data),
 
   listClients: () =>
     api.get('/pod-plan/clients').then(r => r.data.clients as ClientOption[]),
