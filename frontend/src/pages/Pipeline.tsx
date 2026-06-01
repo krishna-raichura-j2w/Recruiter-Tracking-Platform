@@ -391,6 +391,7 @@ export default function Pipeline() {
   const [overallLoading, setOverallLoading] = useState(true);
   const [bucket, setBucket]           = useState<'all' | 'today' | 'tomorrow' | 'week'>('all');
   const [slab, setSlab]               = useState<string>('all'); // time-of-day filter for the Today group
+  const [bhFilter, setBhFilter]         = useState<string>('');  // Business Head filter ('' = all)
   const [clientFilter, setClientFilter] = useState<string>('');  // Client (company) filter ('' = all)
   const defaultWindow = useMemo(() => {
     const from = new Date();
@@ -500,13 +501,30 @@ export default function Pipeline() {
 
   const grouped = useMemo(() => groupByDay(list, s => s.updated_at), [list]);
 
-  // ── Client filter: distinct companies + client-scoped base list ─────────────
+  // ── BH + Client filters: distinct BHs, BH-scoped clients, filtered base list ─
+  const businessHeads = useMemo(() => {
+    const set = [...new Set(overall.map(o => o.business_head || 'Unmapped'))];
+    // Real names alphabetical; 'Unmapped' always last.
+    return set.sort((a, b) => (a === 'Unmapped' ? 1 : b === 'Unmapped' ? -1 : a.localeCompare(b)));
+  }, [overall]);
   const clients = useMemo(
-    () => [...new Set(overall.map(o => o.company_name).filter(Boolean))].sort() as string[],
-    [overall]);
+    () => [...new Set(
+      overall
+        .filter(o => !bhFilter || (o.business_head || 'Unmapped') === bhFilter)
+        .map(o => o.company_name)
+        .filter(Boolean)
+    )].sort() as string[],
+    [overall, bhFilter]);
+  // Clear a client selection that no longer belongs to the chosen BH.
+  useEffect(() => {
+    if (clientFilter && !clients.includes(clientFilter)) setClientFilter('');
+  }, [clients, clientFilter]);
   const scopedOverall = useMemo(
-    () => (clientFilter ? overall.filter(o => o.company_name === clientFilter) : overall),
-    [overall, clientFilter]);
+    () => overall.filter(o =>
+      (!bhFilter || (o.business_head || 'Unmapped') === bhFilter) &&
+      (!clientFilter || o.company_name === clientFilter)
+    ),
+    [overall, bhFilter, clientFilter]);
 
   // ── Overall list: bucket + search filter, sorted chronologically ────────────
   const overallList = useMemo(() => {
@@ -742,6 +760,12 @@ export default function Pipeline() {
           {/* Overall tab: Client filter + date-window pickers */}
           {tab === 'overall' ? (
             <div className="flex items-center gap-1.5 flex-wrap">
+              <SearchableSelect
+                value={bhFilter}
+                options={businessHeads}
+                placeholder="All BHs"
+                onChange={setBhFilter}
+              />
               <SearchableSelect
                 value={clientFilter}
                 options={clients}

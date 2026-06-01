@@ -335,6 +335,7 @@ export interface OverallInterview {
   interview_time: string | null;
   company_name: string | null;
   client_id: number | null;
+  business_head: string | null;  // resolved from client_bh_mapping CSV ('Unmapped' if none)
 }
 
 
