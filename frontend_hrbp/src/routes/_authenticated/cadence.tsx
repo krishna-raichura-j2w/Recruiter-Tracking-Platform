@@ -1188,13 +1188,13 @@ function CadenceSchedulerPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col min-h-screen bg-white text-slate-800">
+      <div className="flex flex-col h-full bg-white text-slate-800">
         <TopBar
           title="Cadence Scheduler"
           subtitle="Manage recurring client check-ins, record RAG health, and log RAG statuses."
         />
 
-        <main className="flex-1 p-6 md:p-8 space-y-6">
+        <main className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
           <div className="space-y-4">
             {/* KPI Cards + Create Button in one row */}
             <div className="flex items-center gap-4">

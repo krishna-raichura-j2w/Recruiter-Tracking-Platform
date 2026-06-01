@@ -215,12 +215,12 @@ function ClientDetail() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-slate-800">
+    <div className="flex flex-col h-full bg-white text-slate-800">
       <TopBar
         title="Client Consultants"
         subtitle="View and manage consultants mapped to this client."
       />
-      <main className="flex-1 p-6 space-y-6">
+      <main className="flex-1 overflow-y-auto p-6 space-y-6">
         <BackButton to="/clients" label="Back to Clients" />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

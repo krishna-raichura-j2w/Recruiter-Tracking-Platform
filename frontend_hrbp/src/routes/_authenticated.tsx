@@ -44,9 +44,9 @@ function AuthLayout() {
         } as CSSProperties
       }
     >
-      <div className="min-h-screen flex w-full bg-background">
+      <div className="h-screen overflow-hidden flex w-full bg-background">
         <AppSidebar />
-        <SidebarInset className="flex-1 min-w-0">
+        <SidebarInset className="flex-1 min-w-0 overflow-y-auto">
           <Outlet />
         </SidebarInset>
       </div>

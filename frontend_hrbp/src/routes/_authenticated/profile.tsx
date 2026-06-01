@@ -128,10 +128,10 @@ function ProfilePage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-slate-800">
+    <div className="flex flex-col h-full bg-white text-slate-800">
       <TopBar title="My Profile" subtitle="Manage your account settings and credentials." />
 
-      <main className="flex-1 p-6 max-w-5xl w-full mx-auto space-y-6">
+      <main className="flex-1 overflow-y-auto p-6 max-w-5xl w-full mx-auto space-y-6">
         {/* Navigation Shortcut */}
         <div className="flex items-center justify-between">
           <BackButton to="/dashboard" label="Back to Dashboard" />

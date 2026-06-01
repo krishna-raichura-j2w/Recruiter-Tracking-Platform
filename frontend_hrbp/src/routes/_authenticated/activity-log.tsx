@@ -149,9 +149,9 @@ function ActivityLogPage() {
 
   if (!canView) {
     return (
-      <div className="flex flex-col min-h-screen bg-white text-slate-800">
+      <div className="flex flex-col h-full bg-white text-slate-800">
         <TopBar title="Activity Log" subtitle="System-wide observability tracking." />
-        <main className="flex-1 flex items-center justify-center">
+        <main className="flex-1 overflow-y-auto flex items-center justify-center">
           <p className="text-slate-400 text-sm">You don't have access to this page.</p>
         </main>
       </div>
@@ -159,10 +159,10 @@ function ActivityLogPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-slate-800">
+    <div className="flex flex-col h-full bg-white text-slate-800">
       <TopBar title="Activity Log" subtitle="Track who did what across the entire HRBP system." />
 
-      <main className="flex-1 p-6 space-y-4">
+      <main className="flex-1 overflow-y-auto p-6 space-y-4">
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[

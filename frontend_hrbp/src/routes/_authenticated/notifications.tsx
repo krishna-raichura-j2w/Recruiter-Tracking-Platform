@@ -136,13 +136,13 @@ function NotificationsPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-800">
+    <div className="flex flex-col h-full bg-slate-50 text-slate-800">
       <TopBar
         title="Notifications"
         subtitle="SLA breach alerts and ticket updates."
       />
 
-      <main className="flex-1 p-6 max-w-4xl mx-auto w-full">
+      <main className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div className="flex items-center gap-2">

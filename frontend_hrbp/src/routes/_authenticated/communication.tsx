@@ -70,12 +70,12 @@ function CommHub() {
   const classification = useMemo(() => (inbound ? classify(inbound) : null), [inbound]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-slate-800">
+    <div className="flex flex-col h-full bg-white text-slate-800">
       <TopBar
         title="Communication Hub"
         subtitle="Outbound templates, inbound triage, and full sent history."
       />
-      <main className="flex-1 p-6 space-y-6">
+      <main className="flex-1 overflow-y-auto p-6 space-y-6">
         <Tabs defaultValue="outbound">
           <TabsList>
             <TabsTrigger value="outbound">Outbound</TabsTrigger>
