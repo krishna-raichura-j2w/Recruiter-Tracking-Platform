@@ -89,7 +89,8 @@ def get_setup(month: str | None = None, as_bh: Optional[int] = Query(None),
     pod_id = _pod_id_or_404(db, bh_id)
     m = month or datetime.now().strftime("%B %Y")
     setup = service.get_setup(db, pod_id, m)
-    weeks = service.week_buckets(m) if setup else []
+    custom = setup.get("custom_working_days") if setup else None
+    weeks = service.week_buckets(m, custom) if setup else []
     return {"setup": setup, "pod_id": pod_id, "month": m, "weeks": weeks}
 
 
@@ -98,8 +99,10 @@ def upsert_setup(body: SetupUpsert, as_bh: Optional[int] = Query(None),
                  db: Session = Depends(get_db), cu=BH_OR_ADMIN):
     bh_id = _effective_bh_id(cu, as_bh)
     pod_id = _pod_id_or_404(db, bh_id)
-    setup = service.upsert_setup(db, pod_id, bh_id, body.model_dump())
-    return {"setup": setup, "weeks": service.week_buckets(body.month)}
+    body_data = body.model_dump()
+    setup = service.upsert_setup(db, pod_id, bh_id, body_data)
+    custom = setup.get("custom_working_days")
+    return {"setup": setup, "weeks": service.week_buckets(body.month, custom)}
 
 
 # ── clients reference ─────────────────────────────────────────────────────────
@@ -218,7 +221,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
     actuals = service.get_daily_actuals(db, setup_id, entry_date)
     dl_subs = service.get_dl_subs_for_date(db, setup_id, actual_pod_id, entry_date)
     actual_subs_auto = service.get_actual_subs_from_ol(db, setup_id, entry_date)
-    week_info = service.week_for_date(entry_date, s["month"])
+    week_info = service.week_for_date(entry_date, s["month"], s.get("custom_working_days"))
     week_ob_actuals: dict[int, int] = {}
     if week_info:
         week_ob_actuals = service.get_week_ob_actuals(db, setup_id, week_info["week_start"], week_info["week_end"])
@@ -263,7 +266,8 @@ def working_days(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
     is_admin = cu.role == "admin"
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
-    days = service.working_days_for_month(s["month"])
+    custom = s.get("custom_working_days")
+    days = custom if (custom and isinstance(custom, list) and len(custom) > 0) else service.working_days_for_month(s["month"])
     return {"working_days": days}
 
 

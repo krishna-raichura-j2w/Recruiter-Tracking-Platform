@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'; // useCallback kept for loadSetup
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Calendar, ChevronDown, ChevronUp, Plus, Save, Trash2,
   TrendingUp, Users, Target, BarChart2, AlertTriangle,
@@ -33,10 +33,10 @@ const MONTHS = (() => {
 })();
 
 const TABS = [
-  { key: 'setup', label: 'Setup', icon: <Target size={15} /> },
+  { key: 'setup', label: 'Month Plan', icon: <Target size={15} /> },
   { key: 'dashboard', label: 'Dashboard', icon: <BarChart2 size={15} /> },
   { key: 'recruiters', label: 'Recruiters', icon: <Users size={15} /> },
-  { key: 'plan', label: '22-Day Plan', icon: <Calendar size={15} /> },
+  { key: 'plan', label: 'Day Plan', icon: <Calendar size={15} /> },
   { key: 'daily', label: 'Daily Tracker', icon: <TrendingUp size={15} /> },
 ] as const;
 
@@ -63,6 +63,97 @@ function NumInput({ value, onChange, min = 0, step = 1, style = {} }: {
     <input type="number" min={min} step={step} value={value}
       onChange={e => onChange(parseFloat(e.target.value) || 0)}
       style={{ width: 90, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, ...style }} />
+  );
+}
+
+// ── Working Day Calendar ──────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+  'July','August','September','October','November','December'];
+const DOW = ['S','M','T','W','T','F','S'];
+
+function WorkingDayCalendar({ month, value, onChange }: {
+  month: string;
+  value: string[] | undefined;
+  onChange: (days: string[], count: number) => void;
+}) {
+  const allDays = useMemo(() => {
+    const [mName, yr] = month.split(' ');
+    const mi = MONTH_NAMES.indexOf(mName);
+    const year = parseInt(yr);
+    if (mi === -1 || isNaN(year)) return [];
+    const out: { date: string; weekday: number; day: number }[] = [];
+    const cur = new Date(year, mi, 1);
+    while (cur.getMonth() === mi) {
+      out.push({ date: cur.toISOString().slice(0, 10), weekday: cur.getDay(), day: cur.getDate() });
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+  }, [month]);
+
+  const defaultWeekdays = useMemo(
+    () => new Set(allDays.filter(d => d.weekday >= 1 && d.weekday <= 5).map(d => d.date)),
+    [allDays],
+  );
+
+  // Stateless: derive selected from value prop filtered to the current month's days.
+  // Falls back to default weekdays when value is absent or from a different month.
+  const selected = useMemo(() => {
+    if (value && value.length > 0) {
+      const validDates = new Set(allDays.map(d => d.date));
+      const filtered = value.filter(d => validDates.has(d));
+      if (filtered.length > 0) return new Set(filtered);
+    }
+    return new Set(defaultWeekdays);
+  }, [value, allDays, defaultWeekdays]);
+
+  const toggle = (date: string) => {
+    const next = new Set(selected);
+    next.has(date) ? next.delete(date) : next.add(date);
+    const days = [...next].sort();
+    onChange(days, days.length);
+  };
+
+  const resetToWeekdays = () => {
+    const days = [...defaultWeekdays].sort();
+    onChange(days, days.length);
+  };
+
+  const firstWeekday = allDays[0]?.weekday ?? 0;
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+          <span style={{ fontSize: 20, color: '#2563eb', marginRight: 4 }}>{selected.size}</span>
+          working days selected
+        </span>
+        <button onClick={resetToWeekdays} style={{ fontSize: 11, padding: '3px 9px', border: '1px solid #d1d5db', borderRadius: 6, background: '#f9fafb', cursor: 'pointer', color: '#6b7280' }}>
+          Reset to weekdays
+        </button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 34px)', gap: 3, marginBottom: 4 }}>
+        {DOW.map((d, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: i === 0 || i === 6 ? '#fca5a5' : '#9ca3af' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 34px)', gap: 3 }}>
+        {Array.from({ length: firstWeekday }).map((_, i) => <div key={`e${i}`} />)}
+        {allDays.map(d => {
+          const on = selected.has(d.date);
+          const weekend = d.weekday === 0 || d.weekday === 6;
+          return (
+            <button key={d.date} onClick={() => toggle(d.date)} style={{
+              width: 34, height: 30, borderRadius: 7, border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: on ? 700 : 400,
+              background: on ? '#2563eb' : weekend ? '#fef2f2' : '#f3f4f6',
+              color: on ? '#fff' : weekend ? '#fca5a5' : '#374151',
+              transition: 'background 0.1s',
+            }}>{d.day}</button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -205,6 +296,55 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
             <Save size={14} /> {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Setup'}
           </button>
           {!setupId && <span style={{ fontSize: 12, color: '#ef4444', alignSelf: 'center' }}>Save setup first to add customers</span>}
+        </div>
+      </div>
+
+      {/* Weekly Effort Distribution */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: '#111827' }}>Weekly Effort Distribution</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 12, color: '#6b7280' }}>
+          Set what % of monthly effort falls in each week. Must sum to 100%.
+        </p>
+        {(() => {
+          const weights: number[] = (setup.week_weights as number[]) ?? [20, 20, 20, 20, 20];
+          const total = weights.reduce((a, b) => a + b, 0);
+          const weekLabels = ['Week 1 (Jun 1–5)', 'Week 2 (Jun 8–12)', 'Week 3 (Jun 15–19)', 'Week 4 (Jun 22–26)', 'Week 5 (Jun 29–30)'];
+          return (
+            <div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+                {weights.map((w, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>{weekLabels[i]}</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <input
+                        type="number" min={0} max={100} step={1}
+                        value={w}
+                        onChange={e => {
+                          const newW = [...weights];
+                          newW[i] = parseFloat(e.target.value) || 0;
+                          onSetupChange({ ...setup, week_weights: newW });
+                        }}
+                        style={{ width: 64, textAlign: 'center', border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 4px', fontSize: 14, fontWeight: 700 }}
+                      />
+                      <span style={{ fontSize: 13, color: '#6b7280' }}>%</span>
+                    </div>
+                    <div style={{ width: 64, height: 6, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(w, 100)}%`, height: '100%', background: w > 0 ? '#2563eb' : '#e5e7eb', borderRadius: 4 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: total === 100 ? '#16a34a' : '#ef4444' }}>
+                Total: {total}% {total !== 100 ? `(needs ${100 - total > 0 ? '+' : ''}${100 - total}% adjustment)` : '✓'}
+              </div>
+            </div>
+          );
+        })()}
+        <div style={{ marginTop: 12 }}>
+          <button onClick={handleSaveSetup} disabled={saving || ((setup.week_weights as number[] ?? [20,20,20,20,20]).reduce((a,b)=>a+b,0) !== 100)}
+            style={{ padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: ((setup.week_weights as number[] ?? [20,20,20,20,20]).reduce((a,b)=>a+b,0) !== 100) ? 0.5 : 1 }}>
+            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Weights'}
+          </button>
         </div>
       </div>
 
@@ -1066,10 +1206,23 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
                 </tr>
               </thead>
               <tbody>
-                {customers.map(c => (
+                {customers.map(c => {
+                  const weights: number[] = (setup.week_weights as number[]) ?? [20, 20, 20, 20, 20];
+                  const weekIdx = weekInfo ? (weekInfo.week_num - 1) : -1;
+                  const weekPct = (weekIdx >= 0 ? (weights[weekIdx] ?? 20) : 20) / 100;
+                  const weekWd = weekInfo ? ((weekInfo as any).week_working_days ?? 5) : 5;
+                  const monthlySubs = Math.round(c.open_demand_pool * (c.repeat_demand_pct * c.subs_repeat + (1 - c.repeat_demand_pct) * (c.subs_new_phase1 + c.subs_new_phase2)));
+                  const monthlyInts = c.target_interviews_day * Math.max(1, setup.working_days ?? 22);
+                  const dailySubsTarget = c.target_interviews_day
+                    ? Math.round((monthlySubs * weekPct) / Math.max(1, weekWd))
+                    : null;
+                  const dailyIntsTarget = Math.round((monthlyInts * weekPct) / Math.max(1, weekWd));
+                  return (
                   <tr key={c.id}>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', fontWeight: 700 }}>{c.customer_name}</td>
-                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{c.target_interviews_day ? Math.round(c.open_demand_pool * (c.repeat_demand_pct * c.subs_repeat + (1 - c.repeat_demand_pct) * (c.subs_new_phase1 + c.subs_new_phase2)) / Math.max(1, setup.working_days ?? 22)) : '—'}</td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+                      {dailySubsTarget !== null ? dailySubsTarget : '—'}
+                    </td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4' }}>
                       <span style={{ fontWeight: 700, fontSize: 14, color: dlSubs[c.id] ? '#15803d' : '#9ca3af' }}>
                         {dlSubs[c.id] ?? 0}
@@ -1080,13 +1233,14 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
                         {olSubs[c.id] ?? 0}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{c.target_interviews_day}</td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{dailyIntsTarget}</td>
                     <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_interviews')}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>—</td>
                     <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_selects')}</td>
                     <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_obs')}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1219,6 +1373,7 @@ export default function PodPlan() {
   const [existingMonths, setExistingMonths] = useState<string[]>([]);
   const [bhs, setBhs] = useState<{ id: number; name: string; email: string; pod_id: number }[]>([]);
   const [selectedBhUserId, setSelectedBhUserId] = useState<number | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const loadSetup = useCallback((month: string, asBh?: number) => {
     setLoading(true);
@@ -1331,8 +1486,31 @@ export default function PodPlan() {
               style={{ padding: '7px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#fff' }}>
               {[...new Set([...existingMonths, ...MONTHS])].map(m => <option key={m} value={m}>{m}</option>)}
             </select>
+            <button
+              onClick={() => setShowCalendar(v => !v)}
+              title="Pick working days"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px',
+                border: `1px solid ${showCalendar ? '#93c5fd' : '#d1d5db'}`, borderRadius: 8,
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: showCalendar ? '#eff6ff' : '#fff',
+                color: showCalendar ? '#2563eb' : '#374151',
+              }}>
+              <Calendar size={14} />
+              {setup.working_days ?? 22}d
+            </button>
           </div>
         </div>
+
+        {showCalendar && (
+          <div style={{ marginBottom: 16 }}>
+            <WorkingDayCalendar
+              month={selectedMonth}
+              value={setup.custom_working_days}
+              onChange={(days, count) => handleSetupChange({ ...setup, working_days: count, custom_working_days: days })}
+            />
+          </div>
+        )}
 
         {error && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, color: '#dc2626', fontSize: 13 }}>

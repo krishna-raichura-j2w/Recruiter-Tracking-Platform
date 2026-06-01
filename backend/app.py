@@ -160,6 +160,20 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for sql in load_sql_list("045-bh_pod_week_weights.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        for sql in load_sql_list("046-bh_pod_custom_working_days.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         for stmt in [
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",

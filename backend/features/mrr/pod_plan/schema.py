@@ -16,6 +16,8 @@ class SetupUpsert(BaseModel):
     num_recruiters: int = 16
     interviews_per_kam_day: int = 12
     num_kams: int = 4
+    week_weights: list[float] = [20, 20, 20, 20, 20]
+    custom_working_days: list[str] | None = None
 
 
 class CustomerUpsert(BaseModel):

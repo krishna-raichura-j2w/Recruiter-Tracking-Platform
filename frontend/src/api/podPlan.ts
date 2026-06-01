@@ -16,6 +16,8 @@ export interface PodSetup {
   num_recruiters: number;
   interviews_per_kam_day: number;
   num_kams: number;
+  week_weights: number[];
+  custom_working_days?: string[];
 }
 
 export interface CustomerTarget {

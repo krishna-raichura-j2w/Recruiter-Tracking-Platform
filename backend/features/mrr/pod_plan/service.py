@@ -25,9 +25,17 @@ def working_days_for_month(month_str: str) -> list[str]:
     return days
 
 
-def week_buckets(month_str: str) -> list[dict]:
+def effective_working_days(setup: dict) -> list[str]:
+    custom = setup.get("custom_working_days")
+    if custom and isinstance(custom, list) and len(custom) > 0:
+        return sorted(str(d) for d in custom)
+    month_str = setup.get("month", "")
+    return working_days_for_month(month_str) if month_str else []
+
+
+def week_buckets(month_str: str, custom_days: list[str] | None = None) -> list[dict]:
     """Return list of {week_num, week_label, week_start, week_end} for the month."""
-    days = working_days_for_month(month_str)
+    days = custom_days if custom_days else working_days_for_month(month_str)
     buckets: list[list[str]] = []
     bucket: list[str] = []
     for d in days:
@@ -46,12 +54,13 @@ def week_buckets(month_str: str) -> list[dict]:
             "week_label": f"Week {i+1} ({b[0][5:]} – {b[-1][5:]})",
             "week_start": b[0],
             "week_end": b[-1],
+            "week_working_days": len(b),
         })
     return result
 
 
-def week_for_date(date_str: str, month_str: str) -> dict | None:
-    for w in week_buckets(month_str):
+def week_for_date(date_str: str, month_str: str, custom_days: list[str] | None = None) -> dict | None:
+    for w in week_buckets(month_str, custom_days):
         if w["week_start"] <= date_str <= w["week_end"]:
             return w
     return None
@@ -77,6 +86,22 @@ def get_setup(db: Session, pod_id: int, month: str) -> dict | None:
 
 def upsert_setup(db: Session, pod_id: int, bh_user_id: int, data: dict) -> dict:
     existing = get_setup(db, pod_id, data["month"])
+    week_weights = json.dumps(data.get("week_weights", [20, 20, 20, 20, 20]))
+    custom_wd = data.get("custom_working_days")
+    custom_wd_json = json.dumps(custom_wd) if custom_wd is not None else None
+    params = {
+        "net_po_target": data["net_po_target"],
+        "exit_budget": data["exit_budget"],
+        "working_days": data["working_days"],
+        "target_selects_month": data["target_selects_month"],
+        "sel_ob_rate": data["sel_ob_rate"],
+        "subs_per_recruiter_day": data["subs_per_recruiter_day"],
+        "num_recruiters": data["num_recruiters"],
+        "interviews_per_kam_day": data["interviews_per_kam_day"],
+        "num_kams": data["num_kams"],
+        "week_weights": week_weights,
+        "custom_working_days": custom_wd_json,
+    }
     if existing:
         db.execute(
             text("""UPDATE bh_pod_setups SET
@@ -84,21 +109,24 @@ def upsert_setup(db: Session, pod_id: int, bh_user_id: int, data: dict) -> dict:
                 working_days=:working_days, target_selects_month=:target_selects_month,
                 sel_ob_rate=:sel_ob_rate, subs_per_recruiter_day=:subs_per_recruiter_day,
                 num_recruiters=:num_recruiters, interviews_per_kam_day=:interviews_per_kam_day,
-                num_kams=:num_kams, updated_at=NOW()
+                num_kams=:num_kams, week_weights=CAST(:week_weights AS jsonb),
+                custom_working_days=CAST(:custom_working_days AS jsonb),
+                updated_at=NOW()
                 WHERE id=:id"""),
-            {**data, "id": existing["id"]},
+            {**params, "id": existing["id"]},
         )
     else:
         db.execute(
             text("""INSERT INTO bh_pod_setups
                 (pod_id,bh_user_id,month,net_po_target,exit_budget,working_days,
                  target_selects_month,sel_ob_rate,subs_per_recruiter_day,
-                 num_recruiters,interviews_per_kam_day,num_kams)
+                 num_recruiters,interviews_per_kam_day,num_kams,week_weights,custom_working_days)
                 VALUES
                 (:pod_id,:bh_user_id,:month,:net_po_target,:exit_budget,:working_days,
                  :target_selects_month,:sel_ob_rate,:subs_per_recruiter_day,
-                 :num_recruiters,:interviews_per_kam_day,:num_kams)"""),
-            {"pod_id": pod_id, "bh_user_id": bh_user_id, **data},
+                 :num_recruiters,:interviews_per_kam_day,:num_kams,
+                 CAST(:week_weights AS jsonb),CAST(:custom_working_days AS jsonb))"""),
+            {**params, "pod_id": pod_id, "bh_user_id": bh_user_id, "month": data["month"]},
         )
     db.commit()
     return get_setup(db, pod_id, data["month"])
@@ -597,11 +625,10 @@ def compute_metrics(setup: dict, customers: list[dict], recruiters: list[dict]) 
 
 
 def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> dict:
-    """Compute 22-day distribution + recruiter alignment per customer."""
-    month_str = setup.get("month", "")
+    """Compute working-day distribution + recruiter alignment per customer."""
     spd_bench = setup.get("subs_per_recruiter_day", 6)
 
-    wd_dates = working_days_for_month(month_str) if month_str else []
+    wd_dates = effective_working_days(setup)
     actual_wd = max(1, len(wd_dates))
 
     customer_plans: list[dict] = []
@@ -678,10 +705,9 @@ def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> 
 
 
 def compute_kam_plan(setup: dict, customers: list[dict], kams: list[dict]) -> list[dict]:
-    """22-day interview distribution for KAMs per customer."""
-    month_str = setup.get("month", "")
+    """Working-day interview distribution for KAMs per customer."""
     int_per_kam = setup.get("interviews_per_kam_day", 12)
-    wd_dates = working_days_for_month(month_str) if month_str else []
+    wd_dates = effective_working_days(setup)
     actual_wd = max(1, len(wd_dates))
 
     kam_plans: list[dict] = []
