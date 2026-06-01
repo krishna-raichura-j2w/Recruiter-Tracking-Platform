@@ -159,7 +159,7 @@ function WorkingDayCalendar({ month, value, onChange }: {
 
 // ── Setup Tab ─────────────────────────────────────────────────────────────────
 
-function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange, setupId, weeks, asBh }: {
+function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange, setupId, weeks, asBh, onSaved }: {
   setup: Partial<PodSetup>;
   onSetupChange: (s: Partial<PodSetup>) => void;
   clients: ClientOption[];
@@ -168,6 +168,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
   setupId: number | null;
   weeks: WeekInfo[];
   asBh?: number;
+  onSaved?: (setup: PodSetup, weeks: WeekInfo[]) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -194,9 +195,11 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
   const handleSaveSetup = async () => {
     setSaving(true);
     try {
-      await podPlanApi.upsertSetup(setup, asBh);
+      const result = await podPlanApi.upsertSetup(setup, asBh);
+      if (result.setup) onSetupChange(result.setup);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      onSaved?.(result.setup, result.weeks ?? []);
     } finally { setSaving(false); }
   };
 
@@ -914,14 +917,12 @@ function RecruitersTab({ setupId, customers }: { setupId: number; customers: Cus
 
 function PlanTab({ setupId }: { setupId: number }) {
   const [plan, setPlan] = useState<PlanData | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    podPlanApi.getPlan(setupId).then(setPlan).finally(() => setLoading(false));
+    podPlanApi.getPlan(setupId).then(setPlan);
   }, [setupId]);
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Computing plan…</div>;
-  if (!plan) return null;
+  if (!plan) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Computing plan…</div>;
 
   const wd = plan.working_days;
 
@@ -1448,6 +1449,7 @@ export default function PodPlan() {
   const [bhs, setBhs] = useState<{ id: number; name: string; email: string; pod_id: number }[]>([]);
   const [selectedBhUserId, setSelectedBhUserId] = useState<number | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [planRefreshKey, setPlanRefreshKey] = useState(0);
 
   const loadSetup = useCallback((month: string, asBh?: number) => {
     setLoading(true);
@@ -1624,11 +1626,17 @@ export default function PodPlan() {
             setupId={setupId}
             weeks={weeks}
             asBh={selectedBhUserId ?? undefined}
+            onSaved={(savedSetup, savedWeeks) => {
+              setSetup(savedSetup);
+              setWeeks(savedWeeks);
+              if (!setupId && savedSetup.id) setSetupId(savedSetup.id);
+              setPlanRefreshKey(k => k + 1);
+            }}
           />
         )}
-        {activeTab === 'dashboard' && setupId && <DashboardTab setupId={setupId} />}
+        {activeTab === 'dashboard' && setupId && <DashboardTab key={`dash-${setupId}-${planRefreshKey}`} setupId={setupId} />}
         {activeTab === 'recruiters' && setupId && <RecruitersTab setupId={setupId} customers={customers} />}
-        {activeTab === 'plan' && setupId && <PlanTab setupId={setupId} />}
+        {activeTab === 'plan' && setupId && <PlanTab key={`plan-${setupId}-${planRefreshKey}`} setupId={setupId} />}
         {activeTab === 'daily' && setupId && <DailyTab setupId={setupId} setup={setup} customers={customers} />}
         {activeTab !== 'setup' && !setupId && (
           <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>

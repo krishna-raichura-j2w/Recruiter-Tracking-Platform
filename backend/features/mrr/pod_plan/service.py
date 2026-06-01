@@ -624,12 +624,77 @@ def compute_metrics(setup: dict, customers: list[dict], recruiters: list[dict]) 
     }
 
 
+def _build_weighted_daily_plan(
+    wd_dates: list[str],
+    weeks_info: list[dict],
+    monthly_total: int,
+    max_per_day: int,
+    week_weights_raw: list[float],
+) -> list[int]:
+    """Distribute monthly_total across working days using week_weights.
+
+    Each week receives a fraction of the total proportional to its weight,
+    then that week's share is split evenly across its working days.
+    The result is capped at max_per_day and reconciled to sum exactly to monthly_total.
+    """
+    if not wd_dates or monthly_total == 0:
+        return [0] * len(wd_dates)
+
+    num_weeks = len(weeks_info)
+    weights = list(week_weights_raw[:num_weeks])
+    while len(weights) < num_weeks:
+        weights.append(weights[-1] if weights else 20.0)
+    weight_sum = sum(weights) or 1.0
+    weights_norm = [w / weight_sum for w in weights]
+
+    # Map every working day to its week index
+    date_to_week: dict[str, int] = {}
+    for wi, w in enumerate(weeks_info):
+        for d in wd_dates:
+            if w["week_start"] <= d <= w["week_end"]:
+                date_to_week[d] = wi
+
+    # Count working days per week
+    week_day_counts = [0] * num_weeks
+    for d in wd_dates:
+        wi = date_to_week.get(d, 0)
+        if 0 <= wi < num_weeks:
+            week_day_counts[wi] += 1
+
+    # Compute daily target for each day
+    daily_plan: list[int] = []
+    for d in wd_dates:
+        wi = date_to_week.get(d, 0)
+        wdc = max(1, week_day_counts[wi]) if 0 <= wi < num_weeks else 1
+        wn = weights_norm[wi] if 0 <= wi < num_weeks else 1.0 / len(wd_dates)
+        day_target = round(monthly_total * wn / wdc)
+        daily_plan.append(min(day_target, max_per_day))
+
+    # Reconcile rounding so sum == monthly_total
+    diff = monthly_total - sum(daily_plan)
+    step = 1 if diff > 0 else -1
+    i = 0
+    while diff != 0 and i < len(daily_plan) * 3:
+        idx = i % len(daily_plan)
+        if step > 0 and daily_plan[idx] < max_per_day:
+            daily_plan[idx] += 1
+            diff -= 1
+        elif step < 0 and daily_plan[idx] > 0:
+            daily_plan[idx] -= 1
+            diff += 1
+        i += 1
+
+    return daily_plan
+
+
 def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> dict:
-    """Compute working-day distribution + recruiter alignment per customer."""
+    """Compute weighted working-day distribution + recruiter alignment per customer."""
     spd_bench = setup.get("subs_per_recruiter_day", 6)
+    week_weights_raw: list[float] = setup.get("week_weights") or [20, 20, 20, 20, 20]
 
     wd_dates = effective_working_days(setup)
     actual_wd = max(1, len(wd_dates))
+    weeks_info = week_buckets(setup.get("month", ""), setup.get("custom_working_days"))
 
     customer_plans: list[dict] = []
     for c in customers:
@@ -644,22 +709,9 @@ def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> 
         max_per_day = sum(_subs_for_customer(r, cname, spd_bench) for r in assigned_all) or 1
         flat_daily = monthly_subs / actual_wd
 
-        if flat_daily <= max_per_day:
-            base = monthly_subs // actual_wd
-            extra = monthly_subs % actual_wd
-            daily_plan = [base + (1 if i < extra else 0) for i in range(actual_wd)]
-        else:
-            remaining = monthly_subs
-            daily_plan = []
-            for _ in range(actual_wd):
-                if remaining >= max_per_day:
-                    daily_plan.append(max_per_day)
-                    remaining -= max_per_day
-                elif remaining > 0:
-                    daily_plan.append(remaining)
-                    remaining = 0
-                else:
-                    daily_plan.append(0)
+        daily_plan = _build_weighted_daily_plan(
+            wd_dates, weeks_info, monthly_subs, max_per_day, week_weights_raw,
+        )
 
         days_needed = sum(1 for d in daily_plan if d > 0)
         buffer_days = actual_wd - days_needed
@@ -671,9 +723,8 @@ def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> 
         rec_count_gap = assigned_count - recs_needed_full
         rec_cap_gap = assigned_cap_month - monthly_subs
 
-        # If shortfall: how many additional primaries or secondaries would cover it
         shortfall_subs = max(0, -rec_cap_gap)
-        sec_spd = max(1, spd_bench - round(spd_bench * 2 / 3))  # default secondary contribution ≈ 1/3
+        sec_spd = max(1, spd_bench - round(spd_bench * 2 / 3))
         add_primary_needed = math.ceil(shortfall_subs / (spd_bench * actual_wd)) if shortfall_subs and spd_bench and actual_wd else 0
         add_secondary_needed = math.ceil(shortfall_subs / (sec_spd * actual_wd)) if shortfall_subs and sec_spd and actual_wd else 0
 
@@ -705,10 +756,13 @@ def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> 
 
 
 def compute_kam_plan(setup: dict, customers: list[dict], kams: list[dict]) -> list[dict]:
-    """Working-day interview distribution for KAMs per customer."""
+    """Weighted working-day interview distribution for KAMs per customer."""
     int_per_kam = setup.get("interviews_per_kam_day", 12)
+    week_weights_raw: list[float] = setup.get("week_weights") or [20, 20, 20, 20, 20]
+
     wd_dates = effective_working_days(setup)
     actual_wd = max(1, len(wd_dates))
+    weeks_info = week_buckets(setup.get("month", ""), setup.get("custom_working_days"))
 
     kam_plans: list[dict] = []
     for c in customers:
@@ -730,23 +784,11 @@ def compute_kam_plan(setup: dict, customers: list[dict], kams: list[dict]) -> li
         shortfall_int = max(0, -cap_gap)
         add_kams_needed = math.ceil(shortfall_int / int_per_kam) if shortfall_int and int_per_kam else 0
 
-        # Case A: target fits within daily KAM capacity → spread evenly at target_per_day
-        # Case B: shortfall → run at full capacity until monthly target is exhausted
         max_per_day = total_cap_day if total_cap_day > 0 else target_per_day
-        if target_per_day <= max_per_day:
-            daily_plan = [target_per_day] * actual_wd
-        else:
-            remaining = monthly_target
-            daily_plan = []
-            for _ in range(actual_wd):
-                if remaining >= max_per_day:
-                    daily_plan.append(max_per_day)
-                    remaining -= max_per_day
-                elif remaining > 0:
-                    daily_plan.append(remaining)
-                    remaining = 0
-                else:
-                    daily_plan.append(0)
+
+        daily_plan = _build_weighted_daily_plan(
+            wd_dates, weeks_info, monthly_target, max(max_per_day, 1), week_weights_raw,
+        )
 
         kam_plans.append({
             "customer_name": cname,
