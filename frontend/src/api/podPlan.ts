@@ -24,6 +24,7 @@ export interface CustomerTarget {
   id: number;
   setup_id: number;
   client_id: number | null;
+  client_ids?: number[];
   customer_name: string;
   net_po_target_cust: number;
   exit_alloc: number;
@@ -194,7 +195,7 @@ export const podPlanApi = {
   listCustomers: (setupId: number) =>
     api.get(`/pod-plan/setup/${setupId}/customers`).then(r => r.data.customers as CustomerTarget[]),
 
-  upsertCustomer: (setupId: number, data: Partial<CustomerTarget>) =>
+  upsertCustomer: (setupId: number, data: Partial<CustomerTarget> & { client_ids?: number[] }) =>
     api.post(`/pod-plan/setup/${setupId}/customers`, data).then(r => r.data.customer as CustomerTarget),
 
   deleteCustomer: (setupId: number, customerId: number) =>

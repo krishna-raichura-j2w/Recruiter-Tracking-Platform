@@ -23,6 +23,7 @@ class SetupUpsert(BaseModel):
 class CustomerUpsert(BaseModel):
     customer_name: str
     client_id: int | None = None
+    client_ids: list[int] | None = None
     net_po_target_cust: int = 0
     exit_alloc: int = 0
     avg_po_per_ob: float = 3.5

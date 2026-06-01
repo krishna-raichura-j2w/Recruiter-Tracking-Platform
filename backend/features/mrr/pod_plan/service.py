@@ -143,24 +143,37 @@ def list_customers(db: Session, setup_id: int) -> list[dict]:
 
 
 def upsert_customer(db: Session, setup_id: int, data: dict) -> dict:
+    # Extract JSONB field so it can be handled with CAST()
+    client_ids = data.pop("client_ids", None)
+    client_ids_json = json.dumps(client_ids) if client_ids is not None else None
+
     existing = db.execute(
         text("SELECT id FROM bh_customer_targets WHERE setup_id=:sid AND customer_name=:n"),
         {"sid": setup_id, "n": data["customer_name"]},
     ).first()
     if existing:
         fields = {k: v for k, v in data.items() if k != "customer_name"}
-        if fields:
-            sets = ", ".join(f"{k}=:{k}" for k in fields)
+        set_parts = [f"{k}=:{k}" for k in fields]
+        params: dict = {**fields, "id": existing[0]}
+        if client_ids_json is not None:
+            set_parts.append("client_ids=CAST(:client_ids AS jsonb)")
+            params["client_ids"] = client_ids_json
+        if set_parts:
             db.execute(
-                text(f"UPDATE bh_customer_targets SET {sets} WHERE id=:id"),
-                {**fields, "id": existing[0]},
+                text(f"UPDATE bh_customer_targets SET {', '.join(set_parts)} WHERE id=:id"),
+                params,
             )
     else:
-        cols = "setup_id," + ",".join(data.keys())
-        vals = ":setup_id," + ",".join(f":{k}" for k in data.keys())
+        col_list = ["setup_id"] + list(data.keys())
+        val_list = [":setup_id"] + [f":{k}" for k in data.keys()]
+        params = {"setup_id": setup_id, **data}
+        if client_ids_json is not None:
+            col_list.append("client_ids")
+            val_list.append("CAST(:client_ids AS jsonb)")
+            params["client_ids"] = client_ids_json
         db.execute(
-            text(f"INSERT INTO bh_customer_targets ({cols}) VALUES ({vals})"),
-            {"setup_id": setup_id, **data},
+            text(f"INSERT INTO bh_customer_targets ({', '.join(col_list)}) VALUES ({', '.join(val_list)})"),
+            params,
         )
     db.commit()
     row = db.execute(
@@ -352,7 +365,10 @@ def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: st
             FROM validations v
             JOIN candidates c ON c.id = v.candidate_id
             JOIN jobs j ON j.id = c.job_id
-            JOIN bh_customer_targets ct ON ct.client_id = j.client_id AND ct.setup_id = :setup_id
+            JOIN bh_customer_targets ct ON (
+                ct.client_id = j.client_id
+                OR (ct.client_ids IS NOT NULL AND ct.client_ids @> to_jsonb(j.client_id))
+            ) AND ct.setup_id = :setup_id
             WHERE v.status = 'validated'
               AND c.sourced_at >= :day_start
               AND c.sourced_at < :day_end
@@ -379,13 +395,23 @@ def get_actual_subs_from_ol(db: Session, setup_id: int, entry_date: str) -> dict
         return {}
 
     ct_rows = db.execute(
-        text("SELECT id, client_id FROM bh_customer_targets WHERE setup_id = :sid AND client_id IS NOT NULL"),
+        text("""SELECT id, client_id, client_ids FROM bh_customer_targets
+                WHERE setup_id = :sid AND (client_id IS NOT NULL OR client_ids IS NOT NULL)"""),
         {"sid": setup_id},
     ).mappings().all()
     if not ct_rows:
         return {}
 
-    client_id_to_ct: dict[int, int] = {int(r["client_id"]): r["id"] for r in ct_rows}
+    client_id_to_ct: dict[int, int] = {}
+    for r in ct_rows:
+        if r["client_id"] is not None:
+            client_id_to_ct[int(r["client_id"])] = r["id"]
+        cids = r["client_ids"]
+        if cids:
+            if isinstance(cids, str):
+                cids = json.loads(cids)
+            for cid in cids:
+                client_id_to_ct[int(cid)] = r["id"]
     client_ids_list = list(client_id_to_ct.keys())
     placeholders = ",".join(["%s"] * len(client_ids_list))
 

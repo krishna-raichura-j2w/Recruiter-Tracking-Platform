@@ -175,6 +175,8 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
   const [addingClient, setAddingClient] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | ''>('');
   const [expandedCustomer, setExpandedCustomer] = useState<number | null>(null);
+  const [addingClientToCustomer, setAddingClientToCustomer] = useState<number | null>(null);
+  const [extraClientId, setExtraClientId] = useState<number | ''>('');
   const [weeklyOBs, setWeeklyOBs] = useState<Record<number, Record<number, number>>>({});
   const [obSaving, setObSaving] = useState(false);
 
@@ -210,6 +212,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
     const customer = await podPlanApi.upsertCustomer(setupId, {
       customer_name: client.name,
       client_id: client.id,
+      client_ids: [client.id],
       display_order: customers.length,
     });
     onCustomersChange([...customers, customer]);
@@ -229,6 +232,29 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
     const existing = customers.find(c => c.id === cid)!;
     const updated = await podPlanApi.upsertCustomer(setupId, { ...existing, ...data });
     onCustomersChange(customers.map(c => c.id === cid ? updated : c));
+  };
+
+  const handleAddClientMapping = async (customerId: number, newClientId: number) => {
+    if (!setupId) return;
+    const existing = customers.find(c => c.id === customerId)!;
+    const currentIds: number[] = existing.client_ids ?? (existing.client_id ? [existing.client_id] : []);
+    if (currentIds.includes(newClientId)) return;
+    const newIds = [...currentIds, newClientId];
+    await handleUpdateCustomer(customerId, { client_ids: newIds });
+    setAddingClientToCustomer(null);
+    setExtraClientId('');
+  };
+
+  const handleRemoveClientMapping = async (customerId: number, removeClientId: number) => {
+    if (!setupId) return;
+    const existing = customers.find(c => c.id === customerId)!;
+    const currentIds: number[] = existing.client_ids ?? (existing.client_id ? [existing.client_id] : []);
+    const newIds = currentIds.filter(id => id !== removeClientId);
+    const newPrimary = newIds[0] ?? null;
+    await handleUpdateCustomer(customerId, {
+      client_ids: newIds.length > 0 ? newIds : undefined,
+      client_id: newPrimary,
+    });
   };
 
   const handleSaveWeeklyOBs = async () => {
@@ -465,7 +491,14 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
               <div
                 onClick={() => setExpandedCustomer(expandedCustomer === c.id ? null : c.id)}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f9fafb', cursor: 'pointer' }}>
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{c.customer_name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{c.customer_name}</span>
+                  {(c.client_ids ?? (c.client_id ? [c.client_id] : [])).length > 1 && (
+                    <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600 }}>
+                      {(c.client_ids ?? []).length} companies
+                    </span>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>
                     Pool: {c.open_demand_pool} · Int/day: {c.target_interviews_day}
@@ -479,7 +512,50 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
               </div>
 
               {expandedCustomer === c.id && (
-                <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 40px' }}>
+                <div style={{ padding: '16px 20px' }}>
+                  {/* Linked Clients */}
+                  <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #f3f4f6' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Linked Client Companies</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      {(c.client_ids ?? (c.client_id ? [c.client_id] : [])).map(cid => {
+                        const cl = clients.find(x => x.id === cid);
+                        return (
+                          <span key={cid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 99, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
+                            {cl ? cl.name : `Client #${cid}`}
+                            <button onClick={() => handleRemoveClientMapping(c.id, cid)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', padding: 0, display: 'flex', lineHeight: 1 }}>
+                              <X size={11} />
+                            </button>
+                          </span>
+                        );
+                      })}
+                      {addingClientToCustomer === c.id ? (
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                          <select value={extraClientId} onChange={e => setExtraClientId(Number(e.target.value) || '')}
+                            style={{ padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12 }}>
+                            <option value="">— select —</option>
+                            {clients.filter(cl => !(c.client_ids ?? (c.client_id ? [c.client_id] : [])).includes(cl.id)).map(cl => (
+                              <option key={cl.id} value={cl.id}>{cl.name}</option>
+                            ))}
+                          </select>
+                          <button onClick={() => extraClientId && handleAddClientMapping(c.id, Number(extraClientId))}
+                            disabled={!extraClientId}
+                            style={{ padding: '3px 10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: extraClientId ? 1 : 0.5 }}>Add</button>
+                          <button onClick={() => { setAddingClientToCustomer(null); setExtraClientId(''); }}
+                            style={{ padding: '3px 8px', background: '#f9fafb', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}><X size={11} /></button>
+                        </span>
+                      ) : (
+                        <button onClick={() => { setAddingClientToCustomer(c.id); setExtraClientId(''); }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 99, background: '#f0fdf4', border: '1px dashed #86efac', fontSize: 12, fontWeight: 600, color: '#16a34a', cursor: 'pointer' }}>
+                          <Plus size={11} /> Add Company
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                      All linked companies' submissions, interviews &amp; OBs will be combined under this target.
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 40px' }}>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Section B — Revenue</div>
                     {custField(c, 'Net PO Target', 'net_po_target_cust')}
@@ -496,6 +572,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
                     {custField(c, 'Target Interviews / Day', 'target_interviews_day')}
                     {custField(c, 'Int → Select Rate', 'int_sel_target', 0.01)}
                   </div>
+                </div>
                 </div>
               )}
             </div>
