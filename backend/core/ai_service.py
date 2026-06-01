@@ -1,89 +1,107 @@
 """AI service — provider-agnostic interface for LLM calls."""
 
 import logging
-from enum import Enum
 from typing import Literal
-
-from openai import AzureOpenAI
 
 from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Initialise the Azure OpenAI client once at module level (thread-safe).
-_azure_client = AzureOpenAI(
-    azure_endpoint=settings.azure_openai_endpoint or "",
-    api_key=settings.azure_openai_api_key or "",
-    api_version=settings.azure_api_version,
-)
-
-
-class AIProvider(str, Enum):
-    AZURE_OPENAI = "azure_openai"
-
-
-# A single message in a chat conversation
 ChatMessage = dict[Literal["role", "content"], str]
+
+# Lazy-initialised clients
+_azure_client = None
+_claude_client = None
+
+
+def _get_azure_client():
+    global _azure_client
+    if _azure_client is None:
+        from openai import AzureOpenAI
+        _azure_client = AzureOpenAI(
+            azure_endpoint=settings.azure_openai_endpoint or "",
+            api_key=settings.azure_openai_api_key or "",
+            api_version=settings.azure_api_version,
+        )
+    return _azure_client
+
+
+def _get_claude_client():
+    global _claude_client
+    if _claude_client is None:
+        import anthropic
+        _claude_client = anthropic.Anthropic(api_key=settings.claude_api_key or "")
+    return _claude_client
+
+
+def _active_provider() -> str:
+    return (settings.model_to_use or "AZURE").upper()
 
 
 def call_ai(
     prompt: str,
     system_prompt: str = "You are a helpful assistant.",
-    provider: AIProvider = AIProvider.AZURE_OPENAI,
     max_tokens: int = 1200,
 ) -> str:
-    """Single-turn AI call (backwards compatible)."""
-    logger.info(f"AI call → provider={provider.value} | prompt_length={len(prompt)}")
+    """Single-turn AI call — uses provider from MODEL_TO_USE env var."""
+    provider = _active_provider()
+    logger.info(f"AI call → provider={provider} | prompt_length={len(prompt)}")
 
-    if provider == AIProvider.AZURE_OPENAI:
-        return _call_azure_openai_chat(
+    if provider == "CLAUDE":
+        return _call_claude(
             messages=[{"role": "user", "content": prompt}],
             system_prompt=system_prompt,
             max_tokens=max_tokens,
         )
-
-    raise ValueError(f"Unsupported AI provider: {provider}")
+    return _call_azure(
+        messages=[{"role": "user", "content": prompt}],
+        system_prompt=system_prompt,
+        max_tokens=max_tokens,
+    )
 
 
 def chat_ai(
     messages: list[ChatMessage],
     system_prompt: str,
-    provider: AIProvider = AIProvider.AZURE_OPENAI,
     max_tokens: int = 1200,
 ) -> str:
-    """
-    Multi-turn chat completion.
+    """Multi-turn chat completion — uses provider from MODEL_TO_USE env var."""
+    provider = _active_provider()
+    logger.info(f"AI chat → provider={provider} | turns={len(messages)}")
 
-    Args:
-        messages:      Full conversation history as [{role, content}, ...].
-                       The last entry should be the latest user message.
-        system_prompt: Instruction context for the model.
-        provider:      Which LLM backend to use.
-
-    Returns:
-        The model's text response as a plain string.
-    """
-    logger.info(f"AI chat → provider={provider.value} | turns={len(messages)}")
-
-    if provider == AIProvider.AZURE_OPENAI:
-        return _call_azure_openai_chat(messages=messages, system_prompt=system_prompt, max_tokens=max_tokens)
-
-    raise ValueError(f"Unsupported AI provider: {provider}")
+    if provider == "CLAUDE":
+        return _call_claude(messages=messages, system_prompt=system_prompt, max_tokens=max_tokens)
+    return _call_azure(messages=messages, system_prompt=system_prompt, max_tokens=max_tokens)
 
 
-# ---------------------------------------------------------------------------
-# Private provider implementations
-# ---------------------------------------------------------------------------
-
-
-def _call_azure_openai_chat(
+def _call_claude(
     messages: list[ChatMessage],
     system_prompt: str,
     max_tokens: int = 1200,
 ) -> str:
     try:
+        client = _get_claude_client()
+        response = client.messages.create(
+            model=settings.claude_model_name,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=messages,  # type: ignore[arg-type]
+        )
+        return response.content[0].text
+    except Exception as exc:
+        logger.error(f"Claude call failed: {exc}")
+        raise
+
+
+def _call_azure(
+    messages: list[ChatMessage],
+    system_prompt: str,
+    max_tokens: int = 1200,
+) -> str:
+    try:
+        client = _get_azure_client()
         full_messages = [{"role": "system", "content": system_prompt}] + list(messages)
-        response = _azure_client.chat.completions.create(
+        response = client.chat.completions.create(
             model=settings.azure_openai_deployment,
             messages=full_messages,  # type: ignore[arg-type]
             temperature=0.4,

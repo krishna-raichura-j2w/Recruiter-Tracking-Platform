@@ -83,6 +83,14 @@ class Settings(BaseSettings):
         validation_alias="OL_REPLICA_PASSWORD",
     )
 
+    # Claude (Anthropic)
+    claude_api_key: str | None = Field(default=None, validation_alias="CLAUDE_API_KEY")
+    claude_model_name: str = Field(
+        default="claude-haiku-4-5-20251001",
+        validation_alias="CLAUDE_MODEL_NAME",
+    )
+    model_to_use: str = Field(default="AZURE", validation_alias="MODEL_TO_USE")
+
     # Startup behavior
     start_scheduler_on_startup: bool = Field(
         default=True,
