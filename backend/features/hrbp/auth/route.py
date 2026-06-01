@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from features.hrbp.auth import service
-from features.hrbp.auth.schema import RefreshTokenRequest, UserUpdate
+from features.hrbp.auth.schema import ForgotPasswordRequest, RefreshTokenRequest, ResetPasswordRequest, UserUpdate
 from features.hrbp.utils.auth import get_hrbp_user
 
 router = APIRouter(prefix="/users", tags=["hrbp-users"])
@@ -60,6 +60,29 @@ def refresh_token(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
 
     new_token = create_access_token({"sub": str(user.id), "role": user.role.value})
     return success_response(data={"access_token": new_token, "token_type": "bearer"}, message="Token refreshed successfully")
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Send a password-reset link to the given email.
+    Always returns 200 — even if the email doesn't exist — to prevent user enumeration.
+    """
+    try:
+        service.request_password_reset(db, payload.email)
+    except Exception:
+        pass  # never expose internal errors to the caller
+    return success_response(data={}, message="If that email exists, a reset link has been sent.")
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Validate the reset token and set the new password."""
+    try:
+        service.reset_password(db, payload.token, payload.new_password)
+        return success_response(data={}, message="Password updated successfully. You can now sign in.")
+    except Exception as exc:
+        return error_response(message=str(exc))
 
 
 @router.get("/{user_id}")

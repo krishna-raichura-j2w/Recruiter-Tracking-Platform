@@ -88,24 +88,29 @@ function timeAgo(iso: string | null): string {
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
 function KpiCard({
-  icon, label, value, accentText, sub,
+  icon, label, value, accentText, sub, onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   accentText: string;
   sub?: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-xl px-5 py-4 shadow-sm flex-1 min-w-[160px]">
+    <div
+      onClick={onClick}
+      className={`flex items-center gap-4 bg-white border border-slate-200 rounded-xl px-5 py-4 shadow-sm flex-1 min-w-[160px] transition-all ${onClick ? "cursor-pointer hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5" : ""}`}
+    >
       <div className="shrink-0">
         {icon}
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-none">{label}</p>
         <p className={`text-2xl font-bold leading-tight mt-1 ${accentText}`}>{value}</p>
         {sub && <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>}
       </div>
+      {onClick && <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
     </div>
   );
 }
@@ -265,25 +270,29 @@ function Dashboard() {
             icon={<LottieIcon src="/json/job-vacancy.json" size={40} />}
             label="Open Tickets"
             value={loadingKpis ? "—" : (kpis?.open_tickets ?? 0)}
- accentText="text-sky-600" sub="Status: open"
+            accentText="text-sky-600" sub="Status: open"
+            onClick={() => navigate({ to: "/tickets" })}
           />
           <KpiCard
             icon={<LottieIcon src="/json/helpful-tips-for-business.json" size={40} />}
             label="SLA Breaches"
             value={loadingKpis ? "—" : (kpis?.sla_breaches ?? 0)}
- accentText="text-red-600" sub="Deadline passed"
+            accentText="text-red-600" sub="Deadline passed"
+            onClick={() => navigate({ to: "/tickets" })}
           />
           <KpiCard
             icon={<LottieIcon src="/json/the-boy-is-holding-a-dollar-coin.json" size={40} />}
             label="PO at Risk"
             value={loadingKpis ? "—" : fmtInr(kpis?.po_at_risk ?? 0)}
- accentText="text-orange-600" sub="From open tickets"
+            accentText="text-orange-600" sub="From open tickets"
+            onClick={() => navigate({ to: "/tickets" })}
           />
           <KpiCard
             icon={<LottieIcon src="/json/business-meeting.json" size={40} />}
             label="Cadence Overdue"
             value={loadingKpis ? "—" : (kpis?.cadence_overdue ?? 0)}
- accentText="text-violet-600" sub="Sessions pending"
+            accentText="text-violet-600" sub="Sessions pending"
+            onClick={() => navigate({ to: "/cadence" })}
           />
         </div>
 
@@ -297,6 +306,7 @@ function Dashboard() {
               value={loadingKpis ? "—" : (kpis?.exits_initiated ?? 0)}
               accentText="text-amber-600"
               sub="Pending acknowledgement"
+              onClick={() => navigate({ to: "/exits" })}
             />
             <KpiCard
               icon={<LottieIcon src="/json/searching-jobs.json" size={40} />}
@@ -304,6 +314,7 @@ function Dashboard() {
               value={loadingKpis ? "—" : (kpis?.exits_this_month ?? 0)}
               accentText="text-rose-600"
               sub="Exit initiations logged"
+              onClick={() => navigate({ to: "/exits" })}
             />
             <KpiCard
               icon={<LottieIcon src="/json/reviewed.json" size={40} />}
@@ -311,6 +322,7 @@ function Dashboard() {
               value={loadingKpis ? "—" : (kpis?.exits_this_quarter ?? 0)}
               accentText="text-blue-600"
               sub="Exits in current quarter"
+              onClick={() => navigate({ to: "/exits" })}
             />
             <KpiCard
               icon={<LottieIcon src="/json/employee-colored.json" size={40} />}
@@ -318,6 +330,7 @@ function Dashboard() {
               value={loadingKpis ? "—" : (kpis?.exits_completed ?? 0)}
               accentText="text-emerald-600"
               sub="Consultants offboarded"
+              onClick={() => navigate({ to: "/exits" })}
             />
           </div>
         </div>
@@ -470,7 +483,7 @@ function Dashboard() {
 
           {/* Consultants at Risk */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <TrendingDown className="w-4 h-4 text-orange-500" />
                 <div>
@@ -478,6 +491,10 @@ function Dashboard() {
                   <p className="text-[11px] text-slate-400 mt-0.5">PO risk or expiring within 60 days</p>
                 </div>
               </div>
+              <Button variant="ghost" size="sm" className="text-orange-600 text-xs font-semibold gap-1 hover:bg-orange-50"
+                onClick={() => navigate({ to: "/clients" })}>
+                View All <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
             </div>
             {loadingAtRisk ? (
               <SectionLoader />
@@ -504,7 +521,8 @@ function Dashboard() {
                     none:     "text-slate-400 bg-slate-50 border-slate-200",
                   };
                   return (
-                    <div key={c.id} className="flex items-center gap-3 px-5 py-3">
+                    <div key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                      onClick={() => navigate({ to: "/clients" })}>
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(c.name)}`}>
                         {c.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
                       </div>

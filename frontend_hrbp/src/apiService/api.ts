@@ -575,3 +575,26 @@ export async function getCadenceScheduleSessionsApi(
   }
   return response.json();
 }
+
+export async function forgotPasswordApi(email: string): Promise<void> {
+  const baseUrl = getBaseUrl();
+  await fetch(`${baseUrl}api/hrbp/users/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  // always succeeds on the client side (server never reveals if email exists)
+}
+
+export async function resetPasswordApi(token: string, new_password: string): Promise<void> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}api/hrbp/users/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data?.message || data?.detail || "Failed to reset password");
+  }
+}
