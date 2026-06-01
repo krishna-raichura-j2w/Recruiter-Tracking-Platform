@@ -145,7 +145,7 @@ export default function App() {
           <Route
             path="/followup"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'recruiter']}>
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'recruiter', 'bh']}>
                 <FollowUp />
               </ProtectedRoute>
             }

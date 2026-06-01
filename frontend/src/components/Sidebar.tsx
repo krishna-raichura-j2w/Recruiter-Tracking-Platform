@@ -67,6 +67,7 @@ const navConfig: Record<string, NavGroup[]> = {
       items: [
         { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
         { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} />, countKey: 'pipeline' },
+        { label: 'Recruiter Story',    path: '/followup',     icon: <GitBranch size={16} /> },
       ],
     },
     {
@@ -90,6 +91,7 @@ const navConfig: Record<string, NavGroup[]> = {
         { label: 'Candidates',       path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
         { label: 'Boolean Builder',  path: '/skills',      icon: <Sparkles size={16} /> },
+        { label: 'Recruiter Story',  path: '/followup',    icon: <GitBranch size={16} /> },
       ],
     },
     {
@@ -150,9 +152,10 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'Pipeline',
       items: [
-        { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
-        { label: 'Candidates',         path: '/candidates',   icon: <Users size={16} /> },
-        { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} />, countKey: 'pipeline' },
+        { label: 'Jobs',               path: '/jobs',          icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Candidates',         path: '/candidates',    icon: <Users size={16} /> },
+        { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
+        { label: 'Recruiter Story',    path: '/followup',      icon: <GitBranch size={16} /> },
         { label: 'Demand Status',      path: '/demand-status', icon: <TrendingUp size={16} /> },
       ],
     },
