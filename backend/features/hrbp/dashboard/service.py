@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import Text, cast, func, or_
 from sqlalchemy.orm import Session
 
+from core.deps import hrbp_visible_client_ids
 from infra.hrbp_models import (
     HRBPCadenceSchedule,
     HRBPCadenceSession,
@@ -29,16 +30,21 @@ def _today() -> date:
 
 # ── RBAC scope helpers ────────────────────────────────────────────────────────
 
-def _ticket_scope(q, current_user: User):
+def _ticket_scope(q, current_user: User, db: Session):
     role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    if role in ("hrbp", "bh"):
+    if role == "hrbp":
+        client_ids = hrbp_visible_client_ids(db, current_user.id)
         q = q.filter(
             or_(
                 HRBPTicket.raised_by_id == current_user.id,
                 HRBPTicket.escalation_mgr_id == current_user.id,
                 cast(HRBPTicket.hierarchy_json, Text).contains(str(current_user.id)),
+                HRBPTicket.client_id.in_(client_ids),
             )
         )
+    elif role == "bh":
+        bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
+        q = q.filter(HRBPTicket.client_id.in_(bh_client_ids))
     # admin / ops_head / coo / ceo / sa → all tickets
     return q
 
@@ -57,7 +63,14 @@ def _cadence_scope(q, current_user: User):
 
 
 def _cadence_schedule_ids_for_hrbp(db: Session, user_id: int):
-    return [r.id for r in db.query(HRBPCadenceSchedule.id).filter_by(hrbp_id=user_id).all()]
+    client_ids = hrbp_visible_client_ids(db, user_id)
+    if not client_ids:
+        return []
+    return [
+        r.id for r in db.query(HRBPCadenceSchedule.id)
+        .filter(HRBPCadenceSchedule.client_id.in_(client_ids))
+        .all()
+    ]
 
 
 def _cadence_schedule_ids_for_bh(db: Session, user_id: int):
@@ -72,7 +85,7 @@ def get_kpis(db: Session, current_user: User) -> dict:
     # Base active tickets query — open + escalated (scoped)
     _active = HRBPTicket.status.in_(["open", "escalated"])
     tq = db.query(HRBPTicket).filter(_active)
-    tq = _ticket_scope(tq, current_user)
+    tq = _ticket_scope(tq, current_user, db)
 
     open_tickets = tq.count()
 
@@ -84,7 +97,7 @@ def get_kpis(db: Session, current_user: User) -> dict:
         db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
         .filter(_active)
     )
-    po_at_risk_row = _ticket_scope(po_at_risk_row, current_user)
+    po_at_risk_row = _ticket_scope(po_at_risk_row, current_user, db)
     po_at_risk = float(po_at_risk_row.scalar() or 0)
 
     # Cadence overdue: sessions that were scheduled before today and still not_started
@@ -119,28 +132,28 @@ def get_kpis(db: Session, current_user: User) -> dict:
     quarter_month = ((today_date.month - 1) // 3) * 3 + 1
     quarter_start = today_date.replace(month=quarter_month, day=1)
 
+    exits_base = db.query(func.count(HRBPExitTracking.id))
+    if role == "hrbp":
+        _exit_client_ids = hrbp_visible_client_ids(db, current_user.id)
+        exits_base = exits_base.filter(HRBPExitTracking.client_id.in_(_exit_client_ids))
+    elif role == "bh":
+        _bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
+        exits_base = exits_base.filter(HRBPExitTracking.client_id.in_(_bh_client_ids))
+
     exits_initiated = (
-        db.query(func.count(HRBPExitTracking.id))
-        .filter(HRBPExitTracking.status == "initiated")
-        .scalar() or 0
+        exits_base.filter(HRBPExitTracking.status == "initiated").scalar() or 0
     )
 
     exits_this_month = (
-        db.query(func.count(HRBPExitTracking.id))
-        .filter(func.date(HRBPExitTracking.created_at) >= month_start)
-        .scalar() or 0
+        exits_base.filter(func.date(HRBPExitTracking.created_at) >= month_start).scalar() or 0
     )
 
     exits_this_quarter = (
-        db.query(func.count(HRBPExitTracking.id))
-        .filter(func.date(HRBPExitTracking.created_at) >= quarter_start)
-        .scalar() or 0
+        exits_base.filter(func.date(HRBPExitTracking.created_at) >= quarter_start).scalar() or 0
     )
 
     exits_completed = (
-        db.query(func.count(HRBPExitTracking.id))
-        .filter(HRBPExitTracking.status == "completed")
-        .scalar() or 0
+        exits_base.filter(HRBPExitTracking.status == "completed").scalar() or 0
     )
 
     return {
@@ -173,7 +186,7 @@ def _sla_status(deadline: datetime | None) -> str:
 
 def get_my_tickets(db: Session, current_user: User, limit: int = 5) -> list[dict]:
     q = db.query(HRBPTicket).filter(HRBPTicket.status.in_(["open", "escalated"]))
-    q = _ticket_scope(q, current_user)
+    q = _ticket_scope(q, current_user, db)
     q = q.order_by(HRBPTicket.created_at.desc()).limit(limit)
     tickets = q.all()
 
@@ -308,7 +321,8 @@ def get_consultants_at_risk(db: Session, current_user: User, limit: int = 8) -> 
     )
 
     if role == "hrbp":
-        q = q.filter(HRBPConsultant.hrbp_id == current_user.id)
+        client_ids = hrbp_visible_client_ids(db, current_user.id)
+        q = q.filter(HRBPConsultant.client_id.in_(client_ids))
     elif role == "bh":
         bh_client_ids = [
             r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()
@@ -344,14 +358,19 @@ def get_recent_activity(db: Session, current_user: User, limit: int = 10) -> lis
         HRBPTicket, HRBPTicket.id == HRBPTicketActivityLog.ticket_id
     )
 
-    if role in ("hrbp", "bh"):
+    if role == "hrbp":
+        _client_ids = hrbp_visible_client_ids(db, current_user.id)
         q = q.filter(
             or_(
                 HRBPTicket.raised_by_id == current_user.id,
                 HRBPTicket.escalation_mgr_id == current_user.id,
                 cast(HRBPTicket.hierarchy_json, Text).contains(str(current_user.id)),
+                HRBPTicket.client_id.in_(_client_ids),
             )
         )
+    elif role == "bh":
+        _bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
+        q = q.filter(HRBPTicket.client_id.in_(_bh_client_ids))
 
     logs = q.order_by(HRBPTicketActivityLog.created_at.desc()).limit(limit).all()
 

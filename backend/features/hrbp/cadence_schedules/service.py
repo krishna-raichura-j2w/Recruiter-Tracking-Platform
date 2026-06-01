@@ -112,6 +112,7 @@ def list_paginated(
     client_id: int | None = None,
     consultant_id: int | None = None,
     hrbp_ids: list[int] | None = None,
+    client_ids: list[int] | None = None,
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -121,7 +122,10 @@ def list_paginated(
         q = q.filter(HRBPCadenceSchedule.client_id == client_id)
     if consultant_id is not None:
         q = q.filter(HRBPCadenceSchedule.consultant_id == consultant_id)
-    if hrbp_ids is not None:
+    # client_ids takes precedence over hrbp_ids for multi-HRBP-aware scoping
+    if client_ids is not None:
+        q = q.filter(HRBPCadenceSchedule.client_id.in_(client_ids))
+    elif hrbp_ids is not None:
         q = q.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
     if status is not None:
         q = q.filter(HRBPCadenceSchedule.status == status)
@@ -238,12 +242,18 @@ def cancel(db: Session, id: int) -> None:
     db.commit()
 
 
-def get_summary(db: Session, hrbp_ids: list[int] | None = None) -> dict:
+def get_summary(
+    db: Session,
+    hrbp_ids: list[int] | None = None,
+    client_ids: list[int] | None = None,
+) -> dict:
     base = db.query(HRBPCadenceSession).join(
         HRBPCadenceSchedule,
         HRBPCadenceSession.schedule_id == HRBPCadenceSchedule.id,
     )
-    if hrbp_ids is not None:
+    if client_ids is not None:
+        base = base.filter(HRBPCadenceSchedule.client_id.in_(client_ids))
+    elif hrbp_ids is not None:
         base = base.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
 
     pending = base.filter(HRBPCadenceSession.status == "not_started").count()
@@ -264,6 +274,7 @@ def list_all_sessions(
     date_to: date | None = None,
     cadence_tag: str | None = None,
     current_bh_id: int | None = None,
+    client_ids: list[int] | None = None,
 ) -> dict:
     rows = (
         db.query(
@@ -295,7 +306,9 @@ def list_all_sessions(
         .join(HRBPConsultant, HRBPCadenceSchedule.consultant_id == HRBPConsultant.id)
     )
 
-    if hrbp_ids is not None:
+    if client_ids is not None:
+        rows = rows.filter(HRBPCadenceSchedule.client_id.in_(client_ids))
+    elif hrbp_ids is not None:
         rows = rows.filter(HRBPCadenceSchedule.hrbp_id.in_(hrbp_ids))
     if client_id is not None:
         rows = rows.filter(HRBPCadenceSchedule.client_id == client_id)
