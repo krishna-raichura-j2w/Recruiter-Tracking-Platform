@@ -1,7 +1,7 @@
 from datetime import date
 
 from core.database import get_db
-from core.deps import get_current_user, resolve_hrbp_ids
+from core.deps import get_current_user, resolve_hrbp_client_ids
 from core.response_format import (
     error_response,
     success_response,
@@ -50,10 +50,10 @@ def export_sessions(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        hrbp_ids = resolve_hrbp_ids(current_user, db)
+        client_ids = resolve_hrbp_client_ids(current_user, db)
         url = build_and_upload(
             db,
-            hrbp_ids=hrbp_ids,
+            client_ids=client_ids,
             client_id=client_id,
             consultant_id=consultant_id,
             status=status,
@@ -71,8 +71,8 @@ def get_sessions_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    hrbp_ids = resolve_hrbp_ids(current_user, db)
-    data = service.get_summary(db, hrbp_ids)
+    client_ids = resolve_hrbp_client_ids(current_user, db)
+    data = service.get_summary(db, client_ids=client_ids)
     return success_response(
         data=data,
         message="Cadence sessions summary fetched successfully",
@@ -93,21 +93,21 @@ def list_all_sessions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    hrbp_ids = resolve_hrbp_ids(current_user, db)
+    client_ids = resolve_hrbp_client_ids(current_user, db)
     current_bh_id = current_user.id if current_user.role.value == "bh" else None
     result = service.list_all_sessions(
         db,
         page_no,
         per_page,
-        hrbp_ids,
-        client_id,
-        consultant_id,
-        status,
-        scheduled_date,
-        date_from,
-        date_to,
+        client_id=client_id,
+        consultant_id=consultant_id,
+        status=status,
+        scheduled_date=scheduled_date,
+        date_from=date_from,
+        date_to=date_to,
         cadence_tag=cadence_tag,
         current_bh_id=current_bh_id,
+        client_ids=client_ids,
     )
     return success_response_with_pagination(
         data=result["items"],
@@ -131,17 +131,17 @@ def list_cadence_schedules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    hrbp_ids = resolve_hrbp_ids(current_user, db)
+    client_ids = resolve_hrbp_client_ids(current_user, db)
     result = service.list_paginated(
         db,
         page_no,
         per_page,
-        client_id,
-        consultant_id,
-        hrbp_ids,
-        status,
-        date_from,
-        date_to,
+        client_id=client_id,
+        consultant_id=consultant_id,
+        client_ids=client_ids,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],

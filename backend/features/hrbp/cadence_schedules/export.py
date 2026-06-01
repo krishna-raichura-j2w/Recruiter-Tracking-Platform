@@ -49,6 +49,7 @@ def build_and_upload(
     scheduled_date: date | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    client_ids: list[int] | None = None,
 ) -> str:
     result = list_all_sessions(
         db,
@@ -61,6 +62,7 @@ def build_and_upload(
         scheduled_date=scheduled_date,
         date_from=date_from,
         date_to=date_to,
+        client_ids=client_ids,
     )
     rows = result["items"]
 

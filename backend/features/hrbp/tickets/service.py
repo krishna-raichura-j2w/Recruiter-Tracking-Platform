@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from core.deps import hrbp_visible_client_ids
 from infra.hrbp_models import (
     HRBPClient,
     HRBPConsultant,
@@ -13,7 +14,7 @@ from infra.hrbp_models import (
     hrbp_ticket_consultants,
 )
 from infra.models import User
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from core.pagination import PageResult, paginate
@@ -257,16 +258,19 @@ def list_paginated(
     # - hrbp/bh → tickets they raised OR tickets where their user_id appears in hierarchy_json
     # - ops_head / coo / ceo / admin → all tickets
     role = current_user.role.value
-    if role in ("hrbp", "bh"):
-        # Tickets raised by me, OR I appear as a step owner in the hierarchy
-        from sqlalchemy import Text, cast, or_
+    if role == "hrbp":
+        _client_ids = hrbp_visible_client_ids(db, current_user.id)
         q = q.filter(
             or_(
                 HRBPTicket.raised_by_id == current_user.id,
                 HRBPTicket.escalation_mgr_id == current_user.id,
                 cast(HRBPTicket.hierarchy_json, Text).contains(str(current_user.id)),
+                HRBPTicket.client_id.in_(_client_ids),
             )
         )
+    elif role == "bh":
+        bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
+        q = q.filter(HRBPTicket.client_id.in_(bh_client_ids))
 
     if status:
         q = q.filter(HRBPTicket.status == status)

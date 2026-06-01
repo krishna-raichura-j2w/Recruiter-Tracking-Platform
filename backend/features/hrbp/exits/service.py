@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from core.deps import hrbp_visible_client_ids
 from core.pagination import PageResult, paginate
 from infra.hrbp_models import HRBPConsultant, HRBPClient, HRBPExitTracking, HRBPTicket
 from infra.models import User
@@ -44,11 +45,10 @@ def _assert_can_view(db: Session, record: HRBPExitTracking, current_user: User) 
     if role in ("admin", "ops_head", "coo", "ceo", "sa"):
         return
     if role == "hrbp":
-        if record.initiated_by_id != current_user.id:
-            # also allow if the consultant belongs to this HRBP
-            consultant = db.query(HRBPConsultant).filter_by(id=record.consultant_id).first()
-            if not consultant or consultant.hrbp_id != current_user.id:
-                raise HTTPException(status_code=403, detail="Access denied")
+        # allow if initiated by this user OR the exit's client is visible to this HRBP
+        client_ids = hrbp_visible_client_ids(db, current_user.id)
+        if record.initiated_by_id != current_user.id and record.client_id not in client_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
         return
     if role == "bh":
         client = db.query(HRBPClient).filter_by(id=record.client_id).first()
@@ -63,10 +63,9 @@ def _assert_can_update(db: Session, record: HRBPExitTracking, current_user: User
     role = _role(current_user)
     if role in ("admin", "ops_head", "coo", "ceo", "sa"):
         return
-    # HRBP can update only their own exits (notes / dates — not status progression)
     if role == "hrbp":
-        consultant = db.query(HRBPConsultant).filter_by(id=record.consultant_id).first()
-        if not consultant or consultant.hrbp_id != current_user.id:
+        client_ids = hrbp_visible_client_ids(db, current_user.id)
+        if record.client_id not in client_ids:
             raise HTTPException(status_code=403, detail="You can only update exits for your own consultants")
         return
     # BH can only acknowledge/complete exits for their own clients
@@ -85,9 +84,11 @@ def create(db: Session, payload: ExitCreate, current_user: User) -> dict:
     if not consultant:
         raise HTTPException(status_code=404, detail="Consultant not found")
 
-    # HRBP can only log exits for their own consultants
-    if role == "hrbp" and consultant.hrbp_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only log exits for your own consultants")
+    # HRBP can only log exits for consultants under their visible clients
+    if role == "hrbp":
+        client_ids = hrbp_visible_client_ids(db, current_user.id)
+        if consultant.client_id not in client_ids:
+            raise HTTPException(status_code=403, detail="You can only log exits for your own consultants")
 
     # Snapshot the monthly PO at the moment of exit initiation
     po_impact = float(consultant.monthly_po) if consultant.monthly_po is not None else None
@@ -108,11 +109,9 @@ def _apply_scope(q, db: Session, current_user: User):
     if role in ("admin", "ops_head", "coo", "ceo", "sa"):
         return q
     if role == "hrbp":
-        # exits for consultants assigned to this HRBP
-        hrbp_consultant_ids = [
-            r.id for r in db.query(HRBPConsultant.id).filter_by(hrbp_id=current_user.id).all()
-        ]
-        return q.filter(HRBPExitTracking.consultant_id.in_(hrbp_consultant_ids))
+        # exits for clients visible to this HRBP (multi-HRBP aware)
+        client_ids = hrbp_visible_client_ids(db, current_user.id)
+        return q.filter(HRBPExitTracking.client_id.in_(client_ids))
     if role == "bh":
         # exits for clients owned by this BH
         bh_client_ids = [

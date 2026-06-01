@@ -7,6 +7,26 @@ from core.database import get_db
 from core.security import decode_token
 
 
+def hrbp_visible_client_ids(db: Session, user_id: int) -> list[int]:
+    """
+    Return IDs of all clients where user_id is an assigned HRBP.
+    Checks both the new hrbp_ids array and the legacy hrbp_id scalar.
+    """
+    from infra.hrbp_models import HRBPClient
+    from sqlalchemy import and_, func, or_
+    return [
+        r.id for r in db.query(HRBPClient.id).filter(
+            or_(
+                HRBPClient.hrbp_ids.contains([user_id]),
+                and_(
+                    func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
+                    HRBPClient.hrbp_id == user_id,
+                ),
+            )
+        ).all()
+    ]
+
+
 def resolve_hrbp_ids(user: User, db: Session) -> list[int] | None:
     """
     Returns the hrbp_ids this user is allowed to see, based on their role.
@@ -28,7 +48,27 @@ def resolve_hrbp_ids(user: User, db: Session) -> list[int] | None:
             .all()
         )
         return [r[0] for r in rows]
-    if role in ("admin", "coo", "ops_head"):
+    if role in ("admin", "coo", "ops_head", "ceo"):
+        return None
+    return []
+
+
+def resolve_hrbp_client_ids(user: User, db: Session) -> list[int] | None:
+    """
+    Return client IDs this user can see for cadence-style scoping.
+
+    - hrbp  → client IDs where user appears in hrbp_ids (multi-HRBP aware)
+    - bh    → client IDs owned by this BH
+    - admin / coo / ops_head / ceo → None  (no filter — full access)
+    - any other role → []  (empty — sees nothing)
+    """
+    role = user.role.value
+    if role == "hrbp":
+        return hrbp_visible_client_ids(db, user.id)
+    if role == "bh":
+        from infra.hrbp_models import HRBPClient
+        return [r.id for r in db.query(HRBPClient.id).filter(HRBPClient.bh_id == user.id).all()]
+    if role in ("admin", "coo", "ops_head", "ceo"):
         return None
     return []
 
