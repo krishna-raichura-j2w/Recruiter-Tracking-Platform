@@ -7,6 +7,7 @@ Routes:
   GET /api/ol-lookup/ol/{email}             → OL MySQL profile + applied_jobs
   GET /api/ol-lookup/check?email=&job_id=   → is user mapped to that job_posting_id?
 """
+import csv
 import os
 from datetime import datetime, date
 
@@ -176,6 +177,37 @@ def check_mapping(
         ol.close()
 
 
+# ── Client → Business Head mapping (CSV is the source of truth) ─────────────────
+
+_BH_MAP_CACHE = {"mtime": None, "map": {}}
+_BH_CSV_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "data", "client_bh_mapping.csv"
+)
+
+
+def _norm_client(s: str) -> str:
+    """Normalize a client/company name for case- and whitespace-insensitive matching."""
+    return (s or "").strip().casefold()
+
+
+def _load_client_bh_map() -> dict:
+    """{normalized client name -> Business Head}; reloads when the CSV file changes."""
+    try:
+        mtime = os.path.getmtime(_BH_CSV_PATH)
+    except OSError:
+        return {}
+    if _BH_MAP_CACHE["mtime"] != mtime:
+        m = {}
+        with open(_BH_CSV_PATH, newline="", encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                client = (row.get("Client") or "").strip()
+                bh = (row.get("Business Head") or "").strip()
+                if client and bh and bh.lower() != "none":
+                    m[_norm_client(client)] = bh
+        _BH_MAP_CACHE.update(mtime=mtime, map=m)
+    return _BH_MAP_CACHE["map"]
+
+
 @router.get("/interview-tracking")
 def interview_tracking_overall(
     from_date: str = Query(..., description="Window start, 'YYYY-MM-DD'"),
@@ -188,6 +220,9 @@ def interview_tracking_overall(
         with ol.cursor() as cur:
             cur.execute(load_ol_sql("interview_tracking_overall.sql"), (from_date, to_date))
             rows = [_serialize(dict(r)) for r in cur.fetchall()]
+        bh_map = _load_client_bh_map()
+        for r in rows:
+            r["business_head"] = bh_map.get(_norm_client(r.get("company_name") or ""), "Unmapped")
         return JSONResponse(content=rows)
     finally:
         ol.close()
