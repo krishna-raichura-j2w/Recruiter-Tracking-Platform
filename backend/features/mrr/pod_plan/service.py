@@ -323,8 +323,7 @@ def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: st
             SELECT ct.id AS customer_target_id, COUNT(DISTINCT v.candidate_id) AS dl_subs
             FROM validations v
             JOIN candidates c ON c.id = v.candidate_id
-            JOIN submissions s ON s.candidate_id = c.id
-            JOIN jobs j ON j.id = s.job_id
+            JOIN jobs j ON j.id = c.job_id
             JOIN bh_customer_targets ct ON ct.client_id = j.client_id AND ct.setup_id = :setup_id
             WHERE v.status = 'validated'
               AND c.sourced_at >= :day_start
