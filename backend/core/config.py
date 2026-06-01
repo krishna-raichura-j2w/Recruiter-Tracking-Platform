@@ -93,7 +93,7 @@ class Settings(BaseSettings):
 
     # Frontend origin (used for password-reset links in emails)
     frontend_url: str = Field(
-        default="http://localhost:5173",
+        default="https://mrr-process-tracker.joulestowatts.com/hrbp",
         validation_alias="FRONTEND_URL",
     )
 
