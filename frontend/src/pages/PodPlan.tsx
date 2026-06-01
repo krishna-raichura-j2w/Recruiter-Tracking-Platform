@@ -268,6 +268,27 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
     </div>
   );
 
+  // Live impact computed from current form values — no save required
+  const liveImpact = (() => {
+    const wd = Math.max(1, setup.working_days ?? 22);
+    const grossPo = (setup.net_po_target ?? 0) + (setup.exit_budget ?? 0);
+    const targetObs = Math.round((setup.target_selects_month ?? 0) * (setup.sel_ob_rate ?? 0.8));
+    const dailySelects = wd > 0 ? +((setup.target_selects_month ?? 0) / wd).toFixed(1) : 0;
+    const dailyObs = wd > 0 ? +(targetObs / wd).toFixed(1) : 0;
+    const recCapDay = (setup.subs_per_recruiter_day ?? 0) * (setup.num_recruiters ?? 0);
+    const kamCapDay = (setup.interviews_per_kam_day ?? 0) * (setup.num_kams ?? 0);
+    // per-customer derived
+    const custRows = customers.map(c => {
+      const avgSD = c.repeat_demand_pct * c.subs_repeat + (1 - c.repeat_demand_pct) * (c.subs_new_phase1 + c.subs_new_phase2);
+      const monthlySubs = Math.round(avgSD * c.open_demand_pool);
+      const dailySubs = +(monthlySubs / wd).toFixed(1);
+      const obsNeeded = c.avg_po_per_ob > 0 ? Math.round((c.net_po_target_cust + c.exit_alloc) / c.avg_po_per_ob) : 0;
+      const dailyObsCust = +(obsNeeded / wd).toFixed(1);
+      return { name: c.customer_name, monthlySubs, dailySubs, monthlyInt: c.target_interviews_day * wd, dailyInt: c.target_interviews_day, obsNeeded, dailyObs: dailyObsCust };
+    });
+    return { wd, grossPo, targetObs, dailySelects, dailyObs, recCapDay, kamCapDay, custRows };
+  })();
+
   return (
     <div>
       {/* Pod-level assumptions */}
@@ -299,6 +320,57 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
         </div>
       </div>
 
+      {/* Live Impact Panel */}
+      <div style={{ background: 'linear-gradient(135deg,#eff6ff 0%,#f0fdf4 100%)', border: '1px solid #bfdbfe', borderRadius: 12, padding: '18px 24px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8' }}>Live Targets — {liveImpact.wd} Working Days</span>
+          <span style={{ fontSize: 11, color: '#6b7280' }}>(updates instantly from calendar · save to persist)</span>
+        </div>
+        {/* Pod-level KPIs */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: liveImpact.custRows.length > 0 ? 16 : 0 }}>
+          {[
+            { label: 'Gross PO Target', value: liveImpact.grossPo, color: '#2563eb' },
+            { label: 'Target Onboards', value: liveImpact.targetObs, color: '#7c3aed' },
+            { label: 'Selects/Day needed', value: liveImpact.dailySelects, color: '#7c3aed' },
+            { label: 'OBs/Day needed', value: liveImpact.dailyObs, color: '#059669' },
+            { label: 'Recruiter Cap/Day', value: liveImpact.recCapDay, color: '#d97706' },
+            { label: 'KAM Cap/Day', value: liveImpact.kamCapDay, color: '#0891b2' },
+          ].map(k => (
+            <div key={k.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 16px', minWidth: 110, textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.value}</div>
+              <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{k.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* Per-customer derived targets */}
+        {liveImpact.custRows.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.7)' }}>
+                  {['Customer', 'Monthly Subs', 'Subs/Day', 'Monthly Int', 'Int/Day', 'OBs needed', 'OBs/Day'].map(h => (
+                    <th key={h} style={{ padding: '6px 10px', textAlign: h === 'Customer' ? 'left' : 'center', border: '1px solid #e5e7eb', fontWeight: 700 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {liveImpact.custRows.map(r => (
+                  <tr key={r.name} style={{ background: 'rgba(255,255,255,0.5)' }}>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', fontWeight: 700 }}>{r.name}</td>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center' }}>{r.monthlySubs}</td>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>{r.dailySubs}</td>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center' }}>{r.monthlyInt}</td>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{r.dailyInt}</td>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center' }}>{r.obsNeeded}</td>
+                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', fontWeight: 700, color: '#059669' }}>{r.dailyObs}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Weekly Effort Distribution */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 24, marginBottom: 20 }}>
         <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: '#111827' }}>Weekly Effort Distribution</h3>
@@ -308,7 +380,9 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
         {(() => {
           const weights: number[] = (setup.week_weights as number[]) ?? [20, 20, 20, 20, 20];
           const total = weights.reduce((a, b) => a + b, 0);
-          const weekLabels = ['Week 1 (Jun 1–5)', 'Week 2 (Jun 8–12)', 'Week 3 (Jun 15–19)', 'Week 4 (Jun 22–26)', 'Week 5 (Jun 29–30)'];
+          const weekLabels = weeks.length > 0
+            ? weeks.map(w => w.week_label)
+            : weights.map((_, i) => `Week ${i + 1}`);
           return (
             <div>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
