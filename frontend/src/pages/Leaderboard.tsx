@@ -9,6 +9,7 @@ import leaderboardAnim from '../assets/lottie-leaderboard.json';
 import Layout from '../components/Layout';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { podPlanApi, type BHLeaderboardResponse, type BHLeaderboardEntry } from '../api/podPlan';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
@@ -1205,14 +1206,216 @@ function ClientPipelineSection() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  BH Target Tracking Section
+// ════════════════════════════════════════════════════════════════════════════
+
+function pct(actual: number, target: number) {
+  if (!target) return null;
+  const p = Math.round((actual / target) * 100);
+  const color = p >= 90 ? '#16a34a' : p >= 60 ? '#d97706' : '#dc2626';
+  return <span style={{ fontSize: 11, fontWeight: 700, color, marginLeft: 4 }}>({p}%)</span>;
+}
+
+function actVsTarget(actual: number, target: number, highlight?: boolean) {
+  const met = actual >= target;
+  return (
+    <td style={{
+      padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center',
+      background: highlight ? (met ? '#f0fdf4' : actual > 0 ? '#fff7ed' : '#fff') : '#fff',
+    }}>
+      <span style={{ fontWeight: 700, color: met ? '#16a34a' : actual > 0 ? '#d97706' : '#374151' }}>{actual}</span>
+      {target > 0 && <span style={{ color: '#9ca3af', fontSize: 11 }}>/{target}</span>}
+      {target > 0 && pct(actual, target)}
+    </td>
+  );
+}
+
+function BHTargetsSection() {
+  const [data, setData] = useState<BHLeaderboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selDate, setSelDate] = useState(todayISO());
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    podPlanApi.getBHLeaderboard(selDate)
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [selDate]);
+
+  const toggleBH = (podId: number) =>
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      next.has(podId) ? next.delete(podId) : next.add(podId);
+      return next;
+    });
+
+  const totals = (bh: BHLeaderboardEntry) => {
+    const sum = (f: keyof typeof bh.customers[0]) =>
+      bh.customers.reduce((s, c) => s + (Number(c[f]) || 0), 0);
+    return {
+      daily_subs_target: sum('daily_subs_target'),
+      daily_int_target: sum('daily_int_target'),
+      actual_subs: sum('actual_subs'),
+      dl_subs: sum('dl_subs'),
+      actual_int: sum('actual_int'),
+      actual_sel: sum('actual_sel'),
+      actual_obs: sum('actual_obs'),
+      monthly_subs: sum('monthly_subs'),
+      monthly_int: sum('monthly_int'),
+      mtd_subs: sum('mtd_subs'),
+      mtd_int: sum('mtd_int'),
+    };
+  };
+
+  const COLS = ['Customer', 'Subs T/Day', 'DL Subs', 'Actual Subs', 'Int T/Day', 'Actual Int', 'Sel T/Day', 'Actual Sel', 'OBs T/Day', 'Actual OBs', 'Month Subs', 'MTD Subs', 'Month Int', 'MTD Int'];
+
+  return (
+    <div>
+      {/* Date bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Date:</span>
+        <input type="date" value={selDate} max={todayISO()} onChange={e => setSelDate(e.target.value)}
+          style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, fontWeight: 600 }} />
+        {selDate !== todayISO() && (
+          <button onClick={() => setSelDate(todayISO())}
+            style={{ padding: '5px 12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Today
+          </button>
+        )}
+        {data && (
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>
+            {data.month} · {data.bhs.length} BH pods
+          </span>
+        )}
+      </div>
+
+      {loading && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>}
+      {!loading && (!data || data.bhs.length === 0) && (
+        <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No pod setups found for this month.</div>
+      )}
+
+      {data && data.bhs.map(bh => {
+        const t = totals(bh);
+        const isCollapsed = collapsed.has(bh.pod_id);
+        return (
+          <div key={bh.pod_id} style={{ marginBottom: 20, border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+            {/* BH header */}
+            <div onClick={() => toggleBH(bh.pod_id)} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '12px 18px', background: 'linear-gradient(90deg,#1e3a5f,#2563eb)',
+              cursor: 'pointer',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>{bh.bh_name}</span>
+                <span style={{ fontSize: 12, color: '#93c5fd' }}>{bh.customers.length} customers · {bh.month}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+                {/* Summary chips */}
+                {[
+                  { label: 'Subs', actual: t.actual_subs, target: t.daily_subs_target },
+                  { label: 'Int', actual: t.actual_int, target: t.daily_int_target },
+                  { label: 'MTD Subs', actual: t.mtd_subs, target: t.monthly_subs },
+                ].map(({ label, actual, target }) => {
+                  const met = target > 0 && actual >= target;
+                  return (
+                    <div key={label} style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: '#93c5fd', fontWeight: 600 }}>{label}</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: met ? '#4ade80' : actual > 0 ? '#fbbf24' : '#fff' }}>
+                        {actual}<span style={{ fontSize: 11, color: '#93c5fd', fontWeight: 400 }}>/{target}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <span style={{ color: '#93c5fd' }}>{isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}</span>
+              </div>
+            </div>
+
+            {/* Customer table */}
+            {!isCollapsed && (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc' }}>
+                      {COLS.map(h => (
+                        <th key={h} style={{
+                          padding: '7px 10px', border: '1px solid #e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', fontSize: 11,
+                          textAlign: h === 'Customer' ? 'left' : 'center',
+                          background: h.startsWith('Actual') ? '#eff6ff' : h.startsWith('DL') ? '#f0fdf4' : h.startsWith('MTD') ? '#fdf4ff' : '#f8fafc',
+                          color: h.startsWith('Actual') ? '#1d4ed8' : h.startsWith('DL') ? '#15803d' : h.startsWith('MTD') ? '#7c3aed' : '#374151',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bh.customers.map(c => (
+                      <tr key={c.customer_target_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', fontWeight: 600, whiteSpace: 'nowrap' }}>{c.customer_name}</td>
+                        {/* Subs T/Day */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.daily_subs_target || '—'}</td>
+                        {/* DL Subs */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4', fontWeight: 700, color: c.dl_subs > 0 ? '#15803d' : '#9ca3af' }}>{c.dl_subs || '—'}</td>
+                        {/* Actual Subs */}
+                        {actVsTarget(c.actual_subs, c.daily_subs_target, true)}
+                        {/* Int T/Day */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.daily_int_target || '—'}</td>
+                        {/* Actual Int */}
+                        {actVsTarget(c.actual_int, c.daily_int_target, true)}
+                        {/* Sel T/Day */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.daily_sel_target || '—'}</td>
+                        {/* Actual Sel */}
+                        {actVsTarget(c.actual_sel, c.daily_sel_target)}
+                        {/* OBs T/Day */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.daily_obs_target || '—'}</td>
+                        {/* Actual OBs */}
+                        {actVsTarget(c.actual_obs, c.daily_obs_target)}
+                        {/* Month Subs */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.monthly_subs || '—'}</td>
+                        {/* MTD Subs */}
+                        {actVsTarget(c.mtd_subs, c.monthly_subs)}
+                        {/* Month Int */}
+                        <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.monthly_int || '—'}</td>
+                        {/* MTD Int */}
+                        {actVsTarget(c.mtd_int, c.monthly_int)}
+                      </tr>
+                    ))}
+                    {/* BH subtotal row */}
+                    <tr style={{ background: '#f0f9ff', fontWeight: 800 }}>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', fontWeight: 800, color: '#1e3a5f' }}>Total</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center' }}>{t.daily_subs_target}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4', color: '#15803d' }}>{t.dl_subs || '—'}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', color: t.actual_subs >= t.daily_subs_target ? '#16a34a' : '#1d4ed8', fontWeight: 800 }}>{t.actual_subs}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center' }}>{t.daily_int_target}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', color: t.actual_int >= t.daily_int_target ? '#16a34a' : '#1d4ed8', fontWeight: 800 }}>{t.actual_int}</td>
+                      <td colSpan={2} style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>—</td>
+                      <td colSpan={2} style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>—</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.monthly_subs}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_subs}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.monthly_subs}</span></td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.monthly_int}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_int}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.monthly_int}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
-type LbTab = 'recruiter' | 'pipeline';
+type LbTab = 'recruiter' | 'pipeline' | 'bh-targets';
 
 const TABS: { key: LbTab; label: string }[] = [
-  { key: 'recruiter', label: 'Recruiter Dashboard' },
-  { key: 'pipeline',  label: 'Client Pipeline' },
+  { key: 'recruiter',  label: 'Recruiter Dashboard' },
+  { key: 'pipeline',   label: 'Client Pipeline' },
+  { key: 'bh-targets', label: 'BH Target Tracking' },
 ];
 
 export default function Leaderboard() {
@@ -1263,6 +1466,11 @@ export default function Leaderboard() {
       {/* Client Pipeline — mounts (and fetches) only after user opens it */}
       <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
         {visited.has('pipeline') && <ClientPipelineSection />}
+      </div>
+
+      {/* BH Target Tracking — mounts (and fetches) only after user opens it */}
+      <div style={{ display: tab === 'bh-targets' ? 'block' : 'none' }}>
+        {visited.has('bh-targets') && <BHTargetsSection />}
       </div>
     </Layout>
   );

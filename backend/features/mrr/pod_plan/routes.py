@@ -23,6 +23,7 @@ from features.mrr.pod_plan.schema import (
 router = APIRouter(prefix="/pod-plan", tags=["pod-plan"])
 
 BH_OR_ADMIN = Depends(require_roles("bh", "admin"))
+LEADERSHIP = Depends(require_roles("admin", "coo", "ops_head"))
 
 
 def _effective_bh_id(cu, as_bh: Optional[int]) -> int:
@@ -300,3 +301,85 @@ def get_plan(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
     kam_plans = service.compute_kam_plan(s, enriched, kams)
     weekly_obs = service.list_weekly_ob_targets(db, setup_id)
     return {**plan, "kam_plans": kam_plans, "weekly_obs": weekly_obs}
+
+
+# ── BH leaderboard (admin / COO / ops_head view) ──────────────────────────────
+
+@router.get("/bh-leaderboard")
+def bh_leaderboard(
+    date: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    cu=LEADERSHIP,
+):
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
+
+    setup_rows = db.execute(
+        text("""
+            SELECT s.*, u.name AS bh_name, p.id AS pod_id
+            FROM bh_pod_setups s
+            JOIN pods p ON p.id = s.pod_id
+            JOIN users u ON u.id = p.bh_user_id AND u.is_active = true
+            WHERE s.month = :month
+            ORDER BY u.name
+        """),
+        {"month": month},
+    ).mappings().all()
+
+    bhs = []
+    for s_row in setup_rows:
+        s = dict(s_row)
+        setup_id = s["id"]
+        pod_id = s["pod_id"]
+
+        customers = service.list_customers(db, setup_id)
+        recruiters = service.list_recruiter_assignments(db, setup_id)
+        metrics = service.compute_metrics(s, customers, recruiters)
+        enriched = {c["id"]: c for c in metrics["customers"]}
+
+        actuals = service.get_daily_actuals(db, setup_id, target_date)
+        dl_subs = service.get_dl_subs_for_date(db, setup_id, pod_id, target_date)
+        ol_subs = service.get_actual_subs_from_ol(db, setup_id, target_date)
+        monthly_actuals = service.get_monthly_actuals(db, setup_id, month)
+
+        customer_rows = []
+        for c in customers:
+            cid = c["id"]
+            em = enriched.get(cid, {})
+            act = actuals.get(cid, {})
+            m_act = monthly_actuals.get(cid, {})
+
+            monthly_subs = em.get("monthly_subs", 0)
+            monthly_int = int(em.get("monthly_interviews", 0))
+
+            customer_rows.append({
+                "customer_name": c["customer_name"],
+                "customer_target_id": cid,
+                "daily_subs_target": service.daily_target_for_date(s, monthly_subs, target_date),
+                "daily_int_target": c.get("target_interviews_day", 0),
+                "daily_sel_target": round(em.get("daily_selects", 0)),
+                "daily_obs_target": round(em.get("daily_obs", 0)),
+                "actual_subs": ol_subs.get(cid, act.get("actual_subs", 0)),
+                "dl_subs": dl_subs.get(cid, 0),
+                "actual_int": act.get("actual_interviews", 0),
+                "actual_sel": act.get("actual_selects", 0),
+                "actual_obs": act.get("actual_obs", 0),
+                "monthly_subs": monthly_subs,
+                "monthly_int": monthly_int,
+                "selects_needed": em.get("selects_needed", 0),
+                "obs_needed": em.get("obs_needed", 0),
+                "mtd_subs": int(m_act.get("subs", 0)),
+                "mtd_int": int(m_act.get("interviews", 0)),
+                "mtd_sel": int(m_act.get("selects", 0)),
+                "mtd_obs": int(m_act.get("obs", 0)),
+            })
+
+        bhs.append({
+            "bh_name": s["bh_name"],
+            "pod_id": pod_id,
+            "setup_id": setup_id,
+            "month": month,
+            "customers": customer_rows,
+        })
+
+    return {"date": target_date, "month": month, "bhs": bhs}

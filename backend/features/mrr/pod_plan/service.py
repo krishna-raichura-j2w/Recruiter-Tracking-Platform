@@ -713,6 +713,30 @@ def _build_weighted_daily_plan(
     return daily_plan
 
 
+def daily_target_for_date(setup: dict, monthly_total: int, target_date: str) -> int:
+    """Weighted daily target for one specific working date."""
+    if monthly_total == 0:
+        return 0
+    wd_dates = effective_working_days(setup)
+    if target_date not in wd_dates:
+        return 0
+    month = setup.get("month", "")
+    custom_days = setup.get("custom_working_days")
+    weeks_info = week_buckets(month, custom_days)
+    week_weights_raw: list[float] = setup.get("week_weights") or [20, 20, 20, 20, 20]
+    num_weeks = len(weeks_info)
+    weights = list(week_weights_raw[:num_weeks])
+    while len(weights) < num_weeks:
+        weights.append(weights[-1] if weights else 20.0)
+    weight_sum = sum(weights) or 1.0
+    for wi, w in enumerate(weeks_info):
+        if w["week_start"] <= target_date <= w["week_end"]:
+            week_fraction = weights[wi] / weight_sum
+            week_dates = [d for d in wd_dates if w["week_start"] <= d <= w["week_end"]]
+            return round(monthly_total * week_fraction / max(1, len(week_dates)))
+    return 0
+
+
 def compute_plan(setup: dict, customers: list[dict], recruiters: list[dict]) -> dict:
     """Compute weighted working-day distribution + recruiter alignment per customer."""
     spd_bench = setup.get("subs_per_recruiter_day", 6)

@@ -239,4 +239,45 @@ export const podPlanApi = {
 
   getPlan: (setupId: number) =>
     api.get(`/pod-plan/setup/${setupId}/plan`).then(r => r.data as PlanData),
+
+  getBHLeaderboard: (date: string) =>
+    api.get('/pod-plan/bh-leaderboard', { params: { date } }).then(r => r.data as BHLeaderboardResponse),
 };
+
+// ── BH Leaderboard types ───────────────────────────────────────────────────────
+
+export interface BHLeaderboardCustomer {
+  customer_name: string;
+  customer_target_id: number;
+  daily_subs_target: number;
+  daily_int_target: number;
+  daily_sel_target: number;
+  daily_obs_target: number;
+  actual_subs: number;
+  dl_subs: number;
+  actual_int: number;
+  actual_sel: number;
+  actual_obs: number;
+  monthly_subs: number;
+  monthly_int: number;
+  selects_needed: number;
+  obs_needed: number;
+  mtd_subs: number;
+  mtd_int: number;
+  mtd_sel: number;
+  mtd_obs: number;
+}
+
+export interface BHLeaderboardEntry {
+  bh_name: string;
+  pod_id: number;
+  setup_id: number;
+  month: string;
+  customers: BHLeaderboardCustomer[];
+}
+
+export interface BHLeaderboardResponse {
+  date: string;
+  month: string;
+  bhs: BHLeaderboardEntry[];
+}
