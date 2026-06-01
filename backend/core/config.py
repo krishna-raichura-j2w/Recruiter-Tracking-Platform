@@ -91,6 +91,18 @@ class Settings(BaseSettings):
     )
     model_to_use: str = Field(default="AZURE", validation_alias="MODEL_TO_USE")
 
+    # Frontend origin (used for password-reset links in emails)
+    frontend_url: str = Field(
+        default="http://localhost:5173",
+        validation_alias="FRONTEND_URL",
+    )
+
+    # Password reset token TTL (minutes)
+    password_reset_expire_minutes: int = Field(
+        default=30,
+        validation_alias="PASSWORD_RESET_EXPIRE_MINUTES",
+    )
+
     # Startup behavior
     start_scheduler_on_startup: bool = Field(
         default=True,

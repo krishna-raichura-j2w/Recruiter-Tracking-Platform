@@ -32,3 +32,12 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     must_change_password: bool | None = None
     password: str | None = None
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
