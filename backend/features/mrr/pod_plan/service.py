@@ -308,20 +308,33 @@ def get_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[int, 
 
 
 def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: str) -> dict[int, int]:
-    """Count submissions made by delivery leads in this pod per customer target for the given date."""
+    """Count DL-verified candidates per customer target for the given IST date.
+
+    Mirrors the leaderboard's dl_verified: candidates sourced on this IST day
+    by any active pod member that have a validated Validation record,
+    grouped by customer target via candidate → submission → job → client_id.
+    """
+    ist_date = datetime.strptime(entry_date, "%Y-%m-%d").date()
+    day_start_utc = datetime(ist_date.year, ist_date.month, ist_date.day) - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
     rows = db.execute(
         text("""
-            SELECT ct.id AS customer_target_id, COUNT(s.id) AS dl_subs
-            FROM submissions s
+            SELECT ct.id AS customer_target_id, COUNT(DISTINCT v.candidate_id) AS dl_subs
+            FROM validations v
+            JOIN candidates c ON c.id = v.candidate_id
+            JOIN submissions s ON s.candidate_id = c.id
             JOIN jobs j ON j.id = s.job_id
             JOIN bh_customer_targets ct ON ct.client_id = j.client_id AND ct.setup_id = :setup_id
-            WHERE DATE(s.submitted_at) = :entry_date
-              AND s.delivery_lead_id IN (
-                  SELECT id FROM users WHERE pod_id = :pod_id AND role = 'delivery_lead' AND is_active = true
+            WHERE v.status = 'validated'
+              AND c.sourced_at >= :day_start
+              AND c.sourced_at < :day_end
+              AND c.sourced_by_id IN (
+                  SELECT id FROM users WHERE pod_id = :pod_id AND is_active = true
               )
             GROUP BY ct.id
         """),
-        {"setup_id": setup_id, "pod_id": pod_id, "entry_date": entry_date},
+        {"setup_id": setup_id, "pod_id": pod_id, "day_start": day_start_utc, "day_end": day_end_utc},
     ).mappings().all()
     return {r["customer_target_id"]: int(r["dl_subs"]) for r in rows}
 
