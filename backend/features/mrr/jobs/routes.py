@@ -205,7 +205,7 @@ def create_job(
         "min_experience":     "Experience From",
         "max_experience":     "Experience To",
         "maximum_submission": "Maximum Submission",
-        "referral_amount":    "Referral Amount",
+        # referral_amount is optional — not enforced here.
         "requested_date":     "Requested Date",
         "requested_by":       "Requested Name",
         "deadline":           "Expected Client Closure Date",
