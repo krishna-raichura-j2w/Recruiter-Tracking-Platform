@@ -108,6 +108,13 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="START_SCHEDULER_ON_STARTUP",
     )
+    # Whether to run ensure_schema() (idempotent DDL + backfills) on startup.
+    # Safe to leave off once the schema is current — set RUN_SCHEMA_MIGRATIONS=true
+    # for the one deploy that ships a schema change, then turn it back off.
+    run_schema_migrations: bool = Field(
+        default=True,
+        validation_alias="RUN_SCHEMA_MIGRATIONS",
+    )
 
     @staticmethod
     def _fix_pg_url(url: str) -> str:

@@ -58,7 +58,7 @@ def _call_claude(content: list) -> tuple[ConsultantProfile, dict]:
     client = anthropic.Anthropic(api_key=settings.claude_api_key or "")
     response = client.messages.create(
         model=settings.claude_model_name,
-        max_tokens=1200,
+        max_tokens=8192,  # resume JSON can exceed 1200 tokens; truncation → invalid JSON
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": content}],
     )

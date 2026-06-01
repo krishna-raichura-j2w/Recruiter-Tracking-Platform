@@ -67,7 +67,7 @@ def _call_claude(content: list) -> tuple[ParsedJD, dict]:
     client = anthropic.Anthropic(api_key=settings.claude_api_key or "")
     response = client.messages.create(
         model=settings.claude_model_name,
-        max_tokens=1500,
+        max_tokens=8192,  # JD JSON can exceed 1500 tokens; truncation → invalid JSON
         system=JD_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": content}],
     )

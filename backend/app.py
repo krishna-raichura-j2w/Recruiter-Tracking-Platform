@@ -76,6 +76,22 @@ def ensure_schema():
 
     db = _SL()
     try:
+        # With uvicorn --workers N, every worker runs this on startup. Gate the
+        # whole migration suite behind a Postgres advisory lock so only ONE worker
+        # executes DDL — the rest skip it (the schema is shared). Prevents N workers
+        # from hammering ALTER TABLE simultaneously.
+        got_lock = db.execute(text("SELECT pg_try_advisory_lock(917244)")).scalar()
+        if not got_lock:
+            print("[ensure_schema] migration lock held by another worker — skipping DDL")
+            return
+        # Make DDL fail fast instead of head-of-line-blocking SELECTs on a busy
+        # table. A no-op `ALTER ... IF NOT EXISTS` still requests a brief
+        # AccessExclusive lock; without a timeout it queues behind live SELECTs and
+        # then blocks every new SELECT on that table, exhausting the pool. Bail
+        # after 3s (caught + rolled back) so traffic keeps flowing.
+        db.execute(text("SET lock_timeout = '3s'"))
+        db.commit()
+
         for sql in load_sql_list("030-ensure_schema_ddl.sql"):
             try:
                 db.execute(text(sql))
@@ -264,12 +280,26 @@ def ensure_schema():
             print(f"[ensure_schema] coo user: {_e}")
 
     finally:
+        # Release the advisory lock (no-op if this worker never held it).
+        try:
+            db.execute(text("SELECT pg_advisory_unlock(917244)"))
+            db.commit()
+        except Exception:
+            db.rollback()
         db.close()
 
 
 @asynccontextmanager
 async def lifespan(app_):  # noqa: RUF029
-    ensure_schema()
+    # Schema DDL/backfills are idempotent but only need to run when a schema change
+    # ships. Skipping them in steady state avoids per-boot lock contention on busy
+    # tables (which previously exhausted the connection pool). Toggle with
+    # RUN_SCHEMA_MIGRATIONS. The advisory lock + lock_timeout inside ensure_schema
+    # keep it safe when it does run.
+    if settings.run_schema_migrations:
+        ensure_schema()
+    else:
+        print("[lifespan] RUN_SCHEMA_MIGRATIONS=false — skipping startup DDL")
     try:
         init_form_templates()
     except Exception as e:

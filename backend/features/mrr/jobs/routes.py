@@ -18,6 +18,7 @@ def list_jobs(
     status: str | None = Query(None),
     search: str | None = Query(None),
     client: str | None = Query(None),
+    business_head_id: int | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=0, le=1000),
     db: Session = Depends(get_db),
@@ -25,7 +26,7 @@ def list_jobs(
 ):
     is_kam = user_has_role(current_user, "kam")
     is_dl = user_has_role(current_user, "delivery_lead")
-    kwargs = dict(search=search, client=client, skip=skip, limit=limit)
+    kwargs = dict(search=search, client=client, business_head_id=business_head_id, skip=skip, limit=limit)
 
     if is_kam and is_dl:
         items, total = service.list_jobs(

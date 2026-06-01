@@ -5,8 +5,97 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 
-def _job_dict(db: Session, job: Job) -> dict:
-    count = db.query(Candidate).filter(Candidate.job_id == job.id).count()
+def _parse_ids(raw) -> list:
+    """Deserialize a JSON-array column into a list of ints, robustly."""
+    try:
+        arr = json.loads(raw) if isinstance(raw, str) else (raw or [])
+    except Exception:
+        return []
+    out = []
+    for x in arr:
+        try:
+            out.append(int(x))
+        except Exception:
+            pass
+    return out
+
+
+def _build_job_ctx(db: Session, jobs: list) -> dict:
+    """Prefetch everything _job_dict needs for a batch of jobs in a constant
+    number of queries (kills the per-job N+1 that was exhausting the pool).
+
+    Returns {"user_names": {id: name}, "bh_names": {id: name},
+             "cand_counts": {job_id: count}}.
+    """
+    from sqlalchemy import func
+    from infra.models import BusinessHead
+
+    user_ids: set = set()
+    am_ids: set = set()
+    job_ids: list = []
+    for job in jobs:
+        job_ids.append(job.id)
+        for attr in ("assigned_sourcer_id", "assigned_caller_id", "delivery_lead_id"):
+            v = getattr(job, attr, None)
+            if v:
+                user_ids.add(v)
+        if getattr(job, "account_manager_id", None):
+            am_ids.add(job.account_manager_id)
+        for col in ("delivery_lead_ids", "sourcer_ids", "caller_ids"):
+            user_ids.update(_parse_ids(getattr(job, col, None)))
+
+    user_names: dict = {}
+    if user_ids:
+        for uid, name in db.query(User.id, User.name).filter(User.id.in_(user_ids)).all():
+            user_names[uid] = name
+
+    bh_names: dict = {}
+    if am_ids:
+        for aid, name in db.query(BusinessHead.id, BusinessHead.name).filter(BusinessHead.id.in_(am_ids)).all():
+            bh_names[aid] = name
+
+    cand_counts: dict = {}
+    if job_ids:
+        for jid, cnt in (
+            db.query(Candidate.job_id, func.count(Candidate.id))
+            .filter(Candidate.job_id.in_(job_ids))
+            .group_by(Candidate.job_id)
+            .all()
+        ):
+            cand_counts[jid] = cnt
+
+    return {"user_names": user_names, "bh_names": bh_names, "cand_counts": cand_counts}
+
+
+def _job_dict(db: Session, job: Job, ctx: dict | None = None) -> dict:
+    # When a prefetched ctx is supplied (batch list path), all name/count lookups
+    # are O(1) dict hits — no per-job queries. Single-job callers pass ctx=None and
+    # fall back to direct queries.
+    if ctx is not None:
+        unames = ctx["user_names"]
+        bhnames = ctx["bh_names"]
+        count = ctx["cand_counts"].get(job.id, 0)
+        uname = unames.get
+        bhname = bhnames.get
+    else:
+        count = db.query(Candidate).filter(Candidate.job_id == job.id).count()
+        _ucache: dict = {}
+
+        def uname(uid, default=None):
+            if not uid:
+                return default
+            if uid not in _ucache:
+                u = db.query(User.name).filter(User.id == uid).first()
+                _ucache[uid] = u[0] if u else None
+            return _ucache[uid]
+
+        def bhname(aid, default=None):
+            if not aid:
+                return default
+            from infra.models import BusinessHead
+            u = db.query(BusinessHead.name).filter(BusinessHead.id == aid).first()
+            return u[0] if u else default
+
     # Skip binary columns (e.g. questionnaire_data — a PDF blob). FastAPI's
     # jsonable_encoder calls bytes.decode() on raw `bytes` values which dies
     # on any non-UTF-8 payload (a PDF starts with %PDF-\x... — invalid UTF-8).
@@ -20,51 +109,23 @@ def _job_dict(db: Session, job: Job) -> dict:
     }
     d["has_questionnaire"] = bool(getattr(job, "questionnaire_data", None))
     d["candidate_count"] = count
-    d["assigned_sourcer_name"] = (
-        job.assigned_sourcer.name if job.assigned_sourcer else None
-    )
-    d["assigned_caller_name"] = (
-        job.assigned_caller.name if job.assigned_caller else None
-    )
-    d["delivery_lead_name"] = job.delivery_lead.name if job.delivery_lead else None
-    d["business_head_name"] = job.business_head.name if job.business_head else None
+    d["assigned_sourcer_name"] = uname(job.assigned_sourcer_id)
+    d["assigned_caller_name"] = uname(job.assigned_caller_id)
+    d["delivery_lead_name"] = uname(job.delivery_lead_id)
+    d["business_head_name"] = bhname(job.account_manager_id)
     d["business_head_id"] = d.pop("account_manager_id", None)
-    d["sourcer_ids"] = (
-        json.loads(job.sourcer_ids or "[]") if isinstance(job.sourcer_ids, str) else []
-    )
-    d["caller_ids"] = (
-        json.loads(job.caller_ids or "[]") if isinstance(job.caller_ids, str) else []
-    )
-
-    from infra.models import User as UserModel
+    d["sourcer_ids"] = _parse_ids(job.sourcer_ids)
+    d["caller_ids"] = _parse_ids(job.caller_ids)
 
     # Multi-DL: deserialize delivery_lead_ids; back-fill from delivery_lead_id for old rows
-    dl_ids = (
-        json.loads(job.delivery_lead_ids or "[]")
-        if isinstance(job.delivery_lead_ids, str)
-        else (job.delivery_lead_ids or [])
-    )
+    dl_ids = _parse_ids(job.delivery_lead_ids)
     if not dl_ids and job.delivery_lead_id:
         dl_ids = [job.delivery_lead_id]
     d["delivery_lead_ids"] = dl_ids
-    dl_names = []
-    for did in dl_ids:
-        u = db.query(UserModel).filter(UserModel.id == did).first()
-        if u:
-            dl_names.append(u.name)
-    d["delivery_lead_names"] = dl_names
-    sourcer_names = []
-    for sid in d["sourcer_ids"]:
-        u = db.query(UserModel).filter(UserModel.id == sid).first()
-        if u:
-            sourcer_names.append(u.name)
+    d["delivery_lead_names"] = [n for n in (uname(i) for i in dl_ids) if n]
+    sourcer_names = [n for n in (uname(i) for i in d["sourcer_ids"]) if n]
     d["sourcer_names"] = sourcer_names
-
-    caller_names = []
-    for cid in d["caller_ids"]:
-        u = db.query(UserModel).filter(UserModel.id == cid).first()
-        if u:
-            caller_names.append(u.name)
+    caller_names = [n for n in (uname(i) for i in d["caller_ids"]) if n]
     d["caller_names"] = caller_names
 
     # Unified recruiter list (union of both, deduped) — used by all new UI
@@ -113,6 +174,7 @@ def list_jobs(
     dual_user_id: int | None = None,
     search: str | None = None,
     client: str | None = None,
+    business_head_id: int | None = None,
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
@@ -128,6 +190,9 @@ def list_jobs(
     if client:
         # Exact (case-insensitive) client filter used by the client chips.
         q = q.filter(func.lower(Job.client_name) == client.strip().lower())
+    if business_head_id is not None:
+        # BH is stored on account_manager_id (table kept for backward compat).
+        q = q.filter(Job.account_manager_id == business_head_id)
     if search:
         s = f"%{search.lower()}%"
         q = q.filter(
@@ -182,12 +247,15 @@ def list_jobs(
         total = len(filtered)
         if limit > 0:
             filtered = filtered[skip : skip + limit]
-        return [_job_dict(db, j) for j in filtered], total
+        ctx = _build_job_ctx(db, filtered)
+        return [_job_dict(db, j, ctx) for j in filtered], total
 
     total = q.count()
     if limit > 0:
         q = q.offset(skip).limit(limit)
-    return [_job_dict(db, j) for j in q.all()], total
+    page = q.all()
+    ctx = _build_job_ctx(db, page)
+    return [_job_dict(db, j, ctx) for j in page], total
 
 
 def client_summary(

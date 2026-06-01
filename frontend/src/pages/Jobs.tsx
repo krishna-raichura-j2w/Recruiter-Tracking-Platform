@@ -175,6 +175,7 @@ export default function Jobs() {
   const [activeTab, setActiveTab]     = useState<JobStatus>('all');
   const [searchText, setSearchText]   = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  const [bhFilter, setBhFilter]       = useState<number | ''>('');
   // Lightweight per-client rollup for the client bar — loaded once, independent
   // of job-list pagination so every client stays visible/switchable.
   const [clientSummary, setClientSummary] = useState<
@@ -262,7 +263,8 @@ export default function Jobs() {
     };
     if (activeTab !== 'all') params.status = activeTab;
     if (searchText)           params.search = searchText;
-    if (clientFilter)         params.client = clientFilter; // server-side exact match
+    if (clientFilter)         params.client = clientFilter;          // server-side exact match
+    if (bhFilter !== '')      params.business_head_id = bhFilter;     // server-side BH filter
     api.get<{ items: Job[]; total: number }>('/jobs', { params })
       .then((r) => {
         setJobs(r.data.items ?? (r.data as unknown as Job[]));
@@ -270,7 +272,7 @@ export default function Jobs() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [jobPage, jobPerPage, activeTab, searchText, clientFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobPage, jobPerPage, activeTab, searchText, clientFilter, bhFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const jobsSignal = useSignal('jobs');
   useEffect(() => { fetchJobs(); }, [fetchJobs, jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -284,7 +286,7 @@ export default function Jobs() {
   useEffect(() => { fetchClientSummary(); }, [fetchClientSummary, jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset to page 1 when filters change
-  useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter]);
+  useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter, bhFilter]);
 
   const fetchDlTeam = async (dlId?: number | null) => {
     // KAM/admin: pass dl_id when known, otherwise backend returns all recruiters
@@ -816,8 +818,20 @@ export default function Jobs() {
               style={{ border: '1px solid #E2E8F0' }}
             />
           </div>
-          {(searchText || clientFilter) && (
-            <button onClick={() => { setSearchText(''); setClientFilter(''); }}
+          {/* Business Head filter (server-side) */}
+          <select
+            value={bhFilter}
+            onChange={e => setBhFilter(e.target.value ? Number(e.target.value) : '')}
+            className="px-3 py-2 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+            style={{ border: '1px solid #E2E8F0' }}
+          >
+            <option value="">All Business Heads</option>
+            {businessHeads.map(bh => (
+              <option key={bh.id} value={bh.id}>{bh.name}</option>
+            ))}
+          </select>
+          {(searchText || clientFilter || bhFilter !== '') && (
+            <button onClick={() => { setSearchText(''); setClientFilter(''); setBhFilter(''); }}
               className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 transition-all"
               style={{ background: '#F1F5F9', border: '1px solid #E2E8F0' }}>
               <X size={11} /> Clear
