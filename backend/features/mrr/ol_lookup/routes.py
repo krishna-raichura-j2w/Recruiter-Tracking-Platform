@@ -7,7 +7,6 @@ Routes:
   GET /api/ol-lookup/ol/{email}             → OL MySQL profile + applied_jobs
   GET /api/ol-lookup/check?email=&job_id=   → is user mapped to that job_posting_id?
 """
-import csv
 import os
 from datetime import datetime, date
 
@@ -177,12 +176,29 @@ def check_mapping(
         ol.close()
 
 
-# ── Client → Business Head mapping (CSV is the source of truth) ─────────────────
+# ── Client → Business Head mapping (xlsx saved with a .csv extension) ───────────
 
 _BH_MAP_CACHE = {"mtime": None, "map": {}}
-_BH_CSV_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..", "data", "client_bh_mapping.csv"
-)
+
+
+def _resolve_bh_csv_path() -> str:
+    """Locate client_bh_mapping.csv across local-dev and deployed-container layouts.
+    The Dockerfile copies it to /app/client_bh_mapping.csv (= backend root in the
+    image); local dev keeps it at the repo root. An env override wins if set."""
+    env = os.environ.get("CLIENT_BH_MAP_PATH")
+    if env:
+        return env
+    base = os.path.dirname(__file__)  # backend/features/mrr/ol_lookup
+    candidates = [
+        os.path.normpath(os.path.join(base, "..", "..", "..", "..", "client_bh_mapping.csv")),  # repo root (local)
+        os.path.normpath(os.path.join(base, "..", "..", "..", "client_bh_mapping.csv")),         # /app (container)
+        os.path.normpath(os.path.join(base, "..", "..", "..", "data", "client_bh_mapping.csv")), # legacy data/ path
+        "/client_bh_mapping.csv",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
 
 
 def _norm_client(s: str) -> str:
@@ -191,19 +207,32 @@ def _norm_client(s: str) -> str:
 
 
 def _load_client_bh_map() -> dict:
-    """{normalized client name -> Business Head}; reloads when the CSV file changes."""
+    """{normalized client name -> Business Head}; reloads when the file changes.
+    The file has a .csv extension but is actually an .xlsx workbook, so it is
+    parsed with openpyxl (via BytesIO to bypass openpyxl's extension check)."""
+    path = _resolve_bh_csv_path()
     try:
-        mtime = os.path.getmtime(_BH_CSV_PATH)
+        mtime = os.path.getmtime(path)
     except OSError:
         return {}
     if _BH_MAP_CACHE["mtime"] != mtime:
         m = {}
-        with open(_BH_CSV_PATH, newline="", encoding="utf-8-sig") as f:
-            for row in csv.DictReader(f):
-                client = (row.get("Client") or "").strip()
-                bh = (row.get("Business Head") or "").strip()
+        try:
+            import io
+            import openpyxl
+            with open(path, "rb") as f:
+                data = io.BytesIO(f.read())
+            wb = openpyxl.load_workbook(data, read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                client = (str(row[0]).strip() if row and row[0] else "")
+                bh = (str(row[1]).strip() if len(row) > 1 and row[1] else "")
                 if client and bh and bh.lower() != "none":
                     m[_norm_client(client)] = bh
+            wb.close()
+        except Exception as exc:
+            print(f"[ol_lookup] client_bh_mapping load failed: {exc}")
+            return _BH_MAP_CACHE["map"]
         _BH_MAP_CACHE.update(mtime=mtime, map=m)
     return _BH_MAP_CACHE["map"]
 
