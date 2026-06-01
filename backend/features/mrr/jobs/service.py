@@ -112,6 +112,7 @@ def list_jobs(
     assigned_sourcer_id: int | None = None,
     dual_user_id: int | None = None,
     search: str | None = None,
+    client: str | None = None,
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
@@ -124,6 +125,9 @@ def list_jobs(
     # Apply SQL filters only for fields that don't need JSON-array inspection
     if created_by_id is not None and dual_user_id is None:
         q = q.filter(Job.created_by_id == created_by_id)
+    if client:
+        # Exact (case-insensitive) client filter used by the client chips.
+        q = q.filter(func.lower(Job.client_name) == client.strip().lower())
     if search:
         s = f"%{search.lower()}%"
         q = q.filter(
@@ -184,6 +188,76 @@ def list_jobs(
     if limit > 0:
         q = q.offset(skip).limit(limit)
     return [_job_dict(db, j) for j in q.all()], total
+
+
+def client_summary(
+    db: Session,
+    created_by_id: int | None = None,
+    delivery_lead_id: int | None = None,
+    assigned_sourcer_id: int | None = None,
+    dual_user_id: int | None = None,
+) -> list[dict]:
+    """Lightweight per-client rollup for the Jobs page client bar.
+
+    Deliberately avoids _job_dict() (which does per-job user lookups) — it only
+    selects the few columns needed and aggregates in Python, so it stays fast
+    even with thousands of jobs. Returns
+    [{client_name, open, pending, total, candidate_count}], sorted by name.
+    """
+    from sqlalchemy import func
+
+    # Only the columns we actually need (keeps this cheap).
+    rows = db.query(
+        Job.id, Job.client_name, Job.status,
+        Job.created_by_id, Job.delivery_lead_ids, Job.delivery_lead_id,
+        Job.sourcer_ids, Job.caller_ids,
+        Job.assigned_sourcer_id, Job.assigned_caller_id,
+    ).all()
+
+    # Candidate counts per job in ONE grouped query (avoids N+1).
+    cand_counts = dict(
+        db.query(Candidate.job_id, func.count(Candidate.id))
+        .group_by(Candidate.job_id)
+        .all()
+    )
+
+    def _visible(r) -> bool:
+        if dual_user_id is not None:
+            dl_ids = (json.loads(r.delivery_lead_ids or "[]") if isinstance(r.delivery_lead_ids, str) else (r.delivery_lead_ids or []))
+            return r.created_by_id == dual_user_id or dual_user_id in dl_ids
+        if created_by_id is not None:
+            return r.created_by_id == created_by_id
+        if delivery_lead_id is not None:
+            dl_ids = (json.loads(r.delivery_lead_ids or "[]") if isinstance(r.delivery_lead_ids, str) else (r.delivery_lead_ids or []))
+            return delivery_lead_id in dl_ids
+        if assigned_sourcer_id is not None:
+            s_ids = json.loads(r.sourcer_ids or "[]") if isinstance(r.sourcer_ids, str) else []
+            c_ids = json.loads(r.caller_ids or "[]") if isinstance(r.caller_ids, str) else []
+            return (assigned_sourcer_id in s_ids or assigned_sourcer_id in c_ids
+                    or r.assigned_sourcer_id == assigned_sourcer_id
+                    or r.assigned_caller_id == assigned_sourcer_id)
+        return True  # admin / unscoped
+
+    agg: dict[str, dict] = {}
+    for r in rows:
+        if not r.client_name or not _visible(r):
+            continue
+        a = agg.setdefault(r.client_name, {
+            "client_name": r.client_name, "open": 0, "pending": 0,
+            "on_hold": 0, "closed": 0, "total": 0, "candidate_count": 0,
+        })
+        a["total"] += 1
+        if r.status == "open":
+            a["open"] += 1
+        elif r.status == "pending_review":
+            a["pending"] += 1
+        elif r.status == "on_hold":
+            a["on_hold"] += 1
+        elif r.status == "closed":
+            a["closed"] += 1
+        a["candidate_count"] += cand_counts.get(r.id, 0)
+
+    return sorted(agg.values(), key=lambda x: x["client_name"].lower())
 
 
 def get_job(db: Session, job_id: int) -> Job | None:

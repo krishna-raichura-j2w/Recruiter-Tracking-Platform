@@ -17,6 +17,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 def list_jobs(
     status: str | None = Query(None),
     search: str | None = Query(None),
+    client: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=0, le=1000),
     db: Session = Depends(get_db),
@@ -24,7 +25,7 @@ def list_jobs(
 ):
     is_kam = user_has_role(current_user, "kam")
     is_dl = user_has_role(current_user, "delivery_lead")
-    kwargs = dict(search=search, skip=skip, limit=limit)
+    kwargs = dict(search=search, client=client, skip=skip, limit=limit)
 
     if is_kam and is_dl:
         items, total = service.list_jobs(
@@ -58,6 +59,29 @@ def list_jobs(
         items, total = service.list_jobs(db, status, **kwargs)
 
     return {"items": items, "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/client-summary")
+def client_summary(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Per-client rollup for the Jobs page client bar — role-scoped, lightweight.
+    Returns the full client list (independent of job-list pagination) so users
+    can still see and switch between all their clients."""
+    is_kam = user_has_role(current_user, "kam")
+    is_dl = user_has_role(current_user, "delivery_lead")
+    if is_kam and is_dl:
+        rows = service.client_summary(db, dual_user_id=current_user.id)
+    elif is_kam:
+        rows = service.client_summary(db, created_by_id=current_user.id)
+    elif is_dl:
+        rows = service.client_summary(db, delivery_lead_id=current_user.id)
+    elif current_user.role.value == "recruiter":
+        rows = service.client_summary(db, assigned_sourcer_id=current_user.id)
+    else:
+        rows = service.client_summary(db)
+    return {"clients": rows}
 
 
 @router.get("/{job_id}")

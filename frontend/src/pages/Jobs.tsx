@@ -175,6 +175,11 @@ export default function Jobs() {
   const [activeTab, setActiveTab]     = useState<JobStatus>('all');
   const [searchText, setSearchText]   = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  // Lightweight per-client rollup for the client bar — loaded once, independent
+  // of job-list pagination so every client stays visible/switchable.
+  const [clientSummary, setClientSummary] = useState<
+    { client_name: string; open: number; pending: number; on_hold: number; closed: number; total: number; candidate_count: number }[]
+  >([]);
   const [showModal, setShowModal]     = useState(false);
   const [editJob, setEditJob]         = useState<Job | null>(null);
   const [submitting, setSubmitting]   = useState(false);
@@ -233,7 +238,7 @@ export default function Jobs() {
 
   // Pagination state
   const [jobPage,    setJobPage]    = useState(1);
-  const [jobPerPage, setJobPerPage] = useState(1000);
+  const [jobPerPage, setJobPerPage] = useState(50);
   const [jobTotal,   setJobTotal]   = useState(0);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
@@ -257,7 +262,7 @@ export default function Jobs() {
     };
     if (activeTab !== 'all') params.status = activeTab;
     if (searchText)           params.search = searchText;
-    if (clientFilter)         params.client = clientFilter; // handled client-side still
+    if (clientFilter)         params.client = clientFilter; // server-side exact match
     api.get<{ items: Job[]; total: number }>('/jobs', { params })
       .then((r) => {
         setJobs(r.data.items ?? (r.data as unknown as Job[]));
@@ -265,10 +270,18 @@ export default function Jobs() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [jobPage, jobPerPage, activeTab, searchText]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobPage, jobPerPage, activeTab, searchText, clientFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const jobsSignal = useSignal('jobs');
   useEffect(() => { fetchJobs(); }, [fetchJobs, jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Client bar data — full rollup, independent of pagination. Refreshes on realtime signal.
+  const fetchClientSummary = useCallback(() => {
+    api.get<{ clients: typeof clientSummary }>('/jobs/client-summary')
+      .then((r) => setClientSummary(r.data.clients ?? []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => { fetchClientSummary(); }, [fetchClientSummary, jobsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset to page 1 when filters change
   useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter]);
@@ -378,11 +391,11 @@ export default function Jobs() {
     }
   };
 
-  // Status + search filtered server-side; client chip is client-side only
-  const filteredJobs = jobs.filter((j) => !clientFilter || j.client_name === clientFilter);
+  // Status, search AND client are all filtered server-side now — render as-is.
+  const filteredJobs = jobs;
 
-  // Unique clients from loaded jobs
-  const clientList = [...new Set(jobs.map((j) => j.client_name))].sort();
+  // Clients come from the dedicated summary endpoint (full list, pagination-independent).
+  const clientList = clientSummary.map((c) => c.client_name);
 
   const handleToggleStatus = async (job: Job) => {
     const next = job.status === 'closed' ? 'open' : 'closed';
@@ -690,11 +703,12 @@ export default function Jobs() {
             )}
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin">
-            {clientList.map((client, idx) => {
-              const clientJobs    = jobs.filter(j => j.client_name === client);
-              const openCount     = clientJobs.filter(j => j.status === 'open').length;
-              const pendingCount  = clientJobs.filter(j => j.status === 'pending_review').length;
-              const totalCands    = clientJobs.reduce((s, j) => s + (j.candidate_count ?? 0), 0);
+            {clientSummary.map((cs, idx) => {
+              const client        = cs.client_name;
+              const jdCount       = cs.total;
+              const openCount     = cs.open;
+              const pendingCount  = cs.pending;
+              const totalCands    = cs.candidate_count;
               const isActive      = clientFilter === client;
               const AVATAR_COLORS = [
                 '#3b82f6','#8b5cf6','#10b981','#f59e0b',
@@ -727,7 +741,7 @@ export default function Jobs() {
                       {client}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {clientJobs.length} JD{clientJobs.length !== 1 ? 's' : ''}
+                      {jdCount} JD{jdCount !== 1 ? 's' : ''}
                       {totalCands > 0 && <span className="text-slate-400"> · {totalCands} candidates</span>}
                     </p>
                     <div className="flex gap-1 mt-1">
@@ -755,7 +769,14 @@ export default function Jobs() {
         {/* Status tabs — scrollable on mobile */}
         <div className="flex gap-1 p-1 rounded-xl overflow-x-auto flex-shrink-0" style={{ background: '#E8EDF3' }}>
           {tabs.map(t => {
-            const count = t.key === 'all' ? jobs.length : jobs.filter(j => j.status === t.key).length;
+            // Counts come from the full client summary (not the current page) so they stay accurate.
+            const count =
+              t.key === 'all'            ? clientSummary.reduce((s, c) => s + c.total, 0)
+              : t.key === 'open'         ? clientSummary.reduce((s, c) => s + c.open, 0)
+              : t.key === 'pending_review' ? clientSummary.reduce((s, c) => s + c.pending, 0)
+              : t.key === 'on_hold'      ? clientSummary.reduce((s, c) => s + c.on_hold, 0)
+              : t.key === 'closed'       ? clientSummary.reduce((s, c) => s + c.closed, 0)
+              : 0;
             const active = activeTab === t.key;
             const dotColor: Record<string, string> = { pending_review: '#F59E0B', open: '#10B981', on_hold: '#94A3B8', closed: '#CBD5E1' };
             return (
@@ -803,7 +824,7 @@ export default function Jobs() {
             </button>
           )}
           <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">
-            {filteredJobs.length}/{jobs.length}
+            {jobTotal} job{jobTotal !== 1 ? 's' : ''}
           </span>
           {canCreate && (
             <button onClick={openCreateModal}
