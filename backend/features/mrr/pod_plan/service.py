@@ -308,15 +308,48 @@ def get_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[int, 
 
 
 def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: str) -> dict[int, int]:
-    """Count Client Submit (step_id=7) entries from OL replica per customer target for the given IST date.
+    """Count DL-verified candidates per customer target for the given IST date.
 
-    Queries applied_jobs on the OL replica where current_step=7 and IST date matches,
-    maps clients.user_id → bh_customer_targets.client_id for the given setup.
+    Mirrors the leaderboard's dl_verified: candidates sourced on this IST day
+    by any active pod member that have a validated Validation record,
+    grouped by customer target via candidate → job → client_id.
+    """
+    ist_date = datetime.strptime(entry_date, "%Y-%m-%d").date()
+    day_start_utc = datetime(ist_date.year, ist_date.month, ist_date.day) - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    rows = db.execute(
+        text("""
+            SELECT ct.id AS customer_target_id, COUNT(DISTINCT v.candidate_id) AS dl_subs
+            FROM validations v
+            JOIN candidates c ON c.id = v.candidate_id
+            JOIN jobs j ON j.id = c.job_id
+            JOIN bh_customer_targets ct ON ct.client_id = j.client_id AND ct.setup_id = :setup_id
+            WHERE v.status = 'validated'
+              AND c.sourced_at >= :day_start
+              AND c.sourced_at < :day_end
+              AND c.sourced_by_id IN (
+                  SELECT id FROM users WHERE pod_id = :pod_id AND is_active = true
+              )
+            GROUP BY ct.id
+        """),
+        {"setup_id": setup_id, "pod_id": pod_id, "day_start": day_start_utc, "day_end": day_end_utc},
+    ).mappings().all()
+    return {r["customer_target_id"]: int(r["dl_subs"]) for r in rows}
+
+
+def get_actual_subs_from_ol(db: Session, setup_id: int, entry_date: str) -> dict[int, int]:
+    """Count Client Submit (step_id=7) from OL replica per customer target for the given IST date.
+
+    Used to auto-populate the Actual Subs column in the daily tracker.
+    Returns empty dict gracefully if OL replica is unavailable.
     """
     import pymysql
     from core.config import settings
 
-    # Fetch all client_ids tracked by this setup so we can filter OL results
+    if not settings.ol_replica_host:
+        return {}
+
     ct_rows = db.execute(
         text("SELECT id, client_id FROM bh_customer_targets WHERE setup_id = :sid AND client_id IS NOT NULL"),
         {"sid": setup_id},
@@ -328,44 +361,43 @@ def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: st
     client_ids_list = list(client_id_to_ct.keys())
     placeholders = ",".join(["%s"] * len(client_ids_list))
 
-    if not settings.ol_replica_host:
-        return {}
-
-    conn = pymysql.connect(
-        host=settings.ol_replica_host,
-        port=settings.ol_replica_port,
-        user=settings.ol_replica_user,
-        password=settings.ol_replica_password,
-        database=settings.ol_replica_database,
-        connect_timeout=10,
-        cursorclass=pymysql.cursors.DictCursor,
-        ssl_disabled=True,
-    )
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS dl_subs
-                FROM applied_jobs AS aj
-                JOIN job_postings AS jp ON aj.job_posting_id = jp.id
-                JOIN clients      AS cl ON jp.client_id      = cl.user_id
-                WHERE aj.current_step = 7
-                  AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
-                  AND cl.user_id IN ({placeholders})
-                GROUP BY cl.user_id
-                """,
-                [entry_date] + client_ids_list,
-            )
-            ol_rows = cur.fetchall()
-    finally:
-        conn.close()
+        conn = pymysql.connect(
+            host=settings.ol_replica_host,
+            port=settings.ol_replica_port,
+            user=settings.ol_replica_user,
+            password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=10,
+            cursorclass=pymysql.cursors.DictCursor,
+            ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
+                    FROM applied_jobs AS aj
+                    JOIN job_postings AS jp ON aj.job_posting_id = jp.id
+                    JOIN clients      AS cl ON jp.client_id      = cl.user_id
+                    WHERE aj.current_step = 7
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
+                      AND cl.user_id IN ({placeholders})
+                    GROUP BY cl.user_id
+                    """,
+                    [entry_date] + client_ids_list,
+                )
+                ol_rows = cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return {}
 
     result: dict[int, int] = {}
     for r in ol_rows:
-        cid = int(r["client_id"])
-        ct_id = client_id_to_ct.get(cid)
+        ct_id = client_id_to_ct.get(int(r["client_id"]))
         if ct_id is not None:
-            result[ct_id] = int(r["dl_subs"])
+            result[ct_id] = int(r["cnt"])
     return result
 
 
