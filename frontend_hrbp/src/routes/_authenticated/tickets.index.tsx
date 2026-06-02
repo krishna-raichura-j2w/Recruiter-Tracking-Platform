@@ -235,8 +235,7 @@ export const Route = createFileRoute("/_authenticated/tickets/")({
   component: TicketsPage,
 });
 
-// Roles that participate in ticket approval steps and get the tab + indicator treatment
-const APPROVER_ROLES = new Set(["bh", "ops_head", "coo", "ceo"]);
+// All non-admin roles get the Action Required / All Tickets tab treatment
 
 type ActionStatus = "required" | "done" | "none";
 
@@ -296,7 +295,7 @@ function TicketsPage() {
   const [logExitOpen, setLogExitOpen]   = useState(false);
   const [sops, setSops]                 = useState<SopDefinition[]>([]);
 
-  const isApproverRole = APPROVER_ROLES.has(user?.role ?? "");
+  const isApproverRole = user?.role !== "admin";
   const [activeTab, setActiveTab] = useState<"action_required" | "all">("action_required");
 
   // Pre-fill from cadence "Raise Ticket" navigation
@@ -428,10 +427,10 @@ function TicketsPage() {
     : tickets;
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-slate-800">
+    <div className="flex flex-col h-full bg-white text-slate-800">
       <TopBar title="Tickets" subtitle="Raise and track HR operational requests." />
 
-      <main className="flex-1 p-6 space-y-4">
+      <main className="flex-1 overflow-y-auto p-6 space-y-4">
         {/* Stat cards + action buttons */}
         <div className="flex items-center gap-4">
           <div className="flex gap-4 flex-1">

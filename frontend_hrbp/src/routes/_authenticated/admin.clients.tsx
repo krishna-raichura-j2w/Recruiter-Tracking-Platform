@@ -212,9 +212,9 @@ function AdminClientsPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-slate-800">
+    <div className="flex flex-col h-full bg-white text-slate-800">
       <TopBar title="Clients" subtitle="Assign HRBP and BH to clients" />
-      <main className="flex-1 p-6 space-y-4">
+      <main className="flex-1 overflow-y-auto p-6 space-y-4">
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[

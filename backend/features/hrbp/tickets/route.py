@@ -12,6 +12,7 @@ from features.hrbp.audit_log.service import log_action
 from features.hrbp.tickets import service
 from features.hrbp.tickets.export import build_and_upload as export_tickets
 from features.hrbp.tickets.schema import (
+    CloseTicketPayload,
     StepReassignPayload,
     StepSlaExtendPayload,
     TicketCommentCreate,
@@ -175,13 +176,14 @@ def reassign_step(
 @router.post("/{ticket_id}/close")
 def close_ticket(
     ticket_id: int,
+    payload: CloseTicketPayload = CloseTicketPayload(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     try:
-        data = service.close_ticket(db, ticket_id, current_user)
+        data = service.close_ticket(db, ticket_id, payload, current_user)
         log_action(db, actor_id=current_user.id, entity_type="ticket", entity_id=ticket_id,
-                   action="close")
+                   action="close", new_value={"po_outcome": payload.po_outcome})
         db.commit()
         return success_response(data=data, message="Ticket closed successfully")
     except Exception as exc:

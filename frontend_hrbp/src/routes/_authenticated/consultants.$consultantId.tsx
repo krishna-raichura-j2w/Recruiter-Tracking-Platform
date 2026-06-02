@@ -453,9 +453,9 @@ function ConsultantDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen bg-white text-slate-800">
+      <div className="flex flex-col h-full bg-white text-slate-800">
         <TopBar title="Consultant Profile" subtitle="Loading…" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 overflow-y-auto p-6">
           <PageLoader message="Loading consultant details…" />
         </main>
       </div>
@@ -464,9 +464,9 @@ function ConsultantDetailPage() {
 
   if (!consultant) {
     return (
-      <div className="flex flex-col min-h-screen bg-white text-slate-800">
+      <div className="flex flex-col h-full bg-white text-slate-800">
         <TopBar title="Consultant Profile" subtitle="Not Found" />
-        <main className="flex-1 p-6 text-center text-slate-500 font-medium">
+        <main className="flex-1 overflow-y-auto p-6 text-center text-slate-500 font-medium">
           Consultant not found.
         </main>
       </div>
@@ -474,13 +474,13 @@ function ConsultantDetailPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-800">
+    <div className="flex flex-col h-full bg-slate-50 text-slate-800">
       <TopBar
         title={consultant.name || "Consultant Profile"}
         subtitle={`Employee ID: ${consultant.emp_id || "-"} · Skill: ${consultant.skill || "-"}`}
       />
 
-      <main className="flex-1 px-6 py-5 w-full space-y-5">
+      <main className="flex-1 overflow-y-auto px-6 py-5 w-full space-y-5">
         {/* Back + status */}
         <div className="flex items-center justify-between">
           <BackButton

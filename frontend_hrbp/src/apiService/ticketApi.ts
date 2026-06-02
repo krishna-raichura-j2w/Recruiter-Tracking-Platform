@@ -1,4 +1,5 @@
 import type {
+  CloseTicketPayload,
   Ticket,
   TicketCreate,
   TicketCommentCreate,
@@ -98,9 +99,10 @@ export async function advanceTicketStep(ticketId: number): Promise<Ticket> {
   return json.data;
 }
 
-export async function closeTicket(ticketId: number): Promise<Ticket> {
+export async function closeTicket(ticketId: number, payload: CloseTicketPayload = {}): Promise<Ticket> {
   const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/tickets/${ticketId}/close`, {
     method: "POST",
+    body: JSON.stringify(payload),
   });
   const json = await handleResponse<TicketDetailResponse>(res);
   return json.data;

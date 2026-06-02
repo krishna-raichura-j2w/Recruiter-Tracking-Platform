@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import HTTPException
 from core.deps import hrbp_visible_client_ids
@@ -19,13 +19,14 @@ from sqlalchemy.orm import Session
 
 from core.pagination import PageResult, paginate
 from features.hrbp.tickets.schema import (
+    CloseTicketPayload,
     StepReassignPayload,
     StepSlaExtendPayload,
     TicketCommentCreate,
     TicketCreate,
     TicketUpdate,
 )
-from infra.hrbp_models import HRBPExitTracking
+from infra.hrbp_models import HRBPExitTracking, HRBPPoRevision
 
 # SOPs that automatically initiate an exit record for every linked consultant.
 _EXIT_TRIGGER_MAP: dict[str, dict] = {
@@ -399,7 +400,16 @@ def advance_step(db: Session, ticket_id: int, current_user: User) -> dict:
 
 # ── Close ────────────────────────────────────────────────────────────────────
 
-def close_ticket(db: Session, ticket_id: int, current_user: User) -> dict:
+def _tenure_left_months(po_end_date) -> int:
+    if not po_end_date:
+        return 0
+    today = date.today()
+    end = po_end_date if isinstance(po_end_date, date) else date.fromisoformat(str(po_end_date))
+    months = (end.year - today.year) * 12 + (end.month - today.month)
+    return max(0, months)
+
+
+def close_ticket(db: Session, ticket_id: int, payload: CloseTicketPayload, current_user: User) -> dict:
     ticket = db.query(HRBPTicket).filter_by(id=ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -409,8 +419,82 @@ def close_ticket(db: Session, ticket_id: int, current_user: User) -> dict:
         raise HTTPException(status_code=403, detail="Only the ticket creator can close it")
 
     ticket.status = "closed"
+    ticket.po_outcome = payload.po_outcome
     ticket.closed_at = _now()
-    _log(db, ticket_id, current_user.id, "closed", {})
+
+    log_meta: dict = {}
+    if payload.po_outcome:
+        log_meta["po_outcome"] = payload.po_outcome
+
+    _log(db, ticket_id, current_user.id, "closed", log_meta)
+
+    # Fetch linked consultants once for side-effects
+    consultant_rows = (
+        db.execute(
+            select(HRBPConsultant).join(
+                hrbp_ticket_consultants,
+                HRBPConsultant.id == hrbp_ticket_consultants.c.consultant_id,
+            ).where(hrbp_ticket_consultants.c.ticket_id == ticket.id)
+        ).scalars().all()
+    )
+
+    today = date.today()
+
+    if payload.po_outcome == "retained":
+        for consultant in consultant_rows:
+            old_rate = float(consultant.monthly_po) if consultant.monthly_po is not None else None
+            new_rate = float(payload.new_po_monthly) if payload.new_po_monthly is not None else old_rate or 0
+
+            revision = HRBPPoRevision(
+                consultant_id   = consultant.id,
+                client_id       = ticket.client_id,
+                created_by_id   = current_user.id,
+                revised_at      = today,
+                old_po_rate     = old_rate,
+                new_po_rate     = new_rate,
+                revision_type   = "po_retained",
+                new_po_end_date = payload.new_po_end_date,
+                new_margin      = payload.new_margin,
+                new_ctc         = payload.new_ctc,
+                ticket_id       = ticket.id,
+                ticket_number   = ticket.ticket_number,
+                status          = "approved",
+            )
+            db.add(revision)
+
+            # Update consultant live fields with whatever was provided
+            if payload.new_po_monthly is not None:
+                consultant.monthly_po = payload.new_po_monthly
+            if payload.new_po_end_date is not None:
+                consultant.po_end_date = payload.new_po_end_date
+            if payload.new_margin is not None:
+                consultant.margin = payload.new_margin
+            if payload.new_ctc is not None:
+                consultant.monthly_ctc = payload.new_ctc
+
+    elif payload.po_outcome == "loss" and payload.consultant_exited:
+        for consultant in consultant_rows:
+            tenure_left = _tenure_left_months(consultant.po_end_date)
+            monthly_po = float(consultant.monthly_po) if consultant.monthly_po is not None else 0
+            po_impact = monthly_po * tenure_left
+
+            exit_record = HRBPExitTracking(
+                consultant_id      = consultant.id,
+                client_id          = ticket.client_id,
+                initiated_by_id    = current_user.id,
+                exit_reason        = payload.exit_reason or "end_of_contract",
+                exit_type          = payload.exit_type or "involuntary",
+                exit_date          = payload.exit_date,
+                po_impact          = po_impact if po_impact > 0 else None,
+                status             = "completed",
+                replacement_needed = payload.replacement_needed,
+                notes              = payload.notes,
+                source_ticket_id   = ticket.id,
+            )
+            db.add(exit_record)
+
+            consultant.is_active = False
+
     db.commit()
     db.refresh(ticket)
     return _enrich_ticket(db, ticket)

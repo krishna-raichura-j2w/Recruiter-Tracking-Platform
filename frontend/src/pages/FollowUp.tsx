@@ -3,7 +3,7 @@ import { useSignal } from '../context/RealtimeContext';
 import {
   GitBranch, ChevronDown, ChevronRight, Search, RefreshCw,
   Users, AlertTriangle, User, CheckCircle, XCircle,
-  UserCheck, Phone, Mail, Send, Briefcase, Download,
+  UserCheck, Phone, Mail, Send, Briefcase, Download, AlertCircle,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import LottieLib from 'lottie-react';
@@ -12,6 +12,7 @@ import findingAnim from '../assets/lottie-finding.json';
 const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
 import Layout from '../components/Layout';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -399,9 +400,17 @@ function JdStep({ num, label, ts, by, note, last }: {
   );
 }
 
+const ACTION_REQUIRED_STATUSES = new Set([
+  'sourced', 'call_in_progress', 'needs_rework', 'ready_for_validation', 'validated',
+]);
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function FollowUp() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [activeTab, setActiveTab] = useState<'action_required' | 'all'>('action_required');
+
   const [stories, setStories] = useState<JobStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
@@ -513,8 +522,15 @@ export default function FollowUp() {
       return true;
     }), [stories, filterCompany, filterStatus, filterBh, filterKam, filterDl, filterFrom, filterTo, search]);
 
-  const totalCands  = filtered.reduce((n, j) => n + j.candidate_count, 0);
-  const overtimeJDs = filtered.filter(s => {
+  const actionRequiredStories = useMemo(
+    () => filtered.filter(s => s.candidates.some(c => ACTION_REQUIRED_STATUSES.has(c.status ?? ''))),
+    [filtered],
+  );
+
+  const displayedStories = !isAdmin && activeTab === 'action_required' ? actionRequiredStories : filtered;
+
+  const totalCands  = displayedStories.reduce((n, j) => n + j.candidate_count, 0);
+  const overtimeJDs = displayedStories.filter(s => {
     const d = s.deadline ? new Date(s.deadline) : null;
     return d && d < new Date() && s.status !== 'closed';
   }).length;
@@ -526,7 +542,7 @@ export default function FollowUp() {
       <div className="flex items-center gap-4 mb-5 flex-wrap">
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-2.5 flex items-center gap-3">
           <GitBranch size={14} className="text-slate-400" />
-          <span className="text-sm font-bold text-slate-700">{filtered.length} JDs</span>
+          <span className="text-sm font-bold text-slate-700">{displayedStories.length} JDs</span>
         </div>
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-2.5 flex items-center gap-3">
           <Users size={14} className="text-slate-400" />
@@ -539,6 +555,41 @@ export default function FollowUp() {
           </div>
         )}
       </div>
+
+      {/* Tabs — only for non-admin roles */}
+      {!isAdmin && (
+        <div className="flex gap-1 border-b border-slate-200 mb-4">
+          <button
+            onClick={() => setActiveTab('action_required')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+              activeTab === 'action_required'
+                ? 'border-amber-500 text-amber-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <AlertCircle size={15} />
+            Action Required
+            {actionRequiredStories.length > 0 && (
+              <span className="ml-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                {actionRequiredStories.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+              activeTab === 'all'
+                ? 'border-sky-500 text-sky-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            All Tickets
+            <span className="ml-1 bg-slate-100 text-slate-600 text-xs font-bold px-1.5 py-0.5 rounded-full">
+              {filtered.length}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -603,7 +654,7 @@ export default function FollowUp() {
         </button>
         <button
           onClick={exportExcel}
-          disabled={filtered.length === 0}
+          disabled={displayedStories.length === 0}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40 transition-colors ml-auto"
         >
           <Download size={13} /> Export Excel
@@ -620,15 +671,19 @@ export default function FollowUp() {
         <div className="space-y-2 animate-pulse">
           {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-white rounded-xl border border-slate-100" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : displayedStories.length === 0 ? (
         <div className="flex flex-col items-center py-10 text-slate-400">
           <Lottie animationData={findingAnim} loop style={{ width: 220, height: 220 }} />
-          <p className="font-medium text-slate-500 mt-2">No JD stories found.</p>
-          <p className="text-xs mt-1">Try adjusting the filters above.</p>
+          <p className="font-medium text-slate-500 mt-2">
+            {!isAdmin && activeTab === 'action_required' ? 'No action required items.' : 'No JD stories found.'}
+          </p>
+          <p className="text-xs mt-1">
+            {!isAdmin && activeTab === 'action_required' ? 'Switch to All Tickets to see everything.' : 'Try adjusting the filters above.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(story => <JdRow key={story.job_id} story={story} />)}
+          {displayedStories.map(story => <JdRow key={story.job_id} story={story} />)}
         </div>
       )}
     </Layout>

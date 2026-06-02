@@ -249,10 +249,10 @@ function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-800">
+    <div className="flex flex-col h-full bg-slate-50 text-slate-800">
       <TopBar title="Overview" subtitle="Your HR Operations snapshot — tickets, cadence, and consultant health at a glance." />
 
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 overflow-y-auto p-6 space-y-5">
 
         {/* Greeting Banner */}
         <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 shadow-sm">

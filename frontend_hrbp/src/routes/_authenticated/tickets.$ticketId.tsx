@@ -4,18 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { FileText, Loader2, Paperclip, Upload, XCircle, RefreshCw, Pin, PinOff, ExternalLink, CalendarClock, UserRoundCog, IndianRupee, Clock, TrendingDown, Send, CheckCircle2, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import { FileText, Loader2, Paperclip, Upload, XCircle, RefreshCw, Pin, PinOff, ExternalLink, CalendarClock, UserRoundCog, IndianRupee, Clock, TrendingDown, Send, CheckCircle2, ChevronDown, ChevronUp, Copy, AlertTriangle, ShieldCheck } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { toast } from "sonner";
 
@@ -41,7 +30,7 @@ import {
   listEmailTemplates,
 } from "@/apiService/ticketApi";
 import { fetchPinnedTicket, pinTicket, unpinTicket } from "@/apiService/dashboardApi";
-import type { Ticket, ActivityLogEntry, UserOption, SopDefinition, EmailTemplateResponse } from "@/apiService/ticketTypes";
+import type { Ticket, ActivityLogEntry, UserOption, SopDefinition, EmailTemplateResponse, CloseTicketPayload } from "@/apiService/ticketTypes";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +41,16 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateTimePicker } from "@/components/CustomDateTimePicker";
+import { CustomDatePicker } from "@/components/CustomDatePicker";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Dayjs } from "dayjs";
 
 export const Route = createFileRoute("/_authenticated/tickets/$ticketId")({
   component: TicketDetailPage,
@@ -234,6 +233,326 @@ function EmailTemplatesPanel({
   );
 }
 
+// ── Close Ticket Dialog ────────────────────────────────────────────────────
+
+type CloseStage = "outcome" | "retained" | "loss";
+
+const EXIT_REASONS = [
+  { value: "resignation",       label: "Resignation"       },
+  { value: "end_of_contract",   label: "End of Contract"   },
+  { value: "termination",       label: "Termination"       },
+  { value: "mutual_separation", label: "Mutual Separation" },
+];
+
+interface CloseTicketDialogProps {
+  open: boolean;
+  onClose: () => void;
+  consultants: Ticket["consultants"];
+  submitting: boolean;
+  onSubmit: (payload: CloseTicketPayload) => void;
+}
+
+function CloseTicketDialog({ open, onClose, consultants, submitting, onSubmit }: CloseTicketDialogProps) {
+  const [stage, setStage] = useState<CloseStage>("outcome");
+
+  // PO Retained form state
+  const [newPoEndDate, setNewPoEndDate] = useState<Dayjs | null>(null);
+  const [newPoMonthly, setNewPoMonthly] = useState("");
+  const [newMargin, setNewMargin]       = useState("");
+  const [newCtc, setNewCtc]             = useState("");
+
+  // PO Loss / exit state
+  const [consultantExited, setConsultantExited] = useState<boolean | null>(null);
+  const [exitDate, setExitDate]     = useState<Dayjs | null>(null);
+  const [exitReason, setExitReason] = useState("");
+  const [exitType, setExitType]     = useState("");
+  const [replacementNeeded, setReplacementNeeded] = useState(false);
+  const [exitNotes, setExitNotes]   = useState("");
+
+  function reset() {
+    setStage("outcome");
+    setNewPoEndDate(null);
+    setNewPoMonthly(""); setNewMargin(""); setNewCtc("");
+    setConsultantExited(null);
+    setExitDate(null); setExitReason(""); setExitType("");
+    setReplacementNeeded(false); setExitNotes("");
+  }
+
+  function handleOpenChange(v: boolean) {
+    if (!v) { reset(); onClose(); }
+  }
+
+  function submitRetained() {
+    onSubmit({
+      po_outcome:      "retained",
+      new_po_end_date: newPoEndDate ? newPoEndDate.format("YYYY-MM-DD") : null,
+      new_po_monthly:  newPoMonthly ? Number(newPoMonthly) : null,
+      new_margin:      newMargin    ? Number(newMargin)    : null,
+      new_ctc:         newCtc       ? Number(newCtc)       : null,
+    });
+  }
+
+  function submitLoss() {
+    onSubmit({
+      po_outcome:         "loss",
+      consultant_exited:  consultantExited === true,
+      exit_date:          exitDate    ? exitDate.format("YYYY-MM-DD") : null,
+      exit_reason:        exitReason  || null,
+      exit_type:          exitType    || null,
+      replacement_needed: replacementNeeded,
+      notes:              exitNotes   || null,
+    });
+  }
+
+  function submitSkip() {
+    onSubmit({});
+  }
+
+  // Derive PO loss summary across all consultants
+  const lossSummary = consultants.map((c) => {
+    const tenure = calcTenureLeft(c.po_end_date);
+    const monthly = c.monthly_po ?? 0;
+    return { ...c, tenure, lossAmount: monthly * tenure };
+  });
+  const totalLoss = lossSummary.reduce((s, c) => s + c.lossAmount, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-lg">
+        {/* ── Stage 1: choose outcome ── */}
+        {stage === "outcome" && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Close Ticket — PO Outcome</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-500 mt-1">
+              What is the PO outcome for this ticket? This helps track consultant retention and revenue risk.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <button
+                type="button"
+                onClick={() => setStage("retained")}
+                className="flex flex-col items-center gap-2 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-4 py-5 transition-colors text-center"
+              >
+                <ShieldCheck className="w-7 h-7 text-emerald-600" />
+                <span className="font-semibold text-emerald-800 text-sm">PO Retained</span>
+                <span className="text-xs text-emerald-600">PO has been renewed or extended</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStage("loss")}
+                className="flex flex-col items-center gap-2 rounded-xl border-2 border-red-200 bg-red-50 hover:bg-red-100 px-4 py-5 transition-colors text-center"
+              >
+                <AlertTriangle className="w-7 h-7 text-red-600" />
+                <span className="font-semibold text-red-800 text-sm">PO Loss</span>
+                <span className="text-xs text-red-600">PO has ended or been terminated</span>
+              </button>
+            </div>
+            <DialogFooter className="mt-4">
+              <Button variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={submitSkip} disabled={submitting}>
+                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Skip &amp; Close
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {/* ── Stage 2a: PO Retained ── */}
+        {stage === "retained" && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-emerald-700">
+                <ShieldCheck className="w-5 h-5" /> PO Retained — New PO Details
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-slate-400 mt-1">All fields are optional. Fill in what has changed.</p>
+            <div className="space-y-3 mt-3">
+              <div className="space-y-1">
+                <Label className="text-xs">New PO End Date</Label>
+                <CustomDatePicker value={newPoEndDate} onChange={setNewPoEndDate} placeholder="Select date…" />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Monthly PO (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={newPoMonthly}
+                    onChange={(e) => setNewPoMonthly(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Margin (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={newMargin}
+                    onChange={(e) => setNewMargin(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">CTC (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={newCtc}
+                    onChange={(e) => setNewCtc(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setStage("outcome")}>Back</Button>
+              <Button
+                onClick={submitRetained}
+                disabled={submitting}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Close Ticket
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {/* ── Stage 2b: PO Loss ── */}
+        {stage === "loss" && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-700">
+                <AlertTriangle className="w-5 h-5" /> PO Loss Summary
+              </DialogTitle>
+            </DialogHeader>
+
+            {/* Per-consultant loss breakdown */}
+            <div className="mt-2 space-y-2">
+              {lossSummary.map((c) => (
+                <div key={c.id} className="rounded-lg border border-red-100 bg-red-50 px-3 py-2.5 text-xs">
+                  <p className="font-semibold text-red-800 mb-1">{c.name}</p>
+                  <div className="grid grid-cols-3 gap-x-3 text-slate-600">
+                    <span>Monthly PO: <span className="font-medium text-slate-800">{formatInr(c.monthly_po)}</span></span>
+                    <span>PO End: <span className="font-medium text-slate-800">{c.po_end_date ?? "—"}</span></span>
+                    <span>Tenure Left: <span className="font-medium text-slate-800">{c.tenure} mo</span></span>
+                  </div>
+                  <p className="mt-1.5 text-red-700 font-semibold">
+                    Estimated Loss: {formatInr(c.lossAmount)}
+                  </p>
+                </div>
+              ))}
+              {lossSummary.length > 1 && (
+                <p className="text-xs font-semibold text-red-700 text-right pr-1">
+                  Total: {formatInr(totalLoss)}
+                </p>
+              )}
+            </div>
+
+            {/* Exit question */}
+            <div className="mt-4 space-y-3">
+              <Label className="text-sm font-medium">Has the consultant exited?</Label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConsultantExited(true)}
+                  className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
+                    consultantExited === true
+                      ? "border-red-400 bg-red-100 text-red-800"
+                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  Yes, Exited
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConsultantExited(false)}
+                  className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
+                    consultantExited === false
+                      ? "border-slate-400 bg-slate-100 text-slate-800"
+                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  Not Yet
+                </button>
+              </div>
+
+              {consultantExited === true && (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Exit Reason</Label>
+                      <Select value={exitReason} onValueChange={setExitReason}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          {EXIT_REASONS.map((r) => (
+                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Exit Type</Label>
+                      <Select value={exitType} onValueChange={setExitType}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="voluntary">Voluntary</SelectItem>
+                          <SelectItem value="involuntary">Involuntary</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Exit Date</Label>
+                    <CustomDatePicker value={exitDate} onChange={setExitDate} placeholder="Last working day…" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="replacement_needed"
+                      checked={replacementNeeded}
+                      onChange={(e) => setReplacementNeeded(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300"
+                    />
+                    <Label htmlFor="replacement_needed" className="text-xs font-normal cursor-pointer">
+                      Replacement needed
+                    </Label>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Notes</Label>
+                    <Textarea
+                      value={exitNotes}
+                      onChange={(e) => setExitNotes(e.target.value)}
+                      placeholder="Any additional context…"
+                      rows={2}
+                      className="text-xs resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setStage("outcome")}>Back</Button>
+              <Button
+                onClick={submitLoss}
+                disabled={submitting || consultantExited === null}
+                className="bg-red-600 hover:bg-red-500 text-white"
+              >
+                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Close Ticket
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function TicketDetailPage() {
   const { ticketId } = Route.useParams();
   const { user } = useAuth();
@@ -244,6 +563,7 @@ function TicketDetailPage() {
   const [sopSteps, setSopSteps] = useState<SopDefinition["steps_definition"] | null>(null);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateResponse[]>([]);
   const [closing, setClosing] = useState(false);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
 
   // Sidebar comment input state
   const [commentText, setCommentText] = useState("");
@@ -413,12 +733,13 @@ function TicketDetailPage() {
     }
   }
 
-  async function handleClose() {
+  async function handleClose(payload: CloseTicketPayload) {
     if (!ticket) return;
     setClosing(true);
     try {
-      const updated = await closeTicket(ticket.id);
+      const updated = await closeTicket(ticket.id, payload);
       setTicket(updated);
+      setCloseDialogOpen(false);
       toast.success("Ticket closed");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to close ticket");
@@ -466,7 +787,7 @@ function TicketDetailPage() {
     return (
       <div className="flex flex-col h-full bg-gray-50">
         <TopBar title="Ticket" subtitle="Loading…" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 overflow-y-auto p-6">
           <PageLoader message="Loading ticket details…" />
         </main>
       </div>
@@ -517,38 +838,29 @@ function TicketDetailPage() {
             </Button>
 
             {isCreator && ticket.status === "open" && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
-                    disabled={closing}
-                  >
-                    {closing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <XCircle className="w-4 h-4" />
-                    )}
-                    Close Ticket
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Close this ticket?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will mark the ticket as <strong>Closed</strong>. Only the person who raised
-                      it ({ticket.raised_by_name}) can close it. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleClose} className="bg-red-600 hover:bg-red-700">
-                      Yes, Close Ticket
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                  disabled={closing}
+                  onClick={() => setCloseDialogOpen(true)}
+                >
+                  {closing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  Close Ticket
+                </Button>
+                <CloseTicketDialog
+                  open={closeDialogOpen}
+                  onClose={() => setCloseDialogOpen(false)}
+                  consultants={ticket.consultants}
+                  submitting={closing}
+                  onSubmit={handleClose}
+                />
+              </>
             )}
           </div>
         </div>
