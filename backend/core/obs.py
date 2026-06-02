@@ -1,18 +1,20 @@
 """Lightweight observability: per-request and per-SQL-query timing logs.
 
-Writes two append-only log files (one line per event):
-  /app/logs/requests.log  — METHOD path -> status  durationms  (one per API call)
-  /app/logs/queries.log   — durationms  SQL...     (one per executed SQL statement)
+Everything is written to a SINGLE log file per calendar date:
+  /app/logs/app-YYYY-MM-DD.log
 
-Both also echo to stdout so `docker logs` shows them too. The directory is a
-mounted volume (see docker-compose) so the files persist on the host and can be
-tailed live:  tail -f logs/requests.log  /  tail -f logs/queries.log
+Each line is one event, tagged so the two kinds are distinguishable:
+  <time> REQ  GET /api/jobs -> 200  63.1ms
+  <time> SQL  17.8ms  [GET /api/dashboard/nav-counts]  SELECT ...
+
+The file rolls over automatically at midnight (a new app-<date>.log is created).
+Lines also echo to stdout so `docker logs` shows them. The directory is a mounted
+volume so files persist on the host:  tail -f logs/app-$(date +%F).log
 """
 import contextvars
 import logging
 import os
 import time
-from logging.handlers import RotatingFileHandler
 
 LOG_DIR = os.getenv("APP_LOG_DIR", "/app/logs")
 
@@ -30,40 +32,66 @@ def set_current_request(label: str) -> None:
     _current_request.set(label)
 
 
-_request_logger = logging.getLogger("rtp.requests")
-_query_logger = logging.getLogger("rtp.queries")
+class DailyFileHandler(logging.Handler):
+    """Writes to <log_dir>/<prefix>-YYYY-MM-DD.log, switching files when the
+    local date changes. Append mode → safe for multiple worker processes sharing
+    one dated file (line-buffered appends interleave cleanly for normal lines).
+    """
+
+    def __init__(self, log_dir: str, prefix: str) -> None:
+        super().__init__()
+        self.log_dir = log_dir
+        self.prefix = prefix
+        self._date: str | None = None
+        self._stream = None
+
+    def _ensure_stream(self) -> None:
+        today = time.strftime("%Y-%m-%d")
+        if today != self._date or self._stream is None:
+            if self._stream is not None:
+                try:
+                    self._stream.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            os.makedirs(self.log_dir, exist_ok=True)
+            path = os.path.join(self.log_dir, f"{self.prefix}-{today}.log")
+            self._stream = open(path, "a", buffering=1, encoding="utf-8")  # noqa: SIM115
+            self._date = today
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._ensure_stream()
+            self._stream.write(self.format(record) + "\n")
+        except Exception:  # noqa: BLE001
+            self.handleError(record)
+
+
+# Single combined logger → one dated file holds requests AND queries.
+_logger = logging.getLogger("rtp")
 _configured = False
-
-
-def _make_logger(logger: logging.Logger, filename: str) -> None:
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    fmt = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    try:
-        os.makedirs(LOG_DIR, exist_ok=True)
-        # 50 MB per file, keep 3 rotations. delay=True so the file opens lazily.
-        fh = RotatingFileHandler(
-            os.path.join(LOG_DIR, filename),
-            maxBytes=50 * 1024 * 1024,
-            backupCount=3,
-            delay=True,
-        )
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-    except Exception as exc:  # noqa: BLE001 — never let logging break the app
-        print(f"[obs] could not open {filename}: {exc}")
-    sh = logging.StreamHandler()
-    sh.setFormatter(fmt)
-    logger.addHandler(sh)
 
 
 def setup_logging() -> None:
     global _configured
     if _configured:
         return
-    _make_logger(_request_logger, "requests.log")
-    _make_logger(_query_logger, "queries.log")
+    _logger.setLevel(logging.INFO)
+    _logger.propagate = False
+    fmt = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    try:
+        _logger.addHandler(_make_daily_handler(fmt))
+    except Exception as exc:  # noqa: BLE001 — never let logging break the app
+        print(f"[obs] could not open daily log: {exc}")
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    _logger.addHandler(sh)
     _configured = True
+
+
+def _make_daily_handler(fmt: logging.Formatter) -> logging.Handler:
+    h = DailyFileHandler(LOG_DIR, "app")
+    h.setFormatter(fmt)
+    return h
 
 
 def instrument_engine(engine) -> None:
@@ -86,9 +114,9 @@ def instrument_engine(engine) -> None:
             sql = " ".join(statement.split())
             where = _current_request.get()
             tag = "SLOW " if ms >= 1000 else ""
-            _query_logger.info("%s%.1fms  [%s]  %s", tag, ms, where, sql)
+            _logger.info("SQL  %s%.1fms  [%s]  %s", tag, ms, where, sql)
 
 
 def log_request(method: str, path: str, status: int, ms: float) -> None:
     tag = "SLOW " if ms >= 1000 else ""
-    _request_logger.info("%s%s %s -> %s  %.1fms", tag, method, path, status, ms)
+    _logger.info("REQ  %s%s %s -> %s  %.1fms", tag, method, path, status, ms)
