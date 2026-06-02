@@ -52,6 +52,7 @@ function AdminConsultantsPage() {
   const [consultants, setConsultants] = useState<ConsultantItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
@@ -122,7 +123,7 @@ function AdminConsultantsPage() {
     try {
       setLoading(true);
       const [consultantRes, hrbpRes, clientRes, summaryRes] = await Promise.all([
-        getConsultantsApi({ page_no: page + 1, per_page: rowsPerPage }),
+        getConsultantsApi({ page_no: page + 1, per_page: rowsPerPage, search: debouncedSearch || undefined }),
         getAdminUsers({ role: "hrbp" }),
         getClientsApi({ per_page: -1 }),
         fetchConsultantsSummary(),
@@ -141,15 +142,15 @@ function AdminConsultantsPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [page, rowsPerPage]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  const filtered = useMemo(
-    () => consultants.filter((c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.emp_id.toLowerCase().includes(search.toLowerCase()),
-    ),
-    [consultants, search],
-  );
+  useEffect(() => { fetchData(); }, [page, rowsPerPage, debouncedSearch]);
 
   const stats = useMemo(() => ({
     total: summary?.total ?? total,
@@ -264,7 +265,7 @@ function AdminConsultantsPage() {
               placeholder="Search by name or emp ID…"
               className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <span className="text-sm text-slate-500">{total} consultants total</span>
@@ -300,12 +301,12 @@ function AdminConsultantsPage() {
             <TableBody>
               {loading ? (
                 <TableLoader colSpan={7} />
-              ) : filtered.length === 0 ? (
+              ) : consultants.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-16 text-slate-400">No consultants found.</TableCell>
                 </TableRow>
               ) : (
-                filtered.map((c) => (
+                consultants.map((c) => (
                   <TableRow key={c.id} className="hover:bg-slate-50">
                     <TableCell className="font-mono text-xs text-slate-500">{c.emp_id}</TableCell>
                     <TableCell className="font-medium text-slate-800">{c.name}</TableCell>

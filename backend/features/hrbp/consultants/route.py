@@ -99,6 +99,7 @@ def list_consultants(
     is_active: bool | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    search: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -124,7 +125,7 @@ def list_consultants(
 
     result = service.list_paginated(
         db, page_no, per_page, hrbp_ids, bh_client_ids,
-        client_id, cohort, perf_tier, is_active, date_from, date_to,
+        client_id, cohort, perf_tier, is_active, date_from, date_to, search,
     )
     return success_response_with_pagination(
         data=[r.__dict__ for r in result.items],
