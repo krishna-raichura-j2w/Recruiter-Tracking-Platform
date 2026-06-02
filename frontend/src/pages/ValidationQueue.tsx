@@ -50,7 +50,7 @@ export default function ValidationQueue() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page,    setPage]    = useState(1);
-  const [perPage, setPerPage] = useState(1000);
+  const [perPage, setPerPage] = useState(50);
   const [total,   setTotal]   = useState(0);
   const [filters, setFilters] = useState<FilterValues>(emptyFilters);
   const [search, setSearch]   = useState('');

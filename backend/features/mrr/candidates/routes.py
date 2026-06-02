@@ -62,6 +62,11 @@ def list_candidates(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Hard cap: each serialized candidate triggers an S3 presigned-URL call, so a
+    # large page holds the DB connection for the whole batch. Cap at 100 server-side
+    # so stale frontends (which may still request limit=1000) can't exhaust the pool.
+    if not limit or limit > 100:
+        limit = 100
     role = current_user.role.value
     _assigned_to = assigned_to
     _sourced_by = None

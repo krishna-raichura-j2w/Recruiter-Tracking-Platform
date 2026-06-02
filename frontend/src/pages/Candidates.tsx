@@ -71,7 +71,7 @@ export default function Candidates() {
   const [search, setSearch] = useState('');
   // Pagination
   const [page,    setPage]    = useState(1);
-  const [perPage, setPerPage] = useState(1000);
+  const [perPage, setPerPage] = useState(50);
   const [total,   setTotal]   = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
