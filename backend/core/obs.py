@@ -51,8 +51,11 @@ class DailyFileHandler(logging.Handler):
         self.prefix = prefix
         self._date: str | None = None
         self._stream = None
+        self._broken = False  # silently disabled if log dir is not writable
 
     def _ensure_stream(self) -> None:
+        if self._broken:
+            return
         today = time.strftime("%Y-%m-%d")
         if today != self._date or self._stream is None:
             if self._stream is not None:
@@ -60,22 +63,35 @@ class DailyFileHandler(logging.Handler):
                     self._stream.close()
                 except Exception:  # noqa: BLE001
                     pass
-            os.makedirs(self.log_dir, exist_ok=True)
-            path = os.path.join(self.log_dir, f"{self.prefix}-{today}.log")
-            self._stream = open(path, "a", buffering=1, encoding="utf-8")  # noqa: SIM115
-            self._date = today
+            try:
+                os.makedirs(self.log_dir, exist_ok=True)
+                path = os.path.join(self.log_dir, f"{self.prefix}-{today}.log")
+                self._stream = open(path, "a", buffering=1, encoding="utf-8")  # noqa: SIM115
+                self._date = today
+            except Exception:  # noqa: BLE001 — not writable (e.g. local dev); skip silently
+                self._broken = True
 
     def emit(self, record: logging.LogRecord) -> None:
+        if self._broken:
+            return
         try:
             self._ensure_stream()
-            self._stream.write(self.format(record) + "\n")
+            if self._stream:
+                self._stream.write(self.format(record) + "\n")
         except Exception:  # noqa: BLE001
-            self.handleError(record)
+            self._broken = True
 
 
 # Single combined logger → one dated file holds requests AND queries.
 _logger = logging.getLogger("rtp")
 _configured = False
+
+
+class _ApiOnlyFilter(logging.Filter):
+    """Allows only REQ lines through to stdout — SQL query lines go to file only."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage().startswith("REQ")
 
 
 def setup_logging() -> None:
@@ -85,12 +101,12 @@ def setup_logging() -> None:
     _logger.setLevel(logging.INFO)
     _logger.propagate = False
     fmt = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    try:
-        _logger.addHandler(_make_daily_handler(fmt))
-    except Exception as exc:  # noqa: BLE001 — never let logging break the app
-        print(f"[obs] could not open daily log: {exc}")
+    # File handler gets everything (SQL + REQ); silently skipped if dir not writable.
+    _logger.addHandler(_make_daily_handler(fmt))
+    # Stdout handler shows only API request lines.
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
+    sh.addFilter(_ApiOnlyFilter())
     _logger.addHandler(sh)
     _configured = True
 
