@@ -311,6 +311,8 @@ export async function getConsultantsApi(params: {
   per_page?: number;
   date_from?: string;
   date_to?: string;
+  search?: string;
+  is_active?: boolean;
 } = {}): Promise<ConsultantListResponse> {
   const baseUrl = getBaseUrl();
   const queryParams = new URLSearchParams({
@@ -320,6 +322,8 @@ export async function getConsultantsApi(params: {
   if (params.page_no !== undefined) queryParams.append("page_no", String(params.page_no));
   if (params.date_from) queryParams.append("date_from", params.date_from);
   if (params.date_to) queryParams.append("date_to", params.date_to);
+  if (params.search) queryParams.append("search", params.search);
+  if (params.is_active !== undefined) queryParams.append("is_active", String(params.is_active));
 
   const response = await fetchWithAuth(
     `${baseUrl}api/hrbp/consultants?${queryParams.toString()}`,

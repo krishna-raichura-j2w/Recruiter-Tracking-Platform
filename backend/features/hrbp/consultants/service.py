@@ -98,6 +98,7 @@ def list_paginated(
     is_active: bool | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    search: str | None = None,
 ) -> PageResult:
     q = db.query(HRBPConsultant)
     # hrbp sees their own consultants; bh sees consultants via their client_ids
@@ -117,6 +118,14 @@ def list_paginated(
         q = q.filter(HRBPConsultant.created_at >= date_from)
     if date_to is not None:
         q = q.filter(HRBPConsultant.created_at <= date_to)
+    if search:
+        term = f"%{search}%"
+        q = q.filter(
+            or_(
+                HRBPConsultant.name.ilike(term),
+                HRBPConsultant.emp_id.ilike(term),
+            )
+        )
     q = q.order_by(HRBPConsultant.name)
     return paginate(q, page_no, per_page)
 

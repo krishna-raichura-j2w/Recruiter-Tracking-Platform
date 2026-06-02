@@ -29,16 +29,16 @@ import { CustomTablePagination } from "@/components/CustomPagination";
 import { listPoRevisions } from "@/apiService/poRevisionApi";
 import type { PoRevision } from "@/apiService/poRevisionApi";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
   ResponsiveContainer,
   LabelList,
-  type DotProps,
+  Cell,
+  Legend,
 } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/consultants/$consultantId")({
@@ -128,45 +128,22 @@ const STATUS_LABEL: Record<string, string> = {
   rejected:         "Rejected",
 };
 
-const DOT_COLOR: Record<string, string> = {
+const STATUS_BAR_COLOR: Record<string, string> = {
   approved:         "#10b981",
   pending_approval: "#f59e0b",
   rejected:         "#ef4444",
 };
 
-// ── Custom dot coloured by revision status ────────────────────────────────────
+// ── Tooltip ───────────────────────────────────────────────────────────────────
 
 interface ChartPoint {
   date: string;
-  rate: number;
   old_rate: number | null;
+  new_rate: number;
   hike_pct: number | null;
   status: string;
   notes: string | null;
 }
-
-function StatusDot(props: DotProps & { payload?: ChartPoint }) {
-  const { cx, cy, payload } = props;
-  if (cx == null || cy == null || !payload) return null;
-  const fill = DOT_COLOR[payload.status] ?? "#94a3b8";
-  return <circle cx={cx} cy={cy} r={6} fill={fill} stroke="#fff" strokeWidth={2} />;
-}
-
-// ── Hike % label rendered above each point ────────────────────────────────────
-
-function HikeLabel(props: any) {
-  const { x, y, value } = props;
-  if (value == null) return null;
-  const n = Number(value);
-  const color = n >= 0 ? "#059669" : "#dc2626";
-  return (
-    <text x={x} y={y - 10} textAnchor="middle" fontSize={10} fontWeight={600} fill={color}>
-      {n >= 0 ? "+" : ""}{n.toFixed(1)}%
-    </text>
-  );
-}
-
-// ── Tooltip ───────────────────────────────────────────────────────────────────
 
 function RevisionTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
@@ -180,7 +157,7 @@ function RevisionTooltip({ active, payload }: any) {
       {d.old_rate != null && (
         <p className="text-slate-500">Old rate: <span className="font-medium text-slate-700">{fmtINR(d.old_rate)}</span></p>
       )}
-      <p className="text-slate-500">New rate: <span className="font-bold text-slate-800">{fmtINR(d.rate)}</span></p>
+      <p className="text-slate-500">New rate: <span className="font-bold text-slate-800">{fmtINR(d.new_rate)}</span></p>
       {d.hike_pct != null && (
         <p className={`font-semibold ${Number(d.hike_pct) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
           {Number(d.hike_pct) >= 0 ? "+" : ""}{Number(d.hike_pct).toFixed(2)}% hike
@@ -194,6 +171,20 @@ function RevisionTooltip({ active, payload }: any) {
   );
 }
 
+// ── Hike % label above new-rate bar ──────────────────────────────────────────
+
+function HikeLabel(props: any) {
+  const { x, y, width, value } = props;
+  if (value == null) return null;
+  const n = Number(value);
+  const color = n >= 0 ? "#059669" : "#dc2626";
+  return (
+    <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={10} fontWeight={600} fill={color}>
+      {n >= 0 ? "+" : ""}{n.toFixed(1)}%
+    </text>
+  );
+}
+
 // ── Chart component ───────────────────────────────────────────────────────────
 
 function PoRevisionChart({ revisions }: { revisions: PoRevision[] }) {
@@ -202,8 +193,8 @@ function PoRevisionChart({ revisions }: { revisions: PoRevision[] }) {
       .sort((a, b) => new Date(a.revised_at).getTime() - new Date(b.revised_at).getTime())
       .map((r) => ({
         date:     format(new Date(r.revised_at), "MMM yyyy"),
-        rate:     Number(r.new_po_rate),
         old_rate: r.old_po_rate != null ? Number(r.old_po_rate) : null,
+        new_rate: Number(r.new_po_rate),
         hike_pct: r.hike_pct != null ? Number(r.hike_pct) : null,
         status:   r.status,
         notes:    r.notes ?? null,
@@ -212,14 +203,14 @@ function PoRevisionChart({ revisions }: { revisions: PoRevision[] }) {
 
   if (data.length === 0) return null;
 
-  const minRate = Math.min(...data.map((d) => d.old_rate ?? d.rate));
-  const yMin   = Math.max(0, Math.floor((minRate * 0.9) / 10000) * 10000);
+  const allRates = data.flatMap((d) => [d.old_rate ?? d.new_rate, d.new_rate]);
+  const yMin = Math.max(0, Math.floor((Math.min(...allRates) * 0.85) / 10000) * 10000);
 
   return (
     <div className="px-5 pt-4 pb-2">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data} margin={{ top: 24, right: 24, left: 16, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={data} margin={{ top: 28, right: 24, left: 16, bottom: 4 }} barCategoryGap="30%" barGap={4}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11, fill: "#94a3b8" }}
@@ -234,25 +225,25 @@ function PoRevisionChart({ revisions }: { revisions: PoRevision[] }) {
             domain={[yMin, "auto"]}
             width={56}
           />
-          <Tooltip content={<RevisionTooltip />} />
-          <ReferenceLine y={data[0]?.rate} stroke="#e2e8f0" strokeDasharray="4 4" />
-          <Line
-            type="monotone"
-            dataKey="rate"
-            stroke="#0ea5e9"
-            strokeWidth={2}
-            dot={<StatusDot />}
-            activeDot={{ r: 8, stroke: "#0ea5e9", strokeWidth: 2 }}
-          >
+          <Tooltip content={<RevisionTooltip />} cursor={{ fill: "#f8fafc" }} />
+          <Legend
+            iconType="square"
+            iconSize={10}
+            formatter={(value) => <span className="text-[11px] text-slate-500">{value}</span>}
+          />
+          <Bar dataKey="old_rate" name="Old PO Rate" fill="#cbd5e1" radius={[3, 3, 0, 0]} maxBarSize={32} />
+          <Bar dataKey="new_rate" name="New PO Rate" radius={[3, 3, 0, 0]} maxBarSize={32}>
             <LabelList dataKey="hike_pct" content={<HikeLabel />} />
-          </Line>
-        </LineChart>
+            {data.map((d, i) => (
+              <Cell key={i} fill={STATUS_BAR_COLOR[d.status] ?? "#0ea5e9"} />
+            ))}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
-      {/* Legend */}
       <div className="flex items-center gap-4 justify-end pb-2 pr-1">
         {(["approved", "pending_approval", "rejected"] as const).map((s) => (
           <span key={s} className="flex items-center gap-1.5 text-[11px] text-slate-500">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: DOT_COLOR[s] }} />
+            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: STATUS_BAR_COLOR[s] }} />
             {STATUS_LABEL[s]}
           </span>
         ))}
@@ -378,7 +369,7 @@ function ConsultantDetailPage() {
   const [revPage, setRevPage]               = useState(0);
   const [revRowsPerPage, setRevRowsPerPage] = useState(5);
   const [allRevisions, setAllRevisions]     = useState<PoRevision[]>([]);
-  const [revView, setRevView]               = useState<"chart" | "table">("chart");
+  const [revView, setRevView]               = useState<"chart" | "table">("table");
 
   const fetchRevisions = useCallback(async () => {
     setRevLoading(true);

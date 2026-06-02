@@ -52,6 +52,7 @@ type BulkResult = { inserted: number; updated: number; errors: { row: number; er
 function ClientDetail() {
   const { clientId } = Route.useParams();
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [consultants, setConsultants] = useState<ConsultantItem[]>([]);
@@ -136,6 +137,14 @@ function ClientDetail() {
   }, [clientId]);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQ(q);
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  useEffect(() => {
     async function fetchConsultants() {
       try {
         setLoading(true);
@@ -147,12 +156,17 @@ function ClientDetail() {
           date_to = dateRange[1].format("YYYY-MM-DD");
         }
 
+        const isActive =
+          statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined;
+
         const res = await getConsultantsApi({
           client_id: Number(clientId),
           page_no: page + 1,
           per_page: rowsPerPage,
           date_from,
           date_to,
+          search: debouncedQ || undefined,
+          is_active: isActive,
         });
 
         if (res.meta.status) {
@@ -168,7 +182,7 @@ function ClientDetail() {
       }
     }
     fetchConsultants();
-  }, [clientId, page, rowsPerPage, dateRange]);
+  }, [clientId, page, rowsPerPage, dateRange, debouncedQ, statusFilter]);
 
   const handleChangePage = (
     event: React.MouseEvent<HTMLButtonElement> | null,
@@ -183,18 +197,6 @@ function ClientDetail() {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
-
-  const filtered = consultants.filter((c) => {
-    const searchString = `${c.name || ''} ${c.emp_id || ''} ${c.manager_name || ''} ${c.email || ''}`.toLowerCase();
-    const matchesSearch = searchString.includes(q.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all"
-        ? true
-        : statusFilter === "active"
-        ? c.is_active
-        : !c.is_active;
-    return matchesSearch && matchesStatus;
-  });
 
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "-";
@@ -266,7 +268,7 @@ function ClientDetail() {
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search currently displayed consultants..."
+              placeholder="Search by name, emp ID, manager or email…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
@@ -279,7 +281,7 @@ function ClientDetail() {
               onChange={setDateRange}
             />
             <div className="w-[160px]">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
                 <SelectTrigger className="h-10 text-sm border-slate-200 shadow-sm bg-white">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -442,14 +444,14 @@ function ClientDetail() {
             <TableBody>
               {loading ? (
                 <TableLoader colSpan={12} />
-              ) : filtered.length === 0 ? (
+              ) : consultants.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={12} className="h-24 text-center text-slate-500 font-medium">
                     No Data found!
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((c) => (
+                consultants.map((c) => (
                   <TableRow key={c.id} className="hover:bg-slate-50 transition-colors">
                     <TableCell className="font-medium text-slate-900">{c.emp_id || "-"}</TableCell>
                     <TableCell className="font-medium text-sky-700 hover:underline">
