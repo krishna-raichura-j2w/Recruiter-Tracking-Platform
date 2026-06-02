@@ -241,8 +241,11 @@ export const podPlanApi = {
   getPlan: (setupId: number) =>
     api.get(`/pod-plan/setup/${setupId}/plan`).then(r => r.data as PlanData),
 
-  getBHLeaderboard: (date: string) =>
-    api.get('/pod-plan/bh-leaderboard', { params: { date } }).then(r => r.data as BHLeaderboardResponse),
+  getBHList: (date: string) =>
+    api.get('/pod-plan/bh-leaderboard/bhs', { params: { date } }).then(r => r.data as BHListResponse),
+
+  getBHDetail: (setupId: number, date: string) =>
+    api.get(`/pod-plan/bh-leaderboard/${setupId}`, { params: { date } }).then(r => r.data as BHDetailResponse),
 };
 
 // ── BH Leaderboard types ───────────────────────────────────────────────────────
@@ -269,6 +272,28 @@ export interface BHLeaderboardCustomer {
   mtd_obs: number;
 }
 
+export interface BHInfo {
+  setup_id: number;
+  pod_id: number;
+  bh_name: string;
+}
+
+export interface BHListResponse {
+  date: string;
+  month: string;
+  bhs: BHInfo[];
+}
+
+export interface BHDetailResponse {
+  date: string;
+  month: string;
+  setup_id: number;
+  bh_name: string;
+  pod_id: number;
+  customers: BHLeaderboardCustomer[];
+}
+
+// kept for backwards compat — not used
 export interface BHLeaderboardEntry {
   bh_name: string;
   pod_id: number;
