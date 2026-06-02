@@ -1410,12 +1410,12 @@ function BHTargetsSection() {
 //  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
-type LbTab = 'recruiter' | 'pipeline' | 'bh-targets';
+type LbTab = 'recruiter' | 'pipeline';
 
 const TABS: { key: LbTab; label: string }[] = [
   { key: 'recruiter',  label: 'Recruiter Dashboard' },
   { key: 'pipeline',   label: 'Client Pipeline' },
-  { key: 'bh-targets', label: 'BH Target Tracking' },
+  // { key: 'bh-targets', label: 'BH Target Tracking' },  // temporarily disabled
 ];
 
 export default function Leaderboard() {
@@ -1468,10 +1468,7 @@ export default function Leaderboard() {
         {visited.has('pipeline') && <ClientPipelineSection />}
       </div>
 
-      {/* BH Target Tracking — mounts (and fetches) only after user opens it */}
-      <div style={{ display: tab === 'bh-targets' ? 'block' : 'none' }}>
-        {visited.has('bh-targets') && <BHTargetsSection />}
-      </div>
+      {/* BH Target Tracking — temporarily disabled */}
     </Layout>
   );
 }
