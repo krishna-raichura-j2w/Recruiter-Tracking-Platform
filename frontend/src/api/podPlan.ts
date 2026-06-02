@@ -88,6 +88,7 @@ export interface PodMember {
 
 export interface ClientOption {
   id: number;
+  client_id: number | null;  // OL user_id — used for matching stored client_ids
   name: string;
   short_name: string | null;
 }

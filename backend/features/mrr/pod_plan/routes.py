@@ -425,19 +425,25 @@ def bh_leaderboard(
         mtd_idx.setdefault(m["setup_id"], {})[m["customer_target_id"]] = dict(m)
 
     # ── 4. Single OL MySQL connection: subs + interviews for ALL setups ───────
-    # Build global ol_user_id → [(setup_id, ct_id)] map
+    # Build global ol_user_id → [(setup_id, ct_id)] map — no duplicates
     ol_to_cts: dict[int, list[tuple[int, int]]] = {}
+    _seen_cts: set[tuple[int, int, int]] = set()
     for c in cust_rows:
         sid, ct_id = c["setup_id"], c["id"]
-        raw = c["client_id"]
-        if raw is not None:
-            ol_to_cts.setdefault(int(raw), []).append((sid, ct_id))
         cids = c["client_ids"]
         if cids:
             if isinstance(cids, str):
                 cids = json.loads(cids)
             for x in cids:
-                ol_to_cts.setdefault(int(x), []).append((sid, ct_id))
+                key = (int(x), sid, ct_id)
+                if key not in _seen_cts:
+                    _seen_cts.add(key)
+                    ol_to_cts.setdefault(int(x), []).append((sid, ct_id))
+        elif c["client_id"] is not None:
+            key = (int(c["client_id"]), sid, ct_id)
+            if key not in _seen_cts:
+                _seen_cts.add(key)
+                ol_to_cts.setdefault(int(c["client_id"]), []).append((sid, ct_id))
 
     ol_subs_idx: dict[int, dict[int, int]] = {}
     ol_int_idx: dict[int, dict[int, int]] = {}
@@ -465,7 +471,7 @@ def bh_leaderboard(
                         FROM applied_jobs aj
                         JOIN job_postings jp ON aj.job_posting_id = jp.id
                         JOIN clients cl ON jp.client_id = cl.user_id
-                        WHERE aj.current_step = 7
+                        WHERE aj.current_step >= 7
                           AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
                           AND cl.user_id IN ({ph})
                         GROUP BY cl.user_id

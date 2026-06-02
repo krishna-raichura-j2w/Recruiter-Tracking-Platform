@@ -211,8 +211,8 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
     if (!client) return;
     const customer = await podPlanApi.upsertCustomer(setupId, {
       customer_name: client.name,
-      client_id: client.id,
-      client_ids: [client.id],
+      client_id: client.client_id ?? client.id,
+      client_ids: [client.client_id ?? client.id],
       display_order: customers.length,
     });
     onCustomersChange([...customers, customer]);
@@ -468,8 +468,8 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
                 <select value={selectedClientId} onChange={e => setSelectedClientId(Number(e.target.value) || '')}
                   style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13 }}>
                   <option value="">— select client —</option>
-                  {clients.filter(cl => !customers.some(c => c.client_id === cl.id)).map(cl => (
-                    <option key={cl.id} value={cl.id}>{cl.name}</option>
+                  {clients.filter(cl => !customers.some(c => c.client_id === (cl.client_id ?? cl.id))).map(cl => (
+                    <option key={cl.id} value={cl.client_id ?? cl.id}>{cl.name}</option>
                   ))}
                 </select>
                 <button onClick={handleAddCustomer} disabled={!selectedClientId}
@@ -518,7 +518,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Linked Client Companies</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                       {(c.client_ids ?? (c.client_id ? [c.client_id] : [])).map(cid => {
-                        const cl = clients.find(x => x.id === cid);
+                        const cl = clients.find(x => x.id === cid || x.client_id === cid);
                         return (
                           <span key={cid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 99, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
                             {cl ? cl.name : `Client #${cid}`}
@@ -534,8 +534,12 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
                           <select value={extraClientId} onChange={e => setExtraClientId(Number(e.target.value) || '')}
                             style={{ padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12 }}>
                             <option value="">— select —</option>
-                            {clients.filter(cl => !(c.client_ids ?? (c.client_id ? [c.client_id] : [])).includes(cl.id)).map(cl => (
-                              <option key={cl.id} value={cl.id}>{cl.name}</option>
+                            {clients.filter(cl => {
+                              const linked = c.client_ids ?? (c.client_id ? [c.client_id] : []);
+                              const olId = cl.client_id ?? cl.id;
+                              return !linked.includes(cl.id) && !linked.includes(olId);
+                            }).map(cl => (
+                              <option key={cl.id} value={cl.client_id ?? cl.id}>{cl.name}</option>
                             ))}
                           </select>
                           <button onClick={() => extraClientId && handleAddClientMapping(c.id, Number(extraClientId))}

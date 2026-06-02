@@ -1410,15 +1410,22 @@ function BHTargetsSection() {
 //  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
-type LbTab = 'recruiter' | 'pipeline';
+type LbTab = 'recruiter' | 'pipeline' | 'bh-targets';
+
+const BH_TARGETS_ROLES = new Set(['coo', 'admin', 'kam']);
 
 const TABS: { key: LbTab; label: string }[] = [
   { key: 'recruiter',  label: 'Recruiter Dashboard' },
   { key: 'pipeline',   label: 'Client Pipeline' },
-  // { key: 'bh-targets', label: 'BH Target Tracking' },  // temporarily disabled
+  { key: 'bh-targets', label: 'BH Target Tracking' },
 ];
 
 export default function Leaderboard() {
+  const { user } = useAuth();
+  const canSeeBhTargets = BH_TARGETS_ROLES.has(user?.role ?? '');
+
+  const visibleTabs = canSeeBhTargets ? TABS : TABS.filter(t => t.key !== 'bh-targets');
+
   const [tab, setTab] = useState<LbTab>('recruiter');
   // Track which tabs the user has opened, so each fetches only once and
   // preserves its internal state (search, sort, compare date) across switches.
@@ -1434,7 +1441,7 @@ export default function Leaderboard() {
       {/* Tab bar */}
       <div className="mb-5" style={{ borderBottom: '1px solid var(--border-hairline)' }}>
         <div className="flex gap-0.5">
-          {TABS.map(t => {
+          {visibleTabs.map(t => {
             const active = t.key === tab;
             return (
               <button
@@ -1468,7 +1475,12 @@ export default function Leaderboard() {
         {visited.has('pipeline') && <ClientPipelineSection />}
       </div>
 
-      {/* BH Target Tracking — temporarily disabled */}
+      {/* BH Target Tracking — visible to coo, admin, kam only */}
+      {canSeeBhTargets && (
+        <div style={{ display: tab === 'bh-targets' ? 'block' : 'none' }}>
+          {visited.has('bh-targets') && <BHTargetsSection />}
+        </div>
+      )}
     </Layout>
   );
 }

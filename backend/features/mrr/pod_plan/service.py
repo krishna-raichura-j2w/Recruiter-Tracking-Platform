@@ -142,9 +142,31 @@ def list_customers(db: Session, setup_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _resolve_ol_user_ids(db: Session, local_ids: list[int]) -> dict[int, int]:
+    """Translate of_clients.id (local PK) → of_clients.client_id (OL user_id)."""
+    if not local_ids:
+        return {}
+    rows = db.execute(
+        text("SELECT id, client_id FROM of_clients WHERE id = ANY(:ids) AND client_id IS NOT NULL"),
+        {"ids": local_ids},
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 def upsert_customer(db: Session, setup_id: int, data: dict) -> dict:
     # Extract JSONB field so it can be handled with CAST()
     client_ids = data.pop("client_ids", None)
+
+    # Deduplicate client_ids preserving order (frontend sends OL user_ids directly)
+    if client_ids:
+        seen: set[int] = set()
+        deduped = []
+        for x in client_ids:
+            if int(x) not in seen:
+                seen.add(int(x))
+                deduped.append(int(x))
+        client_ids = deduped if deduped else None
+
     client_ids_json = json.dumps(client_ids) if client_ids is not None else None
 
     existing = db.execute(
@@ -195,7 +217,7 @@ def delete_customer(db: Session, customer_id: int, setup_id: int) -> None:
 
 def list_clients(db: Session) -> list[dict]:
     rows = db.execute(
-        text("SELECT id, name, short_name FROM of_clients ORDER BY name")
+        text("SELECT id, client_id, name, short_name FROM of_clients ORDER BY name")
     ).mappings().all()
     return [dict(r) for r in rows]
 
@@ -434,7 +456,7 @@ def get_actual_subs_from_ol(db: Session, setup_id: int, entry_date: str) -> dict
                     FROM applied_jobs AS aj
                     JOIN job_postings AS jp ON aj.job_posting_id = jp.id
                     JOIN clients      AS cl ON jp.client_id      = cl.user_id
-                    WHERE aj.current_step = 7
+                    WHERE aj.current_step >= 7
                       AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
                       AND cl.user_id IN ({placeholders})
                     GROUP BY cl.user_id
