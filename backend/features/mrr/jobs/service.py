@@ -107,7 +107,9 @@ def _job_dict(db: Session, job: Job, ctx: dict | None = None) -> dict:
         for c in Job.__table__.columns
         if c.name not in _BINARY_COLS
     }
-    d["has_questionnaire"] = bool(getattr(job, "questionnaire_data", None))
+    # Use the (non-deferred) generated-at timestamp as the "has questionnaire"
+    # flag — accessing the deferred blob would trigger a per-row lazy load.
+    d["has_questionnaire"] = getattr(job, "questionnaire_generated_at", None) is not None
     d["candidate_count"] = count
     d["assigned_sourcer_name"] = uname(job.assigned_sourcer_id)
     d["assigned_caller_name"] = uname(job.assigned_caller_id)

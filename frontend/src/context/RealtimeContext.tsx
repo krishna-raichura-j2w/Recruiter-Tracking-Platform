@@ -74,63 +74,20 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   // ── SSE connection ────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user?.access_token) return;
-    const token = user.access_token;
-
-    const connect = () => {
-      const base = (api.defaults.baseURL ?? '').replace(/\/api$/, '');
-      const url = `${base}/api/notifications/stream?token=${encodeURIComponent(token)}`;
-      const es = new EventSource(url);
-      esRef.current = es;
-
-      es.onmessage = (e) => {
-        const raw = e.data as string;
-        if (!raw || raw.startsWith(':')) return;
-        try {
-          const data = JSON.parse(raw);
-          if (data.type === 'connected') return;
-
-          // Add to notification list
-          const notif: Notification = {
-            id:         data.id,
-            message:    data.message,
-            notif_type: data.notif_type,
-            is_read:    false,
-            created_at: data.created_at ?? new Date().toISOString(),
-          };
-          setNotifications((prev) => [notif, ...prev.slice(0, 49)]);
-          setUnread((n) => n + 1);
-
-          // Show toast
-          const tid = ++toastIdRef.current;
-          const colorClass = NOTIF_COLORS[data.notif_type] ?? NOTIF_COLORS.general;
-          setToasts((prev) => [...prev, { id: tid, message: data.message, notif_type: data.notif_type, colorClass }]);
-          setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== tid)), 6000);
-
-          // Increment refresh signals for affected domains
-          const domains = REFRESH_MAP[data.notif_type] ?? [];
-          if (domains.length) {
-            setSignals((prev) => {
-              const next = { ...prev };
-              domains.forEach((d) => { next[d] = (next[d] ?? 0) + 1; });
-              return next;
-            });
-          }
-        } catch {
-          // non-JSON ping — ignore
-        }
-      };
-
-      es.onerror = () => {
-        es.close();
-        setTimeout(connect, 10000);
-      };
-    };
-
-    connect();
-    return () => { esRef.current?.close(); };
-  }, [user?.access_token]);
+  // TEMPORARILY DISABLED for DB-load relief. The live notification stream
+  // polled the DB every 5s per user and was overloading the database. The
+  // notification bell still works from the initial /dashboard/notifications
+  // fetch above; live toasts/auto-refresh are paused until the stream is
+  // re-enabled. (Backend /notifications/stream is also a heartbeat-only no-op.)
+  //
+  // useEffect(() => {
+  //   if (!user?.access_token) return;
+  //   ... EventSource connection (disabled) ...
+  // }, [user?.access_token]);
+  // Suppress unused-var warnings for refs/setters only used by the disabled stream.
+  void esRef;
+  void toastIdRef;
+  void setSignals;
 
   // ── Notification actions ───────────────────────────────────────────────
   const markAllRead = useCallback(async () => {

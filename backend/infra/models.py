@@ -20,7 +20,7 @@ from sqlalchemy import (
     Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import deferred, relationship
 
 
 def now_utc():
@@ -401,7 +401,10 @@ class Job(Base):
     referral_amount            = Column(Integer, nullable=True)
     group_name                 = Column(String(100), nullable=True)
     sub_group                  = Column(String(100), nullable=True)
-    questionnaire_data         = Column(LargeBinary, nullable=True)
+    # Deferred: the PDF blob is never loaded by list/detail queries — only when
+    # explicitly accessed (the questionnaire download endpoint). Prevents loading
+    # megabytes of PDF for every job on list/nav queries.
+    questionnaire_data         = deferred(Column(LargeBinary, nullable=True))
     questionnaire_generated_at = Column(DateTime, nullable=True)
     questionnaire_notes        = Column(Text, nullable=True)
     assigned_sourcer_id = Column(Integer, ForeignKey("users.id"), nullable=True)

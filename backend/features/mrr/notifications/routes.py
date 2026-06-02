@@ -16,54 +16,25 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 @router.get("/stream")
 async def stream(token: str = Query(...)):
-    """SSE endpoint. Polls for new notifications every 5 s and pushes them."""
+    """SSE endpoint — TEMPORARILY DISABLED for DB-load relief.
+
+    The previous implementation polled the database every 5s per connected
+    client; with ~80 users that was ~16 DB queries/sec of constant churn on a
+    79-connection RDS instance, a major cause of pool exhaustion. This now keeps
+    the EventSource connection alive with comment pings only (NO DB queries), so
+    both new and old cached frontends generate zero database load. Notifications
+    still appear via the regular /dashboard/notifications fetch on page load.
+    """
     payload = decode_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user_id = int(payload["sub"])
-
-    # The DB driver (psycopg2) is sync. Running queries directly in this async
-    # generator would block the event loop for the duration of every query — so
-    # with N connected SSE clients, all their polls would serialize on one
-    # worker. Wrapping in asyncio.to_thread runs each query on the threadpool
-    # and lets the loop service other requests in parallel.
-
-    def _initial_last_id() -> int:
-        db = SessionLocal()
-        try:
-            row = (
-                db.query(Notification.id)
-                .filter(Notification.user_id == user_id)
-                .order_by(Notification.id.desc())
-                .first()
-            )
-            return row[0] if row else 0
-        finally:
-            db.close()
-
-    def _poll(last_id: int):
-        db = SessionLocal()
-        try:
-            return service.get_new_since(db, user_id, last_id)
-        finally:
-            db.close()
 
     async def generator():
-        last_id = await asyncio.to_thread(_initial_last_id)
         yield f"data: {json.dumps({'type': 'connected'})}\n\n"
-
+        # Heartbeat only — no DB polling.
         while True:
-            await asyncio.sleep(5)
-            try:
-                new = await asyncio.to_thread(_poll, last_id)
-                if new:
-                    last_id = new[-1]["id"]
-                    for n in new:
-                        yield f"data: {json.dumps(n)}\n\n"
-                else:
-                    yield ": ping\n\n"
-            except Exception:
-                yield ": error\n\n"
+            await asyncio.sleep(30)
+            yield ": ping\n\n"
 
     return StreamingResponse(
         generator(),

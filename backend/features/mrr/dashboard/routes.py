@@ -1,4 +1,5 @@
 import json as _json
+import time as _time
 
 from core.database import get_db
 from core.deps import get_current_user
@@ -9,10 +10,16 @@ from features.mrr.dashboard import service
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
+# Short in-process cache for sidebar badge counts. Polled every ~60s by every
+# user; caching ~45s collapses repeat polls to zero DB work. Per-worker (fine —
+# badge staleness of <1 min is harmless).
+_NAV_CACHE: dict[int, tuple[float, dict]] = {}
+_NAV_TTL = 45.0
+
 
 @router.get("/nav-counts")
 def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    """Sidebar badge counts — role-aware, lightweight, polled every minute."""
+    """Sidebar badge counts — role-aware, cached, polled every minute."""
     from infra.models import (
         Candidate,
         CandidateStatus,
@@ -25,6 +32,10 @@ def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_u
 
     role = current_user.role.value
     uid = current_user.id
+
+    cached = _NAV_CACHE.get(uid)
+    if cached and (_time.monotonic() - cached[0]) < _NAV_TTL:
+        return cached[1]
 
     counts: dict[str, int] = {
         "jobs": 0,
@@ -63,16 +74,20 @@ def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_u
         )
 
     elif role == "delivery_lead":
-        # Collect all job IDs this DL owns (primary delivery_lead_id + multi-DL array)
+        # Collect all job IDs this DL owns (primary delivery_lead_id + multi-DL array).
+        # Select ONLY the 3 needed columns — never load jd_parsed / questionnaire_data
+        # blobs for every job on a badge-count poll.
         dl_job_ids = []
-        for j in db.query(Job).all():
+        for jid, dl_id, dl_ids_raw in db.query(
+            Job.id, Job.delivery_lead_id, Job.delivery_lead_ids,
+        ).all():
             ids = (
-                _json.loads(j.delivery_lead_ids or "[]")
-                if isinstance(j.delivery_lead_ids, str)
-                else (j.delivery_lead_ids or [])
+                _json.loads(dl_ids_raw or "[]")
+                if isinstance(dl_ids_raw, str)
+                else (dl_ids_raw or [])
             )
-            if j.delivery_lead_id == uid or uid in ids:
-                dl_job_ids.append(j.id)
+            if dl_id == uid or uid in ids:
+                dl_job_ids.append(jid)
 
         if dl_job_ids:
             counts["jobs"] = (
@@ -149,14 +164,15 @@ def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_u
             )
 
     elif role == "recruiter":
-        # Open JDs where recruiter is in sourcer_ids
-        open_jobs = db.query(Job).filter(Job.status == JobStatus.open).all()
+        # Open JDs where recruiter is in sourcer_ids — select only sourcer_ids.
         jd_count = 0
-        for j in open_jobs:
+        for (sourcer_raw,) in db.query(Job.sourcer_ids).filter(
+            Job.status == JobStatus.open,
+        ).all():
             ids = (
-                _json.loads(j.sourcer_ids or "[]")
-                if isinstance(j.sourcer_ids, str)
-                else (j.sourcer_ids or [])
+                _json.loads(sourcer_raw or "[]")
+                if isinstance(sourcer_raw, str)
+                else (sourcer_raw or [])
             )
             if uid in ids:
                 jd_count += 1
@@ -176,6 +192,7 @@ def nav_counts(db: Session = Depends(get_db), current_user=Depends(get_current_u
             .count()
         )
 
+    _NAV_CACHE[uid] = (_time.monotonic(), counts)
     return counts
 
 
