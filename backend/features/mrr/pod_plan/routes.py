@@ -340,6 +340,7 @@ def bh_leaderboard(
         actuals = service.get_daily_actuals(db, setup_id, target_date)
         dl_subs = service.get_dl_subs_for_date(db, setup_id, pod_id, target_date)
         ol_subs = service.get_actual_subs_from_ol(db, setup_id, target_date)
+        ol_interviews = service.get_ol_interviews_for_date(db, setup_id, target_date)
         monthly_actuals = service.get_monthly_actuals(db, setup_id, month)
 
         customer_rows = []
@@ -361,7 +362,7 @@ def bh_leaderboard(
                 "daily_obs_target": round(em.get("daily_obs", 0)),
                 "actual_subs": ol_subs.get(cid, act.get("actual_subs", 0)),
                 "dl_subs": dl_subs.get(cid, 0),
-                "actual_int": act.get("actual_interviews", 0),
+                "actual_int": ol_interviews.get(cid, act.get("actual_interviews", 0)),
                 "actual_sel": act.get("actual_selects", 0),
                 "actual_obs": act.get("actual_obs", 0),
                 "monthly_subs": monthly_subs,

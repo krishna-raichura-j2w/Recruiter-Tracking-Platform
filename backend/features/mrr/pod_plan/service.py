@@ -455,6 +455,78 @@ def get_actual_subs_from_ol(db: Session, setup_id: int, entry_date: str) -> dict
     return result
 
 
+def get_ol_interviews_for_date(db: Session, setup_id: int, entry_date: str) -> dict[int, int]:
+    """Count distinct interviews scheduled on entry_date from OL replica per customer target.
+
+    Queries validation_screens.interview_date for the given IST date.
+    Returns empty dict gracefully if OL replica is unavailable.
+    """
+    import pymysql
+    from core.config import settings
+
+    if not settings.ol_replica_host:
+        return {}
+
+    ct_rows = db.execute(
+        text("""SELECT id, client_id, client_ids FROM bh_customer_targets
+                WHERE setup_id = :sid AND (client_id IS NOT NULL OR client_ids IS NOT NULL)"""),
+        {"sid": setup_id},
+    ).mappings().all()
+    if not ct_rows:
+        return {}
+
+    client_id_to_ct: dict[int, int] = {}
+    for r in ct_rows:
+        if r["client_id"] is not None:
+            client_id_to_ct[int(r["client_id"])] = r["id"]
+        cids = r["client_ids"]
+        if cids:
+            if isinstance(cids, str):
+                cids = json.loads(cids)
+            for cid in cids:
+                client_id_to_ct[int(cid)] = r["id"]
+    client_ids_list = list(client_id_to_ct.keys())
+    placeholders = ",".join(["%s"] * len(client_ids_list))
+
+    try:
+        conn = pymysql.connect(
+            host=settings.ol_replica_host,
+            port=settings.ol_replica_port,
+            user=settings.ol_replica_user,
+            password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=10,
+            cursorclass=pymysql.cursors.DictCursor,
+            ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
+                    FROM validation_screens AS vs
+                    JOIN job_postings AS jp ON jp.id = vs.applied_candidate_for_job_id
+                    WHERE vs.interview_date = %s
+                      AND jp.client_id IN ({placeholders})
+                      AND jp.id IS NOT NULL
+                    GROUP BY jp.client_id
+                    """,
+                    [entry_date] + client_ids_list,
+                )
+                ol_rows = cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+
+    result: dict[int, int] = {}
+    for r in ol_rows:
+        ct_id = client_id_to_ct.get(int(r["client_id"]))
+        if ct_id is not None:
+            result[ct_id] = result.get(ct_id, 0) + int(r["cnt"])
+    return result
+
+
 def get_monthly_actuals(db: Session, setup_id: int, month_str: str) -> dict[int, dict]:
     ref = datetime.strptime(month_str, "%B %Y")
     m_start = ref.date().isoformat()
