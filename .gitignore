@@ -22,8 +22,6 @@ backend/j2w_tracker.db
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
 
 # Documentation
 docs/

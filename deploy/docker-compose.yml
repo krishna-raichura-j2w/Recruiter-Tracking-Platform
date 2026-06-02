@@ -10,6 +10,10 @@ services:
       - ../backend/.env
     expose:
       - "8000"
+    volumes:
+      # Timing logs (requests.log / queries.log) persist on the host and are
+      # readable at <repo>/logs/ — tail -f logs/requests.log
+      - ../logs:/app/logs
     networks:
       - appnet
     healthcheck:

@@ -324,6 +324,36 @@ async def lifespan(app_):  # noqa: RUF029
 
 app = FastAPI(title="J2W Recruiter Tracking", version="1.0.0", lifespan=lifespan)
 
+
+# Per-request timing → logs/requests.log (method, path, status, duration ms).
+@app.middleware("http")
+async def _request_timing(request, call_next):  # noqa: ANN001, ANN201
+    import time as _t
+
+    from core.obs import log_request, set_current_request
+
+    label = f"{request.method} {request.url.path}"
+    # Tag SQL queries issued during this request with the endpoint (propagates
+    # into the threadpool where sync DB work runs).
+    try:
+        set_current_request(label)
+    except Exception:  # noqa: BLE001
+        pass
+
+    start = _t.monotonic()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        ms = (_t.monotonic() - start) * 1000.0
+        try:
+            log_request(request.method, request.url.path, status, ms)
+        except Exception:  # noqa: BLE001 — logging must never break a request
+            pass
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=".*",
