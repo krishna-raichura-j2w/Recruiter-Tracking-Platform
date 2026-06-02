@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from infra.models import User
 from sqlalchemy.orm import Session
@@ -76,6 +76,7 @@ bearer = HTTPBearer()
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
     db: Session = Depends(get_db),
 ) -> User:
@@ -91,6 +92,15 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+    # Record who is making this request, for the access logs (read by the
+    # request-timing middleware via request.state, and by the SQL logger via a
+    # contextvar for best-effort per-query attribution).
+    try:
+        request.state.user_email = user.email
+        from core.obs import set_current_user
+        set_current_user(user.email)
+    except Exception:  # noqa: BLE001 — logging attribution must never break auth
+        pass
     return user
 
 

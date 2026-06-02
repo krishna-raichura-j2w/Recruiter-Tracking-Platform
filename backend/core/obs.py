@@ -26,10 +26,17 @@ SLOW_QUERY_MS = float(os.getenv("SLOW_QUERY_MS", "0"))
 _current_request: contextvars.ContextVar[str] = contextvars.ContextVar(
     "current_request", default="-",
 )
+_current_user: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "current_user", default="-",
+)
 
 
 def set_current_request(label: str) -> None:
     _current_request.set(label)
+
+
+def set_current_user(email: str) -> None:
+    _current_user.set(email or "-")
 
 
 class DailyFileHandler(logging.Handler):
@@ -109,14 +116,34 @@ def instrument_engine(engine) -> None:
             return
         ms = (time.monotonic() - start) * 1000.0
         if ms >= SLOW_QUERY_MS:
-            # Full statement (whitespace collapsed), tagged with the API endpoint
-            # that issued it so you can see WHERE the query is used.
+            # Full statement (whitespace collapsed), tagged with the user + the
+            # API endpoint that issued it so you can see WHO and WHERE.
             sql = " ".join(statement.split())
+            who = _current_user.get()
             where = _current_request.get()
             tag = "SLOW " if ms >= 1000 else ""
-            _logger.info("SQL  %s%.1fms  [%s]  %s", tag, ms, where, sql)
+            _logger.info("SQL  %s%.1fms  [%s | %s]  %s", tag, ms, who, where, sql)
+
+    @event.listens_for(engine, "handle_error")
+    def _on_error(exc_ctx):  # noqa: ANN001
+        # A query failed — mark it clearly with the user + endpoint + the error.
+        try:
+            stmt = " ".join((exc_ctx.statement or "").split())
+            who = _current_user.get()
+            where = _current_request.get()
+            err = type(exc_ctx.original_exception).__name__
+            _logger.info("SQL  FAIL  [%s | %s]  %s :: %s", who, where, err, stmt)
+        except Exception:  # noqa: BLE001
+            pass
 
 
-def log_request(method: str, path: str, status: int, ms: float) -> None:
-    tag = "SLOW " if ms >= 1000 else ""
-    _logger.info("REQ  %s%s %s -> %s  %.1fms", tag, method, path, status, ms)
+def log_request(method: str, path: str, status: int, ms: float, user: str = "-") -> None:
+    # Mark failures: 4xx/5xx get a FAIL tag; slow (>1s) get SLOW.
+    marks = ""
+    if status >= 500:
+        marks += "ERROR "
+    elif status >= 400:
+        marks += "FAIL "
+    if ms >= 1000:
+        marks += "SLOW "
+    _logger.info("REQ  %s%s %s -> %s  %.1fms  user=%s", marks, method, path, status, ms, user or "-")

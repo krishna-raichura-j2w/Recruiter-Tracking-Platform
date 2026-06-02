@@ -349,7 +349,9 @@ async def _request_timing(request, call_next):  # noqa: ANN001, ANN201
     finally:
         ms = (_t.monotonic() - start) * 1000.0
         try:
-            log_request(request.method, request.url.path, status, ms)
+            # user email is set on request.state by get_current_user (if authed)
+            user = getattr(request.state, "user_email", "-")
+            log_request(request.method, request.url.path, status, ms, user)
         except Exception:  # noqa: BLE001 — logging must never break a request
             pass
 
