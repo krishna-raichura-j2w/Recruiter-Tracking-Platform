@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import date as _date
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from core.database import get_db
@@ -311,37 +312,205 @@ def bh_leaderboard(
     db: Session = Depends(get_db),
     cu=LEADERSHIP,
 ):
+    from core.config import settings as _cfg
+
     target_date = date or datetime.now().strftime("%Y-%m-%d")
     month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
 
-    setup_rows = db.execute(
-        text("""
-            SELECT s.*, u.name AS bh_name, p.id AS pod_id
-            FROM bh_pod_setups s
-            JOIN pods p ON p.id = s.pod_id
-            JOIN users u ON u.id = p.bh_user_id AND u.is_active = true
-            WHERE s.month = :month
-            ORDER BY u.name
-        """),
-        {"month": month},
-    ).mappings().all()
+    ist_dt = datetime.strptime(target_date, "%Y-%m-%d")
+    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(hours=24)
 
+    ref = datetime.strptime(month, "%B %Y")
+    m_start = ref.date().isoformat()
+    m_end = (
+        _date(ref.year + 1, 1, 1).isoformat()
+        if ref.month == 12
+        else _date(ref.year, ref.month + 1, 1).isoformat()
+    )
+
+    # ── 1. All PostgreSQL data in one batch (no per-BH loop) ─────────────────
+
+    setup_rows = db.execute(text("""
+        SELECT s.*, u.name AS bh_name, p.id AS pod_id
+        FROM bh_pod_setups s
+        JOIN pods p ON p.id = s.pod_id
+        JOIN users u ON u.id = p.bh_user_id AND u.is_active = true
+        WHERE s.month = :month
+        ORDER BY u.name
+    """), {"month": month}).mappings().all()
+
+    if not setup_rows:
+        db.close()
+        return {"date": target_date, "month": month, "bhs": []}
+
+    setup_ids = [int(s["id"]) for s in setup_rows]
+
+    cust_rows = db.execute(text("""
+        SELECT * FROM bh_customer_targets
+        WHERE setup_id = ANY(:sids)
+        ORDER BY setup_id, display_order
+    """), {"sids": setup_ids}).mappings().all()
+
+    rec_rows = db.execute(text("""
+        SELECT ra.*, u.name AS user_name, u.role AS user_role
+        FROM bh_recruiter_assignments ra
+        JOIN users u ON u.id = ra.user_id
+        WHERE ra.setup_id = ANY(:sids)
+    """), {"sids": setup_ids}).mappings().all()
+
+    daily_rows = db.execute(text("""
+        SELECT setup_id, customer_target_id,
+               actual_subs, actual_interviews, actual_selects, actual_obs
+        FROM bh_daily_actuals
+        WHERE setup_id = ANY(:sids) AND entry_date = :d
+    """), {"sids": setup_ids, "d": target_date}).mappings().all()
+
+    dl_rows = db.execute(text("""
+        SELECT ct.setup_id, ct.id AS customer_target_id,
+               COUNT(DISTINCT v.candidate_id) AS dl_subs
+        FROM validations v
+        JOIN candidates c ON c.id = v.candidate_id
+        JOIN jobs j ON j.id = c.job_id
+        JOIN bh_customer_targets ct ON (
+            ct.client_id = j.client_id
+            OR (ct.client_ids IS NOT NULL AND ct.client_ids @> to_jsonb(j.client_id))
+        )
+        JOIN bh_pod_setups s ON s.id = ct.setup_id
+        JOIN pods p ON p.id = s.pod_id
+        WHERE v.status = 'validated'
+          AND c.sourced_at >= :day_start
+          AND c.sourced_at < :day_end
+          AND EXISTS (
+              SELECT 1 FROM users u
+              WHERE u.id = c.sourced_by_id AND u.pod_id = p.id AND u.is_active = true
+          )
+          AND ct.setup_id = ANY(:sids)
+        GROUP BY ct.setup_id, ct.id
+    """), {"sids": setup_ids, "day_start": day_start_utc, "day_end": day_end_utc}).mappings().all()
+
+    mtd_rows = db.execute(text("""
+        SELECT setup_id, customer_target_id,
+               COALESCE(SUM(actual_subs), 0)       AS subs,
+               COALESCE(SUM(actual_interviews), 0) AS interviews,
+               COALESCE(SUM(actual_selects), 0)    AS selects,
+               COALESCE(SUM(actual_obs), 0)        AS obs
+        FROM bh_daily_actuals
+        WHERE setup_id = ANY(:sids) AND entry_date >= :s AND entry_date < :e
+        GROUP BY setup_id, customer_target_id
+    """), {"sids": setup_ids, "s": m_start, "e": m_end}).mappings().all()
+
+    # ── 2. Release the PG connection — OL calls must not hold it ─────────────
+    db.close()
+
+    # ── 3. Index PG data by setup_id in Python ───────────────────────────────
+    custs_by_setup: dict[int, list[dict]] = {}
+    for c in cust_rows:
+        custs_by_setup.setdefault(c["setup_id"], []).append(dict(c))
+
+    recs_by_setup: dict[int, list[dict]] = {}
+    for r in rec_rows:
+        recs_by_setup.setdefault(r["setup_id"], []).append(dict(r))
+
+    actuals_idx: dict[int, dict[int, dict]] = {}
+    for a in daily_rows:
+        actuals_idx.setdefault(a["setup_id"], {})[a["customer_target_id"]] = dict(a)
+
+    dl_idx: dict[int, dict[int, int]] = {}
+    for d in dl_rows:
+        dl_idx.setdefault(d["setup_id"], {})[d["customer_target_id"]] = int(d["dl_subs"])
+
+    mtd_idx: dict[int, dict[int, dict]] = {}
+    for m in mtd_rows:
+        mtd_idx.setdefault(m["setup_id"], {})[m["customer_target_id"]] = dict(m)
+
+    # ── 4. Single OL MySQL connection: subs + interviews for ALL setups ───────
+    # Build global ol_user_id → [(setup_id, ct_id)] map
+    ol_to_cts: dict[int, list[tuple[int, int]]] = {}
+    for c in cust_rows:
+        sid, ct_id = c["setup_id"], c["id"]
+        raw = c["client_id"]
+        if raw is not None:
+            ol_to_cts.setdefault(int(raw), []).append((sid, ct_id))
+        cids = c["client_ids"]
+        if cids:
+            if isinstance(cids, str):
+                cids = json.loads(cids)
+            for x in cids:
+                ol_to_cts.setdefault(int(x), []).append((sid, ct_id))
+
+    ol_subs_idx: dict[int, dict[int, int]] = {}
+    ol_int_idx: dict[int, dict[int, int]] = {}
+
+    if ol_to_cts and _cfg.ol_replica_host:
+        import pymysql
+        all_ol_ids = list(ol_to_cts.keys())
+        ph = ",".join(["%s"] * len(all_ol_ids))
+        try:
+            ol_conn = pymysql.connect(
+                host=_cfg.ol_replica_host,
+                port=_cfg.ol_replica_port,
+                user=_cfg.ol_replica_user,
+                password=_cfg.ol_replica_password,
+                database=_cfg.ol_replica_database,
+                connect_timeout=5,
+                cursorclass=pymysql.cursors.DictCursor,
+                ssl_disabled=True,
+            )
+            try:
+                with ol_conn.cursor() as cur:
+                    cur.execute(
+                        f"""
+                        SELECT 'sub' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
+                        FROM applied_jobs aj
+                        JOIN job_postings jp ON aj.job_posting_id = jp.id
+                        JOIN clients cl ON jp.client_id = cl.user_id
+                        WHERE aj.current_step = 7
+                          AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
+                          AND cl.user_id IN ({ph})
+                        GROUP BY cl.user_id
+
+                        UNION ALL
+
+                        SELECT 'int' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
+                        FROM validation_screens vs
+                        JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
+                        WHERE vs.interview_date = %s
+                          AND jp.client_id IN ({ph})
+                          AND jp.id IS NOT NULL
+                        GROUP BY jp.client_id
+                        """,
+                        [target_date] + all_ol_ids + [target_date] + all_ol_ids,
+                    )
+                    for row in cur.fetchall():
+                        ol_uid = int(row["client_id"])
+                        cnt = int(row["cnt"])
+                        target_idx = ol_subs_idx if row["kind"] == "sub" else ol_int_idx
+                        for sid, ct_id in ol_to_cts.get(ol_uid, []):
+                            target_idx.setdefault(sid, {})[ct_id] = (
+                                target_idx.get(sid, {}).get(ct_id, 0) + cnt
+                            )
+            finally:
+                ol_conn.close()
+        except Exception:
+            pass  # OL unavailable — fall back to manual actuals
+
+    # ── 5. Assemble response ─────────────────────────────────────────────────
     bhs = []
     for s_row in setup_rows:
         s = dict(s_row)
         setup_id = s["id"]
-        pod_id = s["pod_id"]
+        customers = custs_by_setup.get(setup_id, [])
+        recruiters = recs_by_setup.get(setup_id, [])
 
-        customers = service.list_customers(db, setup_id)
-        recruiters = service.list_recruiter_assignments(db, setup_id)
         metrics = service.compute_metrics(s, customers, recruiters)
         enriched = {c["id"]: c for c in metrics["customers"]}
 
-        actuals = service.get_daily_actuals(db, setup_id, target_date)
-        dl_subs = service.get_dl_subs_for_date(db, setup_id, pod_id, target_date)
-        ol_subs = service.get_actual_subs_from_ol(db, setup_id, target_date)
-        ol_interviews = service.get_ol_interviews_for_date(db, setup_id, target_date)
-        monthly_actuals = service.get_monthly_actuals(db, setup_id, month)
+        actuals = actuals_idx.get(setup_id, {})
+        dl_subs = dl_idx.get(setup_id, {})
+        ol_subs = ol_subs_idx.get(setup_id, {})
+        ol_int = ol_int_idx.get(setup_id, {})
+        monthly_actuals = mtd_idx.get(setup_id, {})
 
         customer_rows = []
         for c in customers:
@@ -349,7 +518,6 @@ def bh_leaderboard(
             em = enriched.get(cid, {})
             act = actuals.get(cid, {})
             m_act = monthly_actuals.get(cid, {})
-
             monthly_subs = em.get("monthly_subs", 0)
             monthly_int = int(em.get("monthly_interviews", 0))
 
@@ -362,7 +530,7 @@ def bh_leaderboard(
                 "daily_obs_target": round(em.get("daily_obs", 0)),
                 "actual_subs": ol_subs.get(cid, act.get("actual_subs", 0)),
                 "dl_subs": dl_subs.get(cid, 0),
-                "actual_int": ol_interviews.get(cid, act.get("actual_interviews", 0)),
+                "actual_int": ol_int.get(cid, act.get("actual_interviews", 0)),
                 "actual_sel": act.get("actual_selects", 0),
                 "actual_obs": act.get("actual_obs", 0),
                 "monthly_subs": monthly_subs,
@@ -377,7 +545,7 @@ def bh_leaderboard(
 
         bhs.append({
             "bh_name": s["bh_name"],
-            "pod_id": pod_id,
+            "pod_id": s["pod_id"],
             "setup_id": setup_id,
             "month": month,
             "customers": customer_rows,
