@@ -367,9 +367,10 @@ def create_candidate(
             if not caller_ids and job.assigned_caller_id:
                 caller_ids = [job.assigned_caller_id]
             if caller_ids:
-                from features.mrr.allocation.service import _caller_load
+                from features.mrr.allocation.service import _batch_caller_counts
 
-                caller_id = min(caller_ids, key=lambda uid: _caller_load(db, uid))
+                caller_counts = _batch_caller_counts(db, caller_ids)
+                caller_id = min(caller_ids, key=lambda uid: caller_counts.get(uid, 0))
                 candidate = service.assign_candidate(db, candidate.id, caller_id)
                 if caller_id != current_user.id:
                     push(

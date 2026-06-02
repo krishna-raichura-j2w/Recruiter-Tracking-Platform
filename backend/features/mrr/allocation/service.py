@@ -20,6 +20,7 @@ from infra.models import (
     User,
     UserRole,
 )
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 
@@ -65,50 +66,70 @@ def _sourcer_load(db: Session, user_id: int) -> int:
     # Must check sourcer_ids JSON array because multiple recruiters share a JD.
     # assigned_sourcer_id only points to the first recruiter, so non-primary
     # recruiters would show zero load if we queried that field instead.
-    open_jobs = db.query(Job).filter(Job.status != JobStatus.closed).all()
-    count = 0
-    for job in open_jobs:
-        ids = (
-            json.loads(job.sourcer_ids or "[]")
-            if isinstance(job.sourcer_ids, str)
-            else (job.sourcer_ids or [])
-        )
-        if user_id in ids:
-            count += 1
-    return count
+    return _batch_sourcer_counts(db, [user_id]).get(user_id, 0)
 
 
 def _caller_load(db: Session, user_id: int) -> int:
-    closed = [
-        CandidateStatus.joined,
-        CandidateStatus.backed_out,
-        CandidateStatus.rejected,
-    ]
-    return (
-        db.query(Candidate)
-        .filter(
-            Candidate.assigned_to_id == user_id,
-            ~Candidate.status.in_(closed),
-        )
-        .count()
-    )
+    return _batch_caller_counts(db, [user_id]).get(user_id, 0)
 
 
 def _validator_load(db: Session, user_id: int) -> int:
+    return _batch_validator_counts(db, [user_id]).get(user_id, 0)
+
+
+def _batch_sourcer_counts(db: Session, user_ids: list[int]) -> dict[int, int]:
+    """1 query: fetch only sourcer_ids for open jobs, count per user in Python."""
+    id_set = set(user_ids)
+    counts: dict[int, int] = {uid: 0 for uid in id_set}
+    for (raw,) in db.query(Job.sourcer_ids).filter(Job.status != JobStatus.closed).all():
+        ids = json.loads(raw or "[]") if isinstance(raw, str) else (raw or [])
+        for uid in ids:
+            try:
+                uid = int(uid)
+            except Exception:
+                continue
+            if uid in id_set:
+                counts[uid] += 1
+    return counts
+
+
+def _batch_caller_counts(db: Session, user_ids: list[int]) -> dict[int, int]:
+    """1 GROUP BY query: count active candidates per caller."""
+    closed = [CandidateStatus.joined, CandidateStatus.backed_out, CandidateStatus.rejected]
+    counts: dict[int, int] = {uid: 0 for uid in user_ids}
+    for uid, cnt in (
+        db.query(Candidate.assigned_to_id, func.count(Candidate.id))
+        .filter(
+            Candidate.assigned_to_id.in_(user_ids),
+            ~Candidate.status.in_(closed),
+        )
+        .group_by(Candidate.assigned_to_id)
+        .all()
+    ):
+        counts[uid] = cnt
+    return counts
+
+
+def _batch_validator_counts(db: Session, user_ids: list[int]) -> dict[int, int]:
+    """1 GROUP BY query: count pending-validation candidates per validator."""
     done = [
         CandidateStatus.validated,
         CandidateStatus.joined,
         CandidateStatus.backed_out,
         CandidateStatus.rejected,
     ]
-    return (
-        db.query(Candidate)
+    counts: dict[int, int] = {uid: 0 for uid in user_ids}
+    for uid, cnt in (
+        db.query(Candidate.assigned_validator_id, func.count(Candidate.id))
         .filter(
-            Candidate.assigned_validator_id == user_id,
+            Candidate.assigned_validator_id.in_(user_ids),
             ~Candidate.status.in_(done),
         )
-        .count()
-    )
+        .group_by(Candidate.assigned_validator_id)
+        .all()
+    ):
+        counts[uid] = cnt
+    return counts
 
 
 def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
@@ -116,15 +137,16 @@ def get_min_load(db: Session, pod_lead_id: int, role: UserRole) -> User | None:
     if not members:
         return None
 
-    load_fn = {
-        UserRole.recruiter: _caller_load,
-        UserRole.delivery_lead: _validator_load,
-    }.get(role)
+    member_ids = [m.id for m in members]
 
-    if load_fn is None:
+    if role == UserRole.recruiter:
+        counts = _batch_caller_counts(db, member_ids)
+    elif role == UserRole.delivery_lead:
+        counts = _batch_validator_counts(db, member_ids)
+    else:
         return members[0]
 
-    return min(members, key=lambda m: load_fn(db, m.id))
+    return min(members, key=lambda m: counts.get(m.id, 0))
 
 
 def team_loads(
@@ -134,20 +156,23 @@ def team_loads(
 ) -> list[dict]:
     """Return each member with their current load counts — used by frontend."""
     members = _team(db, pod_lead_id, role)
-    result = []
-    for m in members:
-        sourcing = _sourcer_load(db, m.id)
-        calling = _caller_load(db, m.id)
-        result.append(
-            {
-                "id": m.id,
-                "name": m.name,
-                "email": m.email,
-                "role": m.role.value,
-                "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
-                "sourcing_load": sourcing,
-                "calling_load": calling,
-                "load": sourcing + calling,
-            },
-        )
-    return result
+    if not members:
+        return []
+
+    member_ids = [m.id for m in members]
+    sourcer_counts = _batch_sourcer_counts(db, member_ids)
+    caller_counts = _batch_caller_counts(db, member_ids)
+
+    return [
+        {
+            "id": m.id,
+            "name": m.name,
+            "email": m.email,
+            "role": m.role.value,
+            "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
+            "sourcing_load": sourcer_counts.get(m.id, 0),
+            "calling_load": caller_counts.get(m.id, 0),
+            "load": sourcer_counts.get(m.id, 0) + caller_counts.get(m.id, 0),
+        }
+        for m in members
+    ]

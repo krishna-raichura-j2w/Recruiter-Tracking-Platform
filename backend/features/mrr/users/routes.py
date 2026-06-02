@@ -330,7 +330,6 @@ def get_team_loads(
     Admins and KAMs may pass ?dl_id=<N> to filter by a DL's team, or omit to get all recruiters.
     """
     from infra.models import UserRole
-    from features.mrr.allocation.service import _sourcer_load, _caller_load
 
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")

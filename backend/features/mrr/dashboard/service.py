@@ -64,54 +64,43 @@ def get_dashboard(db: Session, user_id: int, role: str) -> dict:
     recruiter_stats = []
     if role in ("delivery_lead", "admin"):
         callers = db.query(User).filter(User.role == "recruiter", User.is_active).all()
-        for caller in callers:
-            sourced = (
-                db.query(func.count(Candidate.id))
-                .filter(Candidate.assigned_to_id == caller.id)
-                .scalar()
-                or 0
-            )
-            called = (
-                db.query(func.count(Candidate.id))
-                .filter(
-                    Candidate.assigned_to_id == caller.id,
-                    Candidate.status.notin_(["sourced", "handed_to_recruiter"]),
+        if callers:
+            caller_ids = [c.id for c in callers]
+            # Single GROUP BY query replaces N×3 individual COUNT queries
+            rows = (
+                db.query(
+                    Candidate.assigned_to_id,
+                    func.count(Candidate.id).label("assigned"),
+                    func.count(Candidate.id).filter(
+                        Candidate.status.notin_(["sourced", "handed_to_recruiter"])
+                    ).label("called"),
+                    func.count(Candidate.id).filter(
+                        Candidate.status.in_([
+                            "validated", "submitted_to_client", "interview_stage",
+                            "offer_rolled_out", "joined",
+                        ])
+                    ).label("validated"),
                 )
-                .scalar()
-                or 0
+                .filter(Candidate.assigned_to_id.in_(caller_ids))
+                .group_by(Candidate.assigned_to_id)
+                .all()
             )
-            validated = (
-                db.query(func.count(Candidate.id))
-                .filter(
-                    Candidate.assigned_to_id == caller.id,
-                    Candidate.status.in_(
-                        [
-                            "validated",
-                            "submitted_to_client",
-                            "interview_stage",
-                            "offer_rolled_out",
-                            "joined",
-                        ],
-                    ),
-                )
-                .scalar()
-                or 0
-            )
-            recruiter_stats.append(
-                {
+            counts_by_id = {r[0]: r for r in rows}
+            for caller in callers:
+                r = counts_by_id.get(caller.id)
+                recruiter_stats.append({
                     "name": caller.name,
-                    "assigned": sourced,
-                    "called": called,
-                    "validated": validated,
-                },
-            )
+                    "assigned": r[1] if r else 0,
+                    "called": r[2] if r else 0,
+                    "validated": r[3] if r else 0,
+                })
 
     # Unread notifications
     unread_notifs = (
         db.query(func.count(Notification.id))
         .filter(
             Notification.user_id == user_id,
-            not Notification.is_read,
+            Notification.is_read == False,  # noqa: E712
         )
         .scalar()
         or 0

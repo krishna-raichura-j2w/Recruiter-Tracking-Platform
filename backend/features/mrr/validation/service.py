@@ -126,20 +126,24 @@ def list_pending_for_dl(
     Validation queue scoped to a DL's jobs (checks both delivery_lead_id and delivery_lead_ids).
     Excludes candidates the DL personally sourced or called.
     """
-    import json as _json
-
     from infra.models import Job as _Job
+    from sqlalchemy import cast, func, or_
+    from sqlalchemy.dialects.postgresql import JSONB
 
-    # Collect all job IDs this DL owns
-    dl_job_ids = []
-    for j in db.query(_Job).all():
-        ids = (
-            _json.loads(j.delivery_lead_ids or "[]")
-            if isinstance(j.delivery_lead_ids, str)
-            else (j.delivery_lead_ids or [])
-        )
-        if j.delivery_lead_id == dl_id or dl_id in ids:
-            dl_job_ids.append(j.id)
+    # Collect job IDs this DL owns via a single SQL query using JSONB cast.
+    # delivery_lead_id is a scalar FK; delivery_lead_ids is a JSON text array.
+    # COALESCE guards against NULL delivery_lead_ids on older rows.
+    dl_job_ids = [
+        row[0]
+        for row in db.query(_Job.id).filter(
+            or_(
+                _Job.delivery_lead_id == dl_id,
+                cast(func.coalesce(_Job.delivery_lead_ids, "[]"), JSONB).op("@>")(
+                    cast(f"[{dl_id}]", JSONB)
+                ),
+            )
+        ).all()
+    ]
 
     if not dl_job_ids:
         return [], 0

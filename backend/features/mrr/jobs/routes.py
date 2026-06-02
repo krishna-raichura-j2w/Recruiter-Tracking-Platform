@@ -416,13 +416,14 @@ def confirm_jd(
     if removed_ids:
         from infra.models import Candidate, CandidateStatus
 
-        from features.mrr.allocation.service import _caller_load
+        from features.mrr.allocation.service import _batch_caller_counts
 
         TERMINAL = [
             CandidateStatus.joined,
             CandidateStatus.backed_out,
             CandidateStatus.rejected,
         ]
+        caller_counts = _batch_caller_counts(db, list(body.recruiter_ids))
         for uid in removed_ids:
             cands = (
                 db.query(Candidate)
@@ -436,7 +437,7 @@ def confirm_jd(
             for c in cands:
                 c.assigned_to_id = min(
                     body.recruiter_ids,
-                    key=lambda rid: _caller_load(db, rid),
+                    key=lambda rid: caller_counts.get(rid, 0),
                 )
 
     # Keep DL assignment if already set (another DL was assigned); otherwise assign to confirmer
@@ -571,7 +572,7 @@ def reassign_recruiters(
     # stay with their original owner for audit/history accuracy.
     from infra.models import Candidate, CandidateStatus
 
-    from features.mrr.allocation.service import _caller_load
+    from features.mrr.allocation.service import _batch_caller_counts
 
     TERMINAL = {
         CandidateStatus.joined,
@@ -580,6 +581,7 @@ def reassign_recruiters(
     }
     moved_count = 0
     if removed_ids:
+        caller_counts = _batch_caller_counts(db, list(body.recruiter_ids))
         for uid in removed_ids:
             cands = (
                 db.query(Candidate)
@@ -591,10 +593,9 @@ def reassign_recruiters(
                 .all()
             )
             for c in cands:
-                # Pick the least-loaded remaining recruiter as the new owner
                 new_owner = min(
                     body.recruiter_ids,
-                    key=lambda rid: _caller_load(db, rid),
+                    key=lambda rid: caller_counts.get(rid, 0),
                 )
                 c.assigned_to_id = new_owner
                 moved_count += 1

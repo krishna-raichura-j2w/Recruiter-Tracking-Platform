@@ -87,21 +87,46 @@ def list_mails(
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
-    mails = _load(db).order_by(ConsultantMail.sent_at.desc()).all()
+    from infra.models import Job as _Job
+    from sqlalchemy import func, or_
+
+    # Lightweight ID-filter query
+    filter_q = db.query(ConsultantMail.id).order_by(ConsultantMail.sent_at.desc())
+
     if sent_by_id:
-        mails = [m for m in mails if m.sent_by_id == sent_by_id]
+        filter_q = filter_q.filter(ConsultantMail.sent_by_id == sent_by_id)
+
     if search:
-        q = search.lower()
-        mails = [
-            m
-            for m in mails
-            if q in (m.candidate_name or "").lower()
-            or q in (m.client_name or "").lower()
-            or q in (m.job_title or "").lower()
-        ]
-    total = len(mails)
+        s = f"%{search.lower()}%"
+        filter_q = (
+            filter_q
+            .join(Candidate, ConsultantMail.candidate_id == Candidate.id)
+            .join(_Job, Candidate.job_id == _Job.id)
+            .filter(
+                or_(
+                    func.lower(Candidate.full_name).like(s),
+                    func.lower(_Job.client_name).like(s),
+                    func.lower(_Job.role_title).like(s),
+                )
+            )
+        )
+
+    total = filter_q.count()
     if limit > 0:
-        mails = mails[skip : skip + limit]
+        mail_ids = [row[0] for row in filter_q.offset(skip).limit(limit).all()]
+    else:
+        mail_ids = [row[0] for row in filter_q.all()]
+
+    if not mail_ids:
+        return [], total
+
+    id_order = {mid: i for i, mid in enumerate(mail_ids)}
+    mails = (
+        _load(db)
+        .filter(ConsultantMail.id.in_(mail_ids))
+        .all()
+    )
+    mails.sort(key=lambda m: id_order.get(m.id, 0))
     return [_enrich(m) for m in mails], total
 
 

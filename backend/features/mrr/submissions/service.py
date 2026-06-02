@@ -9,6 +9,7 @@ from infra.models import (
     isofy_datetimes,
     to_iso_utc,
 )
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 
@@ -164,7 +165,72 @@ def list_validated_candidates(
     limit: int = 0,
 ) -> tuple[list, int]:
     """Candidates validated, not yet submitted. KAM/DL each see only their own JDs."""
-    q = (
+    from datetime import timedelta
+
+    from infra.models import Job as _Job, Submission as _Sub
+    from sqlalchemy import cast, or_
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    # Lightweight filter query — only fetches candidate IDs
+    filter_q = (
+        db.query(Candidate.id)
+        .outerjoin(_Sub, Candidate.id == _Sub.candidate_id)
+        .join(_Job, Candidate.job_id == _Job.id)
+        .filter(
+            Candidate.status == CandidateStatus.validated,
+            _Sub.id == None,  # noqa: E711 — not yet submitted
+        )
+    )
+
+    if kam_id:
+        filter_q = filter_q.filter(_Job.created_by_id == kam_id)
+    if dl_id:
+        filter_q = filter_q.filter(
+            or_(
+                _Job.delivery_lead_id == dl_id,
+                cast(func.coalesce(_Job.delivery_lead_ids, "[]"), JSONB).op("@>")(cast(f"[{dl_id}]", JSONB)),
+            )
+        )
+    if client_name:
+        filter_q = filter_q.filter(
+            func.lower(_Job.client_name) == client_name.strip().lower()
+        )
+    if business_head_id:
+        filter_q = filter_q.filter(_Job.account_manager_id == business_head_id)
+
+    fd = _parse_date(from_date)
+    td = _parse_date(to_date)
+    if fd:
+        filter_q = filter_q.filter(
+            Candidate.updated_at >= fd.replace(tzinfo=None)
+        )
+    if td:
+        filter_q = filter_q.filter(
+            Candidate.updated_at < (td + timedelta(days=1)).replace(tzinfo=None)
+        )
+    if search:
+        s = f"%{search.lower()}%"
+        filter_q = filter_q.filter(
+            or_(
+                func.lower(Candidate.full_name).like(s),
+                func.lower(_Job.client_name).like(s),
+                func.lower(_Job.role_title).like(s),
+            )
+        )
+
+    filter_q = filter_q.order_by(Candidate.updated_at.desc())
+    total = filter_q.count()
+
+    if limit > 0:
+        cand_ids = [row[0] for row in filter_q.offset(skip).limit(limit).all()]
+    else:
+        cand_ids = [row[0] for row in filter_q.all()]
+
+    if not cand_ids:
+        return [], total
+
+    id_order = {cid: i for i, cid in enumerate(cand_ids)}
+    candidates = (
         db.query(Candidate)
         .options(
             joinedload(Candidate.job),
@@ -172,56 +238,13 @@ def list_validated_candidates(
             joinedload(Candidate.assigned_to),
             joinedload(Candidate.submission),
         )
-        .filter(Candidate.status == CandidateStatus.validated)
+        .filter(Candidate.id.in_(cand_ids))
+        .all()
     )
+    candidates.sort(key=lambda c: id_order.get(c.id, 0))
 
-    candidates = q.all()
     result = []
-    sq = search.lower() if search else None
-    cf = client_name.strip().lower() if client_name else None
-    from datetime import timedelta
-
-    fd = _parse_date(from_date)
-    td = _parse_date(to_date)
-    td_end = td + timedelta(days=1) if td else None
     for c in candidates:
-        if c.submission:
-            continue
-        if kam_id and c.job and c.job.created_by_id != kam_id:
-            continue
-        if dl_id and c.job and not _dl_owns_job(c.job, dl_id):
-            continue
-        if cf and (not c.job or (c.job.client_name or "").strip().lower() != cf):
-            continue
-        if business_head_id and (
-            not c.job or c.job.account_manager_id != business_head_id
-        ):
-            continue
-        if (
-            fd
-            and c.updated_at
-            and c.updated_at.replace(tzinfo=None) < fd.replace(tzinfo=None)
-        ):
-            continue
-        if (
-            td_end
-            and c.updated_at
-            and c.updated_at.replace(tzinfo=None) >= td_end.replace(tzinfo=None)
-        ):
-            continue
-        if sq:
-            haystack = " ".join(
-                filter(
-                    None,
-                    [
-                        c.full_name,
-                        c.job.client_name if c.job else None,
-                        c.job.role_title if c.job else None,
-                    ],
-                ),
-            ).lower()
-            if sq not in haystack:
-                continue
         item = {col.name: getattr(c, col.name) for col in c.__table__.columns}
         isofy_datetimes(item)
         item["job_title"] = c.job.role_title if c.job else None
@@ -238,9 +261,6 @@ def list_validated_candidates(
             item["total_exp"] = c.assessment.total_exp
             item["relevant_exp"] = c.assessment.relevant_exp
         result.append(item)
-    total = len(result)
-    if limit > 0:
-        result = result[skip : skip + limit]
     return result, total
 
 
@@ -260,96 +280,91 @@ def list_submissions(
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
-    subs = _load(db).order_by(Submission.updated_at.desc()).all()
-    if kam_id:
-        subs = [
-            s
-            for s in subs
-            if s.candidate
-            and s.candidate.job
-            and s.candidate.job.created_by_id == kam_id
-        ]
-    if dl_id:
-        subs = [
-            s
-            for s in subs
-            if s.candidate and s.candidate.job and _dl_owns_job(s.candidate.job, dl_id)
-        ]
-    # Admin-driven filters (don't override scope, just narrow it further)
-    if client_name:
-        cf = client_name.strip().lower()
-        subs = [
-            s
-            for s in subs
-            if s.candidate
-            and s.candidate.job
-            and (s.candidate.job.client_name or "").strip().lower() == cf
-        ]
-    if business_head_id:
-        subs = [
-            s
-            for s in subs
-            if s.candidate
-            and s.candidate.job
-            and s.candidate.job.account_manager_id == business_head_id
-        ]
-    if delivery_lead_id:
-        subs = [
-            s
-            for s in subs
-            if s.candidate
-            and s.candidate.job
-            and _dl_owns_job(s.candidate.job, int(delivery_lead_id))
-        ]
-    if kam_filter_id:
-        subs = [
-            s
-            for s in subs
-            if s.candidate
-            and s.candidate.job
-            and s.candidate.job.created_by_id == kam_filter_id
-        ]
     from datetime import timedelta
+
+    from infra.models import Job as _Job
+    from sqlalchemy import cast, func, or_
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    # Lightweight ID-filter query — avoids loading full ORM graph before pagination
+    filter_q = (
+        db.query(Submission.id)
+        .join(Candidate, Submission.candidate_id == Candidate.id)
+        .join(_Job, Candidate.job_id == _Job.id)
+    )
+
+    if kam_id:
+        filter_q = filter_q.filter(_Job.created_by_id == kam_id)
+    if dl_id:
+        filter_q = filter_q.filter(
+            or_(
+                _Job.delivery_lead_id == dl_id,
+                cast(func.coalesce(_Job.delivery_lead_ids, "[]"), JSONB).op("@>")(cast(f"[{dl_id}]", JSONB)),
+            )
+        )
+    if client_name:
+        filter_q = filter_q.filter(
+            func.lower(_Job.client_name) == client_name.strip().lower()
+        )
+    if business_head_id:
+        filter_q = filter_q.filter(_Job.account_manager_id == business_head_id)
+    if delivery_lead_id:
+        filter_q = filter_q.filter(
+            or_(
+                _Job.delivery_lead_id == int(delivery_lead_id),
+                cast(func.coalesce(_Job.delivery_lead_ids, "[]"), JSONB).op("@>")(
+                    cast(f"[{int(delivery_lead_id)}]", JSONB)
+                ),
+            )
+        )
+    if kam_filter_id:
+        filter_q = filter_q.filter(_Job.created_by_id == kam_filter_id)
 
     fd = _parse_date(from_date)
     td = _parse_date(to_date)
-    td_end = td + timedelta(days=1) if td else None
     if fd:
-        subs = [
-            s
-            for s in subs
-            if s.updated_at
-            and s.updated_at.replace(tzinfo=None) >= fd.replace(tzinfo=None)
-        ]
-    if td_end:
-        subs = [
-            s
-            for s in subs
-            if s.updated_at
-            and s.updated_at.replace(tzinfo=None) < td_end.replace(tzinfo=None)
-        ]
+        filter_q = filter_q.filter(
+            Submission.updated_at >= fd.replace(tzinfo=None)
+        )
+    if td:
+        filter_q = filter_q.filter(
+            Submission.updated_at < (td + timedelta(days=1)).replace(tzinfo=None)
+        )
+
+    terminal_values = [s.value for s in TERMINAL_STAGES]
     if closed:
-        subs = [s for s in subs if s.current_stage in TERMINAL_STAGES]
+        filter_q = filter_q.filter(Submission.current_stage.in_(terminal_values))
     else:
-        subs = [s for s in subs if s.current_stage not in TERMINAL_STAGES]
+        filter_q = filter_q.filter(Submission.current_stage.notin_(terminal_values))
+
     if search:
-        q = search.lower()
-        subs = [
-            s
-            for s in subs
-            if q in (s.candidate.full_name or "").lower()
-            or q
-            in (
-                s.candidate.job.client_name if s.candidate and s.candidate.job else ""
-            ).lower()
-            or q
-            in (
-                s.candidate.job.role_title if s.candidate and s.candidate.job else ""
-            ).lower()
-        ]
-    total = len(subs)
+        s = f"%{search.lower()}%"
+        filter_q = filter_q.filter(
+            or_(
+                func.lower(Candidate.full_name).like(s),
+                func.lower(_Job.client_name).like(s),
+                func.lower(_Job.role_title).like(s),
+            )
+        )
+
+    filter_q = filter_q.order_by(Submission.updated_at.desc())
+    total = filter_q.count()
+
     if limit > 0:
-        subs = subs[skip : skip + limit]
+        sub_ids = [row[0] for row in filter_q.offset(skip).limit(limit).all()]
+    else:
+        sub_ids = [row[0] for row in filter_q.all()]
+
+    if not sub_ids:
+        return [], total
+
+    id_order = {sid: i for i, sid in enumerate(sub_ids)}
+    subs = (
+        _load(db)
+        .filter(Submission.id.in_(sub_ids))
+        .all()
+    )
+    subs.sort(key=lambda s: id_order.get(s.id, 0))
     return [_enrich(s) for s in subs], total
 
 

@@ -14,7 +14,7 @@ from infra.models import (
     UserRole,
     to_iso_utc,
 )
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 
@@ -360,49 +360,73 @@ def get_user_details(db: Session, user_id: int) -> dict | None:
         pod_lead_name = pl.name if pl else None
 
     team_size = (
-        db.query(User)
+        db.query(func.count(User.id))
         .filter(User.pod_lead_id == user_id, User.is_active == True)  # noqa: E712
-        .count()
+        .scalar() or 0
     )
 
-    # ── Job-related counts ────────────────────────────────────────────────────
-    q_jobs_created = db.query(Job).filter(Job.created_by_id == user_id)
-    jobs_created = q_jobs_created.count()
-    jobs_created_open = q_jobs_created.filter(Job.status == JobStatus.open).count()
+    # ── Job counts — 2 queries instead of 5 ──────────────────────────────────
+    jobs_created_row = db.query(
+        func.count(Job.id).label("total"),
+        func.count(Job.id).filter(Job.status == JobStatus.open).label("open"),
+    ).filter(Job.created_by_id == user_id).one()
+    jobs_created = jobs_created_row.total
+    jobs_created_open = jobs_created_row.open
 
-    jobs_as_dl = db.query(Job).filter(Job.delivery_lead_id == user_id).count()
-    jobs_sourcing = db.query(Job).filter(Job.assigned_sourcer_id == user_id).count()
-    jobs_calling = db.query(Job).filter(Job.assigned_caller_id == user_id).count()
+    jobs_role_row = db.query(
+        func.count(Job.id).filter(Job.delivery_lead_id == user_id).label("as_dl"),
+        func.count(Job.id).filter(Job.assigned_sourcer_id == user_id).label("sourcing"),
+        func.count(Job.id).filter(Job.assigned_caller_id == user_id).label("calling"),
+    ).filter(
+        or_(
+            Job.delivery_lead_id == user_id,
+            Job.assigned_sourcer_id == user_id,
+            Job.assigned_caller_id == user_id,
+        )
+    ).one()
+    jobs_as_dl = jobs_role_row.as_dl
+    jobs_sourcing = jobs_role_row.sourcing
+    jobs_calling = jobs_role_row.calling
 
-    # ── Candidate / pipeline counts ───────────────────────────────────────────
-    candidates_sourced = (
-        db.query(Candidate).filter(Candidate.sourced_by_id == user_id).count()
-    )
-    candidates_to_call = (
-        db.query(Candidate).filter(Candidate.assigned_to_id == user_id).count()
-    )
-    candidates_validated = (
-        db.query(Candidate).filter(Candidate.assigned_validator_id == user_id).count()
-    )
+    # ── Candidate counts — 1 query instead of 3 ──────────────────────────────
+    cand_row = db.query(
+        func.count(Candidate.id).filter(Candidate.sourced_by_id == user_id).label("sourced"),
+        func.count(Candidate.id).filter(Candidate.assigned_to_id == user_id).label("to_call"),
+        func.count(Candidate.id).filter(Candidate.assigned_validator_id == user_id).label("validated"),
+    ).filter(
+        or_(
+            Candidate.sourced_by_id == user_id,
+            Candidate.assigned_to_id == user_id,
+            Candidate.assigned_validator_id == user_id,
+        )
+    ).one()
+    candidates_sourced = cand_row.sourced
+    candidates_to_call = cand_row.to_call
+    candidates_validated = cand_row.validated
 
-    calls_logged = db.query(CallLog).filter(CallLog.caller_id == user_id).count()
+    calls_logged = (
+        db.query(func.count(CallLog.id)).filter(CallLog.caller_id == user_id).scalar() or 0
+    )
     submissions_as_dl = (
-        db.query(Submission).filter(Submission.delivery_lead_id == user_id).count()
+        db.query(func.count(Submission.id))
+        .filter(Submission.delivery_lead_id == user_id)
+        .scalar() or 0
     )
     mails_sent = (
-        db.query(ConsultantMail).filter(ConsultantMail.sent_by_id == user_id).count()
+        db.query(func.count(ConsultantMail.id))
+        .filter(ConsultantMail.sent_by_id == user_id)
+        .scalar() or 0
     )
-    notifications_received = (
-        db.query(Notification).filter(Notification.user_id == user_id).count()
-    )
-    unread_notifications = (
-        db.query(Notification)
-        .filter(
-            Notification.user_id == user_id,
-            not Notification.is_read,
-        )
-        .count()
-    )
+
+    # ── Notification counts — 1 query instead of 2 ───────────────────────────
+    notif_row = db.query(
+        func.count(Notification.id).label("total"),
+        func.count(Notification.id).filter(
+            Notification.is_read == False  # noqa: E712
+        ).label("unread"),
+    ).filter(Notification.user_id == user_id).one()
+    notifications_received = notif_row.total
+    unread_notifications = notif_row.unread
 
     # ── Recent items (≤ 10 each) ──────────────────────────────────────────────
     recent_jobs = (
