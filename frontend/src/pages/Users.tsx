@@ -9,6 +9,7 @@ import {
   RefreshCw, Search, Briefcase, Phone, Calendar, UserCheck, KeyRound,
   Activity, Mail, FileText, Bell, Users as UsersIcon,
   Upload, Download, CheckCircle2, AlertCircle, FileSpreadsheet,
+  ChevronDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
@@ -297,8 +298,28 @@ export default function Users() {
     } finally { setEuSaving(false); }
   };
 
-  // ── Team JD Assignments (DL view) ────────────────────────────────────────
-  const [teamAssignments, setTeamAssignments] = useState<TeamAssignment[]>([]);
+  // ── Team JD Assignments (DL view) — lazy-loaded per member on expand ───────
+  const [expandedMemberIds, setExpandedMemberIds] = useState<Set<number>>(new Set());
+  const [memberJobsCache, setMemberJobsCache] = useState<Record<number, TeamAssignment['jobs']>>({});
+  const [loadingMemberIds, setLoadingMemberIds] = useState<Set<number>>(new Set());
+
+  const fetchMemberJobs = useCallback(async (memberId: number) => {
+    if (memberJobsCache[memberId] !== undefined) return;
+    setLoadingMemberIds(prev => new Set(prev).add(memberId));
+    try {
+      const { data } = await api.get<TeamAssignment[]>('/users/team-assignments', { params: { member_id: memberId } });
+      setMemberJobsCache(prev => ({ ...prev, [memberId]: data[0]?.jobs ?? [] }));
+    } catch { /* ignore */ }
+    finally { setLoadingMemberIds(prev => { const s = new Set(prev); s.delete(memberId); return s; }); }
+  }, [memberJobsCache]);
+
+  const toggleMember = useCallback((memberId: number) => {
+    setExpandedMemberIds(prev => {
+      const s = new Set(prev);
+      if (s.has(memberId)) { s.delete(memberId); } else { s.add(memberId); fetchMemberJobs(memberId); }
+      return s;
+    });
+  }, [fetchMemberJobs]);
 
   // ── Recruiter activity overlay ────────────────────────────────────────────
   const [activityMember, setActivityMember] = useState<TeamMemberLoad | null>(null);
@@ -351,10 +372,7 @@ export default function Users() {
           setRecruiters((r.data.callers ?? []) as TeamMemberLoad[]);
         }).catch(() => {})
       : Promise.resolve();
-    const p3 = isDeliveryLead
-      ? api.get<TeamAssignment[]>('/users/team-assignments').then((r) => setTeamAssignments(r.data)).catch(() => {})
-      : Promise.resolve();
-    Promise.all([p1, p2, p3]).finally(() => setLoading(false));
+    Promise.all([p1, p2]).finally(() => setLoading(false));
   }, [isDeliveryLead, userPage, userPerPage, userSearch]);
 
   const fetchAvailable = useCallback(() => {
@@ -826,53 +844,71 @@ export default function Users() {
           </div>
         )}
 
-        {/* ── JD Assignment Progress ──────────────────────────────────────── */}
-        {isDeliveryLead && teamAssignments.length > 0 && (
+        {/* ── JD Assignment Progress — lazy-loaded per recruiter ─────────── */}
+        {isDeliveryLead && recruiters.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
               <Briefcase size={15} className="text-slate-400" />
               <h3 className="text-sm font-bold text-slate-700">JD Assignment Progress</h3>
+              <span className="ml-auto text-xs text-slate-400">Click to expand</span>
             </div>
             <div className="divide-y divide-slate-50">
-              {teamAssignments.filter(m => m.jobs.length > 0).map(member => (
-                <div key={member.id} className="px-6 py-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                      {getInitials(member.name)}
+              {recruiters.map(member => {
+                const isExpanded = expandedMemberIds.has(member.id);
+                const isMemberLoading = loadingMemberIds.has(member.id);
+                const jobs = memberJobsCache[member.id] ?? [];
+                return (
+                  <div key={member.id}>
+                    <div
+                      className="px-6 py-3 flex items-center gap-2 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                      onClick={() => toggleMember(member.id)}
+                    >
+                      <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                        {getInitials(member.name)}
+                      </div>
+                      <span className="text-sm font-semibold text-slate-800 flex-1">{member.name}</span>
+                      <span className="text-xs text-slate-400 hidden sm:inline">
+                        {member.sourcing_load} JDs · {member.calling_load} candidates
+                      </span>
+                      {isMemberLoading
+                        ? <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin ml-2 flex-shrink-0" />
+                        : <ChevronDown size={14} className={`ml-2 text-slate-400 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                      }
                     </div>
-                    <span className="text-sm font-semibold text-slate-800">{member.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
-                      Recruiter
-                    </span>
+                    {isExpanded && !isMemberLoading && (
+                      <div className="px-6 pb-4 pt-1 space-y-2">
+                        {jobs.length === 0
+                          ? <p className="text-xs text-slate-400 py-1">No active JDs assigned.</p>
+                          : jobs.map((j, idx) => {
+                              const pct = j.target ? Math.min(100, Math.round((j.actual / j.target) * 100)) : null;
+                              return (
+                                <div key={idx} className="bg-slate-50 rounded-xl px-4 py-2.5">
+                                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <span className="text-xs font-semibold text-slate-700 truncate">{j.role_title}</span>
+                                      <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">· {j.client_name}</span>
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-700 flex-shrink-0 tabular-nums">
+                                      {j.actual}{j.target ? ` / ${j.target}` : ''}{pct != null ? ` (${pct}%)` : ''}
+                                    </span>
+                                  </div>
+                                  {j.target != null && (
+                                    <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${pct! >= 100 ? 'bg-emerald-500' : pct! >= 60 ? 'bg-blue-500' : 'bg-amber-400'}`}
+                                        style={{ width: `${pct}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                        }
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2.5">
-                    {member.jobs.map((j, idx) => {
-                      const pct = j.target ? Math.min(100, Math.round((j.actual / j.target) * 100)) : null;
-                      return (
-                        <div key={idx} className="bg-slate-50 rounded-xl px-4 py-2.5">
-                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span className="text-xs font-semibold text-slate-700 truncate">{j.role_title}</span>
-                              <span className="text-xs text-slate-400 flex-shrink-0 hidden sm:inline">· {j.client_name}</span>
-                            </div>
-                            <span className="text-xs font-bold text-slate-700 flex-shrink-0 tabular-nums">
-                              {j.actual}{j.target ? ` / ${j.target}` : ''}{pct != null ? ` (${pct}%)` : ''}
-                            </span>
-                          </div>
-                          {j.target != null && (
-                            <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${pct! >= 100 ? 'bg-emerald-500' : pct! >= 60 ? 'bg-blue-500' : 'bg-amber-400'}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

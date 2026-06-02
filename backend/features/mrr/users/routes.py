@@ -231,13 +231,15 @@ def list_kams(
 
 @router.get("/team-assignments")
 def get_team_assignments(
+    member_id: int | None = Query(None, description="Return data for one recruiter only (lazy expand)"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles("admin", "delivery_lead")),
 ):
-    """Per-JD assignment progress for each DL's team member (target vs actual)."""
+    """Per-JD assignment progress for a DL's team. Pass member_id for single-recruiter lazy load."""
     import json as _json
 
     from infra.models import Candidate, Job, JobStatus
+    from sqlalchemy import func
 
     dl_id = current_user.id if current_user.role.value == "delivery_lead" else None
     if dl_id is None:
@@ -251,69 +253,91 @@ def get_team_assignments(
         )
         .all()
     )
+    if not jobs:
+        return []
 
-    members: dict[int, dict] = {}
+    job_ids = [j.id for j in jobs]
 
-    def _ensure(uid: int, role_type: str):
-        if uid not in members:
-            u = db.query(User).filter(User.id == uid).first()
-            if not u:
-                return False
-            members[uid] = {
-                "id": u.id,
-                "name": u.name,
-                "recruiter_type": (
-                    u.recruiter_type.value if u.recruiter_type else role_type
-                ),
-                "jobs": [],
-            }
-        return True
-
+    # Collect recruiter IDs per job in one Python pass
+    job_recruiter_map: dict[int, list[int]] = {}
+    all_uids: set[int] = set()
     for job in jobs:
         sourcer_ids = (
-            _json.loads(job.sourcer_ids or "[]")
-            if isinstance(job.sourcer_ids, str)
-            else []
+            _json.loads(job.sourcer_ids or "[]") if isinstance(job.sourcer_ids, str) else []
         )
         caller_ids = (
-            _json.loads(job.caller_ids or "[]")
-            if isinstance(job.caller_ids, str)
-            else []
+            _json.loads(job.caller_ids or "[]") if isinstance(job.caller_ids, str) else []
         )
-        # Unified recruiter list — deduped union so each person appears once per job
-        recruiter_ids = list(dict.fromkeys(sourcer_ids + caller_ids))
+        rids = list(dict.fromkeys(sourcer_ids + caller_ids))
+        job_recruiter_map[job.id] = rids
+        all_uids.update(rids)
 
-        for uid in recruiter_ids:
-            if not _ensure(uid, "recruiter"):
+    if not all_uids:
+        return []
+
+    # Scope to one member when doing lazy expand
+    target_uids = {member_id} if member_id is not None else all_uids
+    target_uids = target_uids & all_uids  # ensure member is actually on a job
+    if not target_uids:
+        return []
+
+    # Batch fetch user names — 1 query instead of N
+    users_map = {
+        u.id: u for u in db.query(User).filter(User.id.in_(target_uids)).all()
+    }
+
+    # Batch candidate counts per (uid, job_id) — 2 queries instead of N×M×2
+    sourced_counts: dict[tuple[int, int], int] = {}
+    for uid, jid, cnt in (
+        db.query(Candidate.sourced_by_id, Candidate.job_id, func.count(Candidate.id))
+        .filter(
+            Candidate.job_id.in_(job_ids),
+            Candidate.sourced_by_id.in_(target_uids),
+        )
+        .group_by(Candidate.sourced_by_id, Candidate.job_id)
+        .all()
+    ):
+        sourced_counts[(uid, jid)] = cnt
+
+    called_counts: dict[tuple[int, int], int] = {}
+    for uid, jid, cnt in (
+        db.query(Candidate.assigned_to_id, Candidate.job_id, func.count(Candidate.id))
+        .filter(
+            Candidate.job_id.in_(job_ids),
+            Candidate.assigned_to_id.in_(target_uids),
+        )
+        .group_by(Candidate.assigned_to_id, Candidate.job_id)
+        .all()
+    ):
+        called_counts[(uid, jid)] = cnt
+
+    members: dict[int, dict] = {}
+    for job in jobs:
+        for uid in job_recruiter_map[job.id]:
+            if uid not in target_uids:
                 continue
-            sourced = (
-                db.query(Candidate)
-                .filter(
-                    Candidate.job_id == job.id,
-                    Candidate.sourced_by_id == uid,
-                )
-                .count()
-            )
-            called = (
-                db.query(Candidate)
-                .filter(
-                    Candidate.job_id == job.id,
-                    Candidate.assigned_to_id == uid,
-                )
-                .count()
-            )
-            members[uid]["jobs"].append(
-                {
-                    "job_id": job.id,
-                    "role_title": job.role_title,
-                    "client_name": job.client_name,
-                    "assignment_type": "recruiter",
-                    "target": job.sourcing_target,
-                    "actual": sourced + called,
-                    "sourced": sourced,
-                    "called": called,
-                },
-            )
+            u = users_map.get(uid)
+            if not u:
+                continue
+            if uid not in members:
+                members[uid] = {
+                    "id": u.id,
+                    "name": u.name,
+                    "recruiter_type": u.recruiter_type.value if u.recruiter_type else "recruiter",
+                    "jobs": [],
+                }
+            sourced = sourced_counts.get((uid, job.id), 0)
+            called = called_counts.get((uid, job.id), 0)
+            members[uid]["jobs"].append({
+                "job_id": job.id,
+                "role_title": job.role_title,
+                "client_name": job.client_name,
+                "assignment_type": "recruiter",
+                "target": job.sourcing_target,
+                "actual": sourced + called,
+                "sourced": sourced,
+                "called": called,
+            })
 
     return list(members.values())
 
