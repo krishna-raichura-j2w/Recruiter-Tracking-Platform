@@ -91,6 +91,7 @@ export interface Ticket {
   description: string | null;
   po_risk_amount: number | null;
   status: "open" | "closed";
+  po_outcome: "retained" | "loss" | null;
   hierarchy_json: HierarchyStep[];
   current_step: number;
   attachments: string[];
@@ -124,6 +125,24 @@ export interface TicketListResponse {
 export interface TicketDetailResponse {
   data: Ticket;
   meta: { status: boolean; message: string };
+}
+
+// ── Close ticket payload ──────────────────────────────────────────────────
+
+export interface CloseTicketPayload {
+  po_outcome?: "retained" | "loss" | null;
+  // PO Retained
+  new_po_end_date?: string | null;   // YYYY-MM-DD
+  new_po_monthly?: number | null;
+  new_margin?: number | null;
+  new_ctc?: number | null;
+  // PO Loss — exit
+  consultant_exited?: boolean;
+  exit_date?: string | null;         // YYYY-MM-DD
+  exit_reason?: string | null;
+  exit_type?: string | null;
+  replacement_needed?: boolean;
+  notes?: string | null;
 }
 
 // ── Step SLA extension payload ────────────────────────────────────────────

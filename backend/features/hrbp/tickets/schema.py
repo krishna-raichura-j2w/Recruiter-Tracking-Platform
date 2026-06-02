@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -59,6 +59,26 @@ class StepReassignPayload(BaseModel):
     user_name: str
     user_email: str | None = None
     reason: str
+
+
+# ── Close (with optional PO outcome) ─────────────────────────────────────────
+
+class CloseTicketPayload(BaseModel):
+    po_outcome: Literal["retained", "loss"] | None = None
+
+    # PO Retained — new PO terms (all optional)
+    new_po_end_date: date | None = None
+    new_po_monthly:  Decimal | None = None
+    new_margin:      Decimal | None = None
+    new_ctc:         Decimal | None = None
+
+    # PO Loss — exit details (only relevant when consultant_exited=True)
+    consultant_exited: bool = False
+    exit_date:         date | None = None
+    exit_reason:       str | None = None   # resignation | end_of_contract | termination | mutual_separation
+    exit_type:         str | None = None   # voluntary | involuntary
+    replacement_needed: bool = False
+    notes:             str | None = None
 
 
 # ── Update (partial — only creator can update) ───────────────────────────────

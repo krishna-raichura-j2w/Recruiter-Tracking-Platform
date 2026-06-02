@@ -334,6 +334,7 @@ class HRBPTicket(Base):
     step_started_at      = Column(DateTime(timezone=True))
     step_sla_alerted_at  = Column(DateTime(timezone=True))
     step_sla_extended_until = Column(DateTime(timezone=True))
+    po_outcome        = Column(Text)   # 'retained' | 'loss' | NULL (skipped)
     closed_at         = Column(DateTime(timezone=True))
     created_at        = Column(DateTime(timezone=True), default=_now)
     updated_at        = Column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -415,6 +416,11 @@ class HRBPPoRevision(Base):
     status          = Column(Text, nullable=False, default="pending_approval")
     notes           = Column(Text)
     created_by_id   = Column(Integer, ForeignKey("users.id"))
+    # po_retained close-time snapshot fields
+    revision_type   = Column(Text, nullable=False, default="rate_change")  # 'rate_change' | 'po_retained'
+    new_po_end_date = Column(Date)
+    new_margin      = Column(Numeric(14, 2))
+    new_ctc         = Column(Numeric(14, 2))
     created_at      = Column(DateTime(timezone=True), default=_now)
     updated_at      = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
