@@ -411,6 +411,7 @@ def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=Non
     new_data["sourcing_alerted"] = False
     new_data["calling_warned"] = False
     new_data["calling_alerted"] = False
+    new_data["is_synced"] = False
 
     creator = db.query(User).filter(User.id == new_data.get("created_by_id")).first()
     new_data["email_id"] = creator.email if creator else None
