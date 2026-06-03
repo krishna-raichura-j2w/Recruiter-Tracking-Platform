@@ -129,7 +129,8 @@ const navConfig: Record<string, NavGroup[]> = {
     {
       section: 'Performance',
       items: [
-        { label: 'Leaderboard', path: '/leaderboard', icon: <Trophy size={16} /> },
+        { label: 'Leaderboard',      path: '/leaderboard', icon: <Trophy size={16} /> },
+        { label: 'Pod Monthly Plans', path: '/pod-plan',   icon: <BarChart2 size={16} /> },
       ],
     },
     {
