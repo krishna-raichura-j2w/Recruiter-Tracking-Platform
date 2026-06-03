@@ -12,16 +12,9 @@ import os
 import re
 from typing import Any
 
+from core.ai_service import chat_ai
 from docx import Document
-from openai import AzureOpenAI
 from pypdf import PdfReader
-
-_client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_version=os.getenv("AZURE_API_VERSION"),
-)
-_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
 
 
 SYSTEM_PROMPT = """You are a senior technical recruiter with 10+ years sourcing candidates on Naukri.com India.
@@ -274,20 +267,14 @@ def extract_text_from_docx(data: bytes) -> str:
 # ── main entry ────────────────────────────────────────────────────────────────
 def build_boolean(jd_text: str, strictness: int = 3) -> dict[str, Any]:
     strictness = max(1, min(5, strictness))
-    prompt = SYSTEM_PROMPT + STRICTNESS_INSTRUCTIONS.get(strictness, "")
+    system = SYSTEM_PROMPT + STRICTNESS_INSTRUCTIONS.get(strictness, "")
 
-    resp = _client.chat.completions.create(
-        model=_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": f"Job Description:\n\n{jd_text}"},
-        ],
-        temperature=0.0,
-        top_p=1.0,
+    raw = chat_ai(
+        messages=[{"role": "user", "content": f"Job Description:\n\n{jd_text}"}],
+        system_prompt=system,
         max_tokens=2048,
-        response_format={"type": "json_object"},
+        json_mode=True,
     )
-    raw = resp.choices[0].message.content or ""
     payload = _extract_first_json(raw)
 
     skills = _normalize_skills(payload.get("skills", []))

@@ -33,13 +33,17 @@ Rules:
 """
 
 
-def _use_claude() -> bool:
-    return (settings.model_to_use or "AZURE").upper() == "CLAUDE"
+def _provider() -> str:
+    return (settings.model_to_use or "AZURE").upper()
 
 
-def _image_block_azure(img_bytes: bytes, mime: str) -> dict:
+def _image_block_openai(img_bytes: bytes, mime: str) -> dict:
     b64 = base64.b64encode(img_bytes).decode("utf-8")
     return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+
+
+# Azure uses the same image format as standard OpenAI
+_image_block_azure = _image_block_openai
 
 
 def _image_block_claude(img_bytes: bytes, mime: str) -> dict:
@@ -48,8 +52,11 @@ def _image_block_claude(img_bytes: bytes, mime: str) -> dict:
 
 
 def _call_llm(content: list) -> tuple[ConsultantProfile, dict]:
-    if _use_claude():
+    p = _provider()
+    if p == "CLAUDE":
         return _call_claude(content)
+    if p == "OPENAI":
+        return _call_openai(content)
     return _call_azure(content)
 
 
@@ -80,6 +87,40 @@ def _call_claude(content: list) -> tuple[ConsultantProfile, dict]:
         "total_cost_usd": 0,
     }
     return profile, cost_info
+
+
+def _call_openai(content: list) -> tuple[ConsultantProfile, dict]:
+    from openai import OpenAI
+    client = OpenAI(api_key=settings.open_ai_key or "")
+    model = settings.open_ai_model
+    _rates = {
+        "gpt-4o-mini": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
+        "gpt-4o":      {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
+    }
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+    raw = json.loads(response.choices[0].message.content)
+    profile = ConsultantProfile(**raw)
+    usage = response.usage
+    rates = _rates.get(model, _rates["gpt-4o-mini"])
+    inp = round(usage.prompt_tokens * rates["input"], 8)
+    out = round(usage.completion_tokens * rates["output"], 8)
+    return profile, {
+        "model": model,
+        "input_tokens": usage.prompt_tokens,
+        "output_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+        "input_cost_usd": inp,
+        "output_cost_usd": out,
+        "total_cost_usd": round(inp + out, 8),
+    }
 
 
 def _call_azure(content: list) -> tuple[ConsultantProfile, dict]:
@@ -150,5 +191,5 @@ def extract_from_docx(docx_bytes: bytes) -> tuple[ConsultantProfile, dict]:
 
 
 def extract_from_image(img_bytes: bytes, mime: str) -> tuple[ConsultantProfile, dict]:
-    block = _image_block_claude(img_bytes, mime) if _use_claude() else _image_block_azure(img_bytes, mime)
+    block = _image_block_claude(img_bytes, mime) if _provider() == "CLAUDE" else _image_block_openai(img_bytes, mime)
     return _call_llm([block])

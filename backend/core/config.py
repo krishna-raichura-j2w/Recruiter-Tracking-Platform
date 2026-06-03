@@ -89,6 +89,9 @@ class Settings(BaseSettings):
         default="claude-haiku-4-5-20251001",
         validation_alias="CLAUDE_MODEL_NAME",
     )
+    # Standard OpenAI
+    open_ai_key: str | None = Field(default=None, validation_alias="OPEN_AI_KEY")
+    open_ai_model: str = Field(default="gpt-4o-mini", validation_alias="OPEN_AI_MODEL")
     model_to_use: str = Field(default="AZURE", validation_alias="MODEL_TO_USE")
 
     # Frontend origin (used for password-reset links in emails)
