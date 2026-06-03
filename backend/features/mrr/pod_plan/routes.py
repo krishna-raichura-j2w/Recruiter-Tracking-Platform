@@ -451,6 +451,8 @@ def bh_leaderboard_detail(
 
     ol_subs: dict[int, int] = {}
     ol_int: dict[int, int] = {}
+    ol_mtd_subs: dict[int, int] = {}
+    ol_mtd_int: dict[int, int] = {}
 
     if ol_to_ct and _cfg.ol_replica_host:
         import pymysql
@@ -482,18 +484,44 @@ def bh_leaderboard_detail(
                         WHERE vs.interview_date = %s
                           AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
                         GROUP BY jp.client_id
+                        UNION ALL
+                        SELECT 'sub_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
+                        FROM applied_jobs aj
+                        JOIN job_postings jp ON aj.job_posting_id = jp.id
+                        JOIN clients cl ON jp.client_id = cl.user_id
+                        WHERE aj.current_step >= 7
+                          AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) >= %s
+                          AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) <= %s
+                          AND cl.user_id IN ({ph})
+                        GROUP BY cl.user_id
+                        UNION ALL
+                        SELECT 'int_mtd' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
+                        FROM validation_screens vs
+                        JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
+                        WHERE vs.interview_date >= %s
+                          AND vs.interview_date <= %s
+                          AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
+                        GROUP BY jp.client_id
                         """,
-                        [target_date] + ol_ids + [target_date] + ol_ids,
+                        [target_date] + ol_ids
+                        + [target_date] + ol_ids
+                        + [m_start, target_date] + ol_ids
+                        + [m_start, target_date] + ol_ids,
                     )
                     for row in cur.fetchall():
                         ct_id = ol_to_ct.get(int(row["client_id"]))
                         if ct_id is None:
                             continue
                         cnt = int(row["cnt"])
-                        if row["kind"] == "sub":
+                        kind = row["kind"]
+                        if kind == "sub":
                             ol_subs[ct_id] = ol_subs.get(ct_id, 0) + cnt
-                        else:
+                        elif kind == "int":
                             ol_int[ct_id] = ol_int.get(ct_id, 0) + cnt
+                        elif kind == "sub_mtd":
+                            ol_mtd_subs[ct_id] = ol_mtd_subs.get(ct_id, 0) + cnt
+                        elif kind == "int_mtd":
+                            ol_mtd_int[ct_id] = ol_mtd_int.get(ct_id, 0) + cnt
             finally:
                 ol_conn.close()
         except Exception:
@@ -528,8 +556,8 @@ def bh_leaderboard_detail(
             "monthly_int": monthly_int,
             "selects_needed": em.get("selects_needed", 0),
             "obs_needed": em.get("obs_needed", 0),
-            "mtd_subs": int(m_act.get("subs", 0)),
-            "mtd_int": int(m_act.get("interviews", 0)),
+            "mtd_subs": ol_mtd_subs.get(cid, int(m_act.get("subs", 0))),
+            "mtd_int": ol_mtd_int.get(cid, int(m_act.get("interviews", 0))),
             "mtd_sel": int(m_act.get("selects", 0)),
             "mtd_obs": int(m_act.get("obs", 0)),
         })
