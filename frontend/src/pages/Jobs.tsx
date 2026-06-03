@@ -7,7 +7,7 @@ import {
   Loader2, MapPin, Users, Briefcase, ChevronRight,
   BookOpen, Clock, DollarSign, GraduationCap,
   Phone, Lock, Unlock, Pencil, Search, Calendar,
-  UserCheck, Trash2,
+  UserCheck, Trash2, RefreshCw, CheckCircle2,
 } from 'lucide-react';
 import LottieLib from 'lottie-react';
 import jobVacancyAnim from '../assets/lottie-job-vacancy.json';
@@ -203,6 +203,12 @@ export default function Jobs() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [togglingJobId, setTogglingJobId] = useState<number | null>(null);
+
+  // Repost state
+  const [repostJob, setRepostJob] = useState<Job | null>(null);
+  const [repostDeadline, setRepostDeadline] = useState('');
+  const [repostResult, setRepostResult] = useState<{ oldId: number; newId: number; roleTitle: string } | null>(null);
+  const [reposting, setReposting] = useState(false);
 
   // Questionnaire overlay + settings modal state
   const [generatingQIds, setGeneratingQIds]         = useState<Set<number>>(new Set());
@@ -410,6 +416,26 @@ export default function Jobs() {
   };
 
   const canToggle = isAdmin || isKam || isDeliveryLead;
+
+  const handleRepost = async () => {
+    if (!repostJob) return;
+    if (!repostDeadline) { alert('Please set a deadline for the new job.'); return; }
+    setReposting(true);
+    try {
+      const res = await api.post<{ old_job_id: number; new_job_id: number; new_job: Job }>(`/jobs/${repostJob.id}/repost`, {
+        deadline: new Date(repostDeadline).toISOString(),
+      });
+      setRepostJob(null);
+      setRepostDeadline('');
+      setRepostResult({ oldId: res.data.old_job_id, newId: res.data.new_job_id, roleTitle: repostJob.role_title });
+      fetchJobs();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      alert(msg || 'Failed to repost job.');
+    } finally {
+      setReposting(false);
+    }
+  };
 
   const openEditModal = (job: Job) => {
     setEditJob(job);
@@ -899,6 +925,7 @@ export default function Jobs() {
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
               onReassign={() => openReassignModal(job)}
+              onRepost={() => setRepostJob(job)}
               onDelete={async () => {
                 if (!confirm(`Delete JD "${job.role_title}" (${job.client_job_id ?? ''})? This cannot be undone.`)) return;
                 const previousJobs = jobs;
@@ -1967,6 +1994,129 @@ export default function Jobs() {
           />
         </div>
       )}
+
+      {/* Repost confirm modal */}
+      {repostJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+              <div className="p-2 rounded-xl" style={{ background: '#FFF7ED' }}>
+                <RefreshCw size={18} style={{ color: '#C2410C' }} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Repost Job</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{repostJob.role_title} · {repostJob.client_name}</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-1.5">
+                <p className="font-semibold">This will do the following:</p>
+                <ul className="text-xs space-y-1 mt-1.5 ml-1">
+                  <li className="flex items-start gap-2">
+                    <span className="mt-0.5 text-amber-500">•</span>
+                    <span>Mark <strong>JD #{repostJob.id}</strong> ({repostJob.role_title}) as <strong>Closed</strong></span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="mt-0.5 text-amber-500">•</span>
+                    <span>Create a new job with the same details but <strong>no job_id</strong> (OL link cleared)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="mt-0.5 text-amber-500">•</span>
+                    <span>The new job will be in <strong>Pending Review</strong> — assign recruiters to open it</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* New deadline — required */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  New Expected Client Closure Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={repostDeadline}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={e => setRepostDeadline(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-200"
+                  style={{ borderColor: repostDeadline ? '#d1d5db' : '#fca5a5', background: repostDeadline ? '#fff' : '#fff7ed' }}
+                />
+                {!repostDeadline && (
+                  <p className="text-[11px] text-orange-600 mt-1">Required — set the deadline for the new job posting.</p>
+                )}
+              </div>
+
+              {repostJob.job_id != null && (
+                <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                  Current OL job_id <code className="font-bold text-slate-700">JD-{repostJob.job_id}</code> will be cleared on the new job.
+                </p>
+              )}
+            </div>
+
+            <div className="px-6 pb-5 flex justify-end gap-3">
+              <button
+                onClick={() => { setRepostJob(null); setRepostDeadline(''); }}
+                disabled={reposting}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRepost}
+                disabled={reposting}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-60"
+                style={{ background: '#C2410C' }}
+              >
+                {reposting
+                  ? <><Loader2 size={14} className="animate-spin" /> Reposting…</>
+                  : <><RefreshCw size={14} /> Repost Job</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Repost success result */}
+      {repostResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-6 py-5 text-center">
+              <div className="flex justify-center mb-4">
+                <div className="p-3 rounded-full" style={{ background: '#F0FDF4' }}>
+                  <CheckCircle2 size={28} style={{ color: '#16A34A' }} />
+                </div>
+              </div>
+              <h3 className="text-base font-bold text-slate-800 mb-1">Job Reposted Successfully</h3>
+              <p className="text-xs text-slate-400 mb-5">{repostResult.roleTitle}</p>
+
+              <div className="space-y-2 text-sm mb-6">
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <span className="text-slate-500 text-xs font-medium">Old Job</span>
+                  <span className="flex items-center gap-2 font-semibold">
+                    <code className="text-slate-700">#{repostResult.oldId}</code>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">Closed</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-green-50 border border-green-100">
+                  <span className="text-slate-500 text-xs font-medium">New Job</span>
+                  <span className="flex items-center gap-2 font-semibold">
+                    <code className="text-green-700">#{repostResult.newId}</code>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-700">Pending Review</span>
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setRepostResult(null)}
+                className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
+                style={{ background: '#2563EB' }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
@@ -1990,6 +2140,7 @@ interface JobCardProps {
   onEdit: () => void;
   onConfirm: () => void;
   onReassign: () => void;
+  onRepost: () => void;
   onDelete: () => void;
   toggling: boolean;
 }
@@ -2016,7 +2167,7 @@ function Avatar({ name, size = 28, color }: { name: string; size?: number; color
   );
 }
 
-function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, isGeneratingQuestionnaire, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, isGeneratingQuestionnaire, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onRepost, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -2235,6 +2386,15 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                         <button onClick={() => { setMenuOpen(false); onEdit(); }}
                           className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left">
                           <Pencil size={13} className="text-slate-400" /> Edit JD
+                        </button>
+                      )}
+                      {(isAdmin || isKam || isDeliveryLead) && (
+                        <button onClick={() => { setMenuOpen(false); onRepost(); }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold transition-colors text-left"
+                          style={{ color: '#C2410C' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FFF7ED'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+                          <RefreshCw size={13} style={{ color: '#C2410C' }} /> Repost JD
                         </button>
                       )}
                       {canToggle && job.status !== 'pending_review' && (

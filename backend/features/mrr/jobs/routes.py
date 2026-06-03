@@ -651,6 +651,49 @@ def reassign_recruiters(
     return service._job_dict(db, job)
 
 
+class _RepostBody(BaseModel):
+    deadline: str | None = None   # ISO date string — new deadline for the reposted job
+
+
+@router.post("/{job_id}/repost")
+def repost_job(
+    job_id: int,
+    body: _RepostBody = _RepostBody(),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "kam", "delivery_lead")),
+):
+    """Close the current job and create a new copy with job_id=None, status=pending_review."""
+    from datetime import datetime as _dt
+    original = service.get_job(db, job_id)
+    if not original:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    new_deadline = None
+    if body.deadline:
+        try:
+            new_deadline = _dt.fromisoformat(body.deadline.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    old_job, new_job = service.repost_job(db, original, current_user.id, new_deadline=new_deadline)
+
+    from features.mrr.activity.service import log as log_activity
+    log_activity(
+        db,
+        current_user.id,
+        "reposted_job",
+        f"Reposted JD: {new_job.role_title} for {new_job.client_name} (closed JD #{job_id}, new JD #{new_job.id})",
+        entity_type="job",
+        entity_id=new_job.id,
+    )
+    return {
+        "old_job_id": job_id,
+        "new_job_id": new_job.id,
+        "old_job": service._job_dict(db, old_job),
+        "new_job": service._job_dict(db, new_job),
+    }
+
+
 @router.patch("/{job_id}")
 def update_job(
     job_id: int,

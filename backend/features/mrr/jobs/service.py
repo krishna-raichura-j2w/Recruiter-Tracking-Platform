@@ -385,3 +385,43 @@ def update_job(db: Session, job_id: int, data: dict) -> Job | None:
     db.commit()
     db.refresh(job)
     return job
+
+
+def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=None) -> tuple[Job, Job]:
+    """Close the original job and create a copy with job_id=None, status=pending_review."""
+    _SKIP = {
+        "id", "job_id", "client_job_id", "status",
+        "questionnaire_data", "questionnaire_generated_at",
+        "sourcing_deadline", "calling_deadline",
+        "sourcing_warned", "sourcing_alerted", "calling_warned", "calling_alerted",
+        "email_id", "assigned_email_id",
+    }
+    new_data = {
+        c.name: getattr(original, c.name)
+        for c in Job.__table__.columns
+        if c.name not in _SKIP
+    }
+    new_data["job_id"] = None
+    new_data["client_job_id"] = None
+    new_data["status"] = JobStatus.pending_review
+    new_data["questionnaire_generated_at"] = None
+    new_data["sourcing_deadline"] = None
+    new_data["calling_deadline"] = None
+    new_data["sourcing_warned"] = False
+    new_data["sourcing_alerted"] = False
+    new_data["calling_warned"] = False
+    new_data["calling_alerted"] = False
+
+    creator = db.query(User).filter(User.id == new_data.get("created_by_id")).first()
+    new_data["email_id"] = creator.email if creator else None
+
+    if new_deadline is not None:
+        new_data["deadline"] = new_deadline
+
+    original.status = JobStatus.closed
+    new_job = Job(**new_data)
+    db.add(new_job)
+    db.commit()
+    db.refresh(original)
+    db.refresh(new_job)
+    return original, new_job
