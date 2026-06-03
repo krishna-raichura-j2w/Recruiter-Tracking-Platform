@@ -404,6 +404,130 @@ def get_dl_subs_for_date(db: Session, setup_id: int, pod_id: int, entry_date: st
     return {r["customer_target_id"]: int(r["dl_subs"]) for r in rows}
 
 
+def _client_id_to_ct_map(db: Session, setup_id: int) -> dict[int, int]:
+    """Map every OL client user_id used by this setup's customer targets → customer_target_id."""
+    ct_rows = db.execute(
+        text("""SELECT id, client_id, client_ids FROM bh_customer_targets
+                WHERE setup_id = :sid AND (client_id IS NOT NULL OR client_ids IS NOT NULL)"""),
+        {"sid": setup_id},
+    ).mappings().all()
+    client_id_to_ct: dict[int, int] = {}
+    for r in ct_rows:
+        if r["client_id"] is not None:
+            client_id_to_ct[int(r["client_id"])] = r["id"]
+        cids = r["client_ids"]
+        if cids:
+            if isinstance(cids, str):
+                cids = json.loads(cids)
+            for cid in cids:
+                client_id_to_ct[int(cid)] = r["id"]
+    return client_id_to_ct
+
+
+def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[str, dict[int, int]]:
+    """Pull daily Subs, Selections and Onboardings from the OL replica in ONE round-trip.
+
+    Returns ``{"subs": {ct_id: n}, "sel": {ct_id: n}, "obs": {ct_id: n}}`` keyed by
+    customer_target_id. All three are computed in a single UNION ALL over one pymysql
+    connection to keep the Daily Tracker response fast. Returns empty dicts gracefully if
+    the OL replica is unavailable.
+
+    Definitions (per the offer-letter tool's canonical queries, re-grouped per client):
+      • subs — applied_jobs.current_step >= 7, created in the IST day (sargable UTC bounds).
+      • sel  — distinct selected_candidates created in the IST day, excluding rejected/
+               dropped steps (24, 42), mapped to client via job_postings.
+      • obs  — distinct offer_letters with status IN (5,6), employee_type != 0, whose
+               client_onboard_date is the entry date.
+    """
+    import pymysql
+    from core.config import settings
+
+    empty = {"subs": {}, "sel": {}, "obs": {}}
+    if not settings.ol_replica_host:
+        return empty
+
+    client_id_to_ct = _client_id_to_ct_map(db, setup_id)
+    if not client_id_to_ct:
+        return empty
+
+    client_ids_list = list(client_id_to_ct.keys())
+    ph = ",".join(["%s"] * len(client_ids_list))
+
+    # IST day → sargable UTC datetime bounds (lets the replica use an index on created_at).
+    ist_dt = datetime.strptime(entry_date, "%Y-%m-%d")
+    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    subs: dict[int, int] = {}
+    sel: dict[int, int] = {}
+    obs: dict[int, int] = {}
+
+    try:
+        conn = pymysql.connect(
+            host=settings.ol_replica_host,
+            port=settings.ol_replica_port,
+            user=settings.ol_replica_user,
+            password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=10,
+            cursorclass=pymysql.cursors.DictCursor,
+            ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT 'sub' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
+                    FROM applied_jobs aj
+                    JOIN job_postings jp ON aj.job_posting_id = jp.id
+                    JOIN clients cl ON jp.client_id = cl.user_id
+                    WHERE aj.current_step >= 7
+                      AND aj.created_at >= %s AND aj.created_at < %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'sel' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
+                    FROM selected_candidates sc
+                    JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
+                    JOIN job_postings jp ON jp.id = aj.job_posting_id
+                    JOIN clients cl ON jp.client_id = cl.user_id
+                    WHERE sc.created_at >= %s AND sc.created_at < %s
+                      AND aj.current_step NOT IN (24, 42)
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'obs' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
+                    FROM offer_letters ol
+                    JOIN clients cl ON ol.client_id = cl.user_id
+                    WHERE ol.status IN (5, 6)
+                      AND ol.employee_type != 0
+                      AND ol.client_onboard_date = %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    """,
+                    [day_start_utc, day_end_utc] + client_ids_list
+                    + [day_start_utc, day_end_utc] + client_ids_list
+                    + [entry_date] + client_ids_list,
+                )
+                for r in cur.fetchall():
+                    ct_id = client_id_to_ct.get(int(r["client_id"]))
+                    if ct_id is None:
+                        continue
+                    cnt = int(r["cnt"])
+                    if r["kind"] == "sub":
+                        subs[ct_id] = subs.get(ct_id, 0) + cnt
+                    elif r["kind"] == "sel":
+                        sel[ct_id] = sel.get(ct_id, 0) + cnt
+                    elif r["kind"] == "obs":
+                        obs[ct_id] = obs.get(ct_id, 0) + cnt
+        finally:
+            conn.close()
+    except Exception:
+        return empty
+
+    return {"subs": subs, "sel": sel, "obs": obs}
+
+
 def get_actual_subs_from_ol(db: Session, setup_id: int, entry_date: str) -> dict[int, int]:
     """Count Client Submit (step_id=7) from OL replica per customer target for the given IST date.
 

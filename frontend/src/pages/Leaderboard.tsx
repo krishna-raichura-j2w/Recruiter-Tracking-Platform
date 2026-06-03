@@ -1243,10 +1243,14 @@ function bhTotals(customers: BHLeaderboardCustomer[]) {
     monthly_int: sum('monthly_int'),
     mtd_subs: sum('mtd_subs'),
     mtd_int: sum('mtd_int'),
+    selects_needed: sum('selects_needed'),
+    obs_needed: sum('obs_needed'),
+    mtd_sel: sum('mtd_sel'),
+    mtd_obs: sum('mtd_obs'),
   };
 }
 
-const BH_COLS = ['Customer', 'Subs T/Day', 'DL Subs', 'Actual Subs', 'Int T/Day', 'Actual Int', 'Sel T/Day', 'Actual Sel', 'OBs T/Day', 'Actual OBs', 'Month Subs', 'MTD Subs', 'Month Int', 'MTD Int'];
+const BH_COLS = ['Customer', 'Subs T/Day', 'DL Subs', 'Actual Subs', 'Int T/Day', 'Actual Int', 'Sel T/Day', 'Actual Sel', 'OBs T/Day', 'Actual OBs', 'Month Subs', 'MTD Subs', 'Month Int', 'MTD Int', 'Month Sel', 'MTD Sel', 'Month OBs', 'MTD OBs'];
 
 function BHCustomerTable({ customers, month }: { customers: BHLeaderboardCustomer[]; month: string }) {
   const t = bhTotals(customers);
@@ -1283,6 +1287,10 @@ function BHCustomerTable({ customers, month }: { customers: BHLeaderboardCustome
               {actVsTarget(c.mtd_subs, c.monthly_subs)}
               <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.monthly_int || '—'}</td>
               {actVsTarget(c.mtd_int, c.monthly_int)}
+              <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.selects_needed || '—'}</td>
+              {actVsTarget(c.mtd_sel, c.selects_needed)}
+              <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.obs_needed || '—'}</td>
+              {actVsTarget(c.mtd_obs, c.obs_needed)}
             </tr>
           ))}
           <tr style={{ background: '#f0f9ff', fontWeight: 800 }}>
@@ -1298,6 +1306,10 @@ function BHCustomerTable({ customers, month }: { customers: BHLeaderboardCustome
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_subs}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.monthly_subs}</span></td>
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.monthly_int}</td>
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_int}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.monthly_int}</span></td>
+            <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.selects_needed}</td>
+            <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_sel}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.selects_needed}</span></td>
+            <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.obs_needed}</td>
+            <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_obs}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.obs_needed}</span></td>
           </tr>
         </tbody>
       </table>
