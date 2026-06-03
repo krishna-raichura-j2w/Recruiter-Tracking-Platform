@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date as _date
 from datetime import datetime, timedelta
 from typing import Optional
@@ -339,6 +338,225 @@ def bh_leaderboard_list(
     }
 
 
+@router.get("/bh-leaderboard/overview")
+def bh_leaderboard_overview(
+    date: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    cu=LEADERSHIP,
+):
+    """Combined view: one row per BH (totals across its customers) for every pod in
+    the month. Same 18 fields as a BH detail row, summed per BH, using ONE OL
+    round-trip across all pods' clients. Rows are shaped like detail customer rows so
+    the frontend renders them through the same table (BH name in the first column).
+
+    Registered before the ``/{setup_id}`` route so "overview" isn't parsed as an int.
+    """
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
+
+    ist_dt = datetime.strptime(target_date, "%Y-%m-%d")
+    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    ref = datetime.strptime(month, "%B %Y")
+    m_start = ref.date().isoformat()
+    m_end = (
+        _date(ref.year + 1, 1, 1).isoformat()
+        if ref.month == 12
+        else _date(ref.year, ref.month + 1, 1).isoformat()
+    )
+    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
+
+    # ── 1. All setups for the month ───────────────────────────────────────────
+    setup_rows = db.execute(text("""
+        SELECT s.*, u.name AS bh_name, p.id AS pod_id
+        FROM bh_pod_setups s
+        JOIN pods p ON p.id = s.pod_id
+        JOIN users u ON u.id = p.bh_user_id AND u.is_active = true
+        WHERE s.month = :month
+        ORDER BY u.name
+    """), {"month": month}).mappings().all()
+
+    if not setup_rows:
+        return {"date": target_date, "month": month, "rows": []}
+
+    setups = [dict(r) for r in setup_rows]
+    setup_ids = [s["id"] for s in setups]
+
+    # ── 2. Batched PG loads, grouped by setup ─────────────────────────────────
+    customers_by_setup: dict[int, list[dict]] = {sid: [] for sid in setup_ids}
+    for r in db.execute(text("""
+        SELECT * FROM bh_customer_targets
+        WHERE setup_id = ANY(:ids) ORDER BY display_order
+    """), {"ids": setup_ids}).mappings().all():
+        customers_by_setup[r["setup_id"]].append(dict(r))
+
+    recruiters_by_setup: dict[int, list[dict]] = {sid: [] for sid in setup_ids}
+    for r in db.execute(text("""
+        SELECT ra.*, u.name AS user_name, u.role AS user_role
+        FROM bh_recruiter_assignments ra
+        JOIN users u ON u.id = ra.user_id
+        WHERE ra.setup_id = ANY(:ids)
+    """), {"ids": setup_ids}).mappings().all():
+        recruiters_by_setup[r["setup_id"]].append(dict(r))
+
+    actuals_by_setup: dict[int, dict[int, dict]] = {sid: {} for sid in setup_ids}
+    for r in db.execute(text("""
+        SELECT setup_id, customer_target_id, actual_subs, actual_interviews, actual_selects, actual_obs
+        FROM bh_daily_actuals
+        WHERE setup_id = ANY(:ids) AND entry_date = :d
+    """), {"ids": setup_ids, "d": target_date}).mappings().all():
+        actuals_by_setup[r["setup_id"]][r["customer_target_id"]] = dict(r)
+
+    mtd_by_setup: dict[int, dict[int, dict]] = {sid: {} for sid in setup_ids}
+    for r in db.execute(text("""
+        SELECT setup_id, customer_target_id,
+               COALESCE(SUM(actual_subs), 0)       AS subs,
+               COALESCE(SUM(actual_interviews), 0) AS interviews,
+               COALESCE(SUM(actual_selects), 0)    AS selects,
+               COALESCE(SUM(actual_obs), 0)        AS obs
+        FROM bh_daily_actuals
+        WHERE setup_id = ANY(:ids) AND entry_date >= :s AND entry_date < :e
+        GROUP BY setup_id, customer_target_id
+    """), {"ids": setup_ids, "s": m_start, "e": m_end}).mappings().all():
+        mtd_by_setup[r["setup_id"]][r["customer_target_id"]] = dict(r)
+
+    dl_by_setup: dict[int, dict[int, int]] = {sid: {} for sid in setup_ids}
+    for r in db.execute(text("""
+        SELECT ct.setup_id AS setup_id, ct.id AS customer_target_id,
+               COUNT(DISTINCT v.candidate_id) AS dl_subs
+        FROM validations v
+        JOIN candidates c ON c.id = v.candidate_id
+        JOIN jobs j ON j.id = c.job_id
+        JOIN bh_customer_targets ct ON (
+            ct.client_id = j.client_id
+            OR (ct.client_ids IS NOT NULL AND ct.client_ids @> to_jsonb(j.client_id))
+        )
+        JOIN bh_pod_setups s ON s.id = ct.setup_id
+        JOIN pods p ON p.id = s.pod_id
+        WHERE v.status = 'validated'
+          AND c.sourced_at >= :day_start AND c.sourced_at < :day_end
+          AND EXISTS (
+              SELECT 1 FROM users u
+              WHERE u.id = c.sourced_by_id AND u.pod_id = p.id AND u.is_active = true
+          )
+          AND ct.setup_id = ANY(:ids)
+        GROUP BY ct.setup_id, ct.id
+    """), {"ids": setup_ids, "day_start": day_start_utc, "day_end": day_end_utc}).mappings().all():
+        dl_by_setup[r["setup_id"]][r["customer_target_id"]] = int(r["dl_subs"])
+
+    # ── 3. Global client_id → ct_id (first-wins if a client spans pods) ───────
+    client_to_ct: dict[int, int] = {}
+    for sid in setup_ids:
+        for c in customers_by_setup[sid]:
+            for x in service.customer_client_ids(c):
+                client_to_ct.setdefault(x, c["id"])
+
+    # ── 4. ONE OL round-trip across all clients ───────────────────────────────
+    db.close()
+    ol_by_client = service.fetch_ol_leaderboard_metrics(
+        list(client_to_ct.keys()),
+        target_date=target_date, m_start=m_start,
+        day_start_utc=day_start_utc, day_end_utc=day_end_utc, mtd_start_utc=mtd_start_utc,
+    )
+    ol_ct = service.ol_metrics_by_ct(ol_by_client, client_to_ct)
+
+    # ── 5. Per-setup compute, then sum each BH's customers into one row ───────
+    sum_fields = (
+        "daily_subs_target", "daily_int_target", "daily_sel_target", "daily_obs_target",
+        "actual_subs", "dl_subs", "actual_int", "actual_sel", "actual_obs",
+        "monthly_subs", "monthly_int", "selects_needed", "obs_needed",
+        "mtd_subs", "mtd_int", "mtd_sel", "mtd_obs",
+    )
+    rows = []
+    for s in setups:
+        sid = s["id"]
+        customers = customers_by_setup[sid]
+        recruiters = recruiters_by_setup[sid]
+        enriched = {c["id"]: c for c in service.compute_metrics(s, customers, recruiters)["customers"]}
+        totals = {f: 0 for f in sum_fields}
+        for c in customers:
+            row = service.assemble_bh_customer_row(
+                s, c, enriched.get(c["id"], {}),
+                actuals_by_setup[sid].get(c["id"], {}),
+                mtd_by_setup[sid].get(c["id"], {}),
+                dl_by_setup[sid].get(c["id"], 0),
+                ol_ct, target_date,
+            )
+            for f in sum_fields:
+                totals[f] += row[f]
+        rows.append({"customer_name": s["bh_name"], "customer_target_id": sid, **totals})
+
+    return {"date": target_date, "month": month, "rows": rows}
+
+
+@router.get("/bh-leaderboard/ol-only")
+def bh_leaderboard_ol_only(
+    date: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    cu=LEADERSHIP,
+):
+    """OL-only buckets sourced purely from the offer-letter DB (no targets/DL):
+      • each configured OL-only BH (e.g. "Jawad Ulla Khan Non IT") — all its CSV clients;
+      • an "Unmapped" bucket — CSV clients that have a BH but no pod-plan target this
+        month and aren't a named OL-only BH.
+    Per-client OL actuals (subs/int/sel/obs + MTD) plus per-bucket totals, via the same
+    OL query as the pod views.
+
+    Registered before the ``/{setup_id}`` route so "ol-only" isn't parsed as an int.
+    """
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
+
+    ist_dt = datetime.strptime(target_date, "%Y-%m-%d")
+    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
+    day_end_utc = day_start_utc + timedelta(hours=24)
+
+    ref = datetime.strptime(month, "%B %Y")
+    m_start = ref.date().isoformat()
+    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
+
+    # 1. OL client user_ids that already have a pod-plan target this month.
+    targeted_rows = db.execute(text("""
+        SELECT ct.client_id, ct.client_ids
+        FROM bh_customer_targets ct
+        JOIN bh_pod_setups s ON s.id = ct.setup_id
+        WHERE s.month = :month
+    """), {"month": month}).mappings().all()
+    targeted_ids: set[int] = set()
+    for r in targeted_rows:
+        targeted_ids.update(service.customer_client_ids(dict(r)))
+
+    # 2. Resolve clients per OL-only BH + the "Unmapped" bucket via the CSV mapping.
+    db.close()  # no further PG needed
+    buckets = service.resolve_ol_only_buckets(set(service.OL_ONLY_BH_NAMES), targeted_ids)
+
+    all_ids = sorted({uid for clients in buckets.values() for (uid, _) in clients})
+
+    # 3. ONE OL round-trip for every client across all buckets.
+    ol_by_client = service.fetch_ol_leaderboard_metrics(
+        all_ids,
+        target_date=target_date, m_start=m_start,
+        day_start_utc=day_start_utc, day_end_utc=day_end_utc, mtd_start_utc=mtd_start_utc,
+    )
+
+    sum_fields = (
+        "actual_subs", "actual_int", "actual_sel", "actual_obs",
+        "mtd_subs", "mtd_int", "mtd_sel", "mtd_obs",
+    )
+    bhs = []
+    for idx, bh_name in enumerate([*service.OL_ONLY_BH_NAMES, service.UNMAPPED_BUCKET]):
+        clients = buckets.get(bh_name, [])
+        customers = [service.ol_only_row(cname, uid, ol_by_client) for (uid, cname) in clients]
+        totals = service.ol_only_row(bh_name, -(idx + 1), {})  # zero-filled skeleton
+        for row in customers:
+            for f in sum_fields:
+                totals[f] += row[f]
+        bhs.append({"bh_name": bh_name, "customers": customers, "totals": totals})
+
+    return {"date": target_date, "month": month, "bhs": bhs}
+
+
 @router.get("/bh-leaderboard/{setup_id}")
 def bh_leaderboard_detail(
     setup_id: int,
@@ -347,8 +565,6 @@ def bh_leaderboard_detail(
     cu=LEADERSHIP,
 ):
     """Heavy: all PG + OL data for one BH. Called only when user selects a BH."""
-    from core.config import settings as _cfg
-
     target_date = date or datetime.now().strftime("%Y-%m-%d")
     month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
 
@@ -437,192 +653,33 @@ def bh_leaderboard_detail(
     dl_subs = {r["customer_target_id"]: int(r["dl_subs"]) for r in dl_rows}
     mtd = {r["customer_target_id"]: dict(r) for r in mtd_rows}
 
-    # ── 4. OL call for this setup's client_ids only ───────────────────────────
-    ol_to_ct: dict[int, int] = {}
-    seen: set[int] = set()
+    # ── 4. OL call for this setup's client_ids only (one round-trip) ──────────
+    client_to_ct: dict[int, int] = {}
     for c in customers:
-        ct_id = c["id"]
-        cids = c["client_ids"]
-        if cids:
-            if isinstance(cids, str):
-                cids = json.loads(cids)
-            for x in cids:
-                if int(x) not in seen:
-                    seen.add(int(x))
-                    ol_to_ct[int(x)] = ct_id
-        elif c["client_id"] is not None and int(c["client_id"]) not in seen:
-            seen.add(int(c["client_id"]))
-            ol_to_ct[int(c["client_id"])] = ct_id
-
-    ol_subs: dict[int, int] = {}
-    ol_int: dict[int, int] = {}
-    ol_sel: dict[int, int] = {}
-    ol_obs: dict[int, int] = {}
-    ol_mtd_subs: dict[int, int] = {}
-    ol_mtd_int: dict[int, int] = {}
-    ol_mtd_sel: dict[int, int] = {}
-    ol_mtd_obs: dict[int, int] = {}
+        for x in service.customer_client_ids(c):
+            client_to_ct.setdefault(x, c["id"])
 
     # MTD start as a sargable UTC bound (first of month, IST midnight → UTC).
     mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
-
-    if ol_to_ct and _cfg.ol_replica_host:
-        import pymysql
-        ol_ids = list(ol_to_ct.keys())
-        ph = ",".join(["%s"] * len(ol_ids))
-        try:
-            ol_conn = pymysql.connect(
-                host=_cfg.ol_replica_host, port=_cfg.ol_replica_port,
-                user=_cfg.ol_replica_user, password=_cfg.ol_replica_password,
-                database=_cfg.ol_replica_database,
-                connect_timeout=5, cursorclass=pymysql.cursors.DictCursor, ssl_disabled=True,
-            )
-            try:
-                with ol_conn.cursor() as cur:
-                    cur.execute(
-                        f"""
-                        SELECT 'sub' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
-                        FROM applied_jobs aj
-                        JOIN job_postings jp ON aj.job_posting_id = jp.id
-                        JOIN clients cl ON jp.client_id = cl.user_id
-                        WHERE aj.current_step >= 7
-                          AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
-                          AND cl.user_id IN ({ph})
-                        GROUP BY cl.user_id
-                        UNION ALL
-                        SELECT 'int' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
-                        FROM validation_screens vs
-                        JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
-                        WHERE vs.interview_date = %s
-                          AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
-                        GROUP BY jp.client_id
-                        UNION ALL
-                        SELECT 'sub_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
-                        FROM applied_jobs aj
-                        JOIN job_postings jp ON aj.job_posting_id = jp.id
-                        JOIN clients cl ON jp.client_id = cl.user_id
-                        WHERE aj.current_step >= 7
-                          AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) >= %s
-                          AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) <= %s
-                          AND cl.user_id IN ({ph})
-                        GROUP BY cl.user_id
-                        UNION ALL
-                        SELECT 'int_mtd' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
-                        FROM validation_screens vs
-                        JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
-                        WHERE vs.interview_date >= %s
-                          AND vs.interview_date <= %s
-                          AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
-                        GROUP BY jp.client_id
-                        UNION ALL
-                        SELECT 'sel' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
-                        FROM selected_candidates sc
-                        JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
-                        JOIN job_postings jp ON jp.id = aj.job_posting_id
-                        JOIN clients cl ON jp.client_id = cl.user_id
-                        WHERE sc.created_at >= %s AND sc.created_at < %s
-                          AND aj.current_step NOT IN (24, 42)
-                          AND cl.user_id IN ({ph})
-                        GROUP BY cl.user_id
-                        UNION ALL
-                        SELECT 'sel_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
-                        FROM selected_candidates sc
-                        JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
-                        JOIN job_postings jp ON jp.id = aj.job_posting_id
-                        JOIN clients cl ON jp.client_id = cl.user_id
-                        WHERE sc.created_at >= %s AND sc.created_at < %s
-                          AND aj.current_step NOT IN (24, 42)
-                          AND cl.user_id IN ({ph})
-                        GROUP BY cl.user_id
-                        UNION ALL
-                        SELECT 'obs' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
-                        FROM offer_letters ol
-                        JOIN clients cl ON ol.client_id = cl.user_id
-                        WHERE ol.status IN (5, 6)
-                          AND ol.employee_type != 0
-                          AND ol.client_onboard_date = %s
-                          AND cl.user_id IN ({ph})
-                        GROUP BY cl.user_id
-                        UNION ALL
-                        SELECT 'obs_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
-                        FROM offer_letters ol
-                        JOIN clients cl ON ol.client_id = cl.user_id
-                        WHERE ol.status IN (5, 6)
-                          AND ol.employee_type != 0
-                          AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
-                          AND cl.user_id IN ({ph})
-                        GROUP BY cl.user_id
-                        """,
-                        [target_date] + ol_ids
-                        + [target_date] + ol_ids
-                        + [m_start, target_date] + ol_ids
-                        + [m_start, target_date] + ol_ids
-                        + [day_start_utc, day_end_utc] + ol_ids
-                        + [mtd_start_utc, day_end_utc] + ol_ids
-                        + [target_date] + ol_ids
-                        + [m_start, target_date] + ol_ids,
-                    )
-                    for row in cur.fetchall():
-                        ct_id = ol_to_ct.get(int(row["client_id"]))
-                        if ct_id is None:
-                            continue
-                        cnt = int(row["cnt"])
-                        kind = row["kind"]
-                        if kind == "sub":
-                            ol_subs[ct_id] = ol_subs.get(ct_id, 0) + cnt
-                        elif kind == "int":
-                            ol_int[ct_id] = ol_int.get(ct_id, 0) + cnt
-                        elif kind == "sel":
-                            ol_sel[ct_id] = ol_sel.get(ct_id, 0) + cnt
-                        elif kind == "obs":
-                            ol_obs[ct_id] = ol_obs.get(ct_id, 0) + cnt
-                        elif kind == "sub_mtd":
-                            ol_mtd_subs[ct_id] = ol_mtd_subs.get(ct_id, 0) + cnt
-                        elif kind == "int_mtd":
-                            ol_mtd_int[ct_id] = ol_mtd_int.get(ct_id, 0) + cnt
-                        elif kind == "sel_mtd":
-                            ol_mtd_sel[ct_id] = ol_mtd_sel.get(ct_id, 0) + cnt
-                        elif kind == "obs_mtd":
-                            ol_mtd_obs[ct_id] = ol_mtd_obs.get(ct_id, 0) + cnt
-            finally:
-                ol_conn.close()
-        except Exception:
-            pass
+    ol_by_client = service.fetch_ol_leaderboard_metrics(
+        list(client_to_ct.keys()),
+        target_date=target_date, m_start=m_start,
+        day_start_utc=day_start_utc, day_end_utc=day_end_utc, mtd_start_utc=mtd_start_utc,
+    )
+    ol_ct = service.ol_metrics_by_ct(ol_by_client, client_to_ct)
 
     # ── 5. Compute metrics + assemble ─────────────────────────────────────────
     recruiters = [dict(r) for r in rec_rows]
     metrics = service.compute_metrics(s, customers, recruiters)
     enriched = {c["id"]: c for c in metrics["customers"]}
 
-    customer_rows = []
-    for c in customers:
-        cid = c["id"]
-        em = enriched.get(cid, {})
-        act = actuals.get(cid, {})
-        m_act = mtd.get(cid, {})
-        monthly_subs = em.get("monthly_subs", 0)
-        monthly_int = int(em.get("monthly_interviews", 0))
-        customer_rows.append({
-            "customer_name": c["customer_name"],
-            "customer_target_id": cid,
-            "daily_subs_target": service.daily_target_for_date(s, monthly_subs, target_date),
-            "daily_int_target": c.get("target_interviews_day", 0),
-            "daily_sel_target": round(em.get("daily_selects", 0)),
-            "daily_obs_target": round(em.get("daily_obs", 0)),
-            "actual_subs": ol_subs.get(cid, act.get("actual_subs", 0)),
-            "dl_subs": dl_subs.get(cid, 0),
-            "actual_int": ol_int.get(cid, act.get("actual_interviews", 0)),
-            "actual_sel": ol_sel.get(cid, act.get("actual_selects", 0)),
-            "actual_obs": ol_obs.get(cid, act.get("actual_obs", 0)),
-            "monthly_subs": monthly_subs,
-            "monthly_int": monthly_int,
-            "selects_needed": em.get("selects_needed", 0),
-            "obs_needed": em.get("obs_needed", 0),
-            "mtd_subs": ol_mtd_subs.get(cid, int(m_act.get("subs", 0))),
-            "mtd_int": ol_mtd_int.get(cid, int(m_act.get("interviews", 0))),
-            "mtd_sel": ol_mtd_sel.get(cid, int(m_act.get("selects", 0))),
-            "mtd_obs": ol_mtd_obs.get(cid, int(m_act.get("obs", 0))),
-        })
+    customer_rows = [
+        service.assemble_bh_customer_row(
+            s, c, enriched.get(c["id"], {}), actuals.get(c["id"], {}),
+            mtd.get(c["id"], {}), dl_subs.get(c["id"], 0), ol_ct, target_date,
+        )
+        for c in customers
+    ]
 
     return {
         "date": target_date,

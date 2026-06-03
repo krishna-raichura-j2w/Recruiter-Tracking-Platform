@@ -528,6 +528,295 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
     return {"subs": subs, "sel": sel, "obs": obs}
 
 
+# ── BH leaderboard OL metrics (shared by per-BH detail + all-BH overview) ──────
+
+OL_KINDS = ("sub", "int", "sel", "obs", "sub_mtd", "int_mtd", "sel_mtd", "obs_mtd")
+
+
+def fetch_ol_leaderboard_metrics(
+    client_ids: list[int],
+    *,
+    target_date: str,
+    m_start: str,
+    day_start_utc: datetime,
+    day_end_utc: datetime,
+    mtd_start_utc: datetime,
+) -> dict[str, dict[int, int]]:
+    """Pull the 8 BH-leaderboard metrics from the OL replica in ONE round-trip.
+
+    Returns ``{kind: {client_id: count}}`` for each of OL_KINDS, keyed by OL client
+    user_id. Submissions/interviews use the original day/IST-date filters; selections
+    and onboarding use the offer-letter-tool definitions (selected_candidates excluding
+    steps 24/42; offer_letters status IN (5,6), employee_type != 0, by client_onboard_date)
+    with sargable bounds. Empty dicts if the replica is unavailable or no clients given.
+    """
+    from core.config import settings
+
+    out: dict[str, dict[int, int]] = {k: {} for k in OL_KINDS}
+    if not client_ids or not settings.ol_replica_host:
+        return out
+
+    import pymysql
+
+    ol_ids = list(client_ids)
+    ph = ",".join(["%s"] * len(ol_ids))
+    try:
+        conn = pymysql.connect(
+            host=settings.ol_replica_host, port=settings.ol_replica_port,
+            user=settings.ol_replica_user, password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=5, cursorclass=pymysql.cursors.DictCursor, ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT 'sub' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
+                    FROM applied_jobs aj
+                    JOIN job_postings jp ON aj.job_posting_id = jp.id
+                    JOIN clients cl ON jp.client_id = cl.user_id
+                    WHERE aj.current_step >= 7
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'int' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
+                    FROM validation_screens vs
+                    JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
+                    WHERE vs.interview_date = %s
+                      AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
+                    GROUP BY jp.client_id
+                    UNION ALL
+                    SELECT 'sub_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT aj.id) AS cnt
+                    FROM applied_jobs aj
+                    JOIN job_postings jp ON aj.job_posting_id = jp.id
+                    JOIN clients cl ON jp.client_id = cl.user_id
+                    WHERE aj.current_step >= 7
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) >= %s
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'int_mtd' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
+                    FROM validation_screens vs
+                    JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
+                    WHERE vs.interview_date >= %s
+                      AND vs.interview_date <= %s
+                      AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
+                    GROUP BY jp.client_id
+                    UNION ALL
+                    SELECT 'sel' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
+                    FROM selected_candidates sc
+                    JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
+                    JOIN job_postings jp ON jp.id = aj.job_posting_id
+                    JOIN clients cl ON jp.client_id = cl.user_id
+                    WHERE sc.created_at >= %s AND sc.created_at < %s
+                      AND aj.current_step NOT IN (24, 42)
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'sel_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
+                    FROM selected_candidates sc
+                    JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
+                    JOIN job_postings jp ON jp.id = aj.job_posting_id
+                    JOIN clients cl ON jp.client_id = cl.user_id
+                    WHERE sc.created_at >= %s AND sc.created_at < %s
+                      AND aj.current_step NOT IN (24, 42)
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'obs' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
+                    FROM offer_letters ol
+                    JOIN clients cl ON ol.client_id = cl.user_id
+                    WHERE ol.status IN (5, 6)
+                      AND ol.employee_type != 0
+                      AND ol.client_onboard_date = %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'obs_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
+                    FROM offer_letters ol
+                    JOIN clients cl ON ol.client_id = cl.user_id
+                    WHERE ol.status IN (5, 6)
+                      AND ol.employee_type != 0
+                      AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    """,
+                    [target_date] + ol_ids
+                    + [target_date] + ol_ids
+                    + [m_start, target_date] + ol_ids
+                    + [m_start, target_date] + ol_ids
+                    + [day_start_utc, day_end_utc] + ol_ids
+                    + [mtd_start_utc, day_end_utc] + ol_ids
+                    + [target_date] + ol_ids
+                    + [m_start, target_date] + ol_ids,
+                )
+                for row in cur.fetchall():
+                    kind = row["kind"]
+                    if kind not in out:
+                        continue
+                    cid = int(row["client_id"])
+                    out[kind][cid] = out[kind].get(cid, 0) + int(row["cnt"])
+        finally:
+            conn.close()
+    except Exception:
+        return {k: {} for k in OL_KINDS}
+    return out
+
+
+def customer_client_ids(c: dict) -> list[int]:
+    """OL client user_ids a customer target maps to (client_ids JSONB, else client_id)."""
+    cids = c.get("client_ids")
+    if cids:
+        if isinstance(cids, str):
+            cids = json.loads(cids)
+        return [int(x) for x in cids]
+    if c.get("client_id") is not None:
+        return [int(c["client_id"])]
+    return []
+
+
+def ol_metrics_by_ct(
+    ol_by_client: dict[str, dict[int, int]], client_to_ct: dict[int, int]
+) -> dict[str, dict[int, int]]:
+    """Re-key OL metrics from client_id → customer_target_id (summing a target's clients).
+
+    A (kind, ct) entry exists only if at least one of the target's clients returned a
+    row — preserving the OL-present → use-OL, OL-absent → manual-fallback semantics.
+    """
+    out: dict[str, dict[int, int]] = {k: {} for k in OL_KINDS}
+    for kind, per_client in ol_by_client.items():
+        dst = out[kind]
+        for client_id, cnt in per_client.items():
+            ct = client_to_ct.get(int(client_id))
+            if ct is None:
+                continue
+            dst[ct] = dst.get(ct, 0) + cnt
+    return out
+
+
+def assemble_bh_customer_row(
+    s: dict, c: dict, em: dict, act: dict, m_act: dict,
+    dl_subs_val: int, ol_ct: dict[str, dict[int, int]], target_date: str,
+) -> dict:
+    """Build one BHLeaderboardCustomer-shaped row. OL-primary, manual (saved) fallback.
+
+    ``ol_ct`` is OL metrics keyed by kind→ct_id (from ol_metrics_by_ct). Used by both
+    the per-BH detail and the all-BH overview so the math is identical.
+    """
+    cid = c["id"]
+    monthly_subs = em.get("monthly_subs", 0)
+    monthly_int = int(em.get("monthly_interviews", 0))
+
+    def pick(kind: str, fallback: int) -> int:
+        v = ol_ct.get(kind, {}).get(cid)
+        return v if v is not None else fallback
+
+    return {
+        "customer_name": c["customer_name"],
+        "customer_target_id": cid,
+        "daily_subs_target": daily_target_for_date(s, monthly_subs, target_date),
+        "daily_int_target": c.get("target_interviews_day", 0),
+        "daily_sel_target": round(em.get("daily_selects", 0)),
+        "daily_obs_target": round(em.get("daily_obs", 0)),
+        "actual_subs": pick("sub", int(act.get("actual_subs", 0))),
+        "dl_subs": dl_subs_val,
+        "actual_int": pick("int", int(act.get("actual_interviews", 0))),
+        "actual_sel": pick("sel", int(act.get("actual_selects", 0))),
+        "actual_obs": pick("obs", int(act.get("actual_obs", 0))),
+        "monthly_subs": monthly_subs,
+        "monthly_int": monthly_int,
+        "selects_needed": em.get("selects_needed", 0),
+        "obs_needed": em.get("obs_needed", 0),
+        "mtd_subs": pick("sub_mtd", int(m_act.get("subs", 0))),
+        "mtd_int": pick("int_mtd", int(m_act.get("interviews", 0))),
+        "mtd_sel": pick("sel_mtd", int(m_act.get("selects", 0))),
+        "mtd_obs": pick("obs_mtd", int(m_act.get("obs", 0))),
+    }
+
+
+# ── OL-only BHs (present in client_bh_mapping.csv, no pod-plan setup) ───────────
+
+# BHs tracked from the offer-letter DB only — no Pod Monthly Plan targets. Extendable.
+OL_ONLY_BH_NAMES = ("Jawad Ulla Khan Non IT",)
+
+# Synthetic bucket: CSV clients with a BH assigned but no pod-plan target (excl. named OL-only BHs).
+UNMAPPED_BUCKET = "Unmapped"
+
+
+def resolve_ol_only_buckets(
+    named_bhs: set[str], targeted_ids: set[int]
+) -> dict[str, list[tuple[int, str]]]:
+    """One OL clients scan → per-named-BH client lists + an "Unmapped" bucket.
+
+    Maps every OL client to a BH via the CSV's fuzzy ``_lookup_bh`` (same as the COO
+    leaderboard). A client goes to:
+      • its BH's list, if that BH is in ``named_bhs``;
+      • the ``UNMAPPED_BUCKET``, if it HAS a (non-empty) CSV BH that is not a named BH
+        AND its user_id has no pod-plan target (not in ``targeted_ids``).
+    Test clients (``clients.id IN (1,2)``) are skipped. One OL connection;
+    ``{bh_name: [(user_id, company_name), …], "Unmapped": [...]}``. Empty if OL down.
+    """
+    from core.config import settings
+    from features.mrr.coo.routes import _lookup_bh  # no circular import: coo doesn't import pod_plan
+
+    out: dict[str, list[tuple[int, str]]] = {b: [] for b in named_bhs}
+    out[UNMAPPED_BUCKET] = []
+    if not settings.ol_replica_host:
+        return out
+
+    import pymysql
+
+    try:
+        conn = pymysql.connect(
+            host=settings.ol_replica_host, port=settings.ol_replica_port,
+            user=settings.ol_replica_user, password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=5, cursorclass=pymysql.cursors.DictCursor, ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, user_id, company_name FROM clients WHERE id NOT IN (1, 2)")
+                for row in cur.fetchall():
+                    name = row.get("company_name")
+                    uid = row.get("user_id")
+                    if not name or uid is None:
+                        continue
+                    uid = int(uid)
+                    bh = _lookup_bh(str(name))
+                    if bh in named_bhs:
+                        out[bh].append((uid, str(name)))
+                    elif bh and uid not in targeted_ids:
+                        out[UNMAPPED_BUCKET].append((uid, str(name)))
+        finally:
+            conn.close()
+    except Exception:
+        return {**{b: [] for b in named_bhs}, UNMAPPED_BUCKET: []}
+    return out
+
+
+def ol_only_row(name: str, key: int, ol: dict[str, dict[int, int]]) -> dict:
+    """A BHLeaderboardCustomer-shaped row sourced purely from OL (no targets/DL).
+
+    ``ol`` is OL metrics keyed by kind→client user_id (from fetch_ol_leaderboard_metrics);
+    ``key`` is this client's user_id. Targets / dl_subs / monthly_* / *_needed = 0.
+    """
+    def g(kind: str) -> int:
+        return int(ol.get(kind, {}).get(key, 0))
+
+    return {
+        "customer_name": name,
+        "customer_target_id": key,
+        "daily_subs_target": 0, "daily_int_target": 0, "daily_sel_target": 0, "daily_obs_target": 0,
+        "actual_subs": g("sub"), "dl_subs": 0, "actual_int": g("int"),
+        "actual_sel": g("sel"), "actual_obs": g("obs"),
+        "monthly_subs": 0, "monthly_int": 0, "selects_needed": 0, "obs_needed": 0,
+        "mtd_subs": g("sub_mtd"), "mtd_int": g("int_mtd"),
+        "mtd_sel": g("sel_mtd"), "mtd_obs": g("obs_mtd"),
+    }
+
+
 def get_actual_subs_from_ol(db: Session, setup_id: int, entry_date: str) -> dict[int, int]:
     """Count Client Submit (step_id=7) from OL replica per customer target for the given IST date.
 
