@@ -246,6 +246,12 @@ export const podPlanApi = {
 
   getBHDetail: (setupId: number, date: string) =>
     api.get(`/pod-plan/bh-leaderboard/${setupId}`, { params: { date } }).then(r => r.data as BHDetailResponse),
+
+  getBHOverview: (date: string) =>
+    api.get('/pod-plan/bh-leaderboard/overview', { params: { date } }).then(r => r.data as BHOverviewResponse),
+
+  getOlOnly: (date: string) =>
+    api.get('/pod-plan/bh-leaderboard/ol-only', { params: { date } }).then(r => r.data as OlOnlyResponse),
 };
 
 // ── BH Leaderboard types ───────────────────────────────────────────────────────
@@ -291,6 +297,28 @@ export interface BHDetailResponse {
   bh_name: string;
   pod_id: number;
   customers: BHLeaderboardCustomer[];
+}
+
+// Overview: one row per BH (totals across its customers), shaped like a customer row
+// so it renders through the same table. customer_name = BH name, customer_target_id = setup_id.
+export interface BHOverviewResponse {
+  date: string;
+  month: string;
+  rows: BHLeaderboardCustomer[];
+}
+
+// OL-only BHs: present in client_bh_mapping.csv but with no pod-plan setup.
+// Per-client rows + per-BH totals, sourced purely from the offer-letter DB (no targets).
+export interface OlOnlyBH {
+  bh_name: string;
+  customers: BHLeaderboardCustomer[];
+  totals: BHLeaderboardCustomer;
+}
+
+export interface OlOnlyResponse {
+  date: string;
+  month: string;
+  bhs: OlOnlyBH[];
 }
 
 // kept for backwards compat — not used
