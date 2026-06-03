@@ -379,7 +379,10 @@ export default function Candidates() {
 
         {canAdd && (
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              setShowAddModal(true);
+              if (jobIdFilter) setValue('job_id', Number(jobIdFilter));
+            }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 shadow-sm"
             style={{ backgroundColor: '#3b82f6' }}
           >
@@ -736,7 +739,10 @@ export default function Candidates() {
                     {...register('job_id', { required: true })}
                   >
                     <option value="">Select job…</option>
-                    {jobs.map((j) => (
+                    {(jobIdFilter
+                      ? jobs.filter(j => j.id === Number(jobIdFilter))
+                      : jobs
+                    ).map((j) => (
                       <option key={j.id} value={j.id}>
                         {j.client_name} — {j.role_title}
                       </option>
