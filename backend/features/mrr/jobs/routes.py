@@ -653,6 +653,7 @@ def reassign_recruiters(
 
 class _RepostBody(BaseModel):
     deadline: str | None = None   # ISO date string — new deadline for the reposted job
+    headcount: int | None = None  # override headcount; falls back to original if omitted
 
 
 @router.post("/{job_id}/repost")
@@ -675,7 +676,7 @@ def repost_job(
         except ValueError:
             pass
 
-    old_job, new_job = service.repost_job(db, original, current_user.id, new_deadline=new_deadline)
+    old_job, new_job = service.repost_job(db, original, current_user.id, new_deadline=new_deadline, new_headcount=body.headcount)
 
     from features.mrr.activity.service import log as log_activity
     log_activity(

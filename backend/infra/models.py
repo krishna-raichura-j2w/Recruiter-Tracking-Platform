@@ -444,6 +444,8 @@ class Job(Base):
     # same transaction.
     assigned_email_id = Column(PG_ARRAY(String), nullable=False, server_default="{}")
     is_synced = Column(Boolean, default=False, server_default="false")
+    repost_of_job_id    = Column(Integer, nullable=True)   # DB id of the original job this was reposted from
+    repost_of_ol_job_id = Column(Integer, nullable=True)   # OL job_id of the original job
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 

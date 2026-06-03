@@ -207,6 +207,7 @@ export default function Jobs() {
   // Repost state
   const [repostJob, setRepostJob] = useState<Job | null>(null);
   const [repostDeadline, setRepostDeadline] = useState('');
+  const [repostHeadcount, setRepostHeadcount] = useState(1);
   const [repostResult, setRepostResult] = useState<{ oldId: number; newId: number; roleTitle: string } | null>(null);
   const [reposting, setReposting] = useState(false);
 
@@ -424,9 +425,11 @@ export default function Jobs() {
     try {
       const res = await api.post<{ old_job_id: number; new_job_id: number; new_job: Job }>(`/jobs/${repostJob.id}/repost`, {
         deadline: new Date(repostDeadline).toISOString(),
+        headcount: repostHeadcount,
       });
       setRepostJob(null);
       setRepostDeadline('');
+      setRepostHeadcount(1);
       setRepostResult({ oldId: res.data.old_job_id, newId: res.data.new_job_id, roleTitle: repostJob.role_title });
       fetchJobs();
     } catch (err: unknown) {
@@ -925,7 +928,7 @@ export default function Jobs() {
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
               onReassign={() => openReassignModal(job)}
-              onRepost={() => setRepostJob(job)}
+              onRepost={() => { setRepostJob(job); setRepostHeadcount(job.headcount ?? 1); }}
               onDelete={async () => {
                 if (!confirm(`Delete JD "${job.role_title}" (${job.client_job_id ?? ''})? This cannot be undone.`)) return;
                 const previousJobs = jobs;
@@ -2046,6 +2049,30 @@ export default function Jobs() {
                 )}
               </div>
 
+              {/* Headcount */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Headcount
+                  <span className="ml-2 text-[11px] font-normal text-slate-400">
+                    (old job had <strong className="text-slate-600">{repostJob?.headcount ?? 1}</strong> — change if needed)
+                  </span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <button type="button"
+                    onClick={() => setRepostHeadcount(v => Math.max(1, v - 1))}
+                    className="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 font-bold text-base flex items-center justify-center hover:bg-slate-50">−</button>
+                  <span className="text-base font-bold text-slate-800 w-6 text-center">{repostHeadcount}</span>
+                  <button type="button"
+                    onClick={() => setRepostHeadcount(v => v + 1)}
+                    className="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 font-bold text-base flex items-center justify-center hover:bg-slate-50">+</button>
+                  {repostHeadcount !== (repostJob?.headcount ?? 1) && (
+                    <span className="text-[11px] text-blue-600 font-semibold">
+                      Changed from {repostJob?.headcount ?? 1} → {repostHeadcount}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {repostJob.job_id != null && (
                 <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
                   Current OL job_id <code className="font-bold text-slate-700">JD-{repostJob.job_id}</code> will be cleared on the new job.
@@ -2055,7 +2082,7 @@ export default function Jobs() {
 
             <div className="px-6 pb-5 flex justify-end gap-3">
               <button
-                onClick={() => { setRepostJob(null); setRepostDeadline(''); }}
+                onClick={() => { setRepostJob(null); setRepostDeadline(''); setRepostHeadcount(1); }}
                 disabled={reposting}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all disabled:opacity-50"
               >
@@ -2242,6 +2269,17 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                   title="Client job ID">
                   #{job.client_job_id}
                 </code>
+              )}
+              {job.repost_of_job_id != null && (
+                <span
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold"
+                  style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}
+                  title={`Reposted from${job.repost_of_ol_job_id ? ` JD-${job.repost_of_ol_job_id}` : ` job #${job.repost_of_job_id}`}`}>
+                  <RefreshCw size={9} />
+                  {job.repost_of_ol_job_id != null
+                    ? <>Repost of JD-{job.repost_of_ol_job_id}</>
+                    : <>Repost</>}
+                </span>
               )}
               {/* Status badge */}
               <span

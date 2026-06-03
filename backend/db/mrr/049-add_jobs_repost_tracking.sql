@@ -1,0 +1,2 @@
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS repost_of_job_id INTEGER;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS repost_of_ol_job_id INTEGER;

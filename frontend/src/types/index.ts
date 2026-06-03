@@ -61,6 +61,8 @@ export interface Job {
   job_id: number | null;
   probing_id: number | null;
   client_job_id: string | null;
+  repost_of_job_id: number | null;
+  repost_of_ol_job_id: number | null;
   demand_source: string | null;
   demand_type: string | null;
   demand_exclusivity: string | null;

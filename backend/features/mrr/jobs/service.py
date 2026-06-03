@@ -387,7 +387,7 @@ def update_job(db: Session, job_id: int, data: dict) -> Job | None:
     return job
 
 
-def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=None) -> tuple[Job, Job]:
+def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=None, new_headcount: int | None = None) -> tuple[Job, Job]:
     """Close the original job and create a copy with job_id=None, status=pending_review."""
     _SKIP = {
         "id", "job_id", "client_job_id", "status",
@@ -417,6 +417,12 @@ def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=Non
 
     if new_deadline is not None:
         new_data["deadline"] = new_deadline
+    if new_headcount is not None and new_headcount > 0:
+        new_data["headcount"] = new_headcount
+
+    # Track which job this was reposted from
+    new_data["repost_of_job_id"] = original.id
+    new_data["repost_of_ol_job_id"] = original.job_id  # OL numeric id (may be None)
 
     original.status = JobStatus.closed
     new_job = Job(**new_data)
