@@ -1257,6 +1257,8 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
   const [actuals, setActuals] = useState<Record<number, { actual_subs: number; actual_interviews: number; actual_selects: number; actual_obs: number }>>({});
   const [dlSubs, setDlSubs] = useState<Record<number, number>>({});
   const [olSubs, setOlSubs] = useState<Record<number, number>>({});
+  const [olSel, setOlSel] = useState<Record<number, number>>({});
+  const [olObs, setOlObs] = useState<Record<number, number>>({});
   const [weekInfo, setWeekInfo] = useState<WeekInfo | null>(null);
   const [weekOBTargets, setWeekOBTargets] = useState<Record<number, number>>({});
   const [weekOBActuals, setWeekOBActuals] = useState<Record<number, number>>({});
@@ -1282,6 +1284,8 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
       const loadedDlSubs: Record<number, number> = daily.dl_subs ?? {};
       setDlSubs(loadedDlSubs);
       setOlSubs(daily.actual_subs_auto ?? {});
+      setOlSel(daily.actual_sel_auto ?? {});
+      setOlObs(daily.actual_obs_auto ?? {});
       setActuals(loadedActuals);
       setWeekInfo(daily.week_info);
       setWeekOBTargets(daily.week_ob_targets ?? {});
@@ -1297,8 +1301,8 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
         customer_target_id: c.id,
         actual_subs: olSubs[c.id] ?? 0,
         actual_interviews: actuals[c.id]?.actual_interviews ?? 0,
-        actual_selects: actuals[c.id]?.actual_selects ?? 0,
-        actual_obs: actuals[c.id]?.actual_obs ?? 0,
+        actual_selects: olSel[c.id] ?? 0,
+        actual_obs: olObs[c.id] ?? 0,
       }));
       await podPlanApi.saveDaily(setupId, selDate, entries);
       const monthly = await podPlanApi.getMonthlyProgress(setupId);
@@ -1344,21 +1348,24 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Entry for {selDate}</h3>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Targets shown in grey · Green = DL verified (system) · Orange = Actual Subs auto-pulled from client pipeline · Blue inputs are editable</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Targets shown in grey · Green = DL verified (system) · Orange = Subs / Sel / OBs auto-pulled from offer-letter DB · Blue inputs are editable</div>
             </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#f9fafb' }}>
-                  {['Customer', 'Subs Target/Day', 'DL Subs (System)', 'Actual Subs', 'Int Target/Day', 'Actual Int ✏️', 'Sel Target/Day', 'Actual Sel ✏️', 'Actual OBs ✏️'].map(h => (
+                  {['Customer', 'Subs Target/Day', 'DL Subs (System)', 'Actual Subs', 'Int Target/Day', 'Actual Int ✏️', 'Sel Target/Day', 'Actual Sel', 'Actual OBs'].map(h => {
+                    const isAuto = h === 'Actual Subs' || h === 'Actual Sel' || h === 'Actual OBs';
+                    return (
                     <th key={h} style={{
                       padding: '8px 12px', border: '1px solid #e5e7eb', fontWeight: 700, fontSize: 12,
-                      background: h === 'DL Subs (System)' ? '#f0fdf4' : h === 'Actual Subs' ? '#fff7ed' : h.includes('✏️') ? '#eff6ff' : '#f9fafb',
-                      color: h === 'DL Subs (System)' ? '#15803d' : h === 'Actual Subs' ? '#c2410c' : h.includes('✏️') ? '#1d4ed8' : '#374151',
+                      background: h === 'DL Subs (System)' ? '#f0fdf4' : isAuto ? '#fff7ed' : h.includes('✏️') ? '#eff6ff' : '#f9fafb',
+                      color: h === 'DL Subs (System)' ? '#15803d' : isAuto ? '#c2410c' : h.includes('✏️') ? '#1d4ed8' : '#374151',
                       textAlign: h === 'Customer' ? 'left' : 'center',
                     }}>{h}</th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -1392,8 +1399,16 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{dailyIntsTarget}</td>
                     <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_interviews')}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>—</td>
-                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_selects')}</td>
-                    <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0f7ff' }}>{inputCell(c.id, 'actual_obs')}</td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fff7ed' }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: olSel[c.id] ? '#c2410c' : '#9ca3af' }}>
+                        {olSel[c.id] ?? 0}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fff7ed' }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: olObs[c.id] ? '#c2410c' : '#9ca3af' }}>
+                        {olObs[c.id] ?? 0}
+                      </span>
+                    </td>
                   </tr>
                   );
                 })}

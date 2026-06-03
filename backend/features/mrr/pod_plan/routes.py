@@ -224,7 +224,10 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
     actual_pod_id = s["pod_id"]
     actuals = service.get_daily_actuals(db, setup_id, entry_date)
     dl_subs = service.get_dl_subs_for_date(db, setup_id, actual_pod_id, entry_date)
-    actual_subs_auto = service.get_actual_subs_from_ol(db, setup_id, entry_date)
+    ol_auto = service.get_ol_daily_actuals(db, setup_id, entry_date)
+    actual_subs_auto = ol_auto["subs"]
+    actual_sel_auto = ol_auto["sel"]
+    actual_obs_auto = ol_auto["obs"]
     week_info = service.week_for_date(entry_date, s["month"], s.get("custom_working_days"))
     week_ob_actuals: dict[int, int] = {}
     if week_info:
@@ -239,6 +242,8 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
         "actuals": actuals,
         "dl_subs": dl_subs,
         "actual_subs_auto": actual_subs_auto,
+        "actual_sel_auto": actual_sel_auto,
+        "actual_obs_auto": actual_obs_auto,
         "week_info": week_info,
         "week_ob_actuals": week_ob_actuals,
         "week_ob_targets": week_ob_targets,
@@ -451,8 +456,15 @@ def bh_leaderboard_detail(
 
     ol_subs: dict[int, int] = {}
     ol_int: dict[int, int] = {}
+    ol_sel: dict[int, int] = {}
+    ol_obs: dict[int, int] = {}
     ol_mtd_subs: dict[int, int] = {}
     ol_mtd_int: dict[int, int] = {}
+    ol_mtd_sel: dict[int, int] = {}
+    ol_mtd_obs: dict[int, int] = {}
+
+    # MTD start as a sargable UTC bound (first of month, IST midnight → UTC).
+    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
 
     if ol_to_ct and _cfg.ol_replica_host:
         import pymysql
@@ -502,10 +514,52 @@ def bh_leaderboard_detail(
                           AND vs.interview_date <= %s
                           AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
                         GROUP BY jp.client_id
+                        UNION ALL
+                        SELECT 'sel' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
+                        FROM selected_candidates sc
+                        JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
+                        JOIN job_postings jp ON jp.id = aj.job_posting_id
+                        JOIN clients cl ON jp.client_id = cl.user_id
+                        WHERE sc.created_at >= %s AND sc.created_at < %s
+                          AND aj.current_step NOT IN (24, 42)
+                          AND cl.user_id IN ({ph})
+                        GROUP BY cl.user_id
+                        UNION ALL
+                        SELECT 'sel_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
+                        FROM selected_candidates sc
+                        JOIN applied_jobs aj ON sc.applied_jobs_id = aj.id
+                        JOIN job_postings jp ON jp.id = aj.job_posting_id
+                        JOIN clients cl ON jp.client_id = cl.user_id
+                        WHERE sc.created_at >= %s AND sc.created_at < %s
+                          AND aj.current_step NOT IN (24, 42)
+                          AND cl.user_id IN ({ph})
+                        GROUP BY cl.user_id
+                        UNION ALL
+                        SELECT 'obs' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
+                        FROM offer_letters ol
+                        JOIN clients cl ON ol.client_id = cl.user_id
+                        WHERE ol.status IN (5, 6)
+                          AND ol.employee_type != 0
+                          AND ol.client_onboard_date = %s
+                          AND cl.user_id IN ({ph})
+                        GROUP BY cl.user_id
+                        UNION ALL
+                        SELECT 'obs_mtd' AS kind, cl.user_id AS client_id, COUNT(DISTINCT ol.id) AS cnt
+                        FROM offer_letters ol
+                        JOIN clients cl ON ol.client_id = cl.user_id
+                        WHERE ol.status IN (5, 6)
+                          AND ol.employee_type != 0
+                          AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
+                          AND cl.user_id IN ({ph})
+                        GROUP BY cl.user_id
                         """,
                         [target_date] + ol_ids
                         + [target_date] + ol_ids
                         + [m_start, target_date] + ol_ids
+                        + [m_start, target_date] + ol_ids
+                        + [day_start_utc, day_end_utc] + ol_ids
+                        + [mtd_start_utc, day_end_utc] + ol_ids
+                        + [target_date] + ol_ids
                         + [m_start, target_date] + ol_ids,
                     )
                     for row in cur.fetchall():
@@ -518,10 +572,18 @@ def bh_leaderboard_detail(
                             ol_subs[ct_id] = ol_subs.get(ct_id, 0) + cnt
                         elif kind == "int":
                             ol_int[ct_id] = ol_int.get(ct_id, 0) + cnt
+                        elif kind == "sel":
+                            ol_sel[ct_id] = ol_sel.get(ct_id, 0) + cnt
+                        elif kind == "obs":
+                            ol_obs[ct_id] = ol_obs.get(ct_id, 0) + cnt
                         elif kind == "sub_mtd":
                             ol_mtd_subs[ct_id] = ol_mtd_subs.get(ct_id, 0) + cnt
                         elif kind == "int_mtd":
                             ol_mtd_int[ct_id] = ol_mtd_int.get(ct_id, 0) + cnt
+                        elif kind == "sel_mtd":
+                            ol_mtd_sel[ct_id] = ol_mtd_sel.get(ct_id, 0) + cnt
+                        elif kind == "obs_mtd":
+                            ol_mtd_obs[ct_id] = ol_mtd_obs.get(ct_id, 0) + cnt
             finally:
                 ol_conn.close()
         except Exception:
@@ -550,16 +612,16 @@ def bh_leaderboard_detail(
             "actual_subs": ol_subs.get(cid, act.get("actual_subs", 0)),
             "dl_subs": dl_subs.get(cid, 0),
             "actual_int": ol_int.get(cid, act.get("actual_interviews", 0)),
-            "actual_sel": act.get("actual_selects", 0),
-            "actual_obs": act.get("actual_obs", 0),
+            "actual_sel": ol_sel.get(cid, act.get("actual_selects", 0)),
+            "actual_obs": ol_obs.get(cid, act.get("actual_obs", 0)),
             "monthly_subs": monthly_subs,
             "monthly_int": monthly_int,
             "selects_needed": em.get("selects_needed", 0),
             "obs_needed": em.get("obs_needed", 0),
             "mtd_subs": ol_mtd_subs.get(cid, int(m_act.get("subs", 0))),
             "mtd_int": ol_mtd_int.get(cid, int(m_act.get("interviews", 0))),
-            "mtd_sel": int(m_act.get("selects", 0)),
-            "mtd_obs": int(m_act.get("obs", 0)),
+            "mtd_sel": ol_mtd_sel.get(cid, int(m_act.get("selects", 0))),
+            "mtd_obs": ol_mtd_obs.get(cid, int(m_act.get("obs", 0))),
         })
 
     return {
