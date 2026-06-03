@@ -56,8 +56,8 @@ interface CreateTicketWizardProps {
 const STEPS = [
   { id: 1, label: "Entities" },
   { id: 2, label: "Request Type" },
-  { id: 3, label: "Priority" },
-  { id: 4, label: "Description" },
+  { id: 3, label: "Description" },
+  { id: 4, label: "Priority" },
   { id: 5, label: "Hierarchy" },
 ];
 
@@ -190,6 +190,20 @@ export function CreateTicketWizard({
     [consultants, step1.consultantIds],
   );
 
+  // ── Computed PO risk (used in priority step for context) ────────────────
+  const computedPoRisk = useMemo(() => {
+    return selectedConsultantsData.reduce((sum, c) => {
+      if (!c.monthly_po || !c.po_end_date) return sum;
+      const end = new Date(c.po_end_date);
+      const now = new Date();
+      const months = Math.max(
+        0,
+        (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()),
+      );
+      return sum + months * c.monthly_po;
+    }, 0);
+  }, [selectedConsultantsData]);
+
   // ── SLA hint from SOP first step ────────────────────────────────────────
   const sopSlaHint = useMemo(() => {
     if (!selectedSop?.steps_definition?.[0]) return undefined;
@@ -202,8 +216,8 @@ export function CreateTicketWizard({
   function canProceed(): boolean {
     if (step === 1) return !!step1.clientId && step1.consultantIds.length > 0;
     if (step === 2) return selectedSopId !== null;
-    if (step === 3) return true;
-    if (step === 4) return step4.description.replace(/<[^>]*>/g, "").trim().length > 10;
+    if (step === 3) return step4.description.replace(/<[^>]*>/g, "").trim().length > 10;
+    if (step === 4) return true;
     if (step === 5) return hierarchy.length > 0;
     return true;
   }
@@ -343,17 +357,18 @@ export function CreateTicketWizard({
             )
           )}
           {step === 3 && (
-            <Step3Priority
-              data={step3}
-              onChange={setStep3}
-              sopSlaHint={sopSlaHint}
-            />
-          )}
-          {step === 4 && (
             <Step4Description
               data={step4}
               onChange={setStep4}
               consultants={selectedConsultantsData}
+            />
+          )}
+          {step === 4 && (
+            <Step3Priority
+              data={step3}
+              onChange={setStep3}
+              sopSlaHint={sopSlaHint}
+              poRiskAmount={step4.poRiskOverride ? step4.poRiskAmount : computedPoRisk || null}
             />
           )}
           {step === 5 && (

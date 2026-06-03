@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 from core.pagination import PageResult, paginate
@@ -10,6 +11,7 @@ from infra.hrbp_models import (
     HRBPClient,
     HRBPConsultant,
 )
+from infra.models import User
 from sqlalchemy.orm import Session
 
 from features.hrbp.cadence_schedules.schema import (
@@ -17,6 +19,11 @@ from features.hrbp.cadence_schedules.schema import (
     CadenceScheduleUpdate,
     CadenceSessionUpdate,
 )
+from features.hrbp.cadence_schedules import google_calendar
+from features.hrbp.cadence_schedules.email_templates import cadence_created_html
+from core.email import send_outlook_email
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -102,7 +109,140 @@ def create(
     db.add_all(sessions)
     db.commit()
     db.refresh(schedule)
+
+    # ── Google Calendar invite ──────────────────────────────────────────────
+    try:
+        attendee_emails = _collect_attendee_emails(db, schedule)
+        consultant = db.query(HRBPConsultant).filter_by(id=payload.consultant_id).first()
+        client = db.query(HRBPClient).filter_by(id=payload.client_id).first()
+        consultant_name = consultant.name if consultant else "Consultant"
+        client_name = client.name if client else "Client"
+
+        title = f"Cadence Call — {consultant_name} ({client_name})"
+        if payload.project_name:
+            title += f" | {payload.project_name}"
+
+        description = (
+            f"Cadence check-in scheduled via J2W HRBP Platform.\n"
+            f"Client: {client_name}\n"
+            f"Consultant: {consultant_name}\n"
+        )
+        if payload.project_name:
+            description += f"Project: {payload.project_name}\n"
+
+        event_id, meet_link = google_calendar.create_calendar_event(
+            title=title,
+            description=description,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            meeting_time=payload.meeting_time,
+            duration_minutes=payload.duration_minutes,
+            frequency_weeks=payload.frequency_weeks,
+            meeting_type=payload.meeting_type,
+            attendee_emails=attendee_emails,
+        )
+        schedule.google_calendar_event_id = event_id
+        schedule.google_meet_link = meet_link
+        db.commit()
+        db.refresh(schedule)
+    except Exception as exc:
+        log.warning("Google Calendar event creation failed: %s", exc)
+    # ───────────────────────────────────────────────────────────────────────
+
+    # ── Cadence created email notification ─────────────────────────────────
+    try:
+        _send_cadence_created_emails(db, schedule)
+    except Exception as exc:
+        log.warning("Cadence creation email failed: %s", exc)
+    # ───────────────────────────────────────────────────────────────────────
+
     return schedule
+
+
+def _send_cadence_created_emails(db: Session, schedule: HRBPCadenceSchedule) -> None:
+    """Send a cadence-created notification email to each participant individually."""
+    hrbp = db.query(User).filter_by(id=schedule.hrbp_id).first()
+    consultant = db.query(HRBPConsultant).filter_by(id=schedule.consultant_id).first()
+    client = db.query(HRBPClient).filter_by(id=schedule.client_id).first()
+
+    created_by_name = hrbp.name if hrbp else "HRBP"
+    consultant_name = consultant.name if consultant else "Consultant"
+    client_name = client.name if client else "Client"
+
+    # Build list of (name, email) for every participant
+    participants: list[tuple[str, str]] = []
+
+    if hrbp and hrbp.email:
+        participants.append((hrbp.name or "HRBP", hrbp.email))
+
+    if schedule.bh_id:
+        bh = db.query(User).filter_by(id=schedule.bh_id).first()
+        if bh and bh.email:
+            participants.append((bh.name or "Business Head", bh.email))
+
+    if consultant and consultant.email:
+        participants.append((consultant_name, consultant.email))
+
+    # Other HRBPs on the client
+    if client and client.hrbp_ids:
+        extra_ids = [i for i in client.hrbp_ids if i != schedule.hrbp_id]
+        if extra_ids:
+            for u in db.query(User).filter(User.id.in_(extra_ids)).all():
+                if u.email and not any(e == u.email for _, e in participants):
+                    participants.append((u.name or "HRBP", u.email))
+
+    subject = f"Cadence Scheduled — {consultant_name} ({client_name})"
+    if schedule.project_name:
+        subject += f" | {schedule.project_name}"
+
+    for name, email in participants:
+        html = cadence_created_html(
+            created_by_name=created_by_name,
+            client_name=client_name,
+            consultant_name=consultant_name,
+            project_name=schedule.project_name,
+            meeting_type=schedule.meeting_type,
+            start_date=schedule.start_date,
+            end_date=schedule.end_date,
+            meeting_time=schedule.meeting_time,
+            duration_minutes=schedule.duration_minutes or 30,
+            frequency_weeks=schedule.frequency_weeks or 1,
+            google_meet_link=schedule.google_meet_link,
+            recipient_name=name,
+        )
+        send_outlook_email(to_addresses=[email], subject=subject, html_body=html)
+
+
+def _collect_attendee_emails(db: Session, schedule: HRBPCadenceSchedule) -> list[str]:
+    emails: list[str] = []
+
+    # HRBP who created it
+    hrbp = db.query(User).filter_by(id=schedule.hrbp_id).first()
+    if hrbp and hrbp.email:
+        emails.append(hrbp.email)
+
+    # Business Head (if assigned)
+    if schedule.bh_id:
+        bh = db.query(User).filter_by(id=schedule.bh_id).first()
+        if bh and bh.email:
+            emails.append(bh.email)
+
+    # Consultant
+    consultant = db.query(HRBPConsultant).filter_by(id=schedule.consultant_id).first()
+    if consultant and consultant.email:
+        emails.append(consultant.email)
+
+    # All other HRBPs on this client (from hrbp_clients.hrbp_ids)
+    client = db.query(HRBPClient).filter_by(id=schedule.client_id).first()
+    if client and client.hrbp_ids:
+        extra_hrbp_ids = [i for i in client.hrbp_ids if i != schedule.hrbp_id]
+        if extra_hrbp_ids:
+            extra_users = db.query(User).filter(User.id.in_(extra_hrbp_ids)).all()
+            for u in extra_users:
+                if u.email and u.email not in emails:
+                    emails.append(u.email)
+
+    return emails
 
 
 def list_paginated(
@@ -240,6 +380,9 @@ def cancel(db: Session, id: int) -> None:
         HRBPCadenceSession.status == "not_started",
     ).update({"status": "cancelled"})
     db.commit()
+
+    if schedule.google_calendar_event_id:
+        google_calendar.cancel_calendar_event(schedule.google_calendar_event_id)
 
 
 def get_summary(

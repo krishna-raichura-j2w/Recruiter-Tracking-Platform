@@ -66,6 +66,7 @@ class CadenceScheduleResponse(BaseModel):
     frequency_weeks: int | None
     status: str | None
     supporting_documents: list[str] | None
+    google_meet_link: str | None = None
     created_at: datetime | None
     updated_at: datetime | None
 
