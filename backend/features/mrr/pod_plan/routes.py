@@ -225,6 +225,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
     dl_subs = service.get_dl_subs_for_date(db, setup_id, actual_pod_id, entry_date)
     ol_auto = service.get_ol_daily_actuals(db, setup_id, entry_date)
     actual_subs_auto = ol_auto["subs"]
+    actual_int_auto = ol_auto["int"]
     actual_sel_auto = ol_auto["sel"]
     actual_obs_auto = ol_auto["obs"]
     week_info = service.week_for_date(entry_date, s["month"], s.get("custom_working_days"))
@@ -241,6 +242,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
         "actuals": actuals,
         "dl_subs": dl_subs,
         "actual_subs_auto": actual_subs_auto,
+        "actual_int_auto": actual_int_auto,
         "actual_sel_auto": actual_sel_auto,
         "actual_obs_auto": actual_obs_auto,
         "week_info": week_info,

@@ -442,7 +442,7 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
     import pymysql
     from core.config import settings
 
-    empty = {"subs": {}, "sel": {}, "obs": {}}
+    empty = {"subs": {}, "int": {}, "sel": {}, "obs": {}}
     if not settings.ol_replica_host:
         return empty
 
@@ -459,6 +459,7 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
     day_end_utc = day_start_utc + timedelta(hours=24)
 
     subs: dict[int, int] = {}
+    ints: dict[int, int] = {}
     sel: dict[int, int] = {}
     obs: dict[int, int] = {}
 
@@ -482,9 +483,16 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
                     JOIN job_postings jp ON aj.job_posting_id = jp.id
                     JOIN clients cl ON jp.client_id = cl.user_id
                     WHERE aj.current_step >= 7
-                      AND aj.created_at >= %s AND aj.created_at < %s
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
                       AND cl.user_id IN ({ph})
                     GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'int' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
+                    FROM validation_screens vs
+                    JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
+                    WHERE vs.interview_date = %s
+                      AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
+                    GROUP BY jp.client_id
                     UNION ALL
                     SELECT 'sel' AS kind, cl.user_id AS client_id, COUNT(DISTINCT sc.id) AS cnt
                     FROM selected_candidates sc
@@ -505,7 +513,8 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
                       AND cl.user_id IN ({ph})
                     GROUP BY cl.user_id
                     """,
-                    [day_start_utc, day_end_utc] + client_ids_list
+                    [entry_date] + client_ids_list
+                    + [entry_date] + client_ids_list
                     + [day_start_utc, day_end_utc] + client_ids_list
                     + [entry_date] + client_ids_list,
                 )
@@ -516,6 +525,8 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
                     cnt = int(r["cnt"])
                     if r["kind"] == "sub":
                         subs[ct_id] = subs.get(ct_id, 0) + cnt
+                    elif r["kind"] == "int":
+                        ints[ct_id] = ints.get(ct_id, 0) + cnt
                     elif r["kind"] == "sel":
                         sel[ct_id] = sel.get(ct_id, 0) + cnt
                     elif r["kind"] == "obs":
@@ -525,7 +536,7 @@ def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[st
     except Exception:
         return empty
 
-    return {"subs": subs, "sel": sel, "obs": obs}
+    return {"subs": subs, "int": ints, "sel": sel, "obs": obs}
 
 
 # ── BH leaderboard OL metrics (shared by per-BH detail + all-BH overview) ──────
