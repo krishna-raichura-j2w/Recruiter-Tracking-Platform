@@ -11,6 +11,7 @@ interface Step3PriorityProps {
   data: Step3Data;
   onChange: (data: Step3Data) => void;
   sopSlaHint?: string;
+  poRiskAmount?: number | null;
 }
 
 const PRIORITIES = [
@@ -56,9 +57,30 @@ const PRIORITIES = [
   },
 ] as const;
 
-export function Step3Priority({ data, onChange, sopSlaHint }: Step3PriorityProps) {
+function formatInr(v: number): string {
+  if (v >= 10_00_000) return `₹${(v / 10_00_000).toFixed(2)}L`;
+  if (v >= 1_000) return `₹${(v / 1_000).toFixed(1)}K`;
+  return `₹${v.toFixed(0)}`;
+}
+
+export function Step3Priority({ data, onChange, sopSlaHint, poRiskAmount }: Step3PriorityProps) {
   return (
     <div className="space-y-6">
+      {/* PO risk context banner */}
+      {poRiskAmount != null && poRiskAmount > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <span className="text-lg leading-none">⚠️</span>
+          <div>
+            <p className="text-sm font-semibold text-amber-800">
+              PO at Risk: {formatInr(poRiskAmount)}
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Use this to guide your priority selection below.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Priority tiles */}
       <div className="space-y-2">
         <Label>Ticket Priority <span className="text-red-500">*</span></Label>

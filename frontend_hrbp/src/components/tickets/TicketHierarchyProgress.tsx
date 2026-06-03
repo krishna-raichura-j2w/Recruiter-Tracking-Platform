@@ -1,5 +1,5 @@
-import { CheckCircle2, Circle, Clock, ClipboardList } from "lucide-react";
-import type { HierarchyStep, SopDefinition } from "@/apiService/ticketTypes";
+import { CheckCircle2, Circle, Clock, ClipboardList, MessageSquare } from "lucide-react";
+import type { HierarchyStep, SopDefinition, TicketComment } from "@/apiService/ticketTypes";
 import { cn } from "@/lib/utils";
 import { fmtDateTime } from "@/lib/formatDate";
 
@@ -9,6 +9,7 @@ interface TicketHierarchyProgressProps {
   currentUserId?: number;
   status: string;
   sopSteps?: SopDefinition["steps_definition"];
+  comments?: TicketComment[];
 }
 
 const ROLE_COLOR: Record<string, string> = {
@@ -27,6 +28,7 @@ export function TicketHierarchyProgress({
   currentUserId,
   status,
   sopSteps,
+  comments = [],
 }: TicketHierarchyProgressProps) {
   function getSopStep(step: HierarchyStep) {
     if (!sopSteps?.length) return null;
@@ -46,6 +48,9 @@ export function TicketHierarchyProgress({
         const isFuture = stepNum > currentStep;
         const isMyTurn = isActive && step.user_id === currentUserId;
         const sopStep = getSopStep(step);
+        const stepComments = comments.filter(
+          (c) => c.hierarchy_step === stepNum && c.author_id === step.user_id,
+        );
 
         return (
           <div key={idx} className="flex gap-4">
@@ -145,6 +150,20 @@ export function TicketHierarchyProgress({
                   <div className="mt-2 pt-2 border-t border-green-200 text-xs text-green-700">
                     ✓ Resolved by <strong>{step.resolved_by_name ?? "—"}</strong> on{" "}
                     {formatTs(step.resolved_at)}
+                  </div>
+                )}
+
+                {stepComments.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
+                    {stepComments.map((c) => (
+                      <div key={c.id} className="flex gap-2">
+                        <MessageSquare className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-700 leading-relaxed break-words">{c.content}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{formatTs(c.created_at)}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

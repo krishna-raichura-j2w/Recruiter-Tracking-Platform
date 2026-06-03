@@ -565,6 +565,11 @@ function TicketDetailPage() {
   const [closing, setClosing] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
 
+  // Description edit state
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [descriptionSaving, setDescriptionSaving] = useState(false);
+
   // Sidebar comment input state
   const [commentText, setCommentText] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
@@ -710,6 +715,21 @@ function TicketDetailPage() {
     }
   }
 
+  async function handleSaveDescription() {
+    if (!ticket) return;
+    setDescriptionSaving(true);
+    try {
+      const updated = await updateTicket(ticket.id, { description: descriptionDraft });
+      setTicket(updated);
+      setEditingDescription(false);
+      toast.success("Description updated");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to update description");
+    } finally {
+      setDescriptionSaving(false);
+    }
+  }
+
   async function handleComment(content: string, isResolution: boolean) {
     if (!ticket) return;
     try {
@@ -807,7 +827,14 @@ function TicketDetailPage() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <TopBar title={ticket.ticket_number} subtitle={ticket.title} />
+      <TopBar
+        title={ticket.ticket_number}
+        subtitle={
+          ticket.consultants.length > 0
+            ? `${ticket.title} · ${ticket.consultants.map((c) => c.emp_id).join(", ")}`
+            : ticket.title
+        }
+      />
 
       <div className="flex-1 overflow-auto px-6 py-5">
         {/* Back + actions */}
@@ -882,7 +909,15 @@ function TicketDetailPage() {
                     <span className="text-gray-300">•</span>
                     <span className="text-sm text-gray-500">{ticket.sop_name}</span>
                   </div>
-                  <h1 className="text-lg font-semibold text-gray-900">{ticket.title}</h1>
+                  <h1 className="text-lg font-semibold text-gray-900">
+                    {ticket.title}
+                    {ticket.consultants.length > 0 && (
+                      <span className="font-bold text-black">
+                        {" · "}
+                        {ticket.consultants.map((c) => c.emp_id).join(", ")}
+                      </span>
+                    )}
+                  </h1>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <TicketPriorityBadge priority={ticket.priority} />
@@ -1034,10 +1069,59 @@ function TicketDetailPage() {
 
                 {/* ── Tab 1: Description ── */}
                 <TabsContent value="description" className="p-5 space-y-5">
-                  {ticket.description ? (
-                    <RichTextEditor value={ticket.description} onChange={() => {}} readOnly />
+                  {editingDescription ? (
+                    <div className="space-y-3">
+                      <RichTextEditor
+                        value={descriptionDraft}
+                        onChange={setDescriptionDraft}
+                        placeholder="Provide detailed context for this ticket…"
+                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs"
+                          disabled={descriptionSaving}
+                          onClick={() => setEditingDescription(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="gap-1.5 text-xs bg-blue-600 hover:bg-blue-700"
+                          disabled={descriptionSaving}
+                          onClick={handleSaveDescription}
+                        >
+                          {descriptionSaving ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : null}
+                          Save
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
-                    <p className="text-sm text-gray-400 italic">No description provided.</p>
+                    <div className="space-y-2">
+                      {isCreator && ticket.status === "open" && (
+                        <div className="flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs h-7"
+                            onClick={() => {
+                              setDescriptionDraft(ticket.description ?? "");
+                              setEditingDescription(true);
+                            }}
+                          >
+                            Edit Description
+                          </Button>
+                        </div>
+                      )}
+                      {ticket.description ? (
+                        <RichTextEditor value={ticket.description} onChange={() => {}} readOnly />
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">No description provided.</p>
+                      )}
+                    </div>
                   )}
 
                   {/* Attachments section */}
@@ -1278,6 +1362,7 @@ function TicketDetailPage() {
                   currentUserId={user?.id}
                   status={ticket.status}
                   sopSteps={sopSteps ?? undefined}
+                  comments={ticket.comments}
                 />
               )}
             </div>

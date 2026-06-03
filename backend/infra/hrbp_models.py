@@ -297,6 +297,8 @@ class HRBPCadenceSchedule(Base):
         default="not_started",
     )  # not_started | in_progress | completed | cancelled
     supporting_documents = Column(ARRAY(Text), default=list)
+    google_calendar_event_id = Column(Text)
+    google_meet_link = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
