@@ -206,6 +206,7 @@ export default function ValidationQueue() {
                   {isAdmin && (
                     <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Validator</th>
                   )}
+                  <th className="text-left py-3.5 px-5 text-xs font-semibold text-emerald-500 uppercase tracking-wider">Validated By</th>
                   <th className="py-3.5 px-5" />
                 </tr>
               </thead>
@@ -263,6 +264,15 @@ export default function ValidationQueue() {
                         )}
                       </td>
                     )}
+                    <td className="py-3.5 px-5 text-xs">
+                      {(item.candidate as any).validated_by_name ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold">
+                          <UserCheck size={11} /> {(item.candidate as any).validated_by_name}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-5 text-right">
                       <button
                         onClick={() => {

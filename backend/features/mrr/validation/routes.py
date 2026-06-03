@@ -21,6 +21,15 @@ def _serialize_candidate(c) -> dict:
     candidate["assigned_validator_name"] = (
         c.assigned_validator.name if c.assigned_validator else None
     )
+    # Who actually validated this profile (may differ from the pre-assigned validator)
+    if c.validation:
+        candidate["validated_by_id"] = c.validation.delivery_lead_id
+        candidate["validated_by_name"] = (
+            c.validation.delivery_lead.name if c.validation.delivery_lead else None
+        )
+    else:
+        candidate["validated_by_id"] = None
+        candidate["validated_by_name"] = None
     if c.assessment:
         candidate["overall_score"] = c.assessment.overall_score
         candidate["auto_recommendation"] = c.assessment.auto_recommendation

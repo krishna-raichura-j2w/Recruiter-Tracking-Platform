@@ -105,6 +105,7 @@ def _pending_query(
             joinedload(Candidate.assigned_to),
             joinedload(Candidate.assigned_validator),
             joinedload(Candidate.job),
+            joinedload(Candidate.validation).joinedload(Validation.delivery_lead),
         )
         .filter(Candidate.status == CandidateStatus.ready_for_validation)
     )
@@ -123,29 +124,47 @@ def list_pending_for_dl(
     **filters,
 ):
     """
-    Validation queue scoped to a DL's jobs (checks both delivery_lead_id and delivery_lead_ids).
-    Excludes candidates the DL personally sourced or called.
+    Validation queue visible to a DL: all ready_for_validation candidates whose job
+    belongs to ANY DL in the same pod. This lets every pod DL validate any profile.
+    Candidates personally sourced or called by the requesting DL are excluded.
     """
-    from infra.models import Job as _Job
+    from infra.models import Job as _Job, User as _User, UserRole
     from sqlalchemy import cast, func, or_
     from sqlalchemy.dialects.postgresql import JSONB
 
-    # Collect job IDs this DL owns via a single SQL query using JSONB cast.
-    # delivery_lead_id is a scalar FK; delivery_lead_ids is a JSON text array.
-    # COALESCE guards against NULL delivery_lead_ids on older rows.
-    dl_job_ids = [
-        row[0]
-        for row in db.query(_Job.id).filter(
-            or_(
-                _Job.delivery_lead_id == dl_id,
-                cast(func.coalesce(_Job.delivery_lead_ids, "[]"), JSONB).op("@>")(
-                    cast(f"[{dl_id}]", JSONB)
-                ),
+    # Resolve the pod this DL belongs to.
+    dl_user = db.query(_User.pod_id).filter(_User.id == dl_id).scalar()
+    pod_id = dl_user  # pod_id column value
+
+    if pod_id:
+        # All DL ids in the same pod (including the requesting DL).
+        pod_dl_ids = [
+            row[0]
+            for row in db.query(_User.id).filter(
+                _User.pod_id == pod_id,
+                _User.role == UserRole.delivery_lead,
+                _User.is_active == True,  # noqa: E712
+            ).all()
+        ]
+    else:
+        pod_dl_ids = [dl_id]
+
+    # Collect job IDs owned by any DL in the pod.
+    or_clauses = []
+    for did in pod_dl_ids:
+        or_clauses.append(_Job.delivery_lead_id == did)
+        or_clauses.append(
+            cast(func.coalesce(_Job.delivery_lead_ids, "[]"), JSONB).op("@>")(
+                cast(f"[{did}]", JSONB)
             )
-        ).all()
+        )
+
+    pod_job_ids = [
+        row[0]
+        for row in db.query(_Job.id).filter(or_(*or_clauses)).all()
     ]
 
-    if not dl_job_ids:
+    if not pod_job_ids:
         return [], 0
 
     q = (
@@ -155,10 +174,12 @@ def list_pending_for_dl(
             joinedload(Candidate.assigned_to),
             joinedload(Candidate.assigned_validator),
             joinedload(Candidate.job),
+            joinedload(Candidate.validation).joinedload(Validation.delivery_lead),
         )
         .filter(
             Candidate.status == CandidateStatus.ready_for_validation,
-            Candidate.job_id.in_(dl_job_ids),
+            Candidate.job_id.in_(pod_job_ids),
+            # Requesting DL must not validate profiles they personally sourced/called.
             Candidate.sourced_by_id != dl_id,
             Candidate.assigned_to_id != dl_id,
         )
