@@ -1507,7 +1507,7 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
 
 export default function PodPlan() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'coo';
 
   const [activeTab, setActiveTab] = useState<TabKey>('setup');
   const [selectedMonth, setSelectedMonth] = useState(

@@ -23,14 +23,16 @@ from features.mrr.pod_plan.schema import (
 
 router = APIRouter(prefix="/pod-plan", tags=["pod-plan"])
 
-BH_OR_ADMIN = Depends(require_roles("bh", "admin"))
+BH_OR_ADMIN = Depends(require_roles("bh", "admin", "coo"))
 LEADERSHIP = Depends(require_roles("admin", "coo", "ops_head"))
+
+_PRIVILEGED = {"admin", "coo"}
 
 
 def _effective_bh_id(cu, as_bh: Optional[int]) -> int:
-    if cu.role == "admin":
+    if str(cu.role) in _PRIVILEGED:
         if not as_bh:
-            raise HTTPException(400, "Admin must supply ?as_bh=<bh_user_id>")
+            raise HTTPException(400, "Must supply ?as_bh=<bh_user_id>")
         return as_bh
     return cu.id
 
@@ -118,7 +120,7 @@ def list_clients(db: Session = Depends(get_db), cu=BH_OR_ADMIN):
 
 @router.get("/setup/{setup_id}/customers")
 def list_customers(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     return {"customers": service.list_customers(db, setup_id)}
@@ -126,7 +128,7 @@ def list_customers(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN)
 
 @router.post("/setup/{setup_id}/customers")
 def upsert_customer(setup_id: int, body: CustomerUpsert, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     customer = service.upsert_customer(db, setup_id, body.model_dump())
@@ -135,7 +137,7 @@ def upsert_customer(setup_id: int, body: CustomerUpsert, db: Session = Depends(g
 
 @router.delete("/setup/{setup_id}/customers/{customer_id}")
 def delete_customer(setup_id: int, customer_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     service.delete_customer(db, customer_id, setup_id)
@@ -146,7 +148,7 @@ def delete_customer(setup_id: int, customer_id: int, db: Session = Depends(get_d
 
 @router.get("/setup/{setup_id}/pod-members")
 def pod_members(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
     return {"members": service.list_pod_members(db, s["pod_id"])}
@@ -156,7 +158,7 @@ def pod_members(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
 
 @router.get("/setup/{setup_id}/recruiters")
 def list_recruiters(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     return {"assignments": service.list_recruiter_assignments(db, setup_id)}
@@ -164,7 +166,7 @@ def list_recruiters(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN
 
 @router.post("/setup/{setup_id}/recruiters")
 def save_recruiters(setup_id: int, body: RecruitersBulk, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     entries = [a.model_dump() for a in body.assignments]
@@ -176,7 +178,7 @@ def save_recruiters(setup_id: int, body: RecruitersBulk, db: Session = Depends(g
 
 @router.get("/setup/{setup_id}/kams")
 def list_kams(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     return {"kams": service.list_kam_assignments(db, setup_id)}
@@ -184,7 +186,7 @@ def list_kams(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
 
 @router.post("/setup/{setup_id}/kams")
 def save_kams(setup_id: int, body: KAMsBulk, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     entries = [a.model_dump() for a in body.assignments]
@@ -196,7 +198,7 @@ def save_kams(setup_id: int, body: KAMsBulk, db: Session = Depends(get_db), cu=B
 
 @router.get("/setup/{setup_id}/weekly-obs")
 def list_weekly_obs(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     return {"weekly_obs": service.list_weekly_ob_targets(db, setup_id)}
@@ -204,7 +206,7 @@ def list_weekly_obs(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN
 
 @router.post("/setup/{setup_id}/weekly-obs")
 def save_weekly_obs(setup_id: int, body: WeeklyOBBulk, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     entries = [e.model_dump() for e in body.entries]
@@ -216,7 +218,7 @@ def save_weekly_obs(setup_id: int, body: WeeklyOBBulk, db: Session = Depends(get
 
 @router.get("/setup/{setup_id}/daily/{entry_date}")
 def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
     actual_pod_id = s["pod_id"]
@@ -246,7 +248,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
 @router.post("/setup/{setup_id}/daily/{entry_date}")
 def save_daily(setup_id: int, entry_date: str, body: DailyActualsBulk,
                db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
     entries = [e.model_dump() for e in body.entries]
@@ -256,7 +258,7 @@ def save_daily(setup_id: int, entry_date: str, body: DailyActualsBulk,
 
 @router.get("/setup/{setup_id}/monthly-progress")
 def monthly_progress(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
     actuals = service.get_monthly_actuals(db, setup_id, s["month"])
@@ -265,7 +267,7 @@ def monthly_progress(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMI
 
 @router.get("/setup/{setup_id}/working-days")
 def working_days(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
     custom = s.get("custom_working_days")
@@ -277,7 +279,7 @@ def working_days(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
 
 @router.get("/setup/{setup_id}/metrics")
 def get_metrics(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
     customers = service.list_customers(db, setup_id)
@@ -290,7 +292,7 @@ def get_metrics(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
 
 @router.get("/setup/{setup_id}/plan")
 def get_plan(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
-    is_admin = cu.role == "admin"
+    is_admin = str(cu.role) in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     s = _setup_or_404(db, setup_id, pod_id, is_admin)
     customers = service.list_customers(db, setup_id)

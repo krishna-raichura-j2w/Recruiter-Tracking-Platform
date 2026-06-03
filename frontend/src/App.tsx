@@ -217,7 +217,7 @@ export default function App() {
           <Route
             path="/pod-plan"
             element={
-              <ProtectedRoute allowedRoles={['bh', 'admin']}>
+              <ProtectedRoute allowedRoles={['bh', 'admin', 'coo']}>
                 <PodPlan />
               </ProtectedRoute>
             }
