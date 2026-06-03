@@ -1259,6 +1259,7 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
   const [olInt, setOlInt] = useState<Record<number, number>>({});
   const [olSel, setOlSel] = useState<Record<number, number>>({});
   const [olObs, setOlObs] = useState<Record<number, number>>({});
+  const [dailyTargets, setDailyTargets] = useState<Record<number, { subs_target: number; int_target: number; sel_target: number; obs_target: number }>>({});
   const [weekInfo, setWeekInfo] = useState<WeekInfo | null>(null);
   const [weekOBTargets, setWeekOBTargets] = useState<Record<number, number>>({});
   const [weekOBActuals, setWeekOBActuals] = useState<Record<number, number>>({});
@@ -1285,6 +1286,7 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
       setOlInt(daily.actual_int_auto ?? {});
       setOlSel(daily.actual_sel_auto ?? {});
       setOlObs(daily.actual_obs_auto ?? {});
+      setDailyTargets(daily.daily_targets ?? {});
       setWeekInfo(daily.week_info);
       setWeekOBTargets(daily.week_ob_targets ?? {});
       setWeekOBActuals(daily.week_ob_actuals ?? {});
@@ -1358,21 +1360,12 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
               </thead>
               <tbody>
                 {customers.map(c => {
-                  const weights: number[] = (setup.week_weights as number[]) ?? [20, 20, 20, 20, 20];
-                  const weekIdx = weekInfo ? (weekInfo.week_num - 1) : -1;
-                  const weekPct = (weekIdx >= 0 ? (weights[weekIdx] ?? 20) : 20) / 100;
-                  const weekWd = weekInfo ? ((weekInfo as any).week_working_days ?? 5) : 5;
-                  const monthlySubs = Math.round(c.open_demand_pool * (c.repeat_demand_pct * c.subs_repeat + (1 - c.repeat_demand_pct) * (c.subs_new_phase1 + c.subs_new_phase2)));
-                  const monthlyInts = c.target_interviews_day * Math.max(1, setup.working_days ?? 22);
-                  const dailySubsTarget = c.target_interviews_day
-                    ? Math.round((monthlySubs * weekPct) / Math.max(1, weekWd))
-                    : null;
-                  const dailyIntsTarget = Math.round((monthlyInts * weekPct) / Math.max(1, weekWd));
+                  const dt = dailyTargets[c.id] ?? { subs_target: 0, int_target: 0, sel_target: 0, obs_target: 0 };
                   return (
                   <tr key={c.id}>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', fontWeight: 700 }}>{c.customer_name}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
-                      {dailySubsTarget !== null ? dailySubsTarget : '—'}
+                      {dt.subs_target || '—'}
                     </td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4' }}>
                       <span style={{ fontWeight: 700, fontSize: 14, color: dlSubs[c.id] ? '#15803d' : '#9ca3af' }}>
@@ -1384,13 +1377,13 @@ function DailyTab({ setupId, setup, customers }: { setupId: number; setup: Parti
                         {olSubs[c.id] ?? 0}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{dailyIntsTarget}</td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{dt.int_target || '—'}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fff7ed' }}>
                       <span style={{ fontWeight: 700, fontSize: 14, color: olInt[c.id] ? '#c2410c' : '#9ca3af' }}>
                         {olInt[c.id] ?? 0}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>—</td>
+                    <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>{dt.sel_target || '—'}</td>
                     <td style={{ padding: '8px 12px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fff7ed' }}>
                       <span style={{ fontWeight: 700, fontSize: 14, color: olSel[c.id] ? '#c2410c' : '#9ca3af' }}>
                         {olSel[c.id] ?? 0}

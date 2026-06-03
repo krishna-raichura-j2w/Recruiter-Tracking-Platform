@@ -238,6 +238,21 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
         for r in weekly_obs
         if week_info and r["week_num"] == week_info.get("week_num")
     }
+
+    # Compute authoritative per-customer daily targets using the same logic as the leaderboard
+    customers = service.list_customers(db, setup_id)
+    recruiters = service.list_recruiter_assignments(db, setup_id)
+    enriched = {c["id"]: c for c in service.compute_metrics(s, customers, recruiters)["customers"]}
+    daily_targets = {
+        c["id"]: {
+            "subs_target": service.daily_target_for_date(s, enriched.get(c["id"], {}).get("monthly_subs", 0), entry_date),
+            "int_target": c.get("target_interviews_day", 0),
+            "sel_target": round(enriched.get(c["id"], {}).get("daily_selects", 0)),
+            "obs_target": round(enriched.get(c["id"], {}).get("daily_obs", 0)),
+        }
+        for c in customers
+    }
+
     return {
         "actuals": actuals,
         "dl_subs": dl_subs,
@@ -248,6 +263,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
         "week_info": week_info,
         "week_ob_actuals": week_ob_actuals,
         "week_ob_targets": week_ob_targets,
+        "daily_targets": daily_targets,
     }
 
 
