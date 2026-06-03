@@ -1,6 +1,6 @@
 import json
 
-from infra.models import Candidate, Job, JobStatus, User, to_iso_utc
+from infra.models import Candidate, Job, JobStatus, User, now_utc, to_iso_utc
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -412,6 +412,9 @@ def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=Non
     new_data["calling_warned"] = False
     new_data["calling_alerted"] = False
     new_data["is_synced"] = False
+    _now = now_utc()
+    new_data["created_at"] = _now
+    new_data["updated_at"] = _now
 
     creator = db.query(User).filter(User.id == new_data.get("created_by_id")).first()
     new_data["email_id"] = creator.email if creator else None

@@ -156,6 +156,8 @@ export interface Candidate {
   assigned_to_name: string | null;
   assigned_validator_id: number | null;
   assigned_validator_name: string | null;
+  validated_by_id: number | null;
+  validated_by_name: string | null;
   job_title: string | null;
   client_name: string | null;
   overall_score: number | null;

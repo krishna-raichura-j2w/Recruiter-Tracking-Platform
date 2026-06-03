@@ -30,6 +30,14 @@ def _serialize(c):
         c.assigned_validator.name if c.assigned_validator else None
     )
     base["sourced_by_name"] = c.sourced_by.name if c.sourced_by else None
+    base["validated_by_name"] = (
+        c.validation.delivery_lead.name
+        if c.validation and c.validation.delivery_lead
+        else None
+    )
+    base["validated_by_id"] = (
+        c.validation.delivery_lead_id if c.validation else None
+    )
     base["job_title"] = c.job.role_title if c.job else None
     base["client_name"] = c.job.client_name if c.job else None
     if c.assessment:

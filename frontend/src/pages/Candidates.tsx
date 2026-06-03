@@ -298,21 +298,15 @@ export default function Candidates() {
 
   // Quick date filter
   const [dateFilter, setDateFilter] = useState<'all' | '7d' | '30d'>('all');
-  const [sourcerFilter, setSourcerFilter] = useState('');
-  const [callerFilter, setCallerFilter] = useState('');
+  const [recruiterFilter, setRecruiterFilter] = useState('');
 
-  const uniqueSourcers = [...new Map(
+  const uniqueRecruiters = [...new Map(
     candidates.filter(c => c.sourced_by_id).map(c => [c.sourced_by_id, c.sourced_by_name])
   ).entries()].map(([id, name]) => ({ id: id as number, name: name as string }));
 
-  const uniqueCallers = [...new Map(
-    candidates.filter(c => c.assigned_to_id).map(c => [c.assigned_to_id, c.assigned_to_name])
-  ).entries()].map(([id, name]) => ({ id: id as number, name: name as string }));
-
-  // Name search goes server-side now; sourcer/caller/date still client-side (small post-filter)
+  // Name search goes server-side; recruiter/date filters are client-side (small post-filter)
   const filtered = candidates.filter((c) => {
-    if (sourcerFilter && String(c.sourced_by_id) !== sourcerFilter) return false;
-    if (callerFilter  && String(c.assigned_to_id) !== callerFilter) return false;
+    if (recruiterFilter && String(c.sourced_by_id) !== recruiterFilter) return false;
     if (dateFilter !== 'all' && c.sourcing_date) {
       const days = dateFilter === '7d' ? 7 : 30;
       const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
@@ -407,26 +401,17 @@ export default function Candidates() {
           ))}
         </div>
 
-        {/* Sourcer quick filter (pod_lead / admin) */}
-        {isDeliveryLead && uniqueSourcers.length > 0 && (
-          <select value={sourcerFilter} onChange={(e) => setSourcerFilter(e.target.value)}
+        {/* Recruiter quick filter (DL / admin) */}
+        {isDeliveryLead && uniqueRecruiters.length > 0 && (
+          <select value={recruiterFilter} onChange={(e) => setRecruiterFilter(e.target.value)}
             className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400">
-            <option value="">All Sourcers</option>
-            {uniqueSourcers.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+            <option value="">All Recruiters</option>
+            {uniqueRecruiters.map((r) => <option key={r.id} value={String(r.id)}>{r.name}</option>)}
           </select>
         )}
 
-        {/* Caller quick filter (pod_lead / admin) */}
-        {isDeliveryLead && uniqueCallers.length > 0 && (
-          <select value={callerFilter} onChange={(e) => setCallerFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400">
-            <option value="">All Callers</option>
-            {uniqueCallers.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-          </select>
-        )}
-
-        {(sourcerFilter || callerFilter || dateFilter !== 'all') && (
-          <button onClick={() => { setSourcerFilter(''); setCallerFilter(''); setDateFilter('all'); }}
+        {(recruiterFilter || dateFilter !== 'all') && (
+          <button onClick={() => { setRecruiterFilter(''); setDateFilter('all'); }}
             className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center gap-1">
             <X size={11} /> Clear filters
           </button>
@@ -472,16 +457,11 @@ export default function Candidates() {
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Job / Client</th>
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">City / Exp</th>
-                  {/* DL: sourcer + assigned recruiter columns */}
-                  {isDeliveryLead && (
-                    <>
-                      <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Sourced By</th>
-                      <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Caller</th>
-                    </>
+                  {(isDeliveryLead || isKam) && (
+                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Recruiter</th>
                   )}
-                  {/* KAM: DL verification status */}
-                  {isKam && (
-                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">DL Status</th>
+                  {(isDeliveryLead || isKam) && (
+                    <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Validated By</th>
                   )}
                   <th className="text-left py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
                   <th className="text-center py-3.5 px-5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Score</th>
@@ -528,62 +508,37 @@ export default function Candidates() {
                       <p className="text-xs text-slate-400">{c.exp_range ?? '—'}</p>
                     </td>
 
-                    {/* DL view: sourced_by + assigned recruiter */}
-                    {isDeliveryLead && (
-                      <>
-                        <td className="py-3.5 px-5">
-                          {c.sourced_by_name ? (
-                            <button
-                              onClick={() => c.sourced_by_id && setMemberPanel({
-                                id: c.sourced_by_id,
-                                name: c.sourced_by_name!,
-                                role: 'recruiter',
-                                filterType: 'sourced',
-                              })}
-                              className="text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-100 px-2 py-1 rounded-lg inline-flex items-center gap-1 hover:bg-teal-100 cursor-pointer"
-                            >
-                              {c.sourced_by_name} <ChevronRight size={11} />
-                            </button>
-                          ) : <span className="text-xs text-slate-400">—</span>}
-                        </td>
-                        <td className="py-3.5 px-5">
-                          {c.assigned_to_name ? (
-                            <button
-                              onClick={() => c.assigned_to_id && setMemberPanel({
-                                id: c.assigned_to_id,
-                                name: c.assigned_to_name!,
-                                role: 'recruiter',
-                                filterType: 'assigned',
-                              })}
-                              className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg inline-flex items-center gap-1 hover:bg-blue-100 cursor-pointer"
-                            >
-                              {c.assigned_to_name} <ChevronRight size={11} />
-                            </button>
-                          ) : <span className="text-xs text-slate-400">Unassigned</span>}
-                        </td>
-                      </>
+                    {/* Recruiter column */}
+                    {(isDeliveryLead || isKam) && (
+                      <td className="py-3.5 px-5">
+                        {c.sourced_by_name ? (
+                          <button
+                            onClick={() => c.sourced_by_id && setMemberPanel({
+                              id: c.sourced_by_id,
+                              name: c.sourced_by_name!,
+                              role: 'recruiter',
+                              filterType: 'sourced',
+                            })}
+                            className="text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-100 px-2 py-1 rounded-lg inline-flex items-center gap-1 hover:bg-teal-100 cursor-pointer"
+                          >
+                            {c.sourced_by_name} <ChevronRight size={11} />
+                          </button>
+                        ) : <span className="text-xs text-slate-400">—</span>}
+                        {c.assigned_to_name && c.assigned_to_id !== c.sourced_by_id && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">{c.assigned_to_name}</p>
+                        )}
+                      </td>
                     )}
 
-                    {/* KAM: DL verification status cell */}
-                    {isKam && (
+                    {/* Validated By column */}
+                    {(isDeliveryLead || isKam) && (
                       <td className="py-3.5 px-5">
-                        {(c.status === 'validated' || c.status === 'submitted_to_client') ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
-                            ✓ DL Verified
+                        {c.validated_by_name ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700">
+                            ✓ {c.validated_by_name}
                           </span>
-                        ) : c.status === 'rejected' ? (
-                          <div>
-                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700 border border-red-200">
-                              ✕ {c.rejected_by?.includes('KAM') ? 'KAM Rejected' : 'DL Rejected'}
-                            </span>
-                            {c.rejection_reason && (
-                              <p className="text-[10px] text-red-400 mt-0.5 max-w-32 line-clamp-1" title={c.rejection_reason}>
-                                {c.rejection_reason}
-                              </p>
-                            )}
-                          </div>
                         ) : (
-                          <span className="text-xs text-slate-400">Pending DL review</span>
+                          <span className="text-xs text-slate-400">—</span>
                         )}
                       </td>
                     )}

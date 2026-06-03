@@ -2647,6 +2647,9 @@ function RecruiterAssignModal({
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const sorted = [...team].sort((a, b) => (a.sourcing_load + a.calling_load) - (b.sourcing_load + b.calling_load));
   const minLoad = (sorted[0]?.sourcing_load ?? 0) + (sorted[0]?.calling_load ?? 0);
+  const allSelected = sorted.length > 0 && sorted.every(m => selected.includes(m.id));
+  const handleSelectAll = () => sorted.forEach(m => { if (!selected.includes(m.id)) onToggle(m.id); });
+  const handleDeselectAll = () => sorted.forEach(m => { if (selected.includes(m.id)) onToggle(m.id); });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -2662,7 +2665,16 @@ function RecruiterAssignModal({
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
           {/* Unified recruiter picker */}
           <div>
-            <h4 className="text-sm font-bold text-blue-700 mb-1">Assign Recruiters</h4>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-bold text-blue-700">Assign Recruiters</h4>
+              {!loadingTeam && sorted.length > 0 && (
+                <button type="button"
+                  onClick={allSelected ? handleDeselectAll : handleSelectAll}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+                  {allSelected ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
+            </div>
             <p className="text-xs text-slate-400 mb-3">Each recruiter will handle sourcing and screening for this JD.</p>
             {loadingTeam
               ? <div className="flex items-center gap-2 py-4 text-sm text-slate-400"><Loader2 size={16} className="animate-spin" /> Loading team…</div>

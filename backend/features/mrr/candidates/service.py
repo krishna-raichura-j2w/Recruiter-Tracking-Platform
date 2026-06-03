@@ -2,6 +2,7 @@ from infra.models import (
     Candidate,
     CandidateStatus,
     User,
+    Validation,
 )
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -104,7 +105,7 @@ def list_candidates(
             joinedload(Candidate.sourced_by),
             joinedload(Candidate.assigned_validator),
             joinedload(Candidate.assessment),
-            joinedload(Candidate.validation),
+            joinedload(Candidate.validation).joinedload(Validation.delivery_lead),
             joinedload(Candidate.submission),
             joinedload(Candidate.job),
         ),
