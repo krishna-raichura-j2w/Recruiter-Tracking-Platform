@@ -406,6 +406,19 @@ export async function bulkUpsertConsultantsApi(file: File): Promise<{
   return response.json();
 }
 
+export async function createConsultantApi(payload: Record<string, any>): Promise<{
+  meta: { status: boolean; message: string };
+  data: ConsultantItem;
+}> {
+  const baseUrl = getBaseUrl();
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/consultants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
 export async function createCadenceScheduleApi(
   payload: CreateCadenceScheduleRequest,
 ): Promise<CreateCadenceScheduleResponse> {
