@@ -32,7 +32,7 @@ hrbp_router = APIRouter(prefix="/hrbp")
 
 # Roles permitted to access HRBP data endpoints.
 # Add new roles here as the system grows — no other file needs to change.
-_HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin", "ops_head", "coo", "ceo"))
+_HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin", "ops_head", "coo", "ceo", "po_finance"))
 
 # Auth router is open to any authenticated user (needed for token refresh + profile).
 hrbp_router.include_router(auth_router)

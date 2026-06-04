@@ -91,6 +91,17 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     exits:         { read: true },
     activity_log:  { read: true },
   },
+
+  po_finance: {
+    dashboard:     { read: true },
+    clients:       { read: true },
+    consultants:   { read: true },
+    tickets:       { read: true, create: true,  update: true,  delete: false },
+    incidents:     { read: true },
+    communication: { read: true },
+    notifications: { read: true },
+    exits:         { read: true },
+  },
 };
 
 /**

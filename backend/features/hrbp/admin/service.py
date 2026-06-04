@@ -11,7 +11,7 @@ from features.hrbp.admin.schema import (
     AdminUserUpdate,
 )
 
-ALLOWED_ROLES = {"admin", "hrbp", "bh", "ops_head", "coo", "ceo"}
+ALLOWED_ROLES = {"admin", "hrbp", "bh", "ops_head", "coo", "ceo", "po_finance"}
 
 
 def check_hrbp_membership(db: Session, email: str) -> bool:

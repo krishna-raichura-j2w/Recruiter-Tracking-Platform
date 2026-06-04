@@ -63,6 +63,7 @@ class UserRole(str, enum.Enum):
     coo = "coo"
     hrbp = "hrbp"
     ops_head = "ops_head"
+    po_finance = "po_finance"
 
 
 class RecruiterType(str, enum.Enum):

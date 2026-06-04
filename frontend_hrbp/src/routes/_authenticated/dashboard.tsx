@@ -257,7 +257,7 @@ function Dashboard() {
         {/* Greeting Banner */}
         <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 shadow-sm">
           <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
-            👋 {greeting()}, {user?.name?.split(" ")[0] ?? "there"}.
+            👋 {greeting()}, {user?.name ?? "there"}.
           </h1>
           <p className="text-sm text-slate-500 mt-1.5">
             Here's what's happening across your HR operations today.
@@ -287,13 +287,15 @@ function Dashboard() {
             accentText="text-orange-600" sub="From open tickets"
             onClick={() => navigate({ to: "/tickets" })}
           />
-          <KpiCard
-            icon={<LottieIcon src="/json/business-meeting.json" size={40} />}
-            label="Cadence Overdue"
-            value={loadingKpis ? "—" : (kpis?.cadence_overdue ?? 0)}
-            accentText="text-violet-600" sub="Sessions pending"
-            onClick={() => navigate({ to: "/cadence" })}
-          />
+          {user?.role !== "po_finance" && (
+            <KpiCard
+              icon={<LottieIcon src="/json/business-meeting.json" size={40} />}
+              label="Cadence Overdue"
+              value={loadingKpis ? "—" : (kpis?.cadence_overdue ?? 0)}
+              accentText="text-violet-600" sub="Sessions pending"
+              onClick={() => navigate({ to: "/cadence" })}
+            />
+          )}
         </div>
 
         {/* Exit Tracking KPIs */}
@@ -361,12 +363,14 @@ function Dashboard() {
               description="Manage clients & consultants"
               onClick={() => navigate({ to: "/clients" })}
             />
-            <QuickAction
-              icon={<LottieIcon src="/json/business-colleague-working-on-collaborative-planning.json" size={36} />}
-              label="Cadence Scheduler"
-              description="View & schedule cadence"
-              onClick={() => navigate({ to: "/cadence" })}
-            />
+            {user?.role !== "po_finance" && (
+              <QuickAction
+                icon={<LottieIcon src="/json/business-colleague-working-on-collaborative-planning.json" size={36} />}
+                label="Cadence Scheduler"
+                description="View & schedule cadence"
+                onClick={() => navigate({ to: "/cadence" })}
+              />
+            )}
             <QuickAction
               icon={<DoorOpen className="w-9 h-9 text-rose-500" />}
               label="Exit Tracking"
@@ -377,7 +381,7 @@ function Dashboard() {
         </div>
 
         {/* My Tickets + Today's Cadence */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className={`grid grid-cols-1 gap-5 ${user?.role !== "po_finance" ? "lg:grid-cols-2" : ""}`}>
 
           {/* My Open Tickets */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -422,7 +426,7 @@ function Dashboard() {
           </div>
 
           {/* Today's Cadence */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          {user?.role !== "po_finance" && (<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
               <div>
                 <h2 className="text-sm font-bold text-slate-800">Today's Cadence</h2>
@@ -475,7 +479,7 @@ function Dashboard() {
                 ))}
               </div>
             )}
-          </div>
+          </div>)}
         </div>
 
         {/* Consultants at Risk + Recent Activity */}
