@@ -207,7 +207,7 @@ function SetupTab({ setup, onSetupChange, clients, customers, onCustomersChange,
 
   const handleAddCustomer = async () => {
     if (!setupId || !selectedClientId) return;
-    const client = clients.find(c => c.id === Number(selectedClientId));
+    const client = clients.find(c => (c.client_id ?? c.id) === Number(selectedClientId));
     if (!client) return;
     const customer = await podPlanApi.upsertCustomer(setupId, {
       customer_name: client.name,
