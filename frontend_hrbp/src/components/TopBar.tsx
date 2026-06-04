@@ -211,6 +211,7 @@ export function TopBar({
               src={user?.profile_url || `${import.meta.env.BASE_URL}profile-icon.svg`}
               alt="Profile"
               className="h-8 w-8 shrink-0 rounded-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = `${import.meta.env.BASE_URL}profile-icon.svg`; }}
             />
             <div className="hidden lg:flex flex-col items-end leading-tight">
               <span className="text-sm font-semibold text-slate-800 leading-none">{user.name}</span>

@@ -7,6 +7,7 @@ export interface LoginResponse {
   email: string;
   must_change_password: boolean;
   is_hrbp_member: boolean;
+  profile_url?: string | null;
 }
 
 export interface LoginError {

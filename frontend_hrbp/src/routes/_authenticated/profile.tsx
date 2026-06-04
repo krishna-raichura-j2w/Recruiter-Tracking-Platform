@@ -63,7 +63,11 @@ function ProfilePage() {
         setProfile(res.data);
         setEditName(res.data.name || "");
         setEditPhone(res.data.phone || "");
-        updateUserState({ name: res.data.name, profile_url: res.data.profile_url ?? null });
+        // Sync sidebar/header with latest profile data from DB
+        updateUserState({
+          name: res.data.name,
+          profile_url: res.data.profile_url ?? null,
+        });
       } else {
         setError(res.meta.message || "Failed to load profile");
       }
@@ -136,22 +140,32 @@ function ProfilePage() {
     const resolvedId = user?.id || (storedId ? Number(storedId) : null);
     if (!resolvedId) return;
 
+    // Show local preview immediately while uploading
+    const localPreview = URL.createObjectURL(file);
+    setProfile((prev) => prev ? { ...prev, profile_url: localPreview } : prev);
+
     setUploadingPhoto(true);
     try {
       const url = await uploadStorageFileApi(file);
       const res = await updateUserProfile(resolvedId, { name: profile!.name, profile_url: url });
-      if (res.meta.status && res.data) {
-        setProfile(res.data);
+      if (res.meta.status) {
+        // Use the uploaded URL directly — don't rely on res.data.profile_url
+        setProfile((prev) => prev ? { ...prev, profile_url: url } : prev);
         updateUserState({ profile_url: url });
         toast.success("Profile picture updated");
       } else {
+        // Revert preview on failure
+        setProfile((prev) => prev ? { ...prev, profile_url: profile?.profile_url ?? null } : prev);
         toast.error(res.meta.message || "Failed to update profile picture");
       }
     } catch (err: any) {
+      // Revert preview on error
+      setProfile((prev) => prev ? { ...prev, profile_url: profile?.profile_url ?? null } : prev);
       toast.error(err.message || "Upload failed");
     } finally {
       setUploadingPhoto(false);
       e.target.value = "";
+      URL.revokeObjectURL(localPreview);
     }
   };
 
@@ -238,7 +252,15 @@ function ProfilePage() {
                     {uploadingPhoto ? (
                       <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
                     ) : profile?.profile_url ? (
-                      <img src={profile.profile_url} className="h-full w-full object-cover" alt={profile.name} />
+                      <img
+                        src={profile.profile_url}
+                        className="h-full w-full object-cover"
+                        alt={profile.name}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = `${import.meta.env.BASE_URL}profile-icon.svg`;
+                          (e.currentTarget as HTMLImageElement).className = "h-16 w-16 opacity-90";
+                        }}
+                      />
                     ) : (
                       <img src={`${import.meta.env.BASE_URL}profile-icon.svg`} className="h-16 w-16 opacity-90" alt="Profile" />
                     )}

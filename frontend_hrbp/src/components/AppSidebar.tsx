@@ -235,6 +235,7 @@ export function AppSidebar() {
                   src={user?.profile_url || `${import.meta.env.BASE_URL}profile-icon.svg`}
                   alt="Profile"
                   className="h-7 w-7 shrink-0 rounded-full object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = `${import.meta.env.BASE_URL}profile-icon.svg`; }}
                 />
                 {!collapsed && (
                   <div className="flex min-w-0 flex-col items-start text-left leading-tight">
