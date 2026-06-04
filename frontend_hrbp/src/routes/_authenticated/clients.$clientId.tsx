@@ -300,7 +300,7 @@ function ClientDetail() {
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
         <BackButton to="/clients" label="Back to Clients" />
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {[
             {
               label: "Total Consultants",
@@ -313,6 +313,12 @@ function ClientDetail() {
               value: summary?.active ?? "—",
               color: "text-emerald-600",
               src: "/json/reviewed.json",
+            },
+            {
+              label: "Inactive",
+              value: summary?.inactive ?? "—",
+              color: "text-slate-500",
+              src: "/json/office-drawer.json",
             },
             {
               label: "Contract Closure Status",

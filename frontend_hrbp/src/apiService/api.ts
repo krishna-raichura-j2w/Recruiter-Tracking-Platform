@@ -419,6 +419,21 @@ export async function createConsultantApi(payload: Record<string, any>): Promise
   return response.json();
 }
 
+export async function uploadStorageFileApi(file: File): Promise<string> {
+  const baseUrl = getBaseUrl();
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetchWithAuth(`${baseUrl}api/hrbp/storage/upload`, {
+    method: "POST",
+    body: form,
+  });
+  const json = await response.json();
+  if (!response.ok || json?.meta?.status === false) {
+    throw new Error(json?.meta?.message || "Upload failed");
+  }
+  return json.data.url as string;
+}
+
 export async function createCadenceScheduleApi(
   payload: CreateCadenceScheduleRequest,
 ): Promise<CreateCadenceScheduleResponse> {

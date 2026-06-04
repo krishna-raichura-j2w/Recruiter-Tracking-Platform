@@ -15,7 +15,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ExitReason = "resignation" | "end_of_contract" | "termination" | "mutual_separation";
+export type ExitReason = "resignation" | "project_roll_off" | "contract_closure" | "conversion" | "absconding" | "no_show" | "termination";
 export type ExitType   = "voluntary" | "involuntary";
 export type ExitStatus = "initiated" | "acknowledged" | "completed";
 

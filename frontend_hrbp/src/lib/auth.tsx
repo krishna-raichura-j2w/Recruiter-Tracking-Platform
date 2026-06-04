@@ -8,6 +8,7 @@ interface User {
   role: string;
   id?: number;
   must_change_password?: boolean;
+  profile_url?: string | null;
 }
 
 interface AuthCtx {

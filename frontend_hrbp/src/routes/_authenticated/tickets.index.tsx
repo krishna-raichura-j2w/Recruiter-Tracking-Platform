@@ -50,10 +50,13 @@ import { createExit } from "@/apiService/exitApi";
 import type { ExitCreate, ExitReason } from "@/apiService/exitApi";
 
 const EXIT_REASONS: { value: ExitReason; label: string }[] = [
-  { value: "resignation",       label: "Resignation"       },
-  { value: "end_of_contract",   label: "End of Contract"   },
-  { value: "termination",       label: "Termination"       },
-  { value: "mutual_separation", label: "Mutual Separation" },
+  { value: "resignation",      label: "Resignation"      },
+  { value: "project_roll_off", label: "Project Roll Off" },
+  { value: "contract_closure", label: "Contract Closure" },
+  { value: "conversion",       label: "Conversion"       },
+  { value: "absconding",       label: "Absconding"       },
+  { value: "no_show",          label: "No Show"          },
+  { value: "termination",      label: "Termination"      },
 ];
 
 function fmtCurrency(val: number | null | undefined) {

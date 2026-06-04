@@ -32,6 +32,7 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     must_change_password: bool | None = None
     password: str | None = None
+    profile_url: str | None = None
 
 
 class ForgotPasswordRequest(BaseModel):

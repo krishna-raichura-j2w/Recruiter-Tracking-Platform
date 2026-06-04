@@ -75,7 +75,7 @@ class CloseTicketPayload(BaseModel):
     # PO Loss — exit details (only relevant when consultant_exited=True)
     consultant_exited: bool = False
     exit_date:         date | None = None
-    exit_reason:       str | None = None   # resignation | end_of_contract | termination | mutual_separation
+    exit_reason:       str | None = None   # resignation | project_roll_off | contract_closure | conversion | absconding | no_show | termination
     exit_type:         str | None = None   # voluntary | involuntary
     replacement_needed: bool = False
     notes:             str | None = None

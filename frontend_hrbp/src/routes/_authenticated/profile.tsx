@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { getUserProfile, updateUserProfile } from "@/apiService/api";
+import { getUserProfile, updateUserProfile, uploadStorageFileApi } from "@/apiService/api";
 import type { UserProfileData } from "@/apiService/types";
 import { TopBar } from "@/components/TopBar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import {
   Edit2,
   Check,
   X,
+  Camera,
 } from "lucide-react";
 import { fmtDateTime, fmtDate } from "@/lib/formatDate";
 import { PageLoader } from "@/components/Loader";
@@ -42,6 +43,9 @@ function ProfilePage() {
   const [editPhone, setEditPhone] = useState("");
   const [updating, setUpdating] = useState(false);
 
+  // Profile picture upload
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   const fetchProfile = async () => {
     const storedId = typeof window !== "undefined" ? localStorage.getItem("user_id") : null;
     const resolvedId = user?.id || (storedId ? Number(storedId) : null);
@@ -59,6 +63,7 @@ function ProfilePage() {
         setProfile(res.data);
         setEditName(res.data.name || "");
         setEditPhone(res.data.phone || "");
+        updateUserState({ name: res.data.name, profile_url: res.data.profile_url ?? null });
       } else {
         setError(res.meta.message || "Failed to load profile");
       }
@@ -116,15 +121,38 @@ function ProfilePage() {
     setIsEditing(false);
   };
 
-  // Generate initials for avatar
-  const getInitials = (name?: string) => {
-    if (!name) return "HR";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be under 2 MB");
+      return;
+    }
+    const storedId = typeof window !== "undefined" ? localStorage.getItem("user_id") : null;
+    const resolvedId = user?.id || (storedId ? Number(storedId) : null);
+    if (!resolvedId) return;
+
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadStorageFileApi(file);
+      const res = await updateUserProfile(resolvedId, { name: profile!.name, profile_url: url });
+      if (res.meta.status && res.data) {
+        setProfile(res.data);
+        updateUserState({ profile_url: url });
+        toast.success("Profile picture updated");
+      } else {
+        toast.error(res.meta.message || "Failed to update profile picture");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = "";
+    }
   };
 
   return (
@@ -196,13 +224,31 @@ function ProfilePage() {
               <div className="absolute bottom-[-50px] left-[-50px] w-48 h-48 bg-purple-500/5 blur-3xl rounded-full" />
 
               <div className="flex flex-col sm:flex-row items-center gap-6 relative z-10">
-                {/* Initial Avatar */}
-                <div className="relative group">
+                {/* Avatar with upload overlay */}
+                <label className="relative group cursor-pointer shrink-0">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={handlePhotoUpload}
+                    disabled={uploadingPhoto}
+                  />
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full blur opacity-40 group-hover:opacity-60 transition duration-300" />
                   <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-white border border-slate-200 overflow-hidden shadow-inner">
-                    <img src={`${import.meta.env.BASE_URL}profile-icon.svg`} className="h-16 w-16 opacity-90" alt="Profile" />
+                    {uploadingPhoto ? (
+                      <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+                    ) : profile?.profile_url ? (
+                      <img src={profile.profile_url} className="h-full w-full object-cover" alt={profile.name} />
+                    ) : (
+                      <img src={`${import.meta.env.BASE_URL}profile-icon.svg`} className="h-16 w-16 opacity-90" alt="Profile" />
+                    )}
                   </div>
-                </div>
+                  {!uploadingPhoto && (
+                    <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <Camera className="w-6 h-6 text-white" />
+                    </div>
+                  )}
+                </label>
 
                 {/* Main Identity */}
                 <div className="text-center sm:text-left space-y-2 w-full max-w-md">

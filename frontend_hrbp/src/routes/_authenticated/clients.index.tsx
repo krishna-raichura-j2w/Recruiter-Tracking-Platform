@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtINR } from "@/lib/mockData";
-import { Search, Eye, Building2, Users, IndianRupee, Calendar, ExternalLink } from "lucide-react";
+import { Search, Eye, Building2, Users, UserX, IndianRupee, Calendar, ExternalLink } from "lucide-react";
 import { getClientsApi } from "@/apiService/api";
 import type { ClientItem } from "@/apiService/types";
 import { toast } from "react-toastify";
@@ -66,16 +66,17 @@ function MetricTile({
   label: string;
   value: string;
   icon: React.ReactNode;
-  accent?: "blue" | "emerald" | "amber" | "slate";
+  accent?: "blue" | "emerald" | "amber" | "slate" | "red";
 }) {
   const styles: Record<string, string> = {
     blue:    "bg-blue-50 border-blue-100 text-blue-900",
     emerald: "bg-emerald-50 border-emerald-100 text-emerald-900",
     amber:   "bg-amber-50 border-amber-100 text-amber-900",
     slate:   "bg-slate-50 border-slate-100 text-slate-800",
+    red:     "bg-red-50 border-red-100 text-red-900",
   };
   const labelColors: Record<string, string> = {
-    blue: "text-blue-600", emerald: "text-emerald-600", amber: "text-amber-600", slate: "text-slate-500",
+    blue: "text-blue-600", emerald: "text-emerald-600", amber: "text-amber-600", slate: "text-slate-500", red: "text-red-600",
   };
   return (
     <div className={`rounded-xl border p-3 ${styles[accent]}`}>
@@ -125,12 +126,18 @@ function ClientDetailDialog({
 
         <div className="space-y-5">
           {/* Business metrics */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <MetricTile
-              label="Headcount"
+              label="Active"
               value={String(client.headcount ?? 0)}
               icon={<Users className="w-3 h-3" />}
               accent="blue"
+            />
+            <MetricTile
+              label="Inactive"
+              value={String(client.inactive_headcount ?? 0)}
+              icon={<UserX className="w-3 h-3" />}
+              accent="red"
             />
             <MetricTile
               label="Monthly PO"
