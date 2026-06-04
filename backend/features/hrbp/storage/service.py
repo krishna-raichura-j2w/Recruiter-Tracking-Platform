@@ -99,7 +99,12 @@ def upload_bytes_s3(data: bytes, filename: str) -> str:
 
 
 def upload_file_s3(file: UploadFile) -> str:
-    """Upload a file to AWS S3."""
+    """Upload a file to AWS S3 and return a publicly accessible URL.
+
+    Tries public-read ACL first (works when bucket ACLs are enabled).
+    Falls back to a presigned URL (7-day expiry) when the bucket uses
+    'Bucket owner enforced' ownership and ACLs are disabled.
+    """
     if not AWS_ACCESS_KEY or not AWS_SECRET_KEY or not AWS_BUCKET:
         raise HTTPException(status_code=500, detail="AWS S3 is not configured")
 
@@ -107,13 +112,40 @@ def upload_file_s3(file: UploadFile) -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     unique_name = f"{timestamp}_{uuid.uuid4().hex[:8]}.{ext}" if ext else f"{timestamp}_{uuid.uuid4().hex[:8]}"
     key = f"uploads/{unique_name}"
+    content_type = file.content_type or "application/octet-stream"
 
+    # Read into memory so we can retry without re-reading the stream
+    content = file.file.read()
+    client = _s3_client()
+
+    # ── Attempt 1: public-read ACL ────────────────────────────────────────────
     try:
-        _s3_client().upload_fileobj(file.file, AWS_BUCKET, key)
+        client.put_object(
+            Bucket=AWS_BUCKET,
+            Key=key,
+            Body=content,
+            ContentType=content_type,
+            ACL="public-read",
+        )
+        return f"https://{AWS_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
+    except (BotoCoreError, ClientError):
+        pass  # ACLs likely disabled on this bucket — fall through
+
+    # ── Attempt 2: upload without ACL, return presigned URL (7 days) ─────────
+    try:
+        client.put_object(
+            Bucket=AWS_BUCKET,
+            Key=key,
+            Body=content,
+            ContentType=content_type,
+        )
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": AWS_BUCKET, "Key": key},
+            ExpiresIn=604800,  # 7 days — max for IAM user credentials
+        )
     except (BotoCoreError, ClientError) as exc:
         raise HTTPException(status_code=500, detail=f"S3 upload failed: {exc}") from exc
-
-    return f"https://{AWS_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
 
 
 # ── Active provider — AWS S3 ──────────────────────────────────────────────────

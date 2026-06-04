@@ -62,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: res.role,
       id: res.user_id,
       must_change_password: res.must_change_password,
+      profile_url: res.profile_url ?? null,
     };
     localStorage.setItem(KEY, JSON.stringify(u));
     localStorage.setItem(TOKEN_KEY, res.access_token);

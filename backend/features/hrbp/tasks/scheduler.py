@@ -325,30 +325,267 @@ def _next_ticket_number_raw(db) -> str:
     return f"TKT-{year}-{str(seq_val).zfill(4)}"
 
 
-def _contract_closure_email_html(consultant_name: str, po_end_date: date, ticket_number: str) -> str:
+def _po_finance_email_html(
+    consultant_name: str,
+    client_name: str,
+    po_end_date: date,
+    ticket_number: str,
+    po_amount: str,
+    recipient_name: str,
+    triggered_on: date,
+) -> str:
     return f"""
-<html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:auto;padding:24px">
-<div style="background:#0369a1;border-radius:8px 8px 0 0;padding:16px 24px">
-  <h2 style="color:#fff;margin:0;font-size:18px">&#128197; Contract Closure Flagged — {ticket_number}</h2>
-</div>
-<div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:24px">
-  <p><strong>Consultant:</strong> {consultant_name}</p>
-  <p><strong>PO End Date:</strong> {po_end_date.strftime("%d %b %Y")}</p>
-  <p>A <strong>SOP-3: Contract Closure and Redeployment</strong> ticket has been automatically
-     created 4 months before the PO end date.</p>
-  <p>Please initiate the renewal conversation with the client and begin redeployment planning now.</p>
-  <p style="color:#6b7280;font-size:12px">Automated alert — J2W HRBP Ticket System.</p>
-</div>
-</body></html>
+<html>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:linear-gradient(135deg,#0f2249 0%,#1e40af 100%);padding:28px 36px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td>
+                <p style="margin:0 0 4px 0;color:#93c5fd;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">J2W · HRBP System</p>
+                <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Contract Closure — Action Required</h1>
+                <p style="margin:8px 0 0 0;color:#bfdbfe;font-size:13px;">Ticket <strong style="color:#fff;">{ticket_number}</strong> has been auto-raised by the system</p>
+              </td>
+              <td align="right" style="vertical-align:top;">
+                <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:10px 16px;text-align:center;">
+                  <p style="margin:0;color:#bfdbfe;font-size:10px;text-transform:uppercase;letter-spacing:1px;">PO Ends In</p>
+                  <p style="margin:4px 0 0 0;color:#fff;font-size:20px;font-weight:700;">4 months</p>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Greeting -->
+      <tr>
+        <td style="padding:28px 36px 0 36px;">
+          <p style="margin:0;color:#374151;font-size:15px;">Dear <strong>{recipient_name}</strong>,</p>
+          <p style="margin:12px 0 0 0;color:#6b7280;font-size:14px;line-height:1.6;">
+            A <strong>SOP-3: Contract Closure and Redeployment</strong> ticket has been automatically created
+            because the consultant's PO end date is <strong>4 months away</strong>. Please review and initiate
+            the closure or renewal process at the earliest.
+          </p>
+        </td>
+      </tr>
+
+      <!-- Details Card -->
+      <tr>
+        <td style="padding:24px 36px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+            <tr>
+              <td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+                <p style="margin:0;color:#94a3b8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Ticket Number</p>
+                <p style="margin:4px 0 0 0;color:#1e40af;font-size:16px;font-weight:700;font-family:monospace;">{ticket_number}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="50%" style="padding:16px 20px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                      <p style="margin:0;color:#94a3b8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Consultant</p>
+                      <p style="margin:4px 0 0 0;color:#111827;font-size:14px;font-weight:600;">{consultant_name}</p>
+                    </td>
+                    <td width="50%" style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+                      <p style="margin:0;color:#94a3b8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Client</p>
+                      <p style="margin:4px 0 0 0;color:#111827;font-size:14px;font-weight:600;">{client_name}</p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td width="50%" style="padding:16px 20px;border-right:1px solid #e2e8f0;">
+                      <p style="margin:0;color:#94a3b8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">PO End Date</p>
+                      <p style="margin:4px 0 0 0;color:#dc2626;font-size:14px;font-weight:700;">{po_end_date.strftime("%d %b %Y")}</p>
+                    </td>
+                    <td width="50%" style="padding:16px 20px;">
+                      <p style="margin:0;color:#94a3b8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Monthly PO Value</p>
+                      <p style="margin:4px 0 0 0;color:#111827;font-size:14px;font-weight:600;">{po_amount}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 20px;background:#fef3c7;border-top:1px solid #fde68a;">
+                <p style="margin:0;color:#92400e;font-size:12px;">
+                  &#128197; <strong>Triggered on:</strong> {triggered_on.strftime("%d %b %Y")} &nbsp;·&nbsp;
+                  <strong>4-month window closes:</strong> {po_end_date.strftime("%d %b %Y")}
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Next Steps -->
+      <tr>
+        <td style="padding:0 36px 24px 36px;">
+          <p style="margin:0 0 12px 0;color:#111827;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Next Steps</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:8px 0;">
+                <table cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="width:28px;vertical-align:top;">
+                      <div style="width:22px;height:22px;background:#dbeafe;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#1e40af;">1</div>
+                    </td>
+                    <td style="padding-left:10px;color:#374151;font-size:13px;line-height:1.5;">Review the ticket in the HRBP portal and confirm the PO details.</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;">
+                <table cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="width:28px;vertical-align:top;">
+                      <div style="width:22px;height:22px;background:#dbeafe;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#1e40af;">2</div>
+                    </td>
+                    <td style="padding-left:10px;color:#374151;font-size:13px;line-height:1.5;">Coordinate with the HRBP to initiate the renewal or closure conversation with the client.</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;">
+                <table cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="width:28px;vertical-align:top;">
+                      <div style="width:22px;height:22px;background:#dbeafe;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#1e40af;">3</div>
+                    </td>
+                    <td style="padding-left:10px;color:#374151;font-size:13px;line-height:1.5;">Complete all SOP-3 steps before the PO end date to avoid financial risk.</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 36px;border-radius:0 0 12px 12px;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;">
+            This is an automated notification from the <strong>J2W HRBP System</strong>. Do not reply to this email.<br/>
+            &copy; {datetime.now().year} Joules to Watts · HR Operations
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
+"""
+
+
+def _hrbp_contract_closure_email_html(
+    consultant_name: str,
+    client_name: str,
+    po_end_date: date,
+    ticket_number: str,
+    recipient_name: str,
+    triggered_on: date,
+) -> str:
+    return f"""
+<html>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:linear-gradient(135deg,#064e3b 0%,#059669 100%);padding:28px 36px;">
+          <p style="margin:0 0 4px 0;color:#a7f3d0;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">J2W · HRBP System</p>
+          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Contract Closure — FYI Notification</h1>
+          <p style="margin:8px 0 0 0;color:#d1fae5;font-size:13px;">Ticket <strong style="color:#fff;">{ticket_number}</strong> has been raised for your consultant</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:28px 36px 24px 36px;">
+          <p style="margin:0;color:#374151;font-size:15px;">Dear <strong>{recipient_name}</strong>,</p>
+          <p style="margin:12px 0 0 0;color:#6b7280;font-size:14px;line-height:1.6;">
+            A <strong>SOP-3: Contract Closure and Redeployment</strong> ticket has been automatically raised by
+            the PO Finance team for your consultant. Please be aware of the upcoming contract end and
+            coordinate with the PO Finance team to ensure a smooth process.
+          </p>
+        </td>
+      </tr>
+
+      <!-- Details Card -->
+      <tr>
+        <td style="padding:0 36px 28px 36px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;overflow:hidden;">
+            <tr>
+              <td style="padding:16px 20px;border-bottom:1px solid #bbf7d0;">
+                <p style="margin:0;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Ticket Number</p>
+                <p style="margin:4px 0 0 0;color:#059669;font-size:16px;font-weight:700;font-family:monospace;">{ticket_number}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="50%" style="padding:16px 20px;border-right:1px solid #bbf7d0;">
+                      <p style="margin:0;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Consultant</p>
+                      <p style="margin:4px 0 0 0;color:#111827;font-size:14px;font-weight:600;">{consultant_name}</p>
+                    </td>
+                    <td width="50%" style="padding:16px 20px;">
+                      <p style="margin:0;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Client</p>
+                      <p style="margin:4px 0 0 0;color:#111827;font-size:14px;font-weight:600;">{client_name}</p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding:14px 20px;background:#fef3c7;border-top:1px solid #fde68a;">
+                      <p style="margin:0;color:#92400e;font-size:12px;">
+                        &#128197; <strong>PO End Date:</strong> {po_end_date.strftime("%d %b %Y")} &nbsp;·&nbsp;
+                        <strong>Flagged on:</strong> {triggered_on.strftime("%d %b %Y")}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 36px;border-radius:0 0 12px 12px;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;">
+            This is an automated notification from the <strong>J2W HRBP System</strong>. Do not reply to this email.<br/>
+            &copy; {datetime.now().year} Joules to Watts · HR Operations
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
 """
 
 
 def check_contract_closures():
     """
-    Runs daily. Creates SOP-3 tickets for consultants whose po_end_date falls
-    within the next 4 calendar months (inclusive). Using a rolling window instead
-    of an exact-date match ensures no consultant is missed if the server was down
-    on the day their 4-month trigger would have fired.
+    Runs daily at 08:00 UTC. Creates SOP-3 tickets for consultants whose po_end_date
+    falls within the next 4 calendar months (inclusive).
+    - Ticket is raised by the PO Finance team (first active po_finance user).
+    - Hierarchy is populated from the SOP-3 persons_hierarchy (now includes po_finance).
+    - All active po_finance users are notified via in-app + email.
+    - All HRBPs assigned to the client are notified via in-app + email.
+    - Escalation manager remains the BH.
     Dedup guard: skips if a non-closed SOP-3 ticket already exists for that consultant.
     """
     db = SessionLocal()
@@ -368,13 +605,26 @@ def check_contract_closures():
             log.error("SOP-3 definition not found — contract closure job skipped.")
             return
 
+        # All active po_finance users — first one is used as raiser, all get notified
+        po_finance_users: list[User] = (
+            db.query(User)
+            .filter(User.role == "po_finance", User.is_active == True)  # noqa: E712
+            .order_by(User.id)
+            .all()
+        )
+        if not po_finance_users:
+            log.error("No active po_finance user found — contract closure job skipped.")
+            return
+
+        raiser = po_finance_users[0]
+
         steps_def: list[dict] = sop.steps_definition or []
         persons_hierarchy: list[dict] = sop.persons_hierarchy or []
 
         consultants = (
             db.query(HRBPConsultant)
             .filter(
-                HRBPConsultant.is_active == True,
+                HRBPConsultant.is_active == True,  # noqa: E712
                 HRBPConsultant.po_end_date >= today,
                 HRBPConsultant.po_end_date <= window_end,
             )
@@ -403,18 +653,35 @@ def check_contract_closures():
                 )
                 continue
 
-            # Resolve role → user for hierarchy population
-            hrbp_user = db.query(User).filter_by(id=consultant.hrbp_id).first()
             client    = db.query(HRBPClient).filter_by(id=consultant.client_id).first()
             bh_user   = db.query(User).filter_by(id=client.bh_id).first() if client else None
-            ops_head  = db.query(User).filter(User.role == "ops_head").first()
-            coo_user  = db.query(User).filter(User.role == "coo").first()
+            ops_head  = db.query(User).filter(User.role == "ops_head", User.is_active == True).first()  # noqa: E712
+            coo_user  = db.query(User).filter(User.role == "coo", User.is_active == True).first()  # noqa: E712
 
-            role_user_map = {
-                "hrbp":     hrbp_user,
-                "bh":       bh_user,
-                "ops_head": ops_head,
-                "coo":      coo_user,
+            # Resolve all HRBPs assigned to this client (multi-HRBP aware)
+            hrbp_ids_on_client: list[int] = []
+            if client:
+                if client.hrbp_ids:
+                    hrbp_ids_on_client = list(client.hrbp_ids)
+                elif client.hrbp_id:
+                    hrbp_ids_on_client = [client.hrbp_id]
+            # Always include the consultant's own HRBP
+            if consultant.hrbp_id and consultant.hrbp_id not in hrbp_ids_on_client:
+                hrbp_ids_on_client.append(consultant.hrbp_id)
+
+            hrbp_users: list[User] = (
+                db.query(User).filter(User.id.in_(hrbp_ids_on_client)).all()
+                if hrbp_ids_on_client else []
+            )
+            # Primary HRBP for hierarchy (consultant's own HRBP)
+            primary_hrbp = db.query(User).filter_by(id=consultant.hrbp_id).first()
+
+            role_user_map: dict[str, User | None] = {
+                "po_finance": raiser,
+                "hrbp":       primary_hrbp,
+                "bh":         bh_user,
+                "ops_head":   ops_head,
+                "coo":        coo_user,
             }
 
             hierarchy = [
@@ -431,29 +698,31 @@ def check_contract_closures():
                 for step in persons_hierarchy
             ]
 
-            po_impact = float(consultant.monthly_po) if consultant.monthly_po else None
-            sla_dt    = datetime.combine(consultant.po_end_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            po_impact  = float(consultant.monthly_po) if consultant.monthly_po else None
+            sla_dt     = datetime.combine(consultant.po_end_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            client_name = client.name if client else "—"
+            po_amount_fmt = f"₹{po_impact:,.2f}" if po_impact else "—"
 
             ticket = HRBPTicket(
-                ticket_number  = _next_ticket_number_raw(db),
-                title          = f"SOP-3: Contract Closure — {consultant.name}",
-                raised_by_id   = consultant.hrbp_id,
+                ticket_number     = _next_ticket_number_raw(db),
+                title             = f"SOP-3: Contract Closure — {consultant.name}",
+                raised_by_id      = raiser.id,
                 escalation_mgr_id = client.bh_id if client else None,
-                client_id      = consultant.client_id,
-                sop_id         = sop.id,
-                priority       = "high",
-                sla_deadline   = sla_dt,
-                po_risk_amount = po_impact,
-                description    = (
+                client_id         = consultant.client_id,
+                sop_id            = sop.id,
+                priority          = "high",
+                sla_deadline      = sla_dt,
+                po_risk_amount    = po_impact,
+                description       = (
                     f"Auto-generated by the contract closure scheduler.\n"
                     f"PO end date: {consultant.po_end_date.strftime('%d %b %Y')}. "
                     f"4-month flag triggered on {today.strftime('%d %b %Y')}."
                 ),
-                status         = "open",
-                hierarchy_json = hierarchy,
-                current_step   = 1,
-                step_started_at = _now(),
-                attachments    = [],
+                status            = "open",
+                hierarchy_json    = hierarchy,
+                current_step      = 1,
+                step_started_at   = _now(),
+                attachments       = [],
             )
             db.add(ticket)
             db.flush()
@@ -470,38 +739,84 @@ def check_contract_closures():
                 actor_id=None,
                 action="auto_created",
                 meta_data={
-                    "trigger":       "contract_closure_4m",
-                    "po_end_date":   consultant.po_end_date.isoformat(),
-                    "triggered_on":  today.isoformat(),
+                    "trigger":        "contract_closure_4m",
+                    "raised_by_role": "po_finance",
+                    "raised_by_id":   raiser.id,
+                    "po_end_date":    consultant.po_end_date.isoformat(),
+                    "triggered_on":   today.isoformat(),
                 },
             ))
 
             db.commit()
             db.refresh(ticket)
 
-            # Notify HRBP
-            if hrbp_user:
+            notif_title = f"Contract Closure Flagged — {consultant.name}"
+
+            # ── Notify all po_finance users ───────────────────────────────────
+            po_finance_emails: list[str] = []
+            for pf_user in po_finance_users:
                 push(
                     db,
-                    user_id=hrbp_user.id,
-                    title=f"Contract Closure Flagged — {consultant.name}",
+                    user_id=pf_user.id,
+                    title=notif_title,
                     message=(
-                        f"SOP-3 ticket {ticket.ticket_number} auto-created. "
-                        f"{consultant.name}'s PO ends {consultant.po_end_date.strftime('%d %b %Y')}. "
-                        f"Initiate renewal with client."
+                        f"SOP-3 ticket {ticket.ticket_number} auto-raised. "
+                        f"{consultant.name} ({client_name}) PO ends "
+                        f"{consultant.po_end_date.strftime('%d %b %Y')}. "
+                        f"Please initiate the contract closure process."
                     ),
                     notif_type="contract_closure",
                     ticket_id=ticket.id,
                 )
-                if hrbp_user.email:
+                if pf_user.email:
+                    po_finance_emails.append(pf_user.email)
+
+            if po_finance_emails:
+                send_email(
+                    po_finance_emails,
+                    f"[Action Required] Contract Closure — {consultant.name} | {ticket.ticket_number}",
+                    _po_finance_email_html(
+                        consultant_name=consultant.name,
+                        client_name=client_name,
+                        po_end_date=consultant.po_end_date,
+                        ticket_number=ticket.ticket_number,
+                        po_amount=po_amount_fmt,
+                        recipient_name="PO Finance Team",
+                        triggered_on=today,
+                    ),
+                )
+
+            # ── Notify all HRBPs assigned to this client ──────────────────────
+            for hrbp_u in hrbp_users:
+                push(
+                    db,
+                    user_id=hrbp_u.id,
+                    title=notif_title,
+                    message=(
+                        f"SOP-3 ticket {ticket.ticket_number} has been raised by PO Finance for "
+                        f"{consultant.name} ({client_name}). "
+                        f"PO ends {consultant.po_end_date.strftime('%d %b %Y')}. "
+                        f"Please coordinate with the PO Finance team."
+                    ),
+                    notif_type="contract_closure",
+                    ticket_id=ticket.id,
+                )
+                if hrbp_u.email:
                     send_email(
-                        [hrbp_user.email],
-                        f"[Action Required] Contract Closure Flagged — {consultant.name} ({ticket.ticket_number})",
-                        _contract_closure_email_html(consultant.name, consultant.po_end_date, ticket.ticket_number),
+                        [hrbp_u.email],
+                        f"[FYI] Contract Closure Ticket Raised — {consultant.name} | {ticket.ticket_number}",
+                        _hrbp_contract_closure_email_html(
+                            consultant_name=consultant.name,
+                            client_name=client_name,
+                            po_end_date=consultant.po_end_date,
+                            ticket_number=ticket.ticket_number,
+                            recipient_name=hrbp_u.name,
+                            triggered_on=today,
+                        ),
                     )
 
             log.info(
-                "Contract closure ticket created: %s for consultant %s (PO end: %s)",
+                "Contract closure ticket created: %s for consultant %s (PO end: %s) raised_by=po_finance",
                 ticket.ticket_number, consultant.name, consultant.po_end_date,
             )
 
@@ -538,19 +853,18 @@ def start():
         coalesce=True,
     )
 
-    # 4-month PO closure scheduler — temporarily disabled
-    # _scheduler.add_job(
-    #     check_contract_closures,
-    #     "cron",
-    #     hour=8,
-    #     minute=0,
-    #     id="hrbp_contract_closure",
-    #     max_instances=1,
-    #     coalesce=True,
-    # )
+    _scheduler.add_job(
+        check_contract_closures,
+        "cron",
+        hour=8,
+        minute=0,
+        id="hrbp_contract_closure",
+        max_instances=1,
+        coalesce=True,
+    )
 
     _scheduler.start()
-    log.info("HRBP schedulers started (SLA breach, step SLA breach).")
+    log.info("HRBP schedulers started (SLA breach, step SLA breach, contract closure).")
 
 
 def stop():

@@ -21,4 +21,5 @@ def build_token(user: User) -> dict:
         "secondary_role": user.secondary_role,
         "email": user.email,
         "must_change_password": bool(user.must_change_password),
+        "profile_url": user.profile_url,
     }
