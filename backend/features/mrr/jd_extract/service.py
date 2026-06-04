@@ -42,13 +42,21 @@ ANTI-HALLUCINATION RULES — CRITICAL:
 """
 
 
+def _provider() -> str:
+    return (settings.model_to_use or "AZURE").upper()
+
+
 def _use_claude() -> bool:
-    return (settings.model_to_use or "AZURE").upper() == "CLAUDE"
+    return _provider() == "CLAUDE"
 
 
 def _image_block_azure(img_bytes: bytes, mime: str) -> dict:
     b64 = base64.b64encode(img_bytes).decode("utf-8")
     return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+
+
+# Standard OpenAI uses the same image block format as Azure.
+_image_block_openai = _image_block_azure
 
 
 def _image_block_claude(img_bytes: bytes, mime: str) -> dict:
@@ -57,9 +65,47 @@ def _image_block_claude(img_bytes: bytes, mime: str) -> dict:
 
 
 def _call_llm(content: list) -> tuple[ParsedJD, dict]:
-    if _use_claude():
+    p = _provider()
+    if p == "CLAUDE":
         return _call_claude(content)
+    if p == "OPENAI":
+        return _call_openai(content)
     return _call_azure(content)
+
+
+def _call_openai(content: list) -> tuple[ParsedJD, dict]:
+    from openai import OpenAI
+    client = OpenAI(api_key=settings.open_ai_key or "")
+    model = settings.open_ai_model or "gpt-4o-mini"
+    _rates = {
+        "gpt-4o-mini": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
+        "gpt-4o":      {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
+    }
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": JD_SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+    raw = json.loads(response.choices[0].message.content)
+    parsed = ParsedJD(**raw)
+    usage = response.usage
+    rates = _rates.get(model, _rates["gpt-4o-mini"])
+    inp = round(usage.prompt_tokens * rates["input"], 8)
+    out = round(usage.completion_tokens * rates["output"], 8)
+    cost_info = {
+        "model": model,
+        "input_tokens": usage.prompt_tokens,
+        "output_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+        "input_cost_usd": inp,
+        "output_cost_usd": out,
+        "total_cost_usd": round(inp + out, 8),
+    }
+    return parsed, cost_info
 
 
 def _call_claude(content: list) -> tuple[ParsedJD, dict]:
@@ -161,6 +207,6 @@ def extract_from_docx(docx_bytes: bytes) -> tuple[ParsedJD, dict, str]:
 
 
 def extract_from_image(img_bytes: bytes, mime: str) -> tuple[ParsedJD, dict, None]:
-    block = _image_block_claude(img_bytes, mime) if _use_claude() else _image_block_azure(img_bytes, mime)
+    block = _image_block_claude(img_bytes, mime) if _use_claude() else _image_block_openai(img_bytes, mime)
     parsed, cost = _call_llm([block])
     return parsed, cost, None
