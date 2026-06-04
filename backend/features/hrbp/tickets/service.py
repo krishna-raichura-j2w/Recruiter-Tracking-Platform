@@ -257,6 +257,7 @@ def list_paginated(
 
     # Role-based visibility:
     # - hrbp/bh → tickets they raised OR tickets where their user_id appears in hierarchy_json
+    # - po_finance → tickets they raised OR tickets assigned/added to them (hierarchy_json / escalation_mgr)
     # - ops_head / coo / ceo / admin → all tickets
     role = current_user.role.value
     if role == "hrbp":
@@ -272,6 +273,14 @@ def list_paginated(
     elif role == "bh":
         bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
         q = q.filter(HRBPTicket.client_id.in_(bh_client_ids))
+    elif role == "po_finance":
+        q = q.filter(
+            or_(
+                HRBPTicket.raised_by_id == current_user.id,
+                HRBPTicket.escalation_mgr_id == current_user.id,
+                cast(HRBPTicket.hierarchy_json, Text).contains(str(current_user.id)),
+            )
+        )
 
     if status:
         q = q.filter(HRBPTicket.status == status)

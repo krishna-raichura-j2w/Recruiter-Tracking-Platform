@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -8,9 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { X, Search } from "lucide-react";
 import type { UserOption } from "@/apiService/ticketTypes";
 
 interface Client {
@@ -26,6 +24,8 @@ interface Consultant {
   cohort: string | null;
   monthly_po: number | null;
   client_id: number;
+  email?: string | null;
+  phone?: string | null;
 }
 
 interface Step1Data {
@@ -44,18 +44,6 @@ interface Step1EntitiesProps {
   onClientChange: (clientId: number) => void;
 }
 
-const COHORT_COLORS: Record<string, string> = {
-  star:           "bg-yellow-100 text-yellow-800",
-  high_performer: "bg-green-100 text-green-800",
-  rising:         "bg-blue-100 text-blue-800",
-  bedrock:        "bg-gray-100 text-gray-700",
-  new_joiner:     "bg-purple-100 text-purple-800",
-  watch_exit:     "bg-red-100 text-red-800",
-  watch_rate_rev: "bg-orange-100 text-orange-800",
-  watch_general:  "bg-orange-50 text-orange-700",
-  rescue:         "bg-red-200 text-red-900",
-};
-
 export function Step1Entities({
   data,
   onChange,
@@ -64,9 +52,23 @@ export function Step1Entities({
   bhUsers,
   onClientChange,
 }: Step1EntitiesProps) {
+  const [search, setSearch] = useState("");
+
   const filteredConsultants = data.clientId
     ? consultants.filter((c) => c.client_id === data.clientId)
     : [];
+
+  const searchedConsultants = search.trim()
+    ? filteredConsultants.filter((c) => {
+        const q = search.trim().toLowerCase();
+        return (
+          c.name.toLowerCase().includes(q) ||
+          c.emp_id.toLowerCase().includes(q) ||
+          (c.email ?? "").toLowerCase().includes(q) ||
+          (c.phone ?? "").includes(q)
+        );
+      })
+    : filteredConsultants;
 
   const selectedConsultants = filteredConsultants.filter((c) =>
     data.consultantIds.includes(c.id),
@@ -81,7 +83,6 @@ export function Step1Entities({
 
   function handleClientChange(val: string) {
     const id = Number(val);
-    // Auto-fill escalation manager from client's BH if available
     const client = clients.find((c) => c.id === id);
     onChange({
       ...data,
@@ -89,6 +90,7 @@ export function Step1Entities({
       consultantIds: [],
       escalationMgrId: client?.bh_id ?? data.escalationMgrId,
     });
+    setSearch("");
     onClientChange(id);
   }
 
@@ -145,7 +147,8 @@ export function Step1Entities({
                 key={c.id}
                 className="flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs bg-blue-600 text-white"
               >
-                {c.name}
+                <span className="font-mono opacity-80">{c.emp_id}</span>
+                <span>{c.name}</span>
                 <button
                   type="button"
                   onClick={() => toggleConsultant(c.id)}
@@ -158,46 +161,56 @@ export function Step1Entities({
           </div>
         )}
 
+        {/* Search input */}
+        {filteredConsultants.length > 0 && (
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, employee ID, email or phone…"
+              className="pl-8 text-sm h-8"
+            />
+          </div>
+        )}
+
         {/* Consultant list */}
         {filteredConsultants.length > 0 && (
           <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
-            {filteredConsultants.map((c) => {
-              const selected = data.consultantIds.includes(c.id);
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => toggleConsultant(c.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors
-                    ${selected ? "bg-blue-50" : "hover:bg-gray-50"}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center
-                        ${selected ? "border-blue-600 bg-blue-600" : "border-gray-300"}`}
-                    >
-                      {selected && <span className="text-white text-xs leading-none">✓</span>}
+            {searchedConsultants.length === 0 ? (
+              <p className="text-sm text-gray-400 italic px-3 py-2">No consultants match your search.</p>
+            ) : (
+              searchedConsultants.map((c) => {
+                const selected = data.consultantIds.includes(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => toggleConsultant(c.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors
+                      ${selected ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center
+                          ${selected ? "border-blue-600 bg-blue-600" : "border-gray-300"}`}
+                      >
+                        {selected && <span className="text-white text-xs leading-none">✓</span>}
+                      </div>
+                      <span className="font-mono text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        {c.emp_id}
+                      </span>
+                      <span className="font-medium text-gray-800">{c.name}</span>
                     </div>
-                    <span className="font-medium text-gray-800">{c.name}</span>
-                    <span className="text-gray-400 text-xs">{c.emp_id}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
                     {c.monthly_po && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 flex-shrink-0">
                         ₹{(c.monthly_po / 100000).toFixed(1)}L/mo
                       </span>
                     )}
-                    {c.cohort && (
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${COHORT_COLORS[c.cohort] ?? "bg-gray-100 text-gray-600"}`}
-                      >
-                        {c.cohort.replace(/_/g, " ")}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })
+            )}
           </div>
         )}
       </div>

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-ExitReason = Literal["resignation", "end_of_contract", "termination", "mutual_separation"]
+ExitReason = Literal["resignation", "project_roll_off", "contract_closure", "conversion", "absconding", "no_show", "termination"]
 ExitType   = Literal["voluntary", "involuntary"]
 ExitStatus = Literal["initiated", "acknowledged", "completed"]
 

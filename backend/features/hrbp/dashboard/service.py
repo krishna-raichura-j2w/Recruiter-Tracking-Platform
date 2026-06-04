@@ -45,7 +45,15 @@ def _ticket_scope(q, current_user: User, db: Session):
     elif role == "bh":
         bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
         q = q.filter(HRBPTicket.client_id.in_(bh_client_ids))
-    # admin / ops_head / coo / ceo / sa → all tickets
+    elif role == "po_finance":
+        q = q.filter(
+            or_(
+                HRBPTicket.raised_by_id == current_user.id,
+                HRBPTicket.escalation_mgr_id == current_user.id,
+                cast(HRBPTicket.hierarchy_json, Text).contains(str(current_user.id)),
+            )
+        )
+    # admin / ops_head / coo / ceo → all tickets
     return q
 
 

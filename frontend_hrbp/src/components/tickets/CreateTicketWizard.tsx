@@ -39,6 +39,7 @@ interface Consultant {
   cohort: string | null; monthly_po: number | null;
   po_end_date: string | null; join_date: string | null;
   po_risk: number | null; client_id: number;
+  email?: string | null; phone?: string | null;
 }
 
 interface CreateTicketWizardProps {

@@ -48,7 +48,7 @@ def resolve_hrbp_ids(user: User, db: Session) -> list[int] | None:
             .all()
         )
         return [r[0] for r in rows]
-    if role in ("admin", "coo", "ops_head", "ceo"):
+    if role in ("admin", "coo", "ops_head", "ceo", "po_finance"):
         return None
     return []
 
@@ -68,7 +68,7 @@ def resolve_hrbp_client_ids(user: User, db: Session) -> list[int] | None:
     if role == "bh":
         from infra.hrbp_models import HRBPClient
         return [r.id for r in db.query(HRBPClient.id).filter(HRBPClient.bh_id == user.id).all()]
-    if role in ("admin", "coo", "ops_head", "ceo"):
+    if role in ("admin", "coo", "ops_head", "ceo", "po_finance"):
         return None
     return []
 

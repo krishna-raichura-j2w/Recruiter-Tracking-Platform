@@ -232,9 +232,9 @@ export function AppSidebar() {
             >
               <Link to="/profile" className="flex items-center gap-2.5 w-full">
                 <img
-                  src={`${import.meta.env.BASE_URL}profile-icon.svg`}
+                  src={user?.profile_url || `${import.meta.env.BASE_URL}profile-icon.svg`}
                   alt="Profile"
-                  className="h-7 w-7 shrink-0 rounded-full"
+                  className="h-7 w-7 shrink-0 rounded-full object-cover"
                 />
                 {!collapsed && (
                   <div className="flex min-w-0 flex-col items-start text-left leading-tight">

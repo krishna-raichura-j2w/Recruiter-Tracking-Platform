@@ -2,7 +2,7 @@ from core.pagination import paginate_raw
 from fastapi import HTTPException
 from infra.hrbp_models import HRBPClient, HRBPConsultant
 from infra.models import User
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, aliased
 
 from features.hrbp.clients.schema import ClientCreate, ClientUpdate
@@ -73,8 +73,11 @@ def list_paginated(
     consultant_sub = (
         db.query(
             HRBPConsultant.client_id,
-            func.count(HRBPConsultant.id).label("headcount"),
-            func.coalesce(func.sum(HRBPConsultant.monthly_po), 0).label("total_monthly_po"),
+            func.count(case((HRBPConsultant.is_active == True, 1))).label("headcount"),
+            func.count(case((HRBPConsultant.is_active == False, 1))).label("inactive_headcount"),
+            func.coalesce(
+                func.sum(case((HRBPConsultant.is_active == True, HRBPConsultant.monthly_po))), 0
+            ).label("total_monthly_po"),
         )
         .group_by(HRBPConsultant.client_id)
         .subquery()
@@ -97,6 +100,7 @@ def list_paginated(
             HRBPClient.created_at,
             HRBPClient.updated_at,
             func.coalesce(consultant_sub.c.headcount, 0).label("headcount"),
+            func.coalesce(consultant_sub.c.inactive_headcount, 0).label("inactive_headcount"),
             func.coalesce(consultant_sub.c.total_monthly_po, 0).label("total_monthly_po"),
         )
         .outerjoin(HrbpUser, HRBPClient.hrbp_id == HrbpUser.id)

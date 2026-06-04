@@ -41,7 +41,7 @@ export const Route = createFileRoute("/_authenticated/admin/users")({
   component: AdminUsersPage,
 });
 
-const ROLES = ["admin", "hrbp", "bh", "ops_head", "coo", "ceo"];
+const ROLES = ["admin", "hrbp", "bh", "ops_head", "coo", "ceo", "po_finance"];
 
 function roleBadgeColor(role: string) {
   const map: Record<string, string> = {

@@ -61,10 +61,13 @@ export const Route = createFileRoute("/_authenticated/exits/")({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const EXIT_REASONS: { value: ExitReason; label: string }[] = [
-  { value: "resignation",        label: "Resignation"        },
-  { value: "end_of_contract",    label: "End of Contract"    },
-  { value: "termination",        label: "Termination"        },
-  { value: "mutual_separation",  label: "Mutual Separation"  },
+  { value: "resignation",     label: "Resignation"     },
+  { value: "project_roll_off", label: "Project Roll Off" },
+  { value: "contract_closure", label: "Contract Closure" },
+  { value: "conversion",      label: "Conversion"      },
+  { value: "absconding",      label: "Absconding"      },
+  { value: "no_show",         label: "No Show"         },
+  { value: "termination",     label: "Termination"     },
 ];
 
 const EXIT_STATUSES: { value: ExitStatus; label: string; color: string }[] = [
@@ -97,11 +100,13 @@ function fmtCurrency(val: number | null | undefined) {
 function StatCard({
   icon,
   label,
+  subtitle,
   value,
   accent,
 }: {
   icon: React.ReactNode;
   label: string;
+  subtitle?: string;
   value: number | string;
   accent?: string;
 }) {
@@ -110,6 +115,7 @@ function StatCard({
       <div className={`text-xl ${accent ?? "text-slate-400"}`}>{icon}</div>
       <div>
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{label}</p>
+        {subtitle && <p className="text-[10px] text-slate-400 normal-case font-normal -mt-0.5">{subtitle}</p>}
         <p className={`text-3xl font-bold leading-tight ${accent ?? "text-slate-800"}`}>{value}</p>
       </div>
     </div>
@@ -519,12 +525,14 @@ function ExitsPage() {
             <StatCard
               icon={<LottieIcon src="/json/checking-resume.json" size={44} />}
               label="This Month"
+              subtitle="Exits logged this month"
               value={stats?.exits_this_month ?? 0}
               accent="text-amber-600"
             />
             <StatCard
               icon={<LottieIcon src="/json/reviewed.json" size={44} />}
               label="This Quarter"
+              subtitle="Exits logged this quarter"
               value={stats?.exits_this_quarter ?? 0}
               accent="text-blue-600"
             />

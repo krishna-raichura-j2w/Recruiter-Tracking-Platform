@@ -4,6 +4,7 @@ import { TopBar } from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -25,21 +26,25 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { fmtINR } from "@/lib/mockData";
-import { Search, Download, Upload, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
+import { Search, Download, Upload, CheckCircle2, AlertCircle, Trash2, Plus, Loader2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
-import { getConsultantsApi, downloadConsultantTemplateApi, bulkUpsertConsultantsApi, deleteConsultantApi } from "@/apiService/api";
+import { getConsultantsApi, downloadConsultantTemplateApi, bulkUpsertConsultantsApi, deleteConsultantApi, createConsultantApi } from "@/apiService/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
 import { CustomTablePagination } from "@/components/CustomPagination";
 import { CustomDateRangePicker } from "@/components/CustomDateRangePicker";
+import { CustomDatePicker } from "@/components/CustomDatePicker";
+import { CustomSelect } from "@/components/CustomSelect";
 import { format } from "date-fns";
 import dayjs, { Dayjs } from "dayjs";
 import { LottieIcon } from "@/components/LottieIcon";
 import { fetchConsultantsSummary, type ConsultantsSummary } from "@/apiService/dashboardApi";
 import { TableLoader } from "@/components/Loader";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   // Provide an empty loader so HMR doesn't crash if it tries to destructure
@@ -49,8 +54,25 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
 
 type BulkResult = { inserted: number; updated: number; errors: { row: number; error: string }[] };
 
+const COHORTS = ["star","high_performer","rising","bedrock","new_joiner","watch_exit","watch_rate_rev","watch_general","rescue"];
+const PERF_TIERS = ["top_20","mid_60","bottom_20","unrated"];
+const BH_FEEDBACKS = ["great","good","mediocre","bad","not_given"];
+const LD_STATUSES = ["enrolled","not_started","completed","pending"];
+
+const emptyCreateForm = {
+  emp_id: "", name: "", email: "", phone: "",
+  designation: "", skill: "", modality: "", manager_name: "",
+  join_date: "", po_end_date: "", last_hike_date: "",
+  monthly_po: "", monthly_ctc: "", yearly_ctc: "", margin: "", last_hike_pct: "",
+  nps_score: "",
+  cohort: "", perf_tier: "", bh_feedback: "", l_d_status: "",
+  is_active: "true",
+};
+
 function ClientDetail() {
   const { clientId } = Route.useParams();
+  const { user, can } = useAuth();
+  const canCreate = can("consultants", "create");
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -88,6 +110,59 @@ function ClientDetail() {
   const [uploading, setUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Create consultant
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({ ...emptyCreateForm });
+  const setField = (key: string, val: string) => setCreateForm((p) => ({ ...p, [key]: val }));
+
+  async function handleCreate() {
+    if (!createForm.emp_id.trim() || !createForm.name.trim()) {
+      toast.error("Emp ID and name are required");
+      return;
+    }
+    try {
+      setCreating(true);
+      const payload: Record<string, any> = {
+        emp_id: createForm.emp_id.trim(),
+        name: createForm.name.trim(),
+        client_id: Number(clientId),
+        hrbp_id: user?.id,
+      };
+      if (createForm.email)         payload.email          = createForm.email;
+      if (createForm.phone)         payload.phone          = createForm.phone;
+      if (createForm.designation)   payload.designation    = createForm.designation;
+      if (createForm.skill)         payload.skill          = createForm.skill;
+      if (createForm.modality)      payload.modality       = createForm.modality;
+      if (createForm.manager_name)  payload.manager_name   = createForm.manager_name;
+      if (createForm.join_date)     payload.join_date      = createForm.join_date;
+      if (createForm.po_end_date)   payload.po_end_date    = createForm.po_end_date;
+      if (createForm.last_hike_date) payload.last_hike_date = createForm.last_hike_date;
+      if (createForm.monthly_po)    payload.monthly_po     = parseFloat(createForm.monthly_po);
+      if (createForm.monthly_ctc)   payload.monthly_ctc    = parseFloat(createForm.monthly_ctc);
+      if (createForm.yearly_ctc)    payload.yearly_ctc     = parseFloat(createForm.yearly_ctc);
+      if (createForm.margin)        payload.margin         = parseFloat(createForm.margin);
+      if (createForm.last_hike_pct) payload.last_hike_pct  = parseFloat(createForm.last_hike_pct);
+      if (createForm.nps_score)     payload.nps_score      = parseInt(createForm.nps_score, 10);
+      if (createForm.cohort)        payload.cohort         = createForm.cohort;
+      if (createForm.perf_tier)     payload.perf_tier      = createForm.perf_tier;
+      if (createForm.bh_feedback)   payload.bh_feedback    = createForm.bh_feedback;
+      if (createForm.l_d_status)    payload.l_d_status     = createForm.l_d_status;
+      payload.is_active = createForm.is_active === "true";
+
+      const res = await createConsultantApi(payload);
+      if (res.meta.status === false) throw new Error(res.meta.message);
+      toast.success("Consultant added successfully");
+      setCreateOpen(false);
+      setCreateForm({ ...emptyCreateForm });
+      setPage(0);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to add consultant");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   function openBulkDialog() {
     setBulkOpen(true);
@@ -225,7 +300,7 @@ function ClientDetail() {
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
         <BackButton to="/clients" label="Back to Clients" />
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {[
             {
               label: "Total Consultants",
@@ -238,6 +313,12 @@ function ClientDetail() {
               value: summary?.active ?? "—",
               color: "text-emerald-600",
               src: "/json/reviewed.json",
+            },
+            {
+              label: "Inactive",
+              value: summary?.inactive ?? "—",
+              color: "text-slate-500",
+              src: "/json/office-drawer.json",
             },
             {
               label: "Contract Closure Status",
@@ -296,6 +377,16 @@ function ClientDetail() {
               <Upload className="h-4 w-4" />
               Bulk Upload
             </Button>
+            {canCreate && (
+              <Button
+                size="sm"
+                className="h-10 gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm"
+                onClick={() => { setCreateForm({ ...emptyCreateForm }); setCreateOpen(true); }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Consultant
+              </Button>
+            )}
           </div>
         </div>
 
@@ -503,6 +594,189 @@ function ClientDetail() {
           />
         </div>
       </main>
+
+      {/* Add Consultant Modal */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add New Consultant</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {/* Basic Info */}
+            <section className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-1">
+                Basic Information
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Emp ID <span className="text-red-500">*</span></Label>
+                  <Input placeholder="e.g. EMP001" value={createForm.emp_id} onChange={(e) => setField("emp_id", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Full Name <span className="text-red-500">*</span></Label>
+                  <Input placeholder="e.g. John Doe" value={createForm.name} onChange={(e) => setField("name", e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            {/* Personal Details */}
+            <section className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-1">
+                Personal Details
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Email</Label>
+                  <Input type="email" placeholder="john@example.com" value={createForm.email} onChange={(e) => setField("email", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Phone</Label>
+                  <Input type="tel" placeholder="+91 9876543210" value={createForm.phone} onChange={(e) => setField("phone", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Designation</Label>
+                  <Input placeholder="e.g. Senior Engineer" value={createForm.designation} onChange={(e) => setField("designation", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Skill</Label>
+                  <Input placeholder="e.g. Java, React" value={createForm.skill} onChange={(e) => setField("skill", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Modality</Label>
+                  <Input placeholder="e.g. Remote / Onsite" value={createForm.modality} onChange={(e) => setField("modality", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Manager Name</Label>
+                  <Input placeholder="Reporting manager" value={createForm.manager_name} onChange={(e) => setField("manager_name", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Join Date</Label>
+                  <CustomDatePicker
+                    value={createForm.join_date ? dayjs(createForm.join_date) : null}
+                    onChange={(d: Dayjs | null) => setField("join_date", d ? d.format("YYYY-MM-DD") : "")}
+                    placeholder="Select join date"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Financials */}
+            <section className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-1">
+                PO & Financials
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Monthly PO (₹)</Label>
+                  <Input type="number" min="0" step="0.01" placeholder="e.g. 150000" value={createForm.monthly_po} onChange={(e) => setField("monthly_po", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Monthly CTC (₹)</Label>
+                  <Input type="number" min="0" step="0.01" placeholder="e.g. 120000" value={createForm.monthly_ctc} onChange={(e) => setField("monthly_ctc", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Yearly CTC (₹)</Label>
+                  <Input type="number" min="0" step="0.01" placeholder="e.g. 1440000" value={createForm.yearly_ctc} onChange={(e) => setField("yearly_ctc", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Margin (₹)</Label>
+                  <Input type="number" min="0" step="0.01" placeholder="e.g. 30000" value={createForm.margin} onChange={(e) => setField("margin", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>PO End Date</Label>
+                  <CustomDatePicker
+                    value={createForm.po_end_date ? dayjs(createForm.po_end_date) : null}
+                    onChange={(d: Dayjs | null) => setField("po_end_date", d ? d.format("YYYY-MM-DD") : "")}
+                    placeholder="Select PO end date"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Last Hike Date</Label>
+                  <CustomDatePicker
+                    value={createForm.last_hike_date ? dayjs(createForm.last_hike_date) : null}
+                    onChange={(d: Dayjs | null) => setField("last_hike_date", d ? d.format("YYYY-MM-DD") : "")}
+                    placeholder="Select last hike date"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Last Hike %</Label>
+                  <Input type="number" min="0" max="100" step="0.01" placeholder="e.g. 10" value={createForm.last_hike_pct} onChange={(e) => setField("last_hike_pct", e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            {/* Performance & Classification */}
+            <section className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-1">
+                Performance & Classification
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Cohort</Label>
+                  <CustomSelect
+                    value={createForm.cohort}
+                    onChange={(v) => setField("cohort", v)}
+                    placeholder="Select cohort"
+                    options={COHORTS.map((c) => ({ label: c.replace(/_/g, " "), value: c }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Performance Tier</Label>
+                  <CustomSelect
+                    value={createForm.perf_tier}
+                    onChange={(v) => setField("perf_tier", v)}
+                    placeholder="Select tier"
+                    options={PERF_TIERS.map((t) => ({ label: t.replace(/_/g, " "), value: t }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>BH Feedback</Label>
+                  <CustomSelect
+                    value={createForm.bh_feedback}
+                    onChange={(v) => setField("bh_feedback", v)}
+                    placeholder="Select feedback"
+                    options={BH_FEEDBACKS.map((f) => ({ label: f.replace(/_/g, " "), value: f }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>L&D Status</Label>
+                  <CustomSelect
+                    value={createForm.l_d_status}
+                    onChange={(v) => setField("l_d_status", v)}
+                    placeholder="Select L&D status"
+                    options={LD_STATUSES.map((s) => ({ label: s.replace(/_/g, " "), value: s }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>NPS Score (0–10)</Label>
+                  <Input type="number" min="0" max="10" placeholder="e.g. 8" value={createForm.nps_score} onChange={(e) => setField("nps_score", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <CustomSelect
+                    value={createForm.is_active}
+                    onChange={(v) => setField("is_active", v)}
+                    placeholder="Select status"
+                    options={[
+                      { label: "Active", value: "true" },
+                      { label: "Inactive", value: "false" },
+                    ]}
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={creating} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm">
+              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Add Consultant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

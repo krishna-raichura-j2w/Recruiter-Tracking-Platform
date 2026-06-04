@@ -25,6 +25,7 @@ export interface UserProfileData {
   phone?: string;
   secondary_role?: string | null;
   recruiter_type?: string | null;
+  profile_url?: string | null;
 }
 
 export interface UserProfileResponse {
@@ -59,6 +60,7 @@ export interface ClientItem {
   bh_id?: number;
   bh_name?: string;
   headcount?: number;
+  inactive_headcount?: number;
   total_monthly_po?: number;
   created_at?: string;
   updated_at?: string;

@@ -124,6 +124,8 @@ def list_paginated(
             or_(
                 HRBPConsultant.name.ilike(term),
                 HRBPConsultant.emp_id.ilike(term),
+                HRBPConsultant.email.ilike(term),
+                HRBPConsultant.phone.ilike(term),
             )
         )
     q = q.order_by(HRBPConsultant.name)
