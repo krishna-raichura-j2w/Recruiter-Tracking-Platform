@@ -853,18 +853,19 @@ def start():
         coalesce=True,
     )
 
-    _scheduler.add_job(
-        check_contract_closures,
-        "cron",
-        hour=8,
-        minute=0,
-        id="hrbp_contract_closure",
-        max_instances=1,
-        coalesce=True,
-    )
+    # 4-month contract closure scheduler — temporarily disabled
+    # _scheduler.add_job(
+    #     check_contract_closures,
+    #     "cron",
+    #     hour=8,
+    #     minute=0,
+    #     id="hrbp_contract_closure",
+    #     max_instances=1,
+    #     coalesce=True,
+    # )
 
     _scheduler.start()
-    log.info("HRBP schedulers started (SLA breach, step SLA breach, contract closure).")
+    log.info("HRBP schedulers started (SLA breach, step SLA breach).")
 
 
 def stop():
