@@ -438,6 +438,12 @@ def create_job(db: Session, data: dict, created_by_id: int) -> Job:
     db.add(job)
     db.commit()
     db.refresh(job)
+    # Walk-in / drive jobs auto-create a drive card so they surface in the
+    # Walk-ins / Drives tab. Fire-and-forget — never abort job creation.
+    if job.walkin or job.drive:
+        from features.mrr.drives.service import ensure_drive_for_job
+
+        ensure_drive_for_job(db, job, created_by_id)
     return job
 
 

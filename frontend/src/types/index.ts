@@ -382,3 +382,83 @@ export interface DashboardData {
   recruiter_stats: { name: string; assigned: number; called: number; validated: number }[];
   unread_notifications: number;
 }
+
+// ── Walk-ins / Drives ─────────────────────────────────────────────────────────
+
+export type DriveType = 'walkin' | 'virtual' | 'college_walkin' | 'followup';
+export type DriveStatus =
+  | 'planned' | 'sourcing' | 'in_progress' | 'shortlisted'
+  | 'complete' | 'blocked' | 'cancelled';
+export type DriveTrackerStage =
+  | 'lined_up' | 'confirmed' | 'en_route' | 'reached' | 'attended' | 'no_show';
+export type DriveCallType = 'recruiter_followup' | 'lead_am_pulse';
+
+export interface Drive {
+  id: number;
+  job_id: number;
+  drive_type: DriveType;
+  status: DriveStatus;
+  open_positions: number | null;
+  conversion_rate: number | null;
+  buffer_pct: number | null;
+  show_rate: number | null;
+  submission_target_override: number | null;
+  drive_date_from: string | null;
+  drive_date_upto: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  venue: string | null;
+  dress_code: string | null;
+  virtual_link: string | null;
+  portal_cutoff: string | null;
+  bh_owner_id: number | null;
+  kam_owner_id: number | null;
+  dl_owner_id: number | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  // Derived (computed server-side)
+  bh_owner_name: string | null;
+  kam_owner_name: string | null;
+  dl_owner_name: string | null;
+  client_name?: string | null;
+  role_title?: string | null;
+  job_headcount?: number | null;
+  submission_target_computed: number;
+  submission_target: number;
+  show_target: number;
+  select_target: number;
+  lineup_count: number;
+}
+
+export interface DriveCall {
+  id: number;
+  candidate_id: number;
+  drive_id: number;
+  caller_id: number | null;
+  caller_name: string | null;
+  call_type: DriveCallType | null;
+  call_date: string | null;
+  outcome: string | null;
+  notes: string | null;
+}
+
+export interface DriveCandidate {
+  id: number;
+  drive_id: number | null;
+  full_name: string;
+  mobile: string | null;
+  email: string | null;
+  skills: string | null;
+  designation: string | null;
+  current_company: string | null;
+  location: string | null;
+  exp_range: string | null;
+  current_ctc: number | null;
+  expected_ctc: number | null;
+  lead_source: string | null;
+  status: string | null;
+  drive_tracker_stage: DriveTrackerStage | null;
+  drive_reached_at: string | null;
+  drive_calls: DriveCall[];
+}

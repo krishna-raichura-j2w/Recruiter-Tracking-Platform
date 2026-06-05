@@ -34,6 +34,7 @@ from features.mrr.form_config.routes import init_form_templates  # noqa: E402
 from features.mrr.form_config.routes import router as form_config_router  # noqa: E402
 from features.mrr.jd_extract.routes import router as jd_extract_router  # noqa: E402
 from features.mrr.jobs.routes import router as jobs_router  # noqa: E402
+from features.mrr.drives.routes import router as drives_router  # noqa: E402
 from features.mrr.mails.routes import router as mails_router  # noqa: E402
 from features.mrr.notifications.routes import (  # noqa: E402
     router as notifications_router,
@@ -191,6 +192,13 @@ def ensure_schema():
                 db.rollback()
 
         for sql in load_sql_list("047-bh_customer_client_ids.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        for sql in load_sql_list("050-add_drives.sql"):
             try:
                 db.execute(text(sql))
                 db.commit()
@@ -368,6 +376,7 @@ app.add_middleware(
 app.include_router(auth_router,               prefix="/api")
 app.include_router(users_router,              prefix="/api")
 app.include_router(jobs_router,               prefix="/api")
+app.include_router(drives_router,             prefix="/api")
 app.include_router(candidates_router,         prefix="/api")
 app.include_router(calls_router,              prefix="/api")
 app.include_router(validation_router,         prefix="/api")

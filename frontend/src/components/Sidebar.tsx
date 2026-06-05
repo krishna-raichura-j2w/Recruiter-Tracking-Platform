@@ -6,7 +6,7 @@ import {
   Briefcase, Users, CheckCircle, Send,
   UserCheck, ClipboardList, LogOut, Activity,
   Building2, BarChart2, GitBranch, TrendingUp, Settings, Trophy,
-  ChevronRight, X, Menu, Sparkles, Network, Target, Mail,
+  ChevronRight, X, Menu, Sparkles, Network, Target, Mail, CalendarCheck,
 } from 'lucide-react';
 import LottieLib from 'lottie-react';
 import goalAnim from '../assets/lottie-goal.json';
@@ -32,6 +32,7 @@ const navConfig: Record<string, NavGroup[]> = {
       section: 'Recruitment',
       items: [
         { label: 'Jobs',             path: '/jobs',        icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Walk-ins / Drives', path: '/drives',     icon: <CalendarCheck size={16} /> },
         { label: 'All Candidates',   path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
         { label: 'Boolean Builder',  path: '/skills',      icon: <Sparkles size={16} /> },
@@ -66,6 +67,7 @@ const navConfig: Record<string, NavGroup[]> = {
       section: 'My Work',
       items: [
         { label: 'Jobs',               path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Walk-ins / Drives',  path: '/drives',       icon: <CalendarCheck size={16} /> },
         { label: 'Interview Tracking', path: '/pipeline',     icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Recruiter Story',    path: '/followup',     icon: <GitBranch size={16} /> },
       ],
@@ -87,6 +89,7 @@ const navConfig: Record<string, NavGroup[]> = {
       section: 'My Workflow',
       items: [
         { label: 'JD Review Queue',  path: '/jobs',        icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Walk-ins / Drives', path: '/drives',     icon: <CalendarCheck size={16} /> },
         { label: 'My Team',          path: '/users',       icon: <UserCheck size={16} /> },
         { label: 'Candidates',       path: '/candidates',  icon: <Users size={16} /> },
         { label: 'Validation Queue', path: '/validation',  icon: <CheckCircle size={16} />, countKey: 'validation' },
@@ -117,6 +120,7 @@ const navConfig: Record<string, NavGroup[]> = {
       section: 'My Work',
       items: [
         { label: 'My JDs',          path: '/jobs',         icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Walk-ins / Drives', path: '/drives',     icon: <CalendarCheck size={16} /> },
         { label: 'My Candidates',   path: '/candidates',   icon: <ClipboardList size={16} />, countKey: 'candidates' },
         { label: 'Boolean Builder', path: '/skills',       icon: <Sparkles size={16} /> },
         { label: 'Mail Tracker',    path: '/mail-tracker', icon: <Send size={16} /> },
@@ -154,6 +158,7 @@ const navConfig: Record<string, NavGroup[]> = {
       section: 'Pipeline',
       items: [
         { label: 'Jobs',               path: '/jobs',          icon: <Briefcase size={16} />, countKey: 'jobs' },
+        { label: 'Walk-ins / Drives',  path: '/drives',        icon: <CalendarCheck size={16} /> },
         { label: 'Candidates',         path: '/candidates',    icon: <Users size={16} /> },
         { label: 'Interview Tracking', path: '/pipeline',      icon: <Activity size={16} />, countKey: 'pipeline' },
         { label: 'Recruiter Story',    path: '/followup',      icon: <GitBranch size={16} /> },
