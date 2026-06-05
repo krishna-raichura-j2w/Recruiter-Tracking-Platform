@@ -7,7 +7,7 @@ import {
   Loader2, MapPin, Users, Briefcase, ChevronRight,
   BookOpen, Clock, DollarSign, GraduationCap,
   Phone, Lock, Unlock, Pencil, Search, Calendar,
-  UserCheck, Trash2, RefreshCw, CheckCircle2,
+  UserCheck, Trash2, RefreshCw, CheckCircle2, Share2,
 } from 'lucide-react';
 import LottieLib from 'lottie-react';
 import jobVacancyAnim from '../assets/lottie-job-vacancy.json';
@@ -238,6 +238,14 @@ export default function Jobs() {
   const [callingDeadline,  setCallingDeadline]  = useState('');
   const [sourcingTarget,   setSourcingTarget]   = useState('');
 
+  // Cross-pod collaborators (add KAMs/DLs from other pods to a job)
+  const [collabJob, setCollabJob]               = useState<Job | null>(null);
+  const [leads, setLeads]                       = useState<{ id: number; name: string; role: string; pod_id: number | null; pod_name: string | null }[]>([]);
+  const [selectedCollabKamIds, setSelectedCollabKamIds] = useState<number[]>([]);
+  const [selectedCollabDlIds, setSelectedCollabDlIds]   = useState<number[]>([]);
+  const [savingCollab, setSavingCollab]         = useState(false);
+  const [collabError, setCollabError]           = useState('');
+
   const isAdmin        = user?.role === 'admin';
   const isKam          = user?.role === 'kam'          || user?.secondary_role === 'kam';
   const isDeliveryLead = user?.role === 'delivery_lead' || user?.secondary_role === 'delivery_lead';
@@ -295,10 +303,14 @@ export default function Jobs() {
   // Reset to page 1 when filters change
   useEffect(() => { setJobPage(1); }, [activeTab, searchText, clientFilter, bhFilter]);
 
-  const fetchDlTeam = async (dlId?: number | null) => {
-    // KAM/admin: pass dl_id when known, otherwise backend returns all recruiters
-    const params = (isAdmin || isKam) && dlId ? { dl_id: dlId } : undefined;
-    const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads', { params });
+  const fetchDlTeam = async (jobId?: number | null, dlId?: number | null) => {
+    // When a job is in context, ask for that job's cross-pod assignable pool
+    // (owner KAM + collaborator KAMs + assigned DLs across pods). Otherwise
+    // fall back to the single-pod dl_id lookup.
+    const params: Record<string, number> = {};
+    if (jobId) params.job_id = jobId;
+    else if ((isAdmin || isKam) && dlId) params.dl_id = dlId;
+    const res = await api.get<{ sourcers: { id: number; name: string; sourcing_load: number; calling_load: number }[] }>('/users/team-loads', { params: Object.keys(params).length ? params : undefined });
     return res.data.sourcers ?? [];
   };
 
@@ -315,8 +327,8 @@ export default function Jobs() {
     }
     setLoadingTeam(true);
     try {
-      // KAM has no pod — fetch all recruiters (no dl_id filter)
-      const team = await fetchDlTeam(isKam ? null : job.delivery_lead_id);
+      // Fetch the job's cross-pod assignable pool (includes collaborator pods)
+      const team = await fetchDlTeam(job.id);
       setDlTeam(team);
       if (team.length) {
         const rec = team.reduce((a, b) => (a.sourcing_load + a.calling_load) <= (b.sourcing_load + b.calling_load) ? a : b);
@@ -344,7 +356,7 @@ export default function Jobs() {
     }
     setLoadingTeam(true);
     try {
-      const team = await fetchDlTeam(isKam ? null : job.delivery_lead_id);
+      const team = await fetchDlTeam(job.id);
       setDlTeam(team);
       const teamIds = new Set(team.map((m) => m.id));
       const rawIds: number[] = Array.isArray(job.recruiter_ids) && job.recruiter_ids.length
@@ -397,6 +409,42 @@ export default function Jobs() {
       setConfirmError('Failed to reassign. Please try again.');
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const openCollaboratorsModal = async (job: Job) => {
+    setCollabJob(job);
+    setCollabError('');
+    setSelectedCollabKamIds(job.collaborator_kam_ids ?? []);
+    setSelectedCollabDlIds(
+      job.delivery_lead_ids?.length ? job.delivery_lead_ids
+        : job.delivery_lead_id ? [job.delivery_lead_id] : [],
+    );
+    try {
+      const res = await api.get<{ leads: typeof leads }>('/users/leads');
+      setLeads(res.data.leads ?? []);
+    } catch { setLeads([]); }
+  };
+
+  const toggleCollabKam = (id: number) =>
+    setSelectedCollabKamIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleCollabDl = (id: number) =>
+    setSelectedCollabDlIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const handleSaveCollaborators = async () => {
+    if (!collabJob) return;
+    setSavingCollab(true); setCollabError('');
+    try {
+      await api.patch(`/jobs/${collabJob.id}/collaborators`, {
+        kam_ids: selectedCollabKamIds,
+        delivery_lead_ids: selectedCollabDlIds,
+      });
+      setCollabJob(null);
+      fetchJobs();
+    } catch {
+      setCollabError('Failed to save collaborators. Please try again.');
+    } finally {
+      setSavingCollab(false);
     }
   };
 
@@ -928,6 +976,8 @@ export default function Jobs() {
               onEdit={() => openEditModal(job)}
               onConfirm={() => openConfirmModal(job)}
               onReassign={() => openReassignModal(job)}
+              onCollaborators={() => openCollaboratorsModal(job)}
+              canCollaborate={isAdmin || (isKam && job.created_by_id === user?.user_id)}
               onRepost={() => { setRepostJob(job); setRepostHeadcount(job.headcount ?? 1); }}
               onDelete={async () => {
                 if (!confirm(`Delete JD "${job.role_title}" (${job.client_job_id ?? ''})? This cannot be undone.`)) return;
@@ -1026,6 +1076,75 @@ export default function Jobs() {
             </div>
           ) : undefined}
         />
+      )}
+
+      {/* Collaborators modal — invite KAMs / DLs from other pods */}
+      {collabJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto scrollbar-thin">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Cross-Pod Collaborators</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{collabJob.role_title} · {collabJob.client_name}</p>
+              </div>
+              <button onClick={() => { setCollabJob(null); setCollabError(''); }} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"><X size={18} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              <p className="text-xs text-slate-500">
+                Invite KAMs and Delivery Leads from other pods. Their pods' recruiters then become assignable
+                to this job and they gain co-management access.
+              </p>
+
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">KAMs (other pods)</p>
+                <div className="flex flex-wrap gap-2">
+                  {leads.filter(l => l.role === 'kam' && l.id !== collabJob.created_by_id).map(l => {
+                    const sel = selectedCollabKamIds.includes(l.id);
+                    return (
+                      <button key={l.id} type="button" onClick={() => toggleCollabKam(l.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${sel ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-slate-600 border-slate-200 hover:border-cyan-300'}`}>
+                        {l.name}{l.pod_name ? ` · ${l.pod_name}` : ''}
+                      </button>
+                    );
+                  })}
+                  {!leads.some(l => l.role === 'kam' && l.id !== collabJob.created_by_id) && (
+                    <span className="text-xs text-slate-400">No other KAMs available.</span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Delivery Leads</p>
+                <div className="flex flex-wrap gap-2">
+                  {leads.filter(l => l.role === 'delivery_lead').map(l => {
+                    const sel = selectedCollabDlIds.includes(l.id);
+                    return (
+                      <button key={l.id} type="button" onClick={() => toggleCollabDl(l.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${sel ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>
+                        {l.name}{l.pod_name ? ` · ${l.pod_name}` : ''}
+                      </button>
+                    );
+                  })}
+                  {!leads.some(l => l.role === 'delivery_lead') && (
+                    <span className="text-xs text-slate-400">No delivery leads available.</span>
+                  )}
+                </div>
+              </div>
+
+              {collabError && <p className="text-xs font-semibold text-red-500">{collabError}</p>}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 sticky bottom-0 bg-white">
+              <button onClick={() => { setCollabJob(null); setCollabError(''); }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">
+                Cancel
+              </button>
+              <button onClick={handleSaveCollaborators} disabled={savingCollab}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60">
+                {savingCollab ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : <><Share2 size={14} /> Save Collaborators</>}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* New / Edit Job Modal */}
@@ -2167,6 +2286,8 @@ interface JobCardProps {
   onEdit: () => void;
   onConfirm: () => void;
   onReassign: () => void;
+  onCollaborators: () => void;
+  canCollaborate: boolean;
   onRepost: () => void;
   onDelete: () => void;
   toggling: boolean;
@@ -2194,7 +2315,7 @@ function Avatar({ name, size = 28, color }: { name: string; size?: number; color
   );
 }
 
-function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, isGeneratingQuestionnaire, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onRepost, onDelete, toggling }: JobCardProps) {
+function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, onViewCandidates, onViewJD, onGenerateBoolean, isGeneratingQuestionnaire, onDownloadQuestionnaire, onToggleStatus, onEdit, onConfirm, onReassign, onCollaborators, canCollaborate, onRepost, onDelete, toggling }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -2346,6 +2467,18 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#DDD6FE'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#EDE9FE'; }}>
                 <Users size={12} /> Reassign
+              </button>
+            )}
+
+            {/* Collaborators — owning KAM / admin can invite KAMs/DLs from other pods */}
+            {canCollaborate && job.status !== 'closed' && (
+              <button onClick={onCollaborators}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                style={{ background: '#ECFEFF', color: '#0E7490', border: '1px solid #A5F3FC' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#CFFAFE'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#ECFEFF'; }}
+                title="Invite KAMs / DLs from other pods to co-manage this job">
+                <Share2 size={12} /> Collaborators
               </button>
             )}
 
@@ -2544,6 +2677,11 @@ function JobCard({ job, isRecruiter, isAdmin, isKam, isDeliveryLead, canToggle, 
             ).map((name, i) => (
               <span key={i} className="text-[10px] font-semibold text-indigo-600 flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50">
                 <UserCheck size={9} /> DL: {name}
+              </span>
+            ))}
+            {(job.collaborator_kam_names ?? []).map((name, i) => (
+              <span key={`ck-${i}`} className="text-[10px] font-semibold text-cyan-700 flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50">
+                <Share2 size={9} /> KAM: {name}
               </span>
             ))}
           </div>
