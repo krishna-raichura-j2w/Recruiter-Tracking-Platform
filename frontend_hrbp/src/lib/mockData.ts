@@ -549,6 +549,10 @@ export function fmtINR(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
+export function fmtINRFull(n: number) {
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
 export function findConsultant(id: string) {
   return consultants.find((c) => c.id === id);
 }

@@ -14,7 +14,8 @@ import { getConsultantDetailsApi, getUserProfile, getClientsApi, updateConsultan
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
 import { format } from "date-fns";
-import { fmtINR } from "@/lib/mockData";
+import { fmtINRFull } from "@/lib/mockData";
+import { fmtDateTime } from "@/lib/formatDate";
 import { PageLoader, TableLoader } from "@/components/Loader";
 import { LottieIcon } from "@/components/LottieIcon";
 import {
@@ -155,9 +156,9 @@ function RevisionTooltip({ active, payload }: any) {
     <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-xs space-y-1 min-w-[180px]">
       <p className="font-semibold text-slate-700 text-[11px] uppercase tracking-wide">{d.date}</p>
       {d.old_rate != null && (
-        <p className="text-slate-500">Old rate: <span className="font-medium text-slate-700">{fmtINR(d.old_rate)}</span></p>
+        <p className="text-slate-500">Old rate: <span className="font-medium text-slate-700">{fmtINRFull(d.old_rate)}</span></p>
       )}
-      <p className="text-slate-500">New rate: <span className="font-bold text-slate-800">{fmtINR(d.new_rate)}</span></p>
+      <p className="text-slate-500">New rate: <span className="font-bold text-slate-800">{fmtINRFull(d.new_rate)}</span></p>
       {d.hike_pct != null && (
         <p className={`font-semibold ${Number(d.hike_pct) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
           {Number(d.hike_pct) >= 0 ? "+" : ""}{Number(d.hike_pct).toFixed(2)}% hike
@@ -437,11 +438,6 @@ function ConsultantDetailPage() {
     [consultant?.po_end_date],
   );
 
-  const totalPoValue = useMemo(() => {
-    if (!consultant?.monthly_po || !consultant?.po_end_date) return null;
-    return consultant.monthly_po * tenureLeft;
-  }, [consultant?.monthly_po, consultant?.po_end_date, tenureLeft]);
-
   if (loading) {
     return (
       <div className="flex flex-col h-full bg-white text-slate-800">
@@ -515,7 +511,7 @@ function ConsultantDetailPage() {
           {consultant.monthly_po && (
             <div className="shrink-0 flex flex-col items-end gap-1.5">
               <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-full">
-                {fmtINR(consultant.monthly_po)}/mo PO
+                {fmtINRFull(consultant.monthly_po)}/mo PO
               </span>
               {consultant.po_end_date && (
                 <span className="text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-full">
@@ -524,7 +520,7 @@ function ConsultantDetailPage() {
               )}
               {consultant.po_risk != null && consultant.po_risk > 0 && (
                 <span className="text-xs font-semibold bg-red-50 text-red-700 border border-red-100 px-2.5 py-1 rounded-full">
-                  Risk {fmtINR(consultant.po_risk)}
+                  Risk {fmtINRFull(consultant.po_risk)}
                 </span>
               )}
             </div>
@@ -652,14 +648,20 @@ function ConsultantDetailPage() {
                     </Field>
                   </div>
                 ) : (
-                  <>
-                    <FinTile label="Monthly PO Rate" value={consultant.monthly_po ? fmtINR(consultant.monthly_po) : "-"} accent="blue" />
-                    <FinTile label="Total PO at Risk" value={totalPoValue != null && totalPoValue > 0 ? fmtINR(totalPoValue) : "-"} accent={totalPoValue ? "red" : "slate"} />
-                    <FinTile label="Monthly CTC" value={consultant.monthly_ctc ? fmtINR(consultant.monthly_ctc) : "-"} accent="slate" />
-                    <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-3">
+                    {/* 2×2 grid of financial tiles */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <FinTile label="Monthly PO" value={consultant.monthly_po ? fmtINRFull(consultant.monthly_po) : "-"} accent="blue" />
+                      <FinTile label="Monthly CTC" value={consultant.monthly_ctc ? fmtINRFull(consultant.monthly_ctc) : "-"} accent="slate" />
+                      <FinTile label="Margin" value={consultant.margin != null ? fmtINRFull(consultant.margin) : "-"} accent="amber" />
+                      <FinTile label="PO at Risk" value={consultant.po_risk != null && consultant.po_risk > 0 ? fmtINRFull(consultant.po_risk) : "-"} accent={consultant.po_risk != null && consultant.po_risk > 0 ? "red" : "slate"} />
+                    </div>
+
+                    {/* Tenure + PO End Date */}
+                    <div className="grid grid-cols-2 gap-3 border border-slate-100 rounded-xl px-4 py-3 bg-slate-50/50">
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-1 text-amber-500">
-                          <Clock className="w-3 h-3" />
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-amber-500" />
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">Tenure Left</p>
                         </div>
                         <p className="text-sm font-bold text-amber-700">{consultant.po_end_date ? `${tenureLeft} mo` : "-"}</p>
@@ -669,17 +671,21 @@ function ConsultantDetailPage() {
                         <p className="text-sm font-medium text-slate-800">{formatDate(consultant.po_end_date)}</p>
                       </div>
                     </div>
+
+                    {/* PO Risk alert */}
                     {consultant.po_risk != null && consultant.po_risk > 0 && (
                       <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
                         <TrendingDown className="w-4 h-4 text-red-500 shrink-0" />
                         <div>
                           <p className="text-[11px] font-semibold text-red-500 uppercase tracking-wide">PO Risk Amount</p>
-                          <p className="text-sm font-bold text-red-700">{fmtINR(consultant.po_risk)}</p>
+                          <p className="text-sm font-bold text-red-700">{fmtINRFull(consultant.po_risk)}</p>
                         </div>
                       </div>
                     )}
+
+                    {/* Last Hike */}
                     {(consultant.last_hike_pct || consultant.last_hike_date) && (
-                      <div className="pt-2 border-t border-slate-100 space-y-0.5">
+                      <div className="border-t border-slate-100 pt-3 space-y-0.5">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Last Hike</p>
                         <p className="text-sm font-medium text-slate-800">
                           {consultant.last_hike_pct ? `${consultant.last_hike_pct}%` : "-"}
@@ -687,16 +693,30 @@ function ConsultantDetailPage() {
                         </p>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </CardContent>
             </Card>
 
-            {/* Timestamps — de-emphasised */}
-            <p className="text-[11px] text-slate-400 px-1 space-y-0.5">
-              <span className="block">Created: {formatDate(consultant.created_at)}</span>
-              <span className="block">Updated: {formatDate(consultant.updated_at)}</span>
-            </p>
+            {/* Timestamps */}
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-[#132246]">
+                  <Clock className="w-4 h-4 text-sky-600" />
+                  Timestamps
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 py-4 space-y-3">
+                <div className="space-y-0.5">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Created</p>
+                  <p className="text-sm font-medium text-slate-800">{fmtDateTime(consultant.created_at)}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Last Updated</p>
+                  <p className="text-sm font-medium text-slate-800">{fmtDateTime(consultant.updated_at)}</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
@@ -774,10 +794,10 @@ function ConsultantDetailPage() {
                             {formatDate(r.revised_at)}
                           </TableCell>
                           <TableCell className="text-xs text-slate-600">
-                            {r.old_po_rate != null ? fmtINR(Number(r.old_po_rate)) : "—"}
+                            {r.old_po_rate != null ? fmtINRFull(Number(r.old_po_rate)) : "—"}
                           </TableCell>
                           <TableCell className="text-xs font-semibold text-slate-800">
-                            {fmtINR(Number(r.new_po_rate))}
+                            {fmtINRFull(Number(r.new_po_rate))}
                           </TableCell>
                           <TableCell className="text-xs">
                             {r.hike_pct != null ? (
