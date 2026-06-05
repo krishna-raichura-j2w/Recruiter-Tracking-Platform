@@ -421,6 +421,10 @@ class Job(Base):
     )  # KAM when DL creates
     delivery_lead_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     delivery_lead_ids = Column(Text, default="[]")  # JSON array of DL user IDs
+    # Cross-pod collaboration: KAMs from OTHER pods invited to co-manage this
+    # job. Their pods' DLs/recruiters become assignable & they get full
+    # co-management. JSON array of KAM user IDs, e.g. "[7,12]".
+    collaborator_kam_ids = Column(Text, default="[]")
     account_manager_id = Column(
         Integer,
         ForeignKey("account_managers.id"),
@@ -890,7 +894,7 @@ def _job_assignee_user_ids(job: "Job") -> set[int]:
                 ids.add(int(v))
             except (TypeError, ValueError):
                 pass
-    for col in ("delivery_lead_ids", "sourcer_ids", "caller_ids"):
+    for col in ("delivery_lead_ids", "sourcer_ids", "caller_ids", "collaborator_kam_ids"):
         raw = getattr(job, col, None)
         if not raw:
             continue

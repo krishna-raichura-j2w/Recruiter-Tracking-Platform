@@ -345,6 +345,7 @@ def get_team_assignments(
 @router.get("/team-loads")
 def get_team_loads(
     dl_id: int | None = Query(None, description="DL user ID — admin/KAM can pass any DL's ID"),
+    job_id: int | None = Query(None, description="Job ID — return the job's cross-pod assignable recruiter pool"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles("admin", "delivery_lead", "kam")),
 ):
@@ -352,11 +353,65 @@ def get_team_loads(
     Return per-role load counts for each DL's team.
     DL users always see their own team.
     Admins and KAMs may pass ?dl_id=<N> to filter by a DL's team, or omit to get all recruiters.
+    When ?job_id=<N> is passed, return the job's full cross-pod assignable pool
+    (owner KAM + collaborator KAMs + assigned DLs across pods) — used by the
+    Confirm/Reassign recruiter picker so collaborators' recruiters show up.
     """
     from infra.models import UserRole
 
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
+
+    # Cross-pod path: derive the assignable pool from the job itself.
+    if job_id is not None:
+        from features.mrr.allocation.service import (
+            _batch_caller_counts,
+            _batch_sourcer_counts,
+        )
+        from features.mrr.jobs import service as job_service
+
+        job = job_service.get_job(db, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        # Access: admin, owner KAM, a collaborator KAM, or an assigned DL.
+        collab_kam_ids = job_service._collaborator_kam_ids_for(job)
+        dl_ids = job_service._dl_ids_for(job)
+        allowed_viewer = (
+            is_admin
+            or job.created_by_id == current_user.id
+            or current_user.id in collab_kam_ids
+            or current_user.id in dl_ids
+        )
+        if not allowed_viewer:
+            raise HTTPException(status_code=403, detail="Not allowed for this job.")
+
+        member_ids = job_service._assignable_recruiter_ids(db, job)
+        if not member_ids:
+            return {"sourcers": [], "callers": []}
+        members_q = (
+            db.query(User)
+            .filter(User.id.in_(member_ids), User.is_active == True)  # noqa: E712
+            .order_by(User.name)
+            .all()
+        )
+        ids = [m.id for m in members_q]
+        scount = _batch_sourcer_counts(db, ids)
+        ccount = _batch_caller_counts(db, ids)
+        members = [
+            {
+                "id": m.id,
+                "name": m.name,
+                "email": m.email,
+                "role": m.role.value,
+                "recruiter_type": m.recruiter_type.value if m.recruiter_type else None,
+                "sourcing_load": scount.get(m.id, 0),
+                "calling_load": ccount.get(m.id, 0),
+                "load": scount.get(m.id, 0) + ccount.get(m.id, 0),
+            }
+            for m in members_q
+        ]
+        return {"sourcers": members, "callers": members}
 
     if is_admin:
         if dl_id:
@@ -388,6 +443,40 @@ def get_team_loads(
         members = team_loads(db, current_user.id)
 
     return {"sourcers": members, "callers": members}
+
+
+@router.get("/leads")
+def list_leads(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "kam")),
+):
+    """All active KAMs and DLs across every pod, with their pod name — feeds the
+    cross-pod "add collaborator" picker on a job. Returns
+    [{id, name, role, pod_id, pod_name}], sorted by pod then name."""
+    from infra.models import Pod
+
+    pod_names = dict(db.query(Pod.id, Pod.name).all())
+    rows = (
+        db.query(User)
+        .filter(
+            User.is_active == True,  # noqa: E712
+            User.role.in_([UserRole.kam, UserRole.delivery_lead]),
+        )
+        .order_by(User.name)
+        .all()
+    )
+    out = [
+        {
+            "id": u.id,
+            "name": u.name,
+            "role": u.role.value,
+            "pod_id": u.pod_id,
+            "pod_name": pod_names.get(u.pod_id) if u.pod_id else None,
+        }
+        for u in rows
+    ]
+    out.sort(key=lambda x: ((x["pod_name"] or "~"), x["name"]))
+    return {"leads": out}
 
 
 @router.get("/activity-summary")

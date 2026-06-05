@@ -41,7 +41,7 @@ def _build_job_ctx(db: Session, jobs: list) -> dict:
                 user_ids.add(v)
         if getattr(job, "account_manager_id", None):
             am_ids.add(job.account_manager_id)
-        for col in ("delivery_lead_ids", "sourcer_ids", "caller_ids"):
+        for col in ("delivery_lead_ids", "sourcer_ids", "caller_ids", "collaborator_kam_ids"):
             user_ids.update(_parse_ids(getattr(job, col, None)))
 
     user_names: dict = {}
@@ -125,6 +125,11 @@ def _job_dict(db: Session, job: Job, ctx: dict | None = None) -> dict:
         dl_ids = [job.delivery_lead_id]
     d["delivery_lead_ids"] = dl_ids
     d["delivery_lead_names"] = [n for n in (uname(i) for i in dl_ids) if n]
+
+    # Cross-pod collaborator KAMs
+    collab_kam_ids = _parse_ids(getattr(job, "collaborator_kam_ids", None))
+    d["collaborator_kam_ids"] = collab_kam_ids
+    d["collaborator_kam_names"] = [n for n in (uname(i) for i in collab_kam_ids) if n]
     sourcer_names = [n for n in (uname(i) for i in d["sourcer_ids"]) if n]
     d["sourcer_names"] = sourcer_names
     caller_names = [n for n in (uname(i) for i in d["caller_ids"]) if n]
@@ -167,6 +172,64 @@ def _dl_ids_for(job) -> list:
     return ids
 
 
+def _collaborator_kam_ids_for(job) -> list:
+    """Return collaborator KAM IDs (KAMs from other pods invited to co-manage)."""
+    return _parse_ids(getattr(job, "collaborator_kam_ids", None))
+
+
+def _assignable_pod_ids(db: Session, job) -> set:
+    """Pods whose members may work this job: owner KAM's pod ∪ each collaborator
+    KAM's pod ∪ each assigned DL's pod. This is the cross-pod union that widens
+    the (previously single-pod) recruiter pool and assignment validation."""
+    user_ids: set = set()
+    for v in (job.created_by_id, job.kam_id):
+        if v:
+            user_ids.add(v)
+    user_ids.update(_collaborator_kam_ids_for(job))
+    user_ids.update(_dl_ids_for(job))
+    if not user_ids:
+        return set()
+    pod_ids = {
+        pid
+        for (pid,) in db.query(User.pod_id)
+        .filter(User.id.in_(user_ids), User.pod_id.isnot(None))
+        .all()
+    }
+    return pod_ids
+
+
+def _assignable_recruiter_ids(db: Session, job) -> set:
+    """Set of recruiter user IDs that may be assigned to this job — every active
+    recruiter/DL across the union of pods (mirrors allocation.service._team's
+    pod model), plus a legacy pod_memberships fallback for the assigned DLs."""
+    from infra.models import PodMembership, UserRole
+
+    pod_ids = _assignable_pod_ids(db, job)
+    ids: set = set()
+    if pod_ids:
+        for (uid,) in (
+            db.query(User.id)
+            .filter(
+                User.pod_id.in_(pod_ids),
+                User.is_active == True,  # noqa: E712
+                User.role.in_([UserRole.recruiter, UserRole.delivery_lead]),
+            )
+            .all()
+        ):
+            ids.add(uid)
+    # Legacy fallback: recruiters hand-picked into an assigned DL's pod_memberships
+    # team (covers pre-pods rows where DLs have no pod_id).
+    dl_ids = _dl_ids_for(job)
+    if dl_ids:
+        for (uid,) in (
+            db.query(PodMembership.user_id)
+            .filter(PodMembership.pod_lead_id.in_(dl_ids))
+            .all()
+        ):
+            ids.add(uid)
+    return ids
+
+
 def list_jobs(
     db: Session,
     status: str | None = None,
@@ -174,13 +237,17 @@ def list_jobs(
     delivery_lead_id: int | None = None,
     assigned_sourcer_id: int | None = None,
     dual_user_id: int | None = None,
+    kam_user_id: int | None = None,
     search: str | None = None,
     client: str | None = None,
     business_head_id: int | None = None,
     skip: int = 0,
     limit: int = 0,
 ) -> tuple[list, int]:
-    """Returns (items, total). limit=0 means no pagination (return all)."""
+    """Returns (items, total). limit=0 means no pagination (return all).
+
+    kam_user_id scopes to jobs a KAM owns OR co-manages as a cross-pod
+    collaborator (created_by_id == id OR id ∈ collaborator_kam_ids)."""
     from sqlalchemy import func
 
     q = db.query(Job)
@@ -207,20 +274,31 @@ def list_jobs(
 
     q = q.order_by(Job.created_at.desc())
 
-    # Python-side filters for JSON array columns (delivery_lead_ids, sourcer_ids, caller_ids)
+    # Python-side filters for JSON array columns (delivery_lead_ids, sourcer_ids,
+    # caller_ids, collaborator_kam_ids)
     needs_python_filter = (
         delivery_lead_id is not None
         or dual_user_id is not None
         or assigned_sourcer_id is not None
+        or kam_user_id is not None
     )
     if needs_python_filter:
         all_jobs = q.all()
         filtered = []
         for job in all_jobs:
             dl_ids = _dl_ids_for(job)
-            # dual_user_id: created_by OR is a DL on this job
+            collab_kam_ids = _collaborator_kam_ids_for(job)
+            # kam_user_id: owns (created_by) OR co-manages (collaborator) the job
+            if kam_user_id is not None:
+                if job.created_by_id != kam_user_id and kam_user_id not in collab_kam_ids:
+                    continue
+            # dual_user_id: created_by OR is a DL OR is a collaborator KAM on this job
             if dual_user_id is not None:
-                if job.created_by_id != dual_user_id and dual_user_id not in dl_ids:
+                if (
+                    job.created_by_id != dual_user_id
+                    and dual_user_id not in dl_ids
+                    and dual_user_id not in collab_kam_ids
+                ):
                     continue
             # delivery_lead_id: is a DL on this job
             if delivery_lead_id is not None:
@@ -266,6 +344,7 @@ def client_summary(
     delivery_lead_id: int | None = None,
     assigned_sourcer_id: int | None = None,
     dual_user_id: int | None = None,
+    kam_user_id: int | None = None,
 ) -> list[dict]:
     """Lightweight per-client rollup for the Jobs page client bar.
 
@@ -282,6 +361,7 @@ def client_summary(
         Job.created_by_id, Job.delivery_lead_ids, Job.delivery_lead_id,
         Job.sourcer_ids, Job.caller_ids,
         Job.assigned_sourcer_id, Job.assigned_caller_id,
+        Job.collaborator_kam_ids,
     ).all()
 
     # Candidate counts per job in ONE grouped query (avoids N+1).
@@ -294,7 +374,11 @@ def client_summary(
     def _visible(r) -> bool:
         if dual_user_id is not None:
             dl_ids = (json.loads(r.delivery_lead_ids or "[]") if isinstance(r.delivery_lead_ids, str) else (r.delivery_lead_ids or []))
-            return r.created_by_id == dual_user_id or dual_user_id in dl_ids
+            ck_ids = _parse_ids(r.collaborator_kam_ids)
+            return r.created_by_id == dual_user_id or dual_user_id in dl_ids or dual_user_id in ck_ids
+        if kam_user_id is not None:
+            ck_ids = _parse_ids(r.collaborator_kam_ids)
+            return r.created_by_id == kam_user_id or kam_user_id in ck_ids
         if created_by_id is not None:
             return r.created_by_id == created_by_id
         if delivery_lead_id is not None:

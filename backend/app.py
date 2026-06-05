@@ -200,6 +200,7 @@ def ensure_schema():
         for stmt in [
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_synced BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS collaborator_kam_ids TEXT DEFAULT '[]'",
         ]:
             try:
                 db.execute(text(stmt))

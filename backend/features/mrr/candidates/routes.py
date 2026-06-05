@@ -125,10 +125,15 @@ def list_candidates(
                 dl_job_ids.append(j.id)
         _job_ids = dl_job_ids if dl_job_ids else []
     elif role == "kam":
-        # KAM sees candidates for jobs they created/own
+        # KAM sees candidates for jobs they own OR co-manage as a cross-pod
+        # collaborator (collaborator_kam_ids).
+        from features.mrr.jobs.service import _collaborator_kam_ids_for
+
         kam_job_ids = [
             j.id
-            for j in db.query(Job).filter(Job.created_by_id == current_user.id).all()
+            for j in db.query(Job).all()
+            if j.created_by_id == current_user.id
+            or current_user.id in _collaborator_kam_ids_for(j)
         ]
         _job_ids = kam_job_ids  # empty list = no results if KAM has no jobs
     elif role == "bh":

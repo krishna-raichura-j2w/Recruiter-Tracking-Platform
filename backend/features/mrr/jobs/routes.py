@@ -2,7 +2,7 @@ from core.database import get_db
 from core.deps import get_current_user, require_roles, user_has_role
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from infra.models import Client, JobStatus, NotifType, PodMembership, User, UserRole
+from infra.models import Client, JobStatus, NotifType, User
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,28 @@ from features.mrr.jobs.schema import JobCreate, JobUpdate
 from features.mrr.notifications.service import push
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def _validate_assignable(db, job, actor, recruiter_ids, is_admin: bool) -> None:
+    """Ensure every recruiter id is assignable to this job. Admins bypass.
+
+    Allowed = the job's cross-pod assignable pool (owner KAM + collaborator KAMs
+    + assigned DLs) ∪ the actor's own pod/team. The actor-team union preserves
+    the initial-confirm case (DLs not yet recorded on the job) and legacy
+    hand-picked pod_memberships teams."""
+    if is_admin:
+        return
+    from features.mrr.allocation.service import _team as _alloc_team
+
+    allowed = service._assignable_recruiter_ids(db, job)
+    allowed |= {m.id for m in _alloc_team(db, actor.id)}
+    for uid in recruiter_ids:
+        if uid not in allowed:
+            u = db.query(User).filter(User.id == uid).first()
+            raise HTTPException(
+                status_code=400,
+                detail=f"{u.name if u else uid} is not in this job's pod(s).",
+            )
 
 
 @router.get("")
@@ -39,7 +61,7 @@ def list_jobs(
         items, total = service.list_jobs(
             db,
             status,
-            created_by_id=current_user.id,
+            kam_user_id=current_user.id,
             **kwargs,
         )
     elif is_dl:
@@ -75,7 +97,7 @@ def client_summary(
     if is_kam and is_dl:
         rows = service.client_summary(db, dual_user_id=current_user.id)
     elif is_kam:
-        rows = service.client_summary(db, created_by_id=current_user.id)
+        rows = service.client_summary(db, kam_user_id=current_user.id)
     elif is_dl:
         rows = service.client_summary(db, delivery_lead_id=current_user.id)
     elif current_user.role.value == "recruiter":
@@ -97,16 +119,21 @@ def get_job(
 
     is_kam = user_has_role(current_user, "kam")
     is_dl = user_has_role(current_user, "delivery_lead")
+    collab_kam_ids = service._collaborator_kam_ids_for(job)
     if is_kam and is_dl:
         dl_ids = service._dl_ids_for(job)
-        if job.created_by_id != current_user.id and current_user.id not in dl_ids:
+        if (
+            job.created_by_id != current_user.id
+            and current_user.id not in dl_ids
+            and current_user.id not in collab_kam_ids
+        ):
             raise HTTPException(status_code=404, detail="Job not found")
     elif is_dl:
         dl_ids = service._dl_ids_for(job)
         if current_user.id not in dl_ids:
             raise HTTPException(status_code=404, detail="Job not found")
     elif is_kam:
-        if job.created_by_id != current_user.id:
+        if job.created_by_id != current_user.id and current_user.id not in collab_kam_ids:
             raise HTTPException(status_code=404, detail="Job not found")
     return service._job_dict(db, job)
 
@@ -352,48 +379,12 @@ def confirm_jd(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
-    dl_id    = current_user.id
     is_admin = current_user.role.value == "admin"
-    is_kam   = user_has_role(current_user, "kam")
 
-    # For KAM: get all DL IDs in their pod for recruiter validation
-    kam_pod_dl_ids: list[int] = []
-    if is_kam and not is_admin and current_user.pod_id:
-        kam_pod_dl_ids = [
-            u.id for u in db.query(User).filter(
-                User.pod_id == current_user.pod_id,
-                User.is_active == True,
-                User.role == UserRole.delivery_lead,
-            ).all()
-        ]
-
-    for uid in body.recruiter_ids:
-        if is_admin:
-            continue
-        if is_kam:
-            in_team = (
-                db.query(PodMembership)
-                .filter(
-                    PodMembership.user_id == uid,
-                    PodMembership.pod_lead_id.in_(kam_pod_dl_ids),
-                )
-                .first()
-            ) if kam_pod_dl_ids else None
-        else:
-            in_team = (
-                db.query(PodMembership)
-                .filter(
-                    PodMembership.user_id == uid,
-                    PodMembership.pod_lead_id == dl_id,
-                )
-                .first()
-            )
-        if not in_team:
-            u = db.query(User).filter(User.id == uid).first()
-            raise HTTPException(
-                status_code=400,
-                detail=f"{u.name if u else uid} is not in your pod.",
-            )
+    # Recruiters must come from the job's assignable pool — the cross-pod union
+    # of pods (owner KAM + collaborator KAMs + assigned DLs) plus the actor's
+    # own pod/team. Admins bypass all scoping.
+    _validate_assignable(db, job, current_user, body.recruiter_ids, is_admin)
 
     # Same cleanup as /reassign — when the confirm flow is used to change the
     # team on an already-assigned JD, transfer active candidates off any
@@ -507,48 +498,11 @@ def reassign_recruiters(
     if not body.recruiter_ids:
         raise HTTPException(status_code=400, detail="Select at least one recruiter.")
 
-    dl_id    = job.delivery_lead_id or current_user.id
     is_admin = current_user.role.value == "admin"
     is_kam   = user_has_role(current_user, "kam")
 
-    # For KAM: get all DL IDs in their pod for recruiter validation
-    kam_pod_dl_ids: list[int] = []
-    if is_kam and not is_admin and current_user.pod_id:
-        kam_pod_dl_ids = [
-            u.id for u in db.query(User).filter(
-                User.pod_id == current_user.pod_id,
-                User.is_active == True,
-                User.role == UserRole.delivery_lead,
-            ).all()
-        ]
-
-    for uid in body.recruiter_ids:
-        if is_admin:
-            continue
-        if is_kam:
-            in_team = (
-                db.query(PodMembership)
-                .filter(
-                    PodMembership.user_id == uid,
-                    PodMembership.pod_lead_id.in_(kam_pod_dl_ids),
-                )
-                .first()
-            ) if kam_pod_dl_ids else None
-        else:
-            in_team = (
-                db.query(PodMembership)
-                .filter(
-                    PodMembership.user_id == uid,
-                    PodMembership.pod_lead_id == dl_id,
-                )
-                .first()
-            )
-        if not in_team:
-            u = db.query(User).filter(User.id == uid).first()
-            raise HTTPException(
-                status_code=400,
-                detail=f"{u.name if u else uid} is not in your pod.",
-            )
+    # Recruiters must come from the job's assignable pool (cross-pod union).
+    _validate_assignable(db, job, current_user, body.recruiter_ids, is_admin)
 
     old_sourcers = set(
         json.loads(job.sourcer_ids or "[]") if isinstance(job.sourcer_ids, str) else [],
@@ -645,6 +599,99 @@ def reassign_recruiters(
         current_user.id,
         "reassigned_recruiters",
         detail,
+        entity_type="job",
+        entity_id=job.id,
+    )
+    return service._job_dict(db, job)
+
+
+class CollaboratorsBody(BaseModel):
+    # Cross-pod collaboration: KAMs from other pods invited to co-manage, and
+    # DLs (from any pod) assigned to the job. Both replace the existing sets.
+    kam_ids: list[int] = []
+    delivery_lead_ids: list[int] | None = None
+
+
+@router.patch("/{job_id}/collaborators")
+def set_collaborators(
+    job_id: int,
+    body: CollaboratorsBody,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "kam")),
+):
+    """Owning KAM (or admin) invites KAMs/DLs from other pods to co-manage this
+    job. Their pods' DLs/recruiters then become assignable (see
+    service._assignable_recruiter_ids) and they gain full co-management via the
+    widened list/detail/confirm/reassign scoping."""
+    import json
+
+    job = service.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    is_admin = current_user.role.value == "admin"
+    if not is_admin and job.created_by_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owning KAM or an admin can manage collaborators.",
+        )
+
+    # Validate referenced users exist and have the right role; the owner KAM is
+    # never stored as their own collaborator.
+    kam_ids = [int(x) for x in body.kam_ids if int(x) != job.created_by_id]
+    valid_kams = {
+        u.id
+        for u in db.query(User).filter(
+            User.id.in_(kam_ids or [-1]),
+            User.is_active == True,  # noqa: E712
+        ).all()
+        if user_has_role(u, "kam")
+    }
+    kam_ids = [k for k in dict.fromkeys(kam_ids) if k in valid_kams]
+
+    prev_kams = set(service._collaborator_kam_ids_for(job))
+    prev_dls = set(service._dl_ids_for(job))
+
+    job.collaborator_kam_ids = json.dumps(kam_ids)
+
+    new_dl_ids = prev_dls
+    if body.delivery_lead_ids is not None:
+        dl_ids = [int(x) for x in dict.fromkeys(body.delivery_lead_ids)]
+        valid_dls = {
+            u.id
+            for u in db.query(User).filter(
+                User.id.in_(dl_ids or [-1]),
+                User.is_active == True,  # noqa: E712
+            ).all()
+            if user_has_role(u, "delivery_lead")
+        }
+        dl_ids = [d for d in dl_ids if d in valid_dls]
+        job.delivery_lead_ids = json.dumps(dl_ids)
+        if dl_ids:
+            job.delivery_lead_id = dl_ids[0]
+        new_dl_ids = set(dl_ids)
+
+    # Notify newly added collaborators (KAMs + DLs).
+    for uid in (set(kam_ids) - prev_kams) | (new_dl_ids - prev_dls):
+        push(
+            db,
+            uid,
+            f"You've been added as a collaborator on {job.role_title} ({job.client_name}).",
+            NotifType.jd_assigned,
+            entity_id=job.id,
+        )
+
+    db.commit()
+    db.refresh(job)
+
+    from features.mrr.activity.service import log as log_activity
+
+    log_activity(
+        db,
+        current_user.id,
+        "set_collaborators",
+        f"Updated collaborators on {job.role_title} ({job.client_name}): "
+        f"{len(kam_ids)} KAM(s), {len(new_dl_ids)} DL(s)",
         entity_type="job",
         entity_id=job.id,
     )

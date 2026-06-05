@@ -92,6 +92,9 @@ export interface Job {
   delivery_lead_name: string | null;
   delivery_lead_ids: number[];
   delivery_lead_names: string[];
+  // Cross-pod collaboration: KAMs from other pods invited to co-manage.
+  collaborator_kam_ids: number[];
+  collaborator_kam_names: string[];
   business_head_id: number | null;
   business_head_name: string | null;
   deadline: string | null;
