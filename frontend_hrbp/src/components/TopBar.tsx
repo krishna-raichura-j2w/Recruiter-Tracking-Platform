@@ -215,7 +215,7 @@ export function TopBar({
             />
             <div className="hidden lg:flex flex-col items-end leading-tight">
               <span className="text-sm font-semibold text-slate-800 leading-none">{user.name}</span>
-              <span className="text-[11px] text-slate-400 mt-0.5 leading-none">{user.role?.toUpperCase()}</span>
+              <span className="text-[11px] text-slate-400 mt-0.5 leading-none">{user.role?.replace(/_/g, " ").toUpperCase()}</span>
             </div>
           </div>
         )}

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { TopBar } from "@/components/TopBar";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -106,25 +106,27 @@ function ClientDetailDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader className="pb-4 border-b border-slate-100">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 pr-6">
             <div className="h-12 w-12 bg-sky-100 text-sky-700 rounded-full flex items-center justify-center text-xl font-bold shrink-0 border-2 border-white ring-1 ring-slate-200">
               {client.name.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <DialogTitle className="text-base font-bold text-[#132246] leading-tight">
-                {client.name}
-              </DialogTitle>
+              <div className="flex items-center gap-2 flex-wrap">
+                <DialogTitle className="text-base font-bold text-[#132246] leading-tight">
+                  {client.name}
+                </DialogTitle>
+                <Badge className={client.is_active
+                  ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                  : "bg-slate-100 text-slate-600 border-slate-200"}>
+                  {client.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">{client.industry || "—"}</p>
             </div>
-            <Badge className={client.is_active
-              ? "bg-emerald-100 text-emerald-800 border-emerald-200 shrink-0"
-              : "bg-slate-100 text-slate-600 border-slate-200 shrink-0"}>
-              {client.is_active ? "Active" : "Inactive"}
-            </Badge>
           </div>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           {/* Business metrics */}
           <div className="grid grid-cols-3 gap-3">
             <MetricTile
@@ -148,12 +150,14 @@ function ClientDetailDialog({
           </div>
 
           {/* Client Details card */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50/60 border-b border-slate-100 px-4 py-2.5 flex items-center gap-2">
-              <Building2 className="w-3.5 h-3.5 text-sky-600" />
-              <p className="text-xs font-semibold text-[#132246]">Client Details</p>
-            </div>
-            <div className="px-4 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+              <CardTitle className="text-xs font-semibold flex items-center gap-2 text-[#132246]">
+                <Building2 className="w-3.5 h-3.5 text-sky-600" />
+                Client Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
               <Field label="Industry">{client.industry || "—"}</Field>
               <Field label="BH Owner">{client.bh_name || "—"}</Field>
               <Field label="Status">
@@ -163,20 +167,22 @@ function ClientDetailDialog({
                   {client.is_active ? "Active" : "Inactive"}
                 </Badge>
               </Field>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Timestamps */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50/60 border-b border-slate-100 px-4 py-2.5 flex items-center gap-2">
-              <Calendar className="w-3.5 h-3.5 text-sky-600" />
-              <p className="text-xs font-semibold text-[#132246]">Dates</p>
-            </div>
-            <div className="px-4 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+              <CardTitle className="text-xs font-semibold flex items-center gap-2 text-[#132246]">
+                <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                Dates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
               <Field label="Created">{formatDate(client.created_at)}</Field>
               <Field label="Last Updated">{formatDate(client.updated_at)}</Field>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* View consultants link */}
           <Link
@@ -303,8 +309,8 @@ function ClientsPage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative max-w-sm flex-1">
+        <div className="flex items-center gap-3">
+          <div className="relative w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search clients..."
@@ -313,42 +319,44 @@ function ClientsPage() {
               className="pl-9 h-10 border-slate-200 shadow-sm bg-white"
             />
           </div>
-          <Select
-            value={clientNameFilter || "all"}
-            onValueChange={(v) => { setClientNameFilter(v === "all" ? "" : v); setQ(""); setDebouncedQ(""); setPage(0); }}
-          >
-            <SelectTrigger className="w-48 h-10 border-slate-200 shadow-sm bg-white">
-              <SelectValue placeholder="All Clients" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Clients</SelectItem>
-              {allClientNames.map((name) => (
-                <SelectItem key={name} value={name}>{name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={industryFilter || "all"} onValueChange={(v) => { setIndustryFilter(v === "all" ? "" : v); setPage(0); }}>
-            <SelectTrigger className="w-44 h-10 border-slate-200 shadow-sm bg-white">
-              <SelectValue placeholder="All Industries" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Industries</SelectItem>
-              {allIndustries.map((ind) => (
-                <SelectItem key={ind} value={ind}>{ind}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36 h-10 text-sm border-slate-200 shadow-sm bg-white">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-          <span className="text-sm text-slate-500">{totalCount} clients total</span>
+          <div className="flex-1" />
+          <div className="flex items-center gap-2">
+            <Select
+              value={clientNameFilter || "all"}
+              onValueChange={(v) => { setClientNameFilter(v === "all" ? "" : v); setQ(""); setDebouncedQ(""); setPage(0); }}
+            >
+              <SelectTrigger className="w-48 h-10 border-slate-200 shadow-sm bg-white">
+                <SelectValue placeholder="All Clients" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Clients</SelectItem>
+                {allClientNames.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={industryFilter || "all"} onValueChange={(v) => { setIndustryFilter(v === "all" ? "" : v); setPage(0); }}>
+              <SelectTrigger className="w-44 h-10 border-slate-200 shadow-sm bg-white">
+                <SelectValue placeholder="All Industries" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Industries</SelectItem>
+                {allIndustries.map((ind) => (
+                  <SelectItem key={ind} value={ind}>{ind}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-36 h-10 text-sm border-slate-200 shadow-sm bg-white">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="rounded-lg overflow-hidden border border-slate-200 bg-white shadow-sm">
