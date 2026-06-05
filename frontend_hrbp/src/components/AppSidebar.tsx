@@ -240,7 +240,7 @@ export function AppSidebar() {
                 {!collapsed && (
                   <div className="flex min-w-0 flex-col items-start text-left leading-tight">
                     <span className="truncate text-sm font-semibold text-slate-800">{user?.name}</span>
-                    <span className="truncate text-xs text-slate-400">{user?.role?.toUpperCase()}</span>
+                    <span className="truncate text-xs text-slate-400">{user?.role?.replace(/_/g, " ").toUpperCase()}</span>
                   </div>
                 )}
               </Link>
