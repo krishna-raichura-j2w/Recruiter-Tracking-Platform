@@ -66,6 +66,51 @@ def week_for_date(date_str: str, month_str: str, custom_days: list[str] | None =
     return None
 
 
+_IST = timedelta(hours=5, minutes=30)
+
+
+def period_bounds(date: str | None, start: str | None, end: str | None) -> dict:
+    """Resolve the date/period query params into the bounds the BH-leaderboard
+    endpoints need.
+
+    Day mode (default): ``start``/``end`` omitted → a single IST day = ``date``
+    (today if also omitted). Week mode: ``start``/``end`` give the inclusive window
+    (e.g. Mon–Sat). Month/MTD context derive from ``period_end``. Returns
+    ``period`` = (start, end) only in week mode (else ``None``) for target scaling.
+    """
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    period_start = start or target_date
+    period_end = end or target_date
+    is_week = period_start != period_end
+
+    period_start_utc = datetime.strptime(period_start, "%Y-%m-%d") - _IST
+    period_end_utc = datetime.strptime(period_end, "%Y-%m-%d") + timedelta(days=1) - _IST
+
+    month = datetime.strptime(period_end, "%Y-%m-%d").strftime("%B %Y")
+    ref = datetime.strptime(month, "%B %Y")
+    m_start = ref.date().isoformat()
+    m_end = (
+        ref.replace(year=ref.year + 1, month=1, day=1)
+        if ref.month == 12
+        else ref.replace(month=ref.month + 1, day=1)
+    ).date().isoformat()
+    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - _IST
+
+    return {
+        "target_date": target_date,
+        "period_start": period_start,
+        "period_end": period_end,
+        "period_start_utc": period_start_utc,
+        "period_end_utc": period_end_utc,
+        "is_week": is_week,
+        "period": (period_start, period_end) if is_week else None,
+        "month": month,
+        "m_start": m_start,
+        "m_end": m_end,
+        "mtd_start_utc": mtd_start_utc,
+    }
+
+
 def get_bh_pod_id(db: Session, bh_user_id: int) -> int | None:
     row = db.execute(
         text("SELECT id FROM pods WHERE bh_user_id = :uid"),
@@ -547,19 +592,22 @@ OL_KINDS = ("sub", "int", "sel", "obs", "sub_mtd", "int_mtd", "sel_mtd", "obs_mt
 def fetch_ol_leaderboard_metrics(
     client_ids: list[int],
     *,
-    target_date: str,
+    period_start: str,
+    period_end: str,
     m_start: str,
-    day_start_utc: datetime,
-    day_end_utc: datetime,
+    period_start_utc: datetime,
+    period_end_utc: datetime,
     mtd_start_utc: datetime,
 ) -> dict[str, dict[int, int]]:
     """Pull the 8 BH-leaderboard metrics from the OL replica in ONE round-trip.
 
     Returns ``{kind: {client_id: count}}`` for each of OL_KINDS, keyed by OL client
-    user_id. Submissions/interviews use the original day/IST-date filters; selections
-    and onboarding use the offer-letter-tool definitions (selected_candidates excluding
-    steps 24/42; offer_letters status IN (5,6), employee_type != 0, by client_onboard_date)
-    with sargable bounds. Empty dicts if the replica is unavailable or no clients given.
+    user_id. The "daily" kinds aggregate over the IST window [period_start, period_end]
+    (a single day in day mode, Mon–Sat in week mode); MTD kinds run month-start →
+    period_end. Selections/onboarding use the offer-letter-tool definitions
+    (selected_candidates excluding steps 24/42; offer_letters status IN (5,6),
+    employee_type != 0, by client_onboard_date). Empty dicts if the replica is
+    unavailable or no clients given.
     """
     from core.config import settings
 
@@ -587,14 +635,15 @@ def fetch_ol_leaderboard_metrics(
                     JOIN job_postings jp ON aj.job_posting_id = jp.id
                     JOIN clients cl ON jp.client_id = cl.user_id
                     WHERE aj.current_step >= 7
-                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) = %s
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) >= %s
+                      AND DATE(CONVERT_TZ(aj.created_at, '+00:00', '+05:30')) <= %s
                       AND cl.user_id IN ({ph})
                     GROUP BY cl.user_id
                     UNION ALL
                     SELECT 'int' AS kind, jp.client_id AS client_id, COUNT(DISTINCT vs.id) AS cnt
                     FROM validation_screens vs
                     JOIN job_postings jp ON jp.id = vs.applied_candidate_for_job_id
-                    WHERE vs.interview_date = %s
+                    WHERE vs.interview_date >= %s AND vs.interview_date <= %s
                       AND jp.client_id IN ({ph}) AND jp.id IS NOT NULL
                     GROUP BY jp.client_id
                     UNION ALL
@@ -641,7 +690,7 @@ def fetch_ol_leaderboard_metrics(
                     JOIN clients cl ON ol.client_id = cl.user_id
                     WHERE ol.status IN (5, 6)
                       AND ol.employee_type != 0
-                      AND ol.client_onboard_date = %s
+                      AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
                       AND cl.user_id IN ({ph})
                     GROUP BY cl.user_id
                     UNION ALL
@@ -654,14 +703,14 @@ def fetch_ol_leaderboard_metrics(
                       AND cl.user_id IN ({ph})
                     GROUP BY cl.user_id
                     """,
-                    [target_date] + ol_ids
-                    + [target_date] + ol_ids
-                    + [m_start, target_date] + ol_ids
-                    + [m_start, target_date] + ol_ids
-                    + [day_start_utc, day_end_utc] + ol_ids
-                    + [mtd_start_utc, day_end_utc] + ol_ids
-                    + [target_date] + ol_ids
-                    + [m_start, target_date] + ol_ids,
+                    [period_start, period_end] + ol_ids
+                    + [period_start, period_end] + ol_ids
+                    + [m_start, period_end] + ol_ids
+                    + [m_start, period_end] + ol_ids
+                    + [period_start_utc, period_end_utc] + ol_ids
+                    + [mtd_start_utc, period_end_utc] + ol_ids
+                    + [period_start, period_end] + ol_ids
+                    + [m_start, period_end] + ol_ids,
                 )
                 for row in cur.fetchall():
                     kind = row["kind"]
@@ -673,6 +722,141 @@ def fetch_ol_leaderboard_metrics(
             conn.close()
     except Exception:
         return {k: {} for k in OL_KINDS}
+    return out
+
+
+# ── BH demand & PO actuals (offer-letter DB, keyed by OL client user_id) ───────
+
+# OL aggregate kinds for the demand/PO columns (day + month-to-date).
+DEMAND_PO_KINDS = ("dem", "dem_mtd", "po", "po_mtd", "mgn", "mgn_mtd")
+
+
+def fetch_ol_demand_po_by_client(
+    client_ids: list[int], *, period_start: str, period_end: str, m_start: str
+) -> dict[str, dict[int, float]]:
+    """Per-client demand & PO actuals from the OL replica in ONE round-trip.
+
+    Returns ``{kind: {client_id: value}}`` for each of DEMAND_PO_KINDS, keyed by OL
+    client user_id (same keying as ``fetch_ol_leaderboard_metrics``). The non-MTD
+    kinds aggregate over the IST window [period_start, period_end] (one day in day
+    mode, Mon–Sat in week mode); MTD kinds run month-start → period_end. Empty dicts
+    if the replica is unavailable or no clients are given.
+
+    Definitions:
+      • dem / dem_mtd — SUM(job_postings.no_of_opening), created in the IST window / MTD range.
+      • po / po_mtd   — SUM(offer_letters.p_o_value), status IN (5,6), employee_type != 0,
+                        by client_onboard_date (window / MTD range).
+      • mgn / mgn_mtd — SUM(offer_letters.margin), same filter as po.
+    """
+    from core.config import settings
+
+    out: dict[str, dict[int, float]] = {k: {} for k in DEMAND_PO_KINDS}
+    if not client_ids or not settings.ol_replica_host:
+        return out
+
+    import pymysql
+
+    ol_ids = list(client_ids)
+    ph = ",".join(["%s"] * len(ol_ids))
+    try:
+        conn = pymysql.connect(
+            host=settings.ol_replica_host, port=settings.ol_replica_port,
+            user=settings.ol_replica_user, password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=5, cursorclass=pymysql.cursors.DictCursor, ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT 'dem' AS kind, cl.user_id AS client_id,
+                           COALESCE(SUM(j.no_of_opening), 0) AS val
+                    FROM job_postings j
+                    JOIN clients cl ON cl.user_id = j.client_id
+                    WHERE DATE(CONVERT_TZ(j.created_at, '+00:00', '+05:30')) >= %s
+                      AND DATE(CONVERT_TZ(j.created_at, '+00:00', '+05:30')) <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'dem_mtd' AS kind, cl.user_id AS client_id,
+                           COALESCE(SUM(j.no_of_opening), 0) AS val
+                    FROM job_postings j
+                    JOIN clients cl ON cl.user_id = j.client_id
+                    WHERE DATE(CONVERT_TZ(j.created_at, '+00:00', '+05:30')) >= %s
+                      AND DATE(CONVERT_TZ(j.created_at, '+00:00', '+05:30')) <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'po' AS kind, cl.user_id AS client_id,
+                           COALESCE(SUM(ol.p_o_value), 0) AS val
+                    FROM offer_letters ol
+                    JOIN clients cl ON cl.user_id = ol.client_id
+                    WHERE ol.status IN (5, 6) AND ol.employee_type != 0
+                      AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'po_mtd' AS kind, cl.user_id AS client_id,
+                           COALESCE(SUM(ol.p_o_value), 0) AS val
+                    FROM offer_letters ol
+                    JOIN clients cl ON cl.user_id = ol.client_id
+                    WHERE ol.status IN (5, 6) AND ol.employee_type != 0
+                      AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'mgn' AS kind, cl.user_id AS client_id,
+                           COALESCE(SUM(ol.margin), 0) AS val
+                    FROM offer_letters ol
+                    JOIN clients cl ON cl.user_id = ol.client_id
+                    WHERE ol.status IN (5, 6) AND ol.employee_type != 0
+                      AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    UNION ALL
+                    SELECT 'mgn_mtd' AS kind, cl.user_id AS client_id,
+                           COALESCE(SUM(ol.margin), 0) AS val
+                    FROM offer_letters ol
+                    JOIN clients cl ON cl.user_id = ol.client_id
+                    WHERE ol.status IN (5, 6) AND ol.employee_type != 0
+                      AND ol.client_onboard_date >= %s AND ol.client_onboard_date <= %s
+                      AND cl.user_id IN ({ph})
+                    GROUP BY cl.user_id
+                    """,
+                    [period_start, period_end] + ol_ids
+                    + [m_start, period_end] + ol_ids
+                    + [period_start, period_end] + ol_ids
+                    + [m_start, period_end] + ol_ids
+                    + [period_start, period_end] + ol_ids
+                    + [m_start, period_end] + ol_ids,
+                )
+                for row in cur.fetchall():
+                    kind = row["kind"]
+                    if kind not in out:
+                        continue
+                    out[kind][int(row["client_id"])] = float(row["val"] or 0)
+        finally:
+            conn.close()
+    except Exception:
+        return {k: {} for k in DEMAND_PO_KINDS}
+    return out
+
+
+def demand_po_by_ct(
+    by_client: dict[str, dict[int, float]], client_to_ct: dict[int, int]
+) -> dict[str, dict[int, float]]:
+    """Re-key demand/PO metrics from client_id → customer_target_id (summing a target's
+    clients), mirroring ``ol_metrics_by_ct`` for the DEMAND_PO_KINDS."""
+    out: dict[str, dict[int, float]] = {k: {} for k in DEMAND_PO_KINDS}
+    for kind, per_client in by_client.items():
+        if kind not in out:
+            continue
+        dst = out[kind]
+        for client_id, val in per_client.items():
+            ct = client_to_ct.get(int(client_id))
+            if ct is None:
+                continue
+            dst[ct] = dst.get(ct, 0.0) + val
     return out
 
 
@@ -710,27 +894,60 @@ def ol_metrics_by_ct(
 def assemble_bh_customer_row(
     s: dict, c: dict, em: dict, act: dict, m_act: dict,
     dl_subs_val: int, ol_ct: dict[str, dict[int, int]], target_date: str,
+    dp_ct: dict[str, dict[int, float]] | None = None,
+    period: tuple[str, str] | None = None,
 ) -> dict:
     """Build one BHLeaderboardCustomer-shaped row. OL-primary, manual (saved) fallback.
 
-    ``ol_ct`` is OL metrics keyed by kind→ct_id (from ol_metrics_by_ct). Used by both
-    the per-BH detail and the all-BH overview so the math is identical.
+    ``ol_ct`` is OL metrics keyed by kind→ct_id (from ol_metrics_by_ct). ``dp_ct`` is
+    demand/PO metrics keyed by kind→ct_id (from demand_po_by_ct). ``period`` is the
+    week window (start, end) in week mode (``None`` = single day): when set, the daily
+    "T/Day" targets are scaled to the sum over the working days (Mon–Fri) in the window.
+    Used by both the per-BH detail and the all-BH overview so the math is identical.
     """
     cid = c["id"]
     monthly_subs = em.get("monthly_subs", 0)
     monthly_int = int(em.get("monthly_interviews", 0))
+    dp = dp_ct or {}
 
     def pick(kind: str, fallback: int) -> int:
         v = ol_ct.get(kind, {}).get(cid)
         return v if v is not None else fallback
 
+    def dpv(kind: str) -> int:
+        return round(dp.get(kind, {}).get(cid, 0))
+
+    def dpl(kind: str) -> float:
+        # PO value / margin arrive in raw rupees; targets are in Lakhs → convert.
+        return round(dp.get(kind, {}).get(cid, 0) / 100000, 2)
+
+    # Daily targets: single day by default, else summed/scaled over the week's
+    # working days (Mon–Fri) inside the [start, end] window.
+    if period is None:
+        subs_target = daily_target_for_date(s, monthly_subs, target_date)
+        n_wd = 1
+    else:
+        p_start, p_end = period
+        period_wd = [d for d in effective_working_days(s) if p_start <= d <= p_end]
+        subs_target = sum(daily_target_for_date(s, monthly_subs, d) for d in period_wd)
+        n_wd = len(period_wd)
+
     return {
         "customer_name": c["customer_name"],
         "customer_target_id": cid,
-        "daily_subs_target": daily_target_for_date(s, monthly_subs, target_date),
-        "daily_int_target": c.get("target_interviews_day", 0),
-        "daily_sel_target": round(em.get("daily_selects", 0)),
-        "daily_obs_target": round(em.get("daily_obs", 0)),
+        # Demand & PO columns — targets from the pod plan, actuals from the OL replica
+        # (client_id → customer_target → BH). PO/margin actuals are in Lakhs to match
+        # the targets; target_po is overridden to the pod-level net_po_target in the
+        # overview after summing.
+        "target_demands": int(c.get("open_demand_pool") or 0),
+        "actual_demands": dpv("dem"), "mtd_demands": dpv("dem_mtd"),
+        "target_po": int(c.get("net_po_target_cust") or 0),
+        "actual_po": dpl("po"), "mtd_po": dpl("po_mtd"),
+        "actual_po_margin": dpl("mgn"), "mtd_po_margin": dpl("mgn_mtd"),
+        "daily_subs_target": subs_target,
+        "daily_int_target": c.get("target_interviews_day", 0) * n_wd,
+        "daily_sel_target": round(em.get("daily_selects", 0) * n_wd),
+        "daily_obs_target": round(em.get("daily_obs", 0) * n_wd),
         "actual_subs": pick("sub", int(act.get("actual_subs", 0))),
         "dl_subs": dl_subs_val,
         "actual_int": pick("int", int(act.get("actual_interviews", 0))),
@@ -807,18 +1024,36 @@ def resolve_ol_only_buckets(
     return out
 
 
-def ol_only_row(name: str, key: int, ol: dict[str, dict[int, int]]) -> dict:
+def ol_only_row(
+    name: str, key: int, ol: dict[str, dict[int, int]],
+    dp: dict[str, dict[int, float]] | None = None,
+) -> dict:
     """A BHLeaderboardCustomer-shaped row sourced purely from OL (no targets/DL).
 
     ``ol`` is OL metrics keyed by kind→client user_id (from fetch_ol_leaderboard_metrics);
-    ``key`` is this client's user_id. Targets / dl_subs / monthly_* / *_needed = 0.
+    ``dp`` is demand/PO metrics keyed by kind→client user_id (from
+    fetch_ol_demand_po_by_client); ``key`` is this client's user_id. Targets /
+    dl_subs / monthly_* / *_needed = 0.
     """
+    dp = dp or {}
+
     def g(kind: str) -> int:
         return int(ol.get(kind, {}).get(key, 0))
+
+    def dpv(kind: str) -> int:
+        return round(dp.get(kind, {}).get(key, 0))
+
+    def dpl(kind: str) -> float:
+        # PO value / margin arrive in raw rupees → Lakhs (match the Lakhs targets).
+        return round(dp.get(kind, {}).get(key, 0) / 100000, 2)
 
     return {
         "customer_name": name,
         "customer_target_id": key,
+        # Demand & PO columns — actuals per client (OL); no pod-plan targets exist.
+        "target_demands": 0, "actual_demands": dpv("dem"), "mtd_demands": dpv("dem_mtd"),
+        "target_po": 0, "actual_po": dpl("po"), "mtd_po": dpl("po_mtd"),
+        "actual_po_margin": dpl("mgn"), "mtd_po_margin": dpl("mgn_mtd"),
         "daily_subs_target": 0, "daily_int_target": 0, "daily_sel_target": 0, "daily_obs_target": 0,
         "actual_subs": g("sub"), "dl_subs": 0, "actual_int": g("int"),
         "actual_sel": g("sel"), "actual_obs": g("obs"),

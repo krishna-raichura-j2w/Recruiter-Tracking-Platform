@@ -959,6 +959,28 @@ function pal(label: string) {
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
+// ── Week math (UTC-based to match the plain YYYY-MM-DD IST date strings) ───────
+function isoUTC(d: Date) { return d.toISOString().slice(0, 10); }
+function addDaysUTC(dateStr: string, n: number) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return isoUTC(d);
+}
+function mondayOfUTC(dateStr: string) {
+  const dow = new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0=Sun..6=Sat
+  return addDaysUTC(dateStr, -((dow + 6) % 7));             // back to Monday
+}
+// Mon–Sat (inclusive) window containing dateStr.
+function weekMonSat(dateStr: string) {
+  const mon = mondayOfUTC(dateStr);
+  return { start: mon, end: addDaysUTC(mon, 5) };
+}
+function fmtDayMon(dateStr: string) {
+  return new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', timeZone: 'UTC',
+  });
+}
+
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1234,6 +1256,14 @@ function bhTotals(customers: BHLeaderboardCustomer[]) {
   const sum = (f: keyof BHLeaderboardCustomer) =>
     customers.reduce((s, c) => s + (Number(c[f]) || 0), 0);
   return {
+    target_demands: sum('target_demands'),
+    actual_demands: sum('actual_demands'),
+    mtd_demands: sum('mtd_demands'),
+    target_po: sum('target_po'),
+    actual_po: sum('actual_po'),
+    mtd_po: sum('mtd_po'),
+    actual_po_margin: sum('actual_po_margin'),
+    mtd_po_margin: sum('mtd_po_margin'),
     daily_subs_target: sum('daily_subs_target'),
     daily_int_target: sum('daily_int_target'),
     daily_sel_target: sum('daily_sel_target'),
@@ -1267,9 +1297,21 @@ const BH_FIELDS: (keyof BHLeaderboardCustomer)[] = [
   'monthly_subs', 'mtd_subs', 'monthly_int', 'mtd_int', 'selects_needed', 'mtd_sel', 'obs_needed', 'mtd_obs',
 ];
 
-function BHCustomerTable({ customers, month, firstColLabel = 'Customer', countLabel = 'customers' }: { customers: BHLeaderboardCustomer[]; month: string; firstColLabel?: string; countLabel?: string }) {
+// Demand & PO columns shown at the front of per-BH overview rows (showDemandPo).
+// PO/Margin columns are in Lakhs (L); demand columns are counts.
+const DP_COLS = ['Target Dem', 'New Dem', 'MTD Dem', 'Target PO (L)', 'PO Add (L)', 'MTD PO (L)', 'PO Margin (L)', 'MTD Margin (L)'];
+// Lakhs display: round to ≤2 decimals (avoids float noise from client-side summing).
+const lk = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const DP_FIELDS: (keyof BHLeaderboardCustomer)[] = [
+  'target_demands', 'actual_demands', 'mtd_demands', 'target_po', 'actual_po', 'mtd_po', 'actual_po_margin', 'mtd_po_margin',
+];
+
+function BHCustomerTable({ customers, month, firstColLabel = 'Customer', countLabel = 'customers', showDemandPo = false, weekly = false }: { customers: BHLeaderboardCustomer[]; month: string; firstColLabel?: string; countLabel?: string; showDemandPo?: boolean; weekly?: boolean }) {
   const t = bhTotals(customers);
-  const cols = [firstColLabel, ...BH_COLS.slice(1)];
+  const baseCols = showDemandPo ? [firstColLabel, ...DP_COLS, ...BH_COLS.slice(1)] : [firstColLabel, ...BH_COLS.slice(1)];
+  // In week view the daily-target columns are weekly sums → relabel "T/Day" → "T/Wk".
+  const cols = weekly ? baseCols.map(h => h.replace('T/Day', 'T/Wk')) : baseCols;
+  const fields = showDemandPo ? [BH_FIELDS[0], ...DP_FIELDS, ...BH_FIELDS.slice(1)] : BH_FIELDS;
   const [sort, setSort] = useState<{ field: keyof BHLeaderboardCustomer; dir: 'asc' | 'desc' } | null>({ field: 'actual_subs', dir: 'desc' });
   const toggleSort = (field: keyof BHLeaderboardCustomer) =>
     setSort(s => (s && s.field === field ? { field, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { field, dir: 'desc' }));
@@ -1289,7 +1331,7 @@ function BHCustomerTable({ customers, month, firstColLabel = 'Customer', countLa
         <thead>
           <tr style={{ background: '#f8fafc' }}>
             {cols.map((h, i) => {
-              const field = BH_FIELDS[i];
+              const field = fields[i];
               const isSorted = sort?.field === field;
               return (
               <th key={h} onClick={() => toggleSort(field)} title="Sort"
@@ -1308,6 +1350,16 @@ function BHCustomerTable({ customers, month, firstColLabel = 'Customer', countLa
           {rows.map((c, idx) => (
             <tr key={c.customer_target_id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 ? '#f9fafb' : '#fff' }}>
               <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', background: '#eef2ff', borderLeft: '4px solid #2563eb', position: 'sticky', left: 0, zIndex: 1, boxShadow: '2px 0 4px -2px rgba(0,0,0,.12)' }}>{c.customer_name}</td>
+              {showDemandPo && (<>
+                <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.target_demands || '—'}</td>
+                <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', fontWeight: 700, color: (c.actual_demands ?? 0) > 0 ? '#1d4ed8' : '#9ca3af' }}>{c.actual_demands || '—'}</td>
+                {actVsTarget(Number(c.mtd_demands) || 0, Number(c.target_demands) || 0)}
+                <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.target_po || '—'}</td>
+                <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', fontWeight: 700, color: (c.actual_po ?? 0) > 0 ? '#1d4ed8' : '#9ca3af' }}>{lk(c.actual_po ?? 0) || '—'}</td>
+                {actVsTarget(lk(Number(c.mtd_po) || 0), Number(c.target_po) || 0)}
+                <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', fontWeight: 700, color: (c.actual_po_margin ?? 0) > 0 ? '#1d4ed8' : '#9ca3af' }}>{lk(c.actual_po_margin ?? 0) || '—'}</td>
+                <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', fontWeight: 700, color: (c.mtd_po_margin ?? 0) > 0 ? '#7c3aed' : '#9ca3af' }}>{lk(c.mtd_po_margin ?? 0) || '—'}</td>
+              </>)}
               <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{c.daily_subs_target || '—'}</td>
               <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4', fontWeight: 700, color: c.dl_subs > 0 ? '#15803d' : '#9ca3af' }}>{c.dl_subs || '—'}</td>
               {actVsTarget(c.actual_subs, c.daily_subs_target, true)}
@@ -1329,6 +1381,16 @@ function BHCustomerTable({ customers, month, firstColLabel = 'Customer', countLa
           ))}
           <tr style={{ background: '#f0f9ff', fontWeight: 800 }}>
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', fontWeight: 800, color: '#1e3a5f', background: '#e0e7ff', position: 'sticky', left: 0, zIndex: 1, boxShadow: '2px 0 4px -2px rgba(0,0,0,.12)' }}>Total</td>
+            {showDemandPo && (<>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.target_demands}</td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', color: '#1d4ed8', fontWeight: 800 }}>{t.actual_demands}</td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{t.mtd_demands}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.target_demands}</span></td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>{t.target_po}</td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', color: '#1d4ed8', fontWeight: 800 }}>{lk(t.actual_po)}</td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{lk(t.mtd_po)}<span style={{ color: '#c4b5fd', fontWeight: 400, fontSize: 11 }}>/{t.target_po}</span></td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', color: '#1d4ed8', fontWeight: 800 }}>{lk(t.actual_po_margin)}</td>
+              <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#fdf4ff', color: '#7c3aed', fontWeight: 800 }}>{lk(t.mtd_po_margin)}</td>
+            </>)}
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center' }}>{t.daily_subs_target}</td>
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#f0fdf4', color: '#15803d' }}>{t.dl_subs || '—'}</td>
             <td style={{ padding: '7px 10px', border: '1px solid #e5e7eb', textAlign: 'center', background: '#eff6ff', color: t.actual_subs >= t.daily_subs_target ? '#16a34a' : '#1d4ed8', fontWeight: 800 }}>{t.actual_subs}</td>
@@ -1355,6 +1417,16 @@ function BHCustomerTable({ customers, month, firstColLabel = 'Customer', countLa
 
 function BHTargetsSection() {
   const [selDate, setSelDate] = useState(todayISO());
+  // 'today' = single day = selDate; 'week' = Mon–Sat window of selDate.
+  const [periodMode, setPeriodMode] = useState<'today' | 'week'>('today');
+  const period = periodMode === 'week'
+    ? weekMonSat(selDate)
+    : { start: selDate, end: selDate };
+  const weekly = period.start !== period.end;
+  const periodKey = `${period.start}|${period.end}`;
+  // "Last Week" = the completed Mon–Sat before this week (dynamic vs real today).
+  const lastWeek = weekMonSat(addDaysUTC(todayISO(), -7));
+  const isLastWeek = weekly && period.start === lastWeek.start && period.end === lastWeek.end;
   const [bhList, setBhList] = useState<BHInfo[]>([]);
   const [listLoading, setListLoading] = useState(true);
   // 'overview' = all-BH combined view; number = pod setup_id; {olBh} = OL-only BH (no pod plan).
@@ -1368,20 +1440,21 @@ function BHTargetsSection() {
   const [olOnly, setOlOnly] = useState<OlOnlyBH[] | null>(null);
   const [month, setMonth] = useState('');
 
-  // Fetch BH list on mount / date change
+  // Fetch BH list on mount / period change. date = period end so month aligns.
   useEffect(() => {
     setListLoading(true);
     detailCache.current = new Map();
     setDetail(null);
     setView('overview');
-    podPlanApi.getBHList(selDate)
+    podPlanApi.getBHList(period.end)
       .then(r => {
         setBhList(r.bhs);
         setMonth(r.month);
       })
       .catch(() => setBhList([]))
       .finally(() => setListLoading(false));
-  }, [selDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodKey]);
 
   // Sequential OL loader: overview first, then ol-only — never concurrent (avoids OL overload).
   // Serves all 4 Overview tables + the OL-only selector buttons/detail.
@@ -1390,13 +1463,14 @@ function BHTargetsSection() {
     setOverview(null);
     setOlOnly(null);
     (async () => {
-      try { const ov = await podPlanApi.getBHOverview(selDate); if (!cancelled) setOverview(ov.rows); }
+      try { const ov = await podPlanApi.getBHOverview(period.end, period.start, period.end); if (!cancelled) setOverview(ov.rows); }
       catch { if (!cancelled) setOverview([]); }
-      try { const ol = await podPlanApi.getOlOnly(selDate); if (!cancelled) setOlOnly(ol.bhs); }
+      try { const ol = await podPlanApi.getOlOnly(period.end, period.start, period.end); if (!cancelled) setOlOnly(ol.bhs); }
       catch { if (!cancelled) setOlOnly([]); }
     })();
     return () => { cancelled = true; };
-  }, [selDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodKey]);
 
   // Fetch detail when a specific BH is the active view
   useEffect(() => {
@@ -1404,7 +1478,7 @@ function BHTargetsSection() {
     const cached = detailCache.current.get(view);
     if (cached) { setDetail(cached); return; }
     setDetailLoading(true);
-    podPlanApi.getBHDetail(view, selDate)
+    podPlanApi.getBHDetail(view, period.end, period.start, period.end)
       .then(r => {
         detailCache.current.set(view, r);
         setDetail(r);
@@ -1412,7 +1486,7 @@ function BHTargetsSection() {
       .catch(() => setDetail(null))
       .finally(() => setDetailLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, periodKey]);
 
   const selectBH = (setupId: number) => {
     setView(setupId);
@@ -1420,18 +1494,35 @@ function BHTargetsSection() {
 
   return (
     <div>
-      {/* Date bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Date:</span>
-        <input type="date" value={selDate} max={todayISO()} onChange={e => setSelDate(e.target.value)}
-          style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, fontWeight: 600 }} />
-        {selDate !== todayISO() && (
-          <button onClick={() => setSelDate(todayISO())}
-            style={{ padding: '5px 12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            Today
+      {/* Date / period bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* Today | Last Week toggles */}
+        {([
+          { key: 'today', label: 'Today', active: periodMode === 'today',
+            onClick: () => { setPeriodMode('today'); setSelDate(todayISO()); } },
+          { key: 'lastweek', label: 'Last Week', active: isLastWeek,
+            onClick: () => { setSelDate(lastWeek.start); setPeriodMode('week'); } },
+        ] as const).map(b => (
+          <button key={b.key} onClick={b.onClick}
+            style={{
+              padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: b.active ? '2px solid #2563eb' : '1px solid #e5e7eb',
+              background: b.active ? 'linear-gradient(90deg,#1e3a5f,#2563eb)' : '#fff',
+              color: b.active ? '#fff' : '#374151',
+            }}>
+            {b.label}
           </button>
+        ))}
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', marginLeft: 6 }}>Week of:</span>
+        <input type="date" value={selDate} max={todayISO()}
+          onChange={e => { setSelDate(e.target.value); setPeriodMode('week'); }}
+          style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, fontWeight: 600 }} />
+        {weekly && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '4px 10px' }}>
+            {fmtDayMon(period.start)} – {fmtDayMon(period.end)}
+          </span>
         )}
-        {month && <span style={{ fontSize: 12, color: '#9ca3af' }}>{month} · {bhList.length} BH pods</span>}
+        {month && <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 'auto' }}>{month} · {bhList.length} BH pods</span>}
       </div>
 
       {listLoading && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading BH list…</div>}
@@ -1514,7 +1605,7 @@ function BHTargetsSection() {
               </div>
               {!overview && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading overview…</div>}
               {overview && overview.length > 0 && (
-                <BHCustomerTable customers={overview} month={month} firstColLabel="Business Head" countLabel="business heads" />
+                <BHCustomerTable customers={overview} month={month} firstColLabel="Business Head" countLabel="business heads" showDemandPo weekly={weekly} />
               )}
               {overview && overview.length === 0 && (
                 <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No data for this month.</div>
@@ -1529,7 +1620,7 @@ function BHTargetsSection() {
                 <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Target Not Set</span>
                 <span style={{ fontSize: 12, color: '#fde68a', marginLeft: 'auto' }}>from offer-letter DB · {month}</span>
               </div>
-              <BHCustomerTable customers={olOnly.map(b => b.totals)} month={month} firstColLabel="Business Head" countLabel="business heads" />
+              <BHCustomerTable customers={olOnly.map(b => b.totals)} month={month} firstColLabel="Business Head" countLabel="business heads" showDemandPo weekly={weekly} />
             </div>
           )}
 
@@ -1542,7 +1633,7 @@ function BHTargetsSection() {
               </div>
               {!overview && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>}
               {overview && (
-                <BHCustomerTable customers={overview.filter(r => isCaptiveBH(r.customer_name))} month={month} firstColLabel="Business Head" countLabel="business heads" />
+                <BHCustomerTable customers={overview.filter(r => isCaptiveBH(r.customer_name))} month={month} firstColLabel="Business Head" countLabel="business heads" showDemandPo weekly={weekly} />
               )}
             </div>
           )}
@@ -1558,7 +1649,7 @@ function BHTargetsSection() {
               {overview && olOnly && (
                 <BHCustomerTable
                   customers={[...overview, ...olOnly.map(b => b.totals)].filter(r => !isCaptiveBH(r.customer_name))}
-                  month={month} firstColLabel="Business Head" countLabel="business heads" />
+                  month={month} firstColLabel="Business Head" countLabel="business heads" showDemandPo weekly={weekly} />
               )}
             </div>
           )}
@@ -1574,7 +1665,7 @@ function BHTargetsSection() {
                 </div>
                 {!olOnly && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading data…</div>}
                 {bh && bh.customers.length > 0 && (
-                  <BHCustomerTable customers={bh.customers} month={month} firstColLabel="Client" countLabel="clients" />
+                  <BHCustomerTable customers={bh.customers} month={month} firstColLabel="Client" countLabel="clients" showDemandPo weekly={weekly} />
                 )}
                 {olOnly && (!bh || bh.customers.length === 0) && (
                   <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No offer-letter data for this BH's clients.</div>
@@ -1616,7 +1707,7 @@ function BHTargetsSection() {
             </div>
 
             {detailLoading && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading data…</div>}
-            {!detailLoading && detail && <BHCustomerTable customers={detail.customers} month={detail.month} />}
+            {!detailLoading && detail && <BHCustomerTable customers={detail.customers} month={detail.month} showDemandPo weekly={weekly} />}
             {!detailLoading && !detail && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Select a BH to view data.</div>}
           </div>
           )}

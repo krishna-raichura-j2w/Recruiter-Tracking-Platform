@@ -359,31 +359,27 @@ def bh_leaderboard_list(
 @router.get("/bh-leaderboard/overview")
 def bh_leaderboard_overview(
     date: Optional[str] = Query(None),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     cu=LEADERSHIP,
 ):
     """Combined view: one row per BH (totals across its customers) for every pod in
-    the month. Same 18 fields as a BH detail row, summed per BH, using ONE OL
-    round-trip across all pods' clients. Rows are shaped like detail customer rows so
-    the frontend renders them through the same table (BH name in the first column).
+    the month. Same fields as a BH detail row, summed per BH, using ONE OL round-trip
+    across all pods' clients. Rows are shaped like detail customer rows so the frontend
+    renders them through the same table (BH name in the first column).
+
+    The daily columns aggregate over the [start, end] IST window (a single day by
+    default, Mon–Sat in week mode); MTD columns run month-start → end.
 
     Registered before the ``/{setup_id}`` route so "overview" isn't parsed as an int.
     """
-    target_date = date or datetime.now().strftime("%Y-%m-%d")
-    month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
-
-    ist_dt = datetime.strptime(target_date, "%Y-%m-%d")
-    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
-    day_end_utc = day_start_utc + timedelta(hours=24)
-
-    ref = datetime.strptime(month, "%B %Y")
-    m_start = ref.date().isoformat()
-    m_end = (
-        _date(ref.year + 1, 1, 1).isoformat()
-        if ref.month == 12
-        else _date(ref.year, ref.month + 1, 1).isoformat()
-    )
-    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
+    pb = service.period_bounds(date, start, end)
+    target_date = pb["target_date"]
+    period_start, period_end = pb["period_start"], pb["period_end"]
+    period_start_utc, period_end_utc = pb["period_start_utc"], pb["period_end_utc"]
+    month, m_start = pb["month"], pb["m_start"]
+    mtd_start_utc, period = pb["mtd_start_utc"], pb["period"]
 
     # ── 1. All setups for the month ───────────────────────────────────────────
     setup_rows = db.execute(text("""
@@ -418,12 +414,18 @@ def bh_leaderboard_overview(
     """), {"ids": setup_ids}).mappings().all():
         recruiters_by_setup[r["setup_id"]].append(dict(r))
 
+    # Manual daily fallback summed over the [period_start, period_end] window.
     actuals_by_setup: dict[int, dict[int, dict]] = {sid: {} for sid in setup_ids}
     for r in db.execute(text("""
-        SELECT setup_id, customer_target_id, actual_subs, actual_interviews, actual_selects, actual_obs
+        SELECT setup_id, customer_target_id,
+               COALESCE(SUM(actual_subs), 0)       AS actual_subs,
+               COALESCE(SUM(actual_interviews), 0) AS actual_interviews,
+               COALESCE(SUM(actual_selects), 0)    AS actual_selects,
+               COALESCE(SUM(actual_obs), 0)        AS actual_obs
         FROM bh_daily_actuals
-        WHERE setup_id = ANY(:ids) AND entry_date = :d
-    """), {"ids": setup_ids, "d": target_date}).mappings().all():
+        WHERE setup_id = ANY(:ids) AND entry_date >= :ps AND entry_date <= :pe
+        GROUP BY setup_id, customer_target_id
+    """), {"ids": setup_ids, "ps": period_start, "pe": period_end}).mappings().all():
         actuals_by_setup[r["setup_id"]][r["customer_target_id"]] = dict(r)
 
     mtd_by_setup: dict[int, dict[int, dict]] = {sid: {} for sid in setup_ids}
@@ -434,9 +436,9 @@ def bh_leaderboard_overview(
                COALESCE(SUM(actual_selects), 0)    AS selects,
                COALESCE(SUM(actual_obs), 0)        AS obs
         FROM bh_daily_actuals
-        WHERE setup_id = ANY(:ids) AND entry_date >= :s AND entry_date < :e
+        WHERE setup_id = ANY(:ids) AND entry_date >= :s AND entry_date <= :pe
         GROUP BY setup_id, customer_target_id
-    """), {"ids": setup_ids, "s": m_start, "e": m_end}).mappings().all():
+    """), {"ids": setup_ids, "s": m_start, "pe": period_end}).mappings().all():
         mtd_by_setup[r["setup_id"]][r["customer_target_id"]] = dict(r)
 
     dl_by_setup: dict[int, dict[int, int]] = {sid: {} for sid in setup_ids}
@@ -460,7 +462,7 @@ def bh_leaderboard_overview(
           )
           AND ct.setup_id = ANY(:ids)
         GROUP BY ct.setup_id, ct.id
-    """), {"ids": setup_ids, "day_start": day_start_utc, "day_end": day_end_utc}).mappings().all():
+    """), {"ids": setup_ids, "day_start": period_start_utc, "day_end": period_end_utc}).mappings().all():
         dl_by_setup[r["setup_id"]][r["customer_target_id"]] = int(r["dl_subs"])
 
     # ── 3. Global client_id → ct_id (first-wins if a client spans pods) ───────
@@ -474,13 +476,23 @@ def bh_leaderboard_overview(
     db.close()
     ol_by_client = service.fetch_ol_leaderboard_metrics(
         list(client_to_ct.keys()),
-        target_date=target_date, m_start=m_start,
-        day_start_utc=day_start_utc, day_end_utc=day_end_utc, mtd_start_utc=mtd_start_utc,
+        period_start=period_start, period_end=period_end, m_start=m_start,
+        period_start_utc=period_start_utc, period_end_utc=period_end_utc,
+        mtd_start_utc=mtd_start_utc,
     )
     ol_ct = service.ol_metrics_by_ct(ol_by_client, client_to_ct)
 
+    # ── 4b. Demand & PO actuals per customer target (client_id → ct → BH) ─────
+    dp_by_client = service.fetch_ol_demand_po_by_client(
+        list(client_to_ct.keys()),
+        period_start=period_start, period_end=period_end, m_start=m_start,
+    )
+    dp_ct = service.demand_po_by_ct(dp_by_client, client_to_ct)
+
     # ── 5. Per-setup compute, then sum each BH's customers into one row ───────
     sum_fields = (
+        "target_demands", "actual_demands", "mtd_demands",
+        "target_po", "actual_po", "mtd_po", "actual_po_margin", "mtd_po_margin",
         "daily_subs_target", "daily_int_target", "daily_sel_target", "daily_obs_target",
         "actual_subs", "dl_subs", "actual_int", "actual_sel", "actual_obs",
         "monthly_subs", "monthly_int", "selects_needed", "obs_needed",
@@ -499,10 +511,16 @@ def bh_leaderboard_overview(
                 actuals_by_setup[sid].get(c["id"], {}),
                 mtd_by_setup[sid].get(c["id"], {}),
                 dl_by_setup[sid].get(c["id"], 0),
-                ol_ct, target_date,
+                ol_ct, target_date, dp_ct, period,
             )
             for f in sum_fields:
                 totals[f] += row[f]
+
+        # Target PO is the pod-level headline target (not the sum of per-customer values).
+        totals["target_po"] = int(s.get("net_po_target") or 0)
+        # Money columns are in Lakhs; tidy float noise from summing 2-dp values.
+        for f in ("actual_po", "mtd_po", "actual_po_margin", "mtd_po_margin"):
+            totals[f] = round(totals[f], 2)
         rows.append({"customer_name": s["bh_name"], "customer_target_id": sid, **totals})
 
     return {"date": target_date, "month": month, "rows": rows}
@@ -511,6 +529,8 @@ def bh_leaderboard_overview(
 @router.get("/bh-leaderboard/ol-only")
 def bh_leaderboard_ol_only(
     date: Optional[str] = Query(None),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     cu=LEADERSHIP,
 ):
@@ -518,21 +538,16 @@ def bh_leaderboard_ol_only(
       • each configured OL-only BH (e.g. "Jawad Ulla Khan Non IT") — all its CSV clients;
       • an "Unmapped" bucket — CSV clients that have a BH but no pod-plan target this
         month and aren't a named OL-only BH.
-    Per-client OL actuals (subs/int/sel/obs + MTD) plus per-bucket totals, via the same
-    OL query as the pod views.
+    Per-client OL actuals (over the [start, end] window) + MTD, plus per-bucket totals.
 
     Registered before the ``/{setup_id}`` route so "ol-only" isn't parsed as an int.
     """
-    target_date = date or datetime.now().strftime("%Y-%m-%d")
-    month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
-
-    ist_dt = datetime.strptime(target_date, "%Y-%m-%d")
-    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
-    day_end_utc = day_start_utc + timedelta(hours=24)
-
-    ref = datetime.strptime(month, "%B %Y")
-    m_start = ref.date().isoformat()
-    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
+    pb = service.period_bounds(date, start, end)
+    target_date = pb["target_date"]
+    period_start, period_end = pb["period_start"], pb["period_end"]
+    period_start_utc, period_end_utc = pb["period_start_utc"], pb["period_end_utc"]
+    month, m_start = pb["month"], pb["m_start"]
+    mtd_start_utc = pb["mtd_start_utc"]
 
     # 1. OL client user_ids that already have a pod-plan target this month.
     targeted_rows = db.execute(text("""
@@ -554,22 +569,33 @@ def bh_leaderboard_ol_only(
     # 3. ONE OL round-trip for every client across all buckets.
     ol_by_client = service.fetch_ol_leaderboard_metrics(
         all_ids,
-        target_date=target_date, m_start=m_start,
-        day_start_utc=day_start_utc, day_end_utc=day_end_utc, mtd_start_utc=mtd_start_utc,
+        period_start=period_start, period_end=period_end, m_start=m_start,
+        period_start_utc=period_start_utc, period_end_utc=period_end_utc,
+        mtd_start_utc=mtd_start_utc,
+    )
+
+    # Demand & PO actuals per client (offer-letter DB). No targets (OL-only).
+    dp_by_client = service.fetch_ol_demand_po_by_client(
+        all_ids, period_start=period_start, period_end=period_end, m_start=m_start,
     )
 
     sum_fields = (
         "actual_subs", "actual_int", "actual_sel", "actual_obs",
         "mtd_subs", "mtd_int", "mtd_sel", "mtd_obs",
+        "actual_demands", "mtd_demands", "actual_po", "mtd_po",
+        "actual_po_margin", "mtd_po_margin",
     )
     bhs = []
     for idx, bh_name in enumerate([*service.OL_ONLY_BH_NAMES, service.UNMAPPED_BUCKET]):
         clients = buckets.get(bh_name, [])
-        customers = [service.ol_only_row(cname, uid, ol_by_client) for (uid, cname) in clients]
-        totals = service.ol_only_row(bh_name, -(idx + 1), {})  # zero-filled skeleton
+        customers = [service.ol_only_row(cname, uid, ol_by_client, dp_by_client) for (uid, cname) in clients]
+        totals = service.ol_only_row(bh_name, -(idx + 1), {}, {})  # zero-filled skeleton
         for row in customers:
             for f in sum_fields:
                 totals[f] += row[f]
+        # Money columns are in Lakhs; tidy float noise from summing 2-dp values.
+        for f in ("actual_po", "mtd_po", "actual_po_margin", "mtd_po_margin"):
+            totals[f] = round(totals[f], 2)
         bhs.append({"bh_name": bh_name, "customers": customers, "totals": totals})
 
     return {"date": target_date, "month": month, "bhs": bhs}
@@ -579,24 +605,22 @@ def bh_leaderboard_ol_only(
 def bh_leaderboard_detail(
     setup_id: int,
     date: Optional[str] = Query(None),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     cu=LEADERSHIP,
 ):
-    """Heavy: all PG + OL data for one BH. Called only when user selects a BH."""
-    target_date = date or datetime.now().strftime("%Y-%m-%d")
-    month = datetime.strptime(target_date, "%Y-%m-%d").strftime("%B %Y")
+    """Heavy: all PG + OL data for one BH. Called only when user selects a BH.
 
-    ist_dt = datetime.strptime(target_date, "%Y-%m-%d")
-    day_start_utc = ist_dt - timedelta(hours=5, minutes=30)
-    day_end_utc = day_start_utc + timedelta(hours=24)
-
-    ref = datetime.strptime(month, "%B %Y")
-    m_start = ref.date().isoformat()
-    m_end = (
-        _date(ref.year + 1, 1, 1).isoformat()
-        if ref.month == 12
-        else _date(ref.year, ref.month + 1, 1).isoformat()
-    )
+    Daily columns aggregate over the [start, end] IST window (single day by default,
+    Mon–Sat in week mode); MTD runs month-start → end.
+    """
+    pb = service.period_bounds(date, start, end)
+    target_date = pb["target_date"]
+    period_start, period_end = pb["period_start"], pb["period_end"]
+    period_start_utc, period_end_utc = pb["period_start_utc"], pb["period_end_utc"]
+    month, m_start = pb["month"], pb["m_start"]
+    mtd_start_utc, period = pb["mtd_start_utc"], pb["period"]
 
     # ── 1. All PG queries for this one setup ─────────────────────────────────
     s_row = db.execute(text("""
@@ -625,10 +649,15 @@ def bh_leaderboard_detail(
     """), {"sid": setup_id}).mappings().all()
 
     daily_rows = db.execute(text("""
-        SELECT customer_target_id, actual_subs, actual_interviews, actual_selects, actual_obs
+        SELECT customer_target_id,
+               COALESCE(SUM(actual_subs), 0)       AS actual_subs,
+               COALESCE(SUM(actual_interviews), 0) AS actual_interviews,
+               COALESCE(SUM(actual_selects), 0)    AS actual_selects,
+               COALESCE(SUM(actual_obs), 0)        AS actual_obs
         FROM bh_daily_actuals
-        WHERE setup_id = :sid AND entry_date = :d
-    """), {"sid": setup_id, "d": target_date}).mappings().all()
+        WHERE setup_id = :sid AND entry_date >= :ps AND entry_date <= :pe
+        GROUP BY customer_target_id
+    """), {"sid": setup_id, "ps": period_start, "pe": period_end}).mappings().all()
 
     dl_rows = db.execute(text("""
         SELECT ct.id AS customer_target_id, COUNT(DISTINCT v.candidate_id) AS dl_subs
@@ -649,7 +678,7 @@ def bh_leaderboard_detail(
           )
           AND ct.setup_id = :sid
         GROUP BY ct.id
-    """), {"sid": setup_id, "day_start": day_start_utc, "day_end": day_end_utc}).mappings().all()
+    """), {"sid": setup_id, "day_start": period_start_utc, "day_end": period_end_utc}).mappings().all()
 
     mtd_rows = db.execute(text("""
         SELECT customer_target_id,
@@ -658,9 +687,9 @@ def bh_leaderboard_detail(
                COALESCE(SUM(actual_selects), 0)    AS selects,
                COALESCE(SUM(actual_obs), 0)        AS obs
         FROM bh_daily_actuals
-        WHERE setup_id = :sid AND entry_date >= :s AND entry_date < :e
+        WHERE setup_id = :sid AND entry_date >= :s AND entry_date <= :pe
         GROUP BY customer_target_id
-    """), {"sid": setup_id, "s": m_start, "e": m_end}).mappings().all()
+    """), {"sid": setup_id, "s": m_start, "pe": period_end}).mappings().all()
 
     # ── 2. Release PG connection before OL calls ──────────────────────────────
     db.close()
@@ -677,14 +706,19 @@ def bh_leaderboard_detail(
         for x in service.customer_client_ids(c):
             client_to_ct.setdefault(x, c["id"])
 
-    # MTD start as a sargable UTC bound (first of month, IST midnight → UTC).
-    mtd_start_utc = datetime.strptime(m_start, "%Y-%m-%d") - timedelta(hours=5, minutes=30)
     ol_by_client = service.fetch_ol_leaderboard_metrics(
         list(client_to_ct.keys()),
-        target_date=target_date, m_start=m_start,
-        day_start_utc=day_start_utc, day_end_utc=day_end_utc, mtd_start_utc=mtd_start_utc,
+        period_start=period_start, period_end=period_end, m_start=m_start,
+        period_start_utc=period_start_utc, period_end_utc=period_end_utc,
+        mtd_start_utc=mtd_start_utc,
     )
     ol_ct = service.ol_metrics_by_ct(ol_by_client, client_to_ct)
+
+    dp_by_client = service.fetch_ol_demand_po_by_client(
+        list(client_to_ct.keys()),
+        period_start=period_start, period_end=period_end, m_start=m_start,
+    )
+    dp_ct = service.demand_po_by_ct(dp_by_client, client_to_ct)
 
     # ── 5. Compute metrics + assemble ─────────────────────────────────────────
     recruiters = [dict(r) for r in rec_rows]
@@ -694,7 +728,7 @@ def bh_leaderboard_detail(
     customer_rows = [
         service.assemble_bh_customer_row(
             s, c, enriched.get(c["id"], {}), actuals.get(c["id"], {}),
-            mtd.get(c["id"], {}), dl_subs.get(c["id"], 0), ol_ct, target_date,
+            mtd.get(c["id"], {}), dl_subs.get(c["id"], 0), ol_ct, target_date, dp_ct, period,
         )
         for c in customers
     ]
