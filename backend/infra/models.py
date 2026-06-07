@@ -147,8 +147,21 @@ class DriveTrackerStage(str, enum.Enum):
 
 
 class DriveCallType(str, enum.Enum):
-    recruiter_followup = "recruiter_followup"   # D-1 / D-day reconfirmation
+    recruiter_followup = "recruiter_followup"   # general recruiter follow-up
     lead_am_pulse = "lead_am_pulse"             # Lead/AM posing as client
+    reconfirm_d1 = "reconfirm_d1"               # Phase 4.1 — 24h-before reconfirmation
+    reconfirm_dday = "reconfirm_dday"           # Phase 4.1 — 2h-before reconfirmation
+
+
+class DriveCallOutcome(str, enum.Enum):
+    """Canonical outcome values stored in drive_calls.outcome for reconfirmation
+    calls. Only `confirmed` counts as a confirmation. (Column stays String — other
+    call types may store free text.)"""
+    confirmed = "confirmed"           # will attend
+    not_picked = "not_picked"         # called, didn't pick up
+    not_confirmed = "not_confirmed"   # reached, didn't confirm
+    declined = "declined"             # won't attend
+    callback = "callback"             # asked to call back later
 
 
 class AutoRecommendation(str, enum.Enum):

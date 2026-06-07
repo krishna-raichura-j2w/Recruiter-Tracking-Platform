@@ -1,15 +1,41 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Phone, ChevronDown, ChevronRight,
-  AlertCircle, UserPlus, X, Calculator,
+  AlertCircle, UserPlus, Calculator, Mail, Eye, Check, UserRound,
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import StatusBadge from '../components/StatusBadge';
+import DriveAddCandidateModal from '../components/DriveAddCandidateModal';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type {
-  Drive, DriveCandidate, DriveStatus, DriveType, DriveTrackerStage, DriveCallType,
+  Drive, DriveCandidate, DriveStatus, DriveType, DriveTrackerStage, DriveCallType, DriveCallOutcome,
 } from '../types';
+
+// Canonical reconfirmation-call outcomes (Phase 4.1b). Only 'confirmed' counts as confirmed.
+const OUTCOME_OPTIONS: DriveCallOutcome[] = ['confirmed', 'not_picked', 'not_confirmed', 'declined', 'callback'];
+const OUTCOME_LABEL: Record<DriveCallOutcome, string> = {
+  confirmed: 'Confirmed (will attend)',
+  not_picked: 'Called – not picked',
+  not_confirmed: 'Reached – not confirmed',
+  declined: "Won't attend",
+  callback: 'Call back later',
+};
+const OUTCOME_SHORT: Record<string, string> = {
+  confirmed: 'confirmed', not_picked: 'not picked', not_confirmed: 'not confirmed',
+  declined: "won't attend", callback: 'callback',
+};
+type ReconfirmFilter = 'all' | 'confirmed' | 'not_confirmed' | 'not_called';
+const RECONFIRM_FILTER_LABEL: Record<ReconfirmFilter, string> = {
+  all: 'All', confirmed: 'Confirmed', not_confirmed: 'Not confirmed', not_called: 'Not called',
+};
+function matchesReconfirm(f: ReconfirmFilter, done: boolean, confirmed: boolean): boolean {
+  if (f === 'all') return true;
+  if (f === 'confirmed') return confirmed;
+  if (f === 'not_confirmed') return done && !confirmed;
+  return !done; // not_called
+}
 
 const STATUS_OPTIONS: DriveStatus[] = [
   'planned', 'sourcing', 'in_progress', 'shortlisted', 'complete', 'blocked', 'cancelled',
@@ -33,6 +59,8 @@ const STAGE_STYLE: Record<DriveTrackerStage, string> = {
 const CALL_TYPE_LABEL: Record<DriveCallType, string> = {
   recruiter_followup: 'Recruiter follow-up',
   lead_am_pulse: 'Lead/AM pulse (as client)',
+  reconfirm_d1: 'D-1 reconfirm (24h)',
+  reconfirm_dday: 'D-day reconfirm (2h)',
 };
 
 function ceilTarget(pos: number, convPct: number, bufferPct: number): number {
@@ -94,6 +122,9 @@ export default function DriveDetail() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [d1Filter, setD1Filter] = useState<ReconfirmFilter>('all');
+  const [ddayFilter, setDdayFilter] = useState<ReconfirmFilter>('all');
+  const [recruiterFilter, setRecruiterFilter] = useState<string>('all');
 
   const fetchAll = useCallback(() => {
     if (!driveId) return;
@@ -112,6 +143,16 @@ export default function DriveDetail() {
   }, [driveId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Lighter refresh used after candidate-level actions (tracker/calls): re-pulls
+  // only the candidate list so derived reconfirm fields + auto-advanced stage
+  // update, without resetting the fulfilment-plan form (avoids losing edits).
+  const refreshCandidates = useCallback(() => {
+    if (!driveId) return;
+    api.get<DriveCandidate[]>(`/drives/${driveId}/candidates`)
+      .then((r) => setCandidates(r.data ?? []))
+      .catch(() => { });
+  }, [driveId]);
 
   const set = <K extends keyof PlanForm>(k: K, v: PlanForm[K]) =>
     setForm((f) => (f ? { ...f, [k]: v } : f));
@@ -173,6 +214,19 @@ export default function DriveDetail() {
   const effective = form.submission_target_override.trim()
     ? Number(form.submission_target_override)
     : computed;
+
+  // Distinct recruiters present in this drive's candidates (for the filter dropdown).
+  const recruiterOptions = Array.from(
+    new Set(candidates.map((c) => c.recruiter_name).filter((n): n is string => !!n))
+  ).sort();
+  const hasUnassigned = candidates.some((c) => !c.recruiter_name);
+
+  const filteredCandidates = candidates.filter((c) =>
+    matchesReconfirm(d1Filter, c.reconfirm_d1_done, c.reconfirm_d1_confirmed) &&
+    matchesReconfirm(ddayFilter, c.reconfirm_dday_done, c.reconfirm_dday_confirmed) &&
+    (recruiterFilter === 'all' ||
+      (recruiterFilter === '__unassigned__' ? !c.recruiter_name : c.recruiter_name === recruiterFilter))
+  );
 
   return (
     <Layout title={`${drive.client_name ?? 'Drive'}`} subtitle={drive.role_title ?? ''}>
@@ -289,45 +343,97 @@ export default function DriveDetail() {
 
       {/* ── Candidates ──────────────────────────────────────────────── */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-sm font-bold text-slate-800">
-            Candidates <span className="text-slate-400 font-normal">({candidates.length})</span>
+            Candidates <span className="text-slate-400 font-normal">({filteredCandidates.length}{filteredCandidates.length !== candidates.length ? ` of ${candidates.length}` : ''})</span>
           </h2>
-          {canAddCandidate && (
-            <button
-              onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50"
-            >
-              <UserPlus size={14} /> Add candidate
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Reconfirmation filters (Phase 4.1b) */}
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              D-1
+              <select value={d1Filter} onChange={(e) => setD1Filter(e.target.value as ReconfirmFilter)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200">
+                {(Object.keys(RECONFIRM_FILTER_LABEL) as ReconfirmFilter[]).map((f) => (
+                  <option key={f} value={f}>{RECONFIRM_FILTER_LABEL[f]}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              D-day
+              <select value={ddayFilter} onChange={(e) => setDdayFilter(e.target.value as ReconfirmFilter)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200">
+                {(Object.keys(RECONFIRM_FILTER_LABEL) as ReconfirmFilter[]).map((f) => (
+                  <option key={f} value={f}>{RECONFIRM_FILTER_LABEL[f]}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              Recruiter
+              <select value={recruiterFilter} onChange={(e) => setRecruiterFilter(e.target.value)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200 max-w-[160px]">
+                <option value="all">All</option>
+                {recruiterOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                {hasUnassigned && <option value="__unassigned__">Unassigned</option>}
+              </select>
+            </label>
+            {canAddCandidate && (
+              <button
+                onClick={() => setShowAdd(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <UserPlus size={14} /> Add candidate
+              </button>
+            )}
+          </div>
         </div>
 
         {candidates.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-400">No candidates added to this drive yet.</p>
+        ) : filteredCandidates.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400">No candidates match the selected filters.</p>
         ) : (
-          <div className="space-y-2">
-            {candidates.map((c) => (
-              <CandidateRow
-                key={c.id}
-                cand={c}
-                driveId={driveId!}
-                role={role}
-                onStage={updateStage}
-                onCallAdded={(updated) =>
-                  setCandidates((cs) => cs.map((x) => (x.id === updated.id ? updated : x)))
-                }
-              />
-            ))}
+          <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                  <th className="px-2 py-2.5 w-6"></th>
+                  <th className="px-2 py-2.5 font-semibold">Candidate</th>
+                  <th className="px-2 py-2.5 font-semibold">Phone</th>
+                  <th className="px-2 py-2.5 font-semibold">Company</th>
+                  <th className="px-2 py-2.5 font-semibold">Exp</th>
+                  <th className="px-2 py-2.5 font-semibold">Recruiter</th>
+                  <th className="px-2 py-2.5 font-semibold text-center">D-1</th>
+                  <th className="px-2 py-2.5 font-semibold text-center">D-day</th>
+                  <th className="px-2 py-2.5 font-semibold">Stage</th>
+                  <th className="px-2 py-2.5 font-semibold text-center">Calls</th>
+                  <th className="px-2 py-2.5 w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCandidates.map((c) => (
+                  <CandidateRow
+                    key={c.id}
+                    cand={c}
+                    driveId={driveId!}
+                    role={role}
+                    driveDateFrom={drive.drive_date_from}
+                    onStage={updateStage}
+                    onRefresh={refreshCandidates}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
 
-      {showAdd && (
-        <AddCandidateModal
-          driveId={driveId!}
+      {showAdd && drive.job_id && (
+        <DriveAddCandidateModal
+          driveId={Number(driveId)}
+          jobId={drive.job_id}
+          jobLabel={`${drive.client_name ?? ''} — ${drive.role_title ?? ''}`}
           onClose={() => setShowAdd(false)}
-          onAdded={(c) => { setCandidates((cs) => [...cs, c]); setShowAdd(false); }}
+          onAdded={() => { setShowAdd(false); fetchAll(); }}
         />
       )}
     </Layout>
@@ -346,15 +452,132 @@ function Field({ label, children, className = '' }: { label: string; children: R
   );
 }
 
-// ── Candidate row with tracker + calls ────────────────────────────────────────
+// SLA hint for a reconfirmation checkpoint, relative to the drive date.
+function reconfirmHint(driveDateFrom: string | null | undefined, done: boolean, kind: 'd1' | 'dday'): 'due' | 'overdue' | null {
+  if (done || !driveDateFrom) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(driveDateFrom); d.setHours(0, 0, 0, 0);
+  const days = Math.round((d.getTime() - today.getTime()) / 86400000);
+  if (days < 0) return 'overdue';
+  if (kind === 'd1' && days <= 1) return 'due';     // 24h window
+  if (kind === 'dday' && days <= 0) return 'due';   // drive day
+  return null;
+}
+
+const CALL_CHIP_STYLE: Record<string, string> = {
+  lead_am_pulse: 'bg-violet-100 text-violet-700',
+  reconfirm_d1: 'bg-amber-100 text-amber-700',
+  reconfirm_dday: 'bg-amber-100 text-amber-700',
+  recruiter_followup: 'bg-blue-100 text-blue-700',
+};
+
+function ReconfirmChip({ label, done, confirmed, outcome, at, hint }: {
+  label: string; done: boolean; confirmed: boolean; outcome: string | null;
+  at: string | null; hint: 'due' | 'overdue' | null;
+}) {
+  // Confirmed → green ✓; attempted but not confirmed → amber + outcome; not called → gray + SLA hint.
+  if (confirmed) {
+    const when = at ? new Date(at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    return (
+      <span title={when} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700 flex items-center gap-0.5">
+        <Check size={10} /> {label}
+      </span>
+    );
+  }
+  if (done) {
+    const short = outcome ? (OUTCOME_SHORT[outcome] ?? outcome) : 'not confirmed';
+    return <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">{label} · {short}</span>;
+  }
+  const color = hint === 'overdue' ? 'bg-red-100 text-red-700' : hint === 'due' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400';
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${color}`}>{label}{hint ? ` · ${hint}` : ''}</span>;
+}
+
+// One reconfirmation checkpoint card with a structured-outcome logging form.
+function ReconfirmCheckpoint({ cp, canLog, driveId, candId, onLogged }: {
+  cp: { key: string; label: string; type: DriveCallType; done: boolean; confirmed: boolean; at: string | null; attempts: number; outcome: string | null; hint: 'due' | 'overdue' | null };
+  canLog: boolean;
+  driveId: string;
+  candId: number;
+  onLogged: () => void;
+}) {
+  const [openForm, setOpenForm] = useState(false);
+  const [outcome, setOutcome] = useState<DriveCallOutcome>('confirmed');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.post(`/drives/${driveId}/candidates/${candId}/calls`, {
+        call_type: cp.type, outcome, notes: notes || null,
+      });
+      setOpenForm(false); setNotes(''); setOutcome('confirmed');
+      onLogged();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-100 bg-white p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-700">{cp.label}</span>
+        {cp.confirmed ? (
+          <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-0.5"><Check size={11} /> confirmed</span>
+        ) : cp.done ? (
+          <span className="text-[10px] font-semibold text-amber-600">{cp.outcome ? (OUTCOME_SHORT[cp.outcome] ?? cp.outcome) : 'not confirmed'}</span>
+        ) : (
+          <span className={`text-[10px] font-semibold ${cp.hint === 'overdue' ? 'text-red-600' : cp.hint === 'due' ? 'text-amber-600' : 'text-slate-400'}`}>
+            {cp.hint ?? 'pending'}
+          </span>
+        )}
+      </div>
+      {cp.done && (
+        <div className="text-[10px] text-slate-400 mt-0.5">
+          {cp.at ? new Date(cp.at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+          {cp.attempts > 1 ? ` · ${cp.attempts} attempts` : ''}
+        </div>
+      )}
+      {canLog && !openForm && (
+        <button onClick={() => setOpenForm(true)}
+          className="mt-1.5 flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50">
+          <Phone size={11} /> {cp.done ? 'Log again' : 'Log call'}
+        </button>
+      )}
+      {canLog && openForm && (
+        <div className="mt-2 space-y-1.5">
+          <select value={outcome} onChange={(e) => setOutcome(e.target.value as DriveCallOutcome)}
+            className="w-full px-2 py-1 text-xs rounded-lg border border-slate-200">
+            {OUTCOME_OPTIONS.map((o) => <option key={o} value={o}>{OUTCOME_LABEL[o]}</option>)}
+          </select>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)"
+            className="w-full px-2 py-1 text-xs rounded-lg border border-slate-200" />
+          <div className="flex gap-1.5">
+            <button onClick={save} disabled={saving}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+              <Plus size={11} /> Save
+            </button>
+            <button onClick={() => setOpenForm(false)}
+              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Candidate row with tracker + reconfirmation + calls ───────────────────────
 function CandidateRow({
-  cand, driveId, role, onStage, onCallAdded,
+  cand, driveId, role, driveDateFrom, onStage, onRefresh,
 }: {
   cand: DriveCandidate;
   driveId: string;
   role: string;
+  driveDateFrom: string | null | undefined;
   onStage: (id: number, s: DriveTrackerStage) => void;
-  onCallAdded: (c: DriveCandidate) => void;
+  onRefresh: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [callType, setCallType] = useState<DriveCallType>('recruiter_followup');
@@ -364,68 +587,121 @@ function CandidateRow({
 
   const canPulse = ['admin', 'kam', 'delivery_lead', 'bh'].includes(role);
   const canRecruiter = ['admin', 'kam', 'delivery_lead', 'recruiter'].includes(role);
+  // Reconfirm calls are logged via the structured checkpoint forms (with outcome);
+  // the general logger handles free-text follow-up / pulse calls.
   const availableTypes: DriveCallType[] = [
     ...(canRecruiter ? (['recruiter_followup'] as DriveCallType[]) : []),
     ...(canPulse ? (['lead_am_pulse'] as DriveCallType[]) : []),
   ];
 
-  const logCall = async () => {
+  const submitCall = async (type: DriveCallType) => {
     setLogging(true);
     try {
       await api.post(`/drives/${driveId}/candidates/${cand.id}/calls`, {
-        call_type: callType, outcome: outcome || null, notes: notes || null,
+        call_type: type, outcome: outcome || null, notes: notes || null,
       });
-      // refetch this candidate's calls via the candidates list is heavy; just
-      // re-pull the single candidate's calls and merge.
-      const res = await api.get(`/drives/${driveId}/candidates/${cand.id}/calls`);
-      onCallAdded({ ...cand, drive_calls: res.data });
       setOutcome(''); setNotes('');
+      onRefresh();   // re-pull list → updated reconfirm checkpoints + auto-advanced stage
     } finally {
       setLogging(false);
     }
   };
 
   const stage = cand.drive_tracker_stage ?? 'lined_up';
+  const phone = cand.mobile || null;
+  const d1Hint = reconfirmHint(driveDateFrom, cand.reconfirm_d1_done, 'd1');
+  const ddayHint = reconfirmHint(driveDateFrom, cand.reconfirm_dday_done, 'dday');
+
+  const checkpoints = [
+    { key: 'd1', label: 'D-1 (24h before)', type: 'reconfirm_d1' as DriveCallType, done: cand.reconfirm_d1_done, confirmed: cand.reconfirm_d1_confirmed, at: cand.reconfirm_d1_at, attempts: cand.reconfirm_d1_attempts, outcome: cand.reconfirm_d1_outcome, hint: d1Hint },
+    { key: 'dday', label: 'D-day (2h before)', type: 'reconfirm_dday' as DriveCallType, done: cand.reconfirm_dday_done, confirmed: cand.reconfirm_dday_confirmed, at: cand.reconfirm_dday_at, attempts: cand.reconfirm_dday_attempts, outcome: cand.reconfirm_dday_outcome, hint: ddayHint },
+  ];
 
   return (
-    <div className="rounded-xl border border-slate-100">
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <button onClick={() => setOpen((o) => !o)} className="text-slate-400 hover:text-slate-700">
-          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm text-slate-800 truncate">{cand.full_name}</div>
-          <div className="text-xs text-slate-500 truncate">
-            {[cand.mobile, cand.designation, cand.current_company].filter(Boolean).join(' · ') || '—'}
+    <>
+      {/* Main row */}
+      <tr className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30 align-middle">
+        <td className="px-2 py-2">
+          <button onClick={() => setOpen((o) => !o)} className="text-slate-400 hover:text-slate-700">
+            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+        </td>
+        <td className="px-2 py-2">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-800">{cand.full_name}</span>
+            {cand.status && <StatusBadge status={cand.status} />}
           </div>
-        </div>
-        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STAGE_STYLE[stage]}`}>
-          {STAGE_LABEL[stage]}
-        </span>
-        <select
-          value={stage}
-          onChange={(e) => onStage(cand.id, e.target.value as DriveTrackerStage)}
-          className="px-2 py-1 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200"
-        >
-          {STAGE_OPTIONS.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
-        </select>
-        <span className="text-xs text-slate-400 flex items-center gap-1 w-14 justify-end">
-          <Phone size={12} /> {cand.drive_calls.length}
-        </span>
-      </div>
+          {cand.designation && <div className="text-xs text-slate-500">{cand.designation}</div>}
+        </td>
+        <td className="px-2 py-2">
+          {phone ? (
+            <a href={`tel:${phone}`} className="flex items-center gap-1 text-blue-600 font-medium hover:underline whitespace-nowrap">
+              <Phone size={11} /> {phone}
+            </a>
+          ) : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-2 py-2 text-slate-600 max-w-[160px] truncate">{cand.current_company || '—'}</td>
+        <td className="px-2 py-2 text-slate-600 whitespace-nowrap">{cand.exp_range || '—'}</td>
+        <td className="px-2 py-2 text-slate-600 whitespace-nowrap">
+          <span className="flex items-center gap-1"><UserRound size={11} /> {cand.recruiter_name ?? '—'}</span>
+        </td>
+        <td className="px-2 py-2 text-center">
+          <ReconfirmChip label="D-1" done={cand.reconfirm_d1_done} confirmed={cand.reconfirm_d1_confirmed} outcome={cand.reconfirm_d1_outcome} at={cand.reconfirm_d1_at} hint={d1Hint} />
+        </td>
+        <td className="px-2 py-2 text-center">
+          <ReconfirmChip label="D-day" done={cand.reconfirm_dday_done} confirmed={cand.reconfirm_dday_confirmed} outcome={cand.reconfirm_dday_outcome} at={cand.reconfirm_dday_at} hint={ddayHint} />
+        </td>
+        <td className="px-2 py-2">
+          <select
+            value={stage}
+            onChange={(e) => onStage(cand.id, e.target.value as DriveTrackerStage)}
+            className={`px-2 py-1 text-xs rounded-lg border-0 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-200 ${STAGE_STYLE[stage]}`}
+          >
+            {STAGE_OPTIONS.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
+          </select>
+        </td>
+        <td className="px-2 py-2 text-center">
+          <span className="text-xs text-slate-400 inline-flex items-center gap-1"><Phone size={12} /> {cand.drive_calls.length}</span>
+        </td>
+        <td className="px-2 py-2 text-center">
+          <Link to={`/candidates/${cand.id}`} title="Open candidate" className="text-slate-400 hover:text-blue-600 inline-block">
+            <Eye size={15} />
+          </Link>
+        </td>
+      </tr>
 
       {open && (
-        <div className="border-t border-slate-100 px-3 py-3 bg-slate-50/50">
+        <tr className="bg-slate-50/60">
+          <td colSpan={11} className="px-4 py-3 border-b border-slate-100">
+          {/* Candidate snapshot chips */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-xs text-slate-600">
+            {cand.email && <span className="flex items-center gap-1"><Mail size={11} /> {cand.email}</span>}
+            {cand.location && <span>📍 {cand.location}</span>}
+            {cand.skills && <span className="truncate max-w-[260px]">🛠 {cand.skills}</span>}
+            {(cand.current_ctc != null || cand.expected_ctc != null) && (
+              <span>💰 {cand.current_ctc ?? '—'} → {cand.expected_ctc ?? '—'} LPA</span>
+            )}
+            {cand.lead_source && <span>via {cand.lead_source}</span>}
+          </div>
+
+          {/* Reconfirmation (Phase 4.1) — two checkpoints with structured outcomes */}
+          <p className="text-[10px] font-semibold uppercase text-slate-400 mb-1.5">Reconfirmation (Phase 4)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+            {checkpoints.map((cp) => (
+              <ReconfirmCheckpoint key={cp.key} cp={cp} canLog={canRecruiter} driveId={driveId} candId={cand.id} onLogged={onRefresh} />
+            ))}
+          </div>
+
           {/* Call log */}
           {cand.drive_calls.length > 0 ? (
             <div className="space-y-1.5 mb-3">
               {cand.drive_calls.map((call) => (
                 <div key={call.id} className="flex items-start gap-2 text-xs">
-                  <span className={`px-1.5 py-0.5 rounded font-medium ${call.call_type === 'lead_am_pulse' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                  <span className={`px-1.5 py-0.5 rounded font-medium ${call.call_type ? CALL_CHIP_STYLE[call.call_type] ?? 'bg-blue-100 text-blue-700' : 'bg-blue-100 text-blue-700'}`}>
                     {call.call_type ? CALL_TYPE_LABEL[call.call_type] : 'Call'}
                   </span>
                   <div className="flex-1">
-                    {call.outcome && <span className="font-semibold text-slate-700">{call.outcome}</span>}
+                    {call.outcome && <span className="font-semibold text-slate-700">{OUTCOME_SHORT[call.outcome] ?? call.outcome}</span>}
                     {call.notes && <span className="text-slate-500"> — {call.notes}</span>}
                     <div className="text-[10px] text-slate-400">
                       {call.caller_name ?? 'Unknown'} · {call.call_date ? new Date(call.call_date).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
@@ -438,99 +714,26 @@ function CandidateRow({
             <p className="text-xs text-slate-400 mb-3">No calls logged yet.</p>
           )}
 
-          {/* Add call */}
+          {/* Outcome / notes (shared by checkpoint buttons + the general logger below) */}
           {availableTypes.length > 0 && (
             <div className="flex flex-wrap items-end gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase text-slate-400">Call type</span>
-                <select value={callType} onChange={(e) => setCallType(e.target.value as DriveCallType)}
-                  className="px-2 py-1 text-xs rounded-lg border border-slate-200">
-                  {availableTypes.map((t) => <option key={t} value={t}>{CALL_TYPE_LABEL[t]}</option>)}
-                </select>
-              </label>
               <input value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Outcome (e.g. confirmed)"
                 className="px-2 py-1 text-xs rounded-lg border border-slate-200 w-40" />
               <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes"
                 className="px-2 py-1 text-xs rounded-lg border border-slate-200 flex-1 min-w-[140px]" />
-              <button onClick={logCall} disabled={logging}
+              <select value={callType} onChange={(e) => setCallType(e.target.value as DriveCallType)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200">
+                {availableTypes.map((t) => <option key={t} value={t}>{CALL_TYPE_LABEL[t]}</option>)}
+              </select>
+              <button onClick={() => submitCall(callType)} disabled={logging}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
                 <Plus size={12} /> Log call
               </button>
             </div>
           )}
-        </div>
+          </td>
+        </tr>
       )}
-    </div>
-  );
-}
-
-// ── Add candidate modal ───────────────────────────────────────────────────────
-function AddCandidateModal({
-  driveId, onClose, onAdded,
-}: {
-  driveId: string;
-  onClose: () => void;
-  onAdded: (c: DriveCandidate) => void;
-}) {
-  const [f, setF] = useState({
-    full_name: '', mobile: '', email: '', skills: '', designation: '',
-    current_company: '', location: '', min_experience: '', max_experience: '',
-    current_ctc: '', expected_ctc: '', lead_source: '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
-
-  const submit = async () => {
-    if (!f.full_name.trim()) { setErr('Name is required.'); return; }
-    setSaving(true); setErr(null);
-    try {
-      const payload: Record<string, unknown> = { full_name: f.full_name.trim() };
-      for (const k of ['mobile', 'email', 'skills', 'designation', 'current_company', 'location', 'lead_source'] as const) {
-        if (f[k].trim()) payload[k] = f[k].trim();
-      }
-      for (const k of ['min_experience', 'max_experience', 'current_ctc', 'expected_ctc'] as const) {
-        if (f[k].trim()) payload[k] = Number(f[k]);
-      }
-      const res = await api.post<DriveCandidate>(`/drives/${driveId}/candidates`, payload);
-      onAdded(res.data);
-    } catch {
-      setErr('Failed to add candidate.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold text-slate-800">Add candidate to drive</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
-        </div>
-        {err && <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs">{err}</div>}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Full name *"><input value={f.full_name} onChange={(e) => set('full_name', e.target.value)} className={inputCls} /></Field>
-          <Field label="Mobile"><input value={f.mobile} onChange={(e) => set('mobile', e.target.value)} className={inputCls} /></Field>
-          <Field label="Email"><input value={f.email} onChange={(e) => set('email', e.target.value)} className={inputCls} /></Field>
-          <Field label="Designation"><input value={f.designation} onChange={(e) => set('designation', e.target.value)} className={inputCls} /></Field>
-          <Field label="Current company"><input value={f.current_company} onChange={(e) => set('current_company', e.target.value)} className={inputCls} /></Field>
-          <Field label="Location"><input value={f.location} onChange={(e) => set('location', e.target.value)} className={inputCls} /></Field>
-          <Field label="Skills" className="col-span-2"><input value={f.skills} onChange={(e) => set('skills', e.target.value)} className={inputCls} /></Field>
-          <Field label="Min exp (yrs)"><input type="number" value={f.min_experience} onChange={(e) => set('min_experience', e.target.value)} className={inputCls} /></Field>
-          <Field label="Max exp (yrs)"><input type="number" value={f.max_experience} onChange={(e) => set('max_experience', e.target.value)} className={inputCls} /></Field>
-          <Field label="Current CTC"><input type="number" value={f.current_ctc} onChange={(e) => set('current_ctc', e.target.value)} className={inputCls} /></Field>
-          <Field label="Expected CTC"><input type="number" value={f.expected_ctc} onChange={(e) => set('expected_ctc', e.target.value)} className={inputCls} /></Field>
-          <Field label="Lead source" className="col-span-2"><input value={f.lead_source} onChange={(e) => set('lead_source', e.target.value)} className={inputCls} /></Field>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button onClick={submit} disabled={saving} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Adding…' : 'Add candidate'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

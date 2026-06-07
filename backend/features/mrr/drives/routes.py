@@ -49,6 +49,19 @@ def create_drive(
     return service._drive_dict(db, drive)
 
 
+# NOTE: declared BEFORE "/{drive_id}" so "summary" is not captured as a drive id.
+@router.get("/summary")
+def drives_summary(
+    scope: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "kam", "delivery_lead", "bh")),
+):
+    # Admin defaults to all drives; KAM/DL/BH default to the ones they own.
+    if scope not in ("mine", "all"):
+        scope = "all" if current_user.role.value == "admin" else "mine"
+    return service.drives_summary(db, current_user, scope=scope)
+
+
 @router.get("/{drive_id}")
 def get_drive(
     drive_id: int,
@@ -101,15 +114,15 @@ def add_drive_candidate(
     drive = service.get_drive(db, drive_id)
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
-    role = current_user.role.value
-    sourced_by_id = current_user.id if role in ("recruiter", "delivery_lead") else None
-    candidate = service.add_drive_candidate(
-        db,
-        drive_id,
-        drive.job_id,
-        body.model_dump(),
-        sourced_by_id=sourced_by_id,
-        created_by_email=current_user.email,
+    # Runs the SAME full create-flow as POST /candidates (OL dup check, onboarding
+    # flags, activity log, caller assignment) so the candidate is a first-class
+    # record in the same table — just linked to this drive. KAM is allowed here.
+    from features.mrr.candidates import service as cand_service
+
+    data = body.model_dump()
+    data["job_id"] = drive.job_id            # the drive supplies the job
+    candidate = cand_service.create_candidate_full(
+        db, data, current_user, drive_id=drive_id,
     )
     log_activity(
         db, current_user.id, "drive_candidate_added",

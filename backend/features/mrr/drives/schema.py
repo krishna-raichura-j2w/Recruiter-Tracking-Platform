@@ -1,3 +1,4 @@
+from features.mrr.candidates.schema import CandidateCreate
 from infra.models import DriveCallType, DriveStatus, DriveTrackerStage, DriveType
 from pydantic import BaseModel
 
@@ -36,26 +37,12 @@ class DriveUpdate(BaseModel):
     notes: str | None = None
 
 
-class DriveCandidateCreate(BaseModel):
-    """Add a fresh candidate to a drive. Name is required; the rest is optional so
-    walk-in/drive-day entry stays fast. Creates a full candidate row linked to the
-    drive (candidates.drive_id)."""
-    full_name: str
-    mobile: str | None = None
-    email: str | None = None
-    skills: str | None = None
-    designation: str | None = None
-    employer: str | None = None
-    current_company: str | None = None
-    location: str | None = None
-    city: str | None = None
-    min_experience: float | None = None
-    max_experience: float | None = None
-    total_experience: float | None = None
-    current_ctc: float | None = None
-    expected_ctc: float | None = None
-    immediate_joiner: str | None = None
-    lead_source: str | None = None
+class DriveCandidateCreate(CandidateCreate):
+    """Add a fresh candidate to a drive. Same shape as the normal sourcing form
+    (CandidateCreate — full required fields incl. resume) so the candidate is a
+    first-class record saved to the same table. job_id is supplied by the drive,
+    so it's optional here and overridden server-side."""
+    job_id: int | None = None  # overridden from the drive's job
 
 
 class DriveTrackerUpdate(BaseModel):

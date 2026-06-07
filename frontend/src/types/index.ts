@@ -391,7 +391,8 @@ export type DriveStatus =
   | 'complete' | 'blocked' | 'cancelled';
 export type DriveTrackerStage =
   | 'lined_up' | 'confirmed' | 'en_route' | 'reached' | 'attended' | 'no_show';
-export type DriveCallType = 'recruiter_followup' | 'lead_am_pulse';
+export type DriveCallType = 'recruiter_followup' | 'lead_am_pulse' | 'reconfirm_d1' | 'reconfirm_dday';
+export type DriveCallOutcome = 'confirmed' | 'not_picked' | 'not_confirmed' | 'declined' | 'callback';
 
 export interface Drive {
   id: number;
@@ -431,6 +432,33 @@ export interface Drive {
   lineup_count: number;
 }
 
+export interface DriveCounts {
+  in_pipeline: number;
+  confirmed: number;
+  not_confirmed: number;
+  no_show: number;
+  d1_confirmed: number;
+  d1_pending: number;
+  dday_confirmed: number;
+  dday_pending: number;
+}
+
+export interface DriveSummaryRow extends DriveCounts {
+  drive_id: number;
+  client_name: string | null;
+  role_title: string | null;
+  drive_date_from: string | null;
+  status: DriveStatus | null;
+}
+
+export interface DriveSummary {
+  scope: 'mine' | 'all';
+  total_drives: number;
+  totals: DriveCounts;
+  by_stage: Record<string, number>;
+  per_drive: DriveSummaryRow[];
+}
+
 export interface DriveCall {
   id: number;
   candidate_id: number;
@@ -458,7 +486,24 @@ export interface DriveCandidate {
   expected_ctc: number | null;
   lead_source: string | null;
   status: string | null;
+  // Recruiter attribution (assigned caller, falling back to sourcer)
+  recruiter_name: string | null;
+  assigned_to_name: string | null;
+  sourced_by_name: string | null;
   drive_tracker_stage: DriveTrackerStage | null;
   drive_reached_at: string | null;
+  // Phase 4.1 reconfirmation checkpoints (derived from drive_calls)
+  reconfirm_d1_done: boolean;
+  reconfirm_d1_confirmed: boolean;
+  reconfirm_d1_at: string | null;
+  reconfirm_d1_outcome: string | null;
+  reconfirm_d1_notes: string | null;
+  reconfirm_d1_attempts: number;
+  reconfirm_dday_done: boolean;
+  reconfirm_dday_confirmed: boolean;
+  reconfirm_dday_at: string | null;
+  reconfirm_dday_outcome: string | null;
+  reconfirm_dday_notes: string | null;
+  reconfirm_dday_attempts: number;
   drive_calls: DriveCall[];
 }
