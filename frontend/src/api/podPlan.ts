@@ -244,14 +244,15 @@ export const podPlanApi = {
   getBHList: (date: string) =>
     api.get('/pod-plan/bh-leaderboard/bhs', { params: { date } }).then(r => r.data as BHListResponse),
 
-  getBHDetail: (setupId: number, date: string) =>
-    api.get(`/pod-plan/bh-leaderboard/${setupId}`, { params: { date } }).then(r => r.data as BHDetailResponse),
+  // start/end define the daily-column window (inclusive IST dates). Omit for single-day.
+  getBHDetail: (setupId: number, date: string, start?: string, end?: string) =>
+    api.get(`/pod-plan/bh-leaderboard/${setupId}`, { params: { date, start, end } }).then(r => r.data as BHDetailResponse),
 
-  getBHOverview: (date: string) =>
-    api.get('/pod-plan/bh-leaderboard/overview', { params: { date } }).then(r => r.data as BHOverviewResponse),
+  getBHOverview: (date: string, start?: string, end?: string) =>
+    api.get('/pod-plan/bh-leaderboard/overview', { params: { date, start, end } }).then(r => r.data as BHOverviewResponse),
 
-  getOlOnly: (date: string) =>
-    api.get('/pod-plan/bh-leaderboard/ol-only', { params: { date } }).then(r => r.data as OlOnlyResponse),
+  getOlOnly: (date: string, start?: string, end?: string) =>
+    api.get('/pod-plan/bh-leaderboard/ol-only', { params: { date, start, end } }).then(r => r.data as OlOnlyResponse),
 };
 
 // ── BH Leaderboard types ───────────────────────────────────────────────────────
@@ -259,6 +260,15 @@ export const podPlanApi = {
 export interface BHLeaderboardCustomer {
   customer_name: string;
   customer_target_id: number;
+  // Demand & PO columns (BH overview only; 0 on per-customer/per-client rows)
+  target_demands?: number;
+  actual_demands?: number;
+  mtd_demands?: number;
+  target_po?: number;
+  actual_po?: number;
+  mtd_po?: number;
+  actual_po_margin?: number;
+  mtd_po_margin?: number;
   daily_subs_target: number;
   daily_int_target: number;
   daily_sel_target: number;
