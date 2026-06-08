@@ -27,6 +27,7 @@ import Pods from './pages/Pods';
 import Targets from './pages/Targets';
 import ClientEmailGenerator from './pages/ClientEmailGenerator';
 import PodPlan from './pages/PodPlan';
+import SalesEffortTracker from './pages/SalesEffortTracker';
 
 function ForceChangePasswordGate({ children }: { children: React.ReactNode }) {
   const { user, updateUser } = useAuth();
@@ -239,6 +240,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['bh', 'admin', 'coo']}>
                 <PodPlan />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/sales-effort"
+            element={
+              <ProtectedRoute allowedRoles={['bh', 'admin', 'coo']}>
+                <SalesEffortTracker />
               </ProtectedRoute>
             }
           />
