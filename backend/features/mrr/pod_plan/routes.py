@@ -23,6 +23,7 @@ from features.mrr.pod_plan.schema import (
 router = APIRouter(prefix="/pod-plan", tags=["pod-plan"])
 
 BH_OR_ADMIN = Depends(require_roles("bh", "admin", "coo"))
+WRITE_ACCESS = Depends(require_roles("admin", "coo"))
 LEADERSHIP = Depends(require_roles("admin", "coo", "ops_head"))
 
 _PRIVILEGED = {"admin", "coo"}
@@ -99,7 +100,7 @@ def get_setup(month: str | None = None, as_bh: Optional[int] = Query(None),
 
 @router.post("/setup")
 def upsert_setup(body: SetupUpsert, as_bh: Optional[int] = Query(None),
-                 db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+                 db: Session = Depends(get_db), cu=WRITE_ACCESS):
     bh_id = _effective_bh_id(cu, as_bh)
     pod_id = _pod_id_or_404(db, bh_id)
     body_data = body.model_dump()
@@ -126,7 +127,7 @@ def list_customers(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN)
 
 
 @router.post("/setup/{setup_id}/customers")
-def upsert_customer(setup_id: int, body: CustomerUpsert, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+def upsert_customer(setup_id: int, body: CustomerUpsert, db: Session = Depends(get_db), cu=WRITE_ACCESS):
     is_admin = cu.role.value in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
@@ -135,7 +136,7 @@ def upsert_customer(setup_id: int, body: CustomerUpsert, db: Session = Depends(g
 
 
 @router.delete("/setup/{setup_id}/customers/{customer_id}")
-def delete_customer(setup_id: int, customer_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+def delete_customer(setup_id: int, customer_id: int, db: Session = Depends(get_db), cu=WRITE_ACCESS):
     is_admin = cu.role.value in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
@@ -164,7 +165,7 @@ def list_recruiters(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN
 
 
 @router.post("/setup/{setup_id}/recruiters")
-def save_recruiters(setup_id: int, body: RecruitersBulk, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+def save_recruiters(setup_id: int, body: RecruitersBulk, db: Session = Depends(get_db), cu=WRITE_ACCESS):
     is_admin = cu.role.value in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
@@ -184,7 +185,7 @@ def list_kams(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
 
 
 @router.post("/setup/{setup_id}/kams")
-def save_kams(setup_id: int, body: KAMsBulk, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+def save_kams(setup_id: int, body: KAMsBulk, db: Session = Depends(get_db), cu=WRITE_ACCESS):
     is_admin = cu.role.value in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
@@ -204,7 +205,7 @@ def list_weekly_obs(setup_id: int, db: Session = Depends(get_db), cu=BH_OR_ADMIN
 
 
 @router.post("/setup/{setup_id}/weekly-obs")
-def save_weekly_obs(setup_id: int, body: WeeklyOBBulk, db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+def save_weekly_obs(setup_id: int, body: WeeklyOBBulk, db: Session = Depends(get_db), cu=WRITE_ACCESS):
     is_admin = cu.role.value in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
@@ -269,7 +270,7 @@ def get_daily(setup_id: int, entry_date: str, db: Session = Depends(get_db), cu=
 
 @router.post("/setup/{setup_id}/daily/{entry_date}")
 def save_daily(setup_id: int, entry_date: str, body: DailyActualsBulk,
-               db: Session = Depends(get_db), cu=BH_OR_ADMIN):
+               db: Session = Depends(get_db), cu=WRITE_ACCESS):
     is_admin = cu.role.value in _PRIVILEGED
     pod_id = 0 if is_admin else _pod_id_or_404(db, cu.id)
     _setup_or_404(db, setup_id, pod_id, is_admin)
