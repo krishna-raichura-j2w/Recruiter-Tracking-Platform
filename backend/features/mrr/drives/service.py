@@ -12,6 +12,7 @@ from infra.models import (
     DriveType,
     Job,
     User,
+    Validation,
     isofy_datetimes,
     now_utc,
     to_iso_utc,
@@ -116,6 +117,11 @@ def _candidate_dict(db: Session, c: Candidate) -> dict:
     dday = _reconfirm_status(calls, DriveCallType.reconfirm_dday)
     assigned_to_name = c.assigned_to.name if c.assigned_to else None
     sourced_by_name = c.sourced_by.name if c.sourced_by else None
+    validated_by_name = (
+        c.validation.delivery_lead.name
+        if c.validation and c.validation.delivery_lead
+        else None
+    )
     return {
         "id": c.id,
         "drive_id": c.drive_id,
@@ -135,6 +141,7 @@ def _candidate_dict(db: Session, c: Candidate) -> dict:
         "expected_ctc": c.expected_ctc,
         "lead_source": c.lead_source,
         "status": c.status.value if c.status else None,
+        "validated_by_name": validated_by_name,
         "drive_tracker_stage": (
             c.drive_tracker_stage.value if c.drive_tracker_stage else None
         ),
@@ -371,6 +378,12 @@ def update_drive(db: Session, drive_id: int, data: dict) -> Drive | None:
 def list_drive_candidates(db: Session, drive_id: int) -> list[dict]:
     cands = (
         db.query(Candidate)
+        .options(
+            joinedload(Candidate.assigned_to),
+            joinedload(Candidate.sourced_by),
+            joinedload(Candidate.drive_calls).joinedload(DriveCall.caller),
+            joinedload(Candidate.validation).joinedload(Validation.delivery_lead),
+        )
         .filter(Candidate.drive_id == drive_id)
         .order_by(Candidate.id.asc())
         .all()
