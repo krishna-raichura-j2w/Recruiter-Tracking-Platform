@@ -35,6 +35,8 @@ class CandidateCreate(BaseModel):
     sourcing_date: str | None = None
     resume_data: str | None = None
     total_experience: float | None = None
+    # Set when sourced fresh for a walk-in/drive — links the candidate to that drive.
+    drive_id: int | None = None
 
 
 class CandidateUpdate(BaseModel):

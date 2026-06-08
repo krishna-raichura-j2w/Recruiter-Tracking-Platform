@@ -221,6 +221,11 @@ def create_candidate(
     if not data.get("applied_by"):
         data["applied_by"] = _recruiter_email(db, data.get("sourced_by_id"))
 
+    # A candidate added fresh for a drive starts at the first tracker stage.
+    if data.get("drive_id") and not data.get("drive_tracker_stage"):
+        from infra.models import DriveTrackerStage
+        data["drive_tracker_stage"] = DriveTrackerStage.lined_up
+
     candidate = Candidate(**data, status=CandidateStatus.sourced)
     db.add(candidate)
     db.flush()  # assign candidate.id without committing yet
@@ -240,6 +245,121 @@ def create_candidate(
 
     db.commit()
     db.refresh(candidate)
+    return candidate
+
+
+def create_candidate_full(db: Session, data: dict, current_user, drive_id: int | None = None) -> Candidate:
+    """Full source-a-candidate orchestration shared by the normal `POST /candidates`
+    route and the drive add-candidate route, so both save identical data and run the
+    same side effects: OL duplicate check, candidate insert, OL onboarding/benched
+    flags, activity log, and min-load caller assignment.
+
+    `data` is a CandidateCreate-shaped dict. When `drive_id` is given the candidate is
+    linked to that drive (and starts at tracker stage lined_up via create_candidate)."""
+    import json as _json
+
+    from features.mrr.activity.service import log as log_activity
+    from features.mrr.notifications.service import push
+    from infra.models import Job, NotifType
+
+    role = current_user.role.value
+    if drive_id is not None:
+        data["drive_id"] = drive_id
+    email = data.get("email")
+    job_id = data.get("job_id")
+
+    job = db.query(Job).filter(Job.id == job_id).first() if job_id else None
+
+    # OL duplicate check — block if already applied to this job in OfferLetter.
+    if job and job.job_id and email:
+        try:
+            from core.sql_loader import load_ol_sql
+            from features.mrr.ol_lookup.routes import _get_ol_conn
+            from fastapi import HTTPException
+
+            _ol = _get_ol_conn()
+            try:
+                with _ol.cursor() as _cur:
+                    _cur.execute(load_ol_sql("check_duplicate_application.sql"), (email, job.job_id))
+                    if (_cur.fetchone() or {}).get("is_mapped") == "YES":
+                        raise HTTPException(
+                            status_code=409,
+                            detail="This candidate has already applied for this job in OfferLetter.",
+                        )
+            finally:
+                _ol.close()
+        except Exception as exc:
+            from fastapi import HTTPException
+            if isinstance(exc, HTTPException):
+                raise
+            # OL unreachable — don't block sourcing.
+
+    # Both recruiters and DLs are credited as sourcer.
+    sourced_by_id = current_user.id if role in ("recruiter", "delivery_lead") else None
+    candidate = create_candidate(
+        db,
+        data,
+        sourced_by_id=sourced_by_id,
+        created_by_email=current_user.email,
+    )
+
+    # OL onboarding/benched flags.
+    if email:
+        try:
+            from features.mrr.ol_lookup.routes import check_onboarded_benched
+            flags = check_onboarded_benched(email)
+            candidate.is_onboarded = flags["is_onboarded"]
+            candidate.is_benched = flags["is_benched"]
+            db.commit()
+            db.refresh(candidate)
+        except Exception:
+            pass  # OL unreachable — flags stay False, non-blocking.
+
+    log_activity(
+        db,
+        current_user.id,
+        "sourced_candidate",
+        (
+            f"Sourced {candidate.full_name} for {job.client_name} – {job.role_title}"
+            if job
+            else f"Sourced candidate: {candidate.full_name}"
+        ),
+        entity_type="candidate",
+        entity_id=candidate.id,
+    )
+
+    # Caller assignment:
+    #  - Recruiter sourced → hand off to a recruiter caller (min-load).
+    #  - DL sourced → DL keeps the candidate; no "handed to recruiter" badge.
+    if job:
+        if role == "delivery_lead":
+            candidate.assigned_to_id = current_user.id
+            db.commit()
+            db.refresh(candidate)
+        else:
+            caller_ids = (
+                _json.loads(job.caller_ids or "[]")
+                if isinstance(job.caller_ids, str)
+                else []
+            )
+            if not caller_ids and job.assigned_caller_id:
+                caller_ids = [job.assigned_caller_id]
+            if caller_ids:
+                from features.mrr.allocation.service import _batch_caller_counts
+
+                caller_counts = _batch_caller_counts(db, caller_ids)
+                caller_id = min(caller_ids, key=lambda uid: caller_counts.get(uid, 0))
+                candidate = assign_candidate(db, candidate.id, caller_id)
+                if caller_id != current_user.id:
+                    push(
+                        db,
+                        caller_id,
+                        f"New candidate sourced: {candidate.full_name} for {job.role_title} ({job.client_name}). Ready for your call.",
+                        NotifType.candidate_sourced,
+                        entity_id=candidate.id,
+                    )
+                    db.commit()
+
     return candidate
 
 

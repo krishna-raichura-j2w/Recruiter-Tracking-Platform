@@ -690,8 +690,12 @@ export default function Candidates() {
                       className="hidden"
                       accept={extractTab === 'pdf' ? '.pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword' : 'image/jpeg,image/png,image/webp,image/gif'}
                       onChange={(e) => {
-                        setExtractFile(e.target.files?.[0] ?? null);
+                        const f = e.target.files?.[0] ?? null;
+                        setExtractFile(f);
                         setExtractError('');
+                        // A PDF/Word picked for extraction IS the resume — auto-attach it
+                        // so the recruiter doesn't upload the same file again below. Removable.
+                        if (f && extractTab === 'pdf' && !resumeKey) handleResumeUpload(f);
                       }}
                     />
                   </div>

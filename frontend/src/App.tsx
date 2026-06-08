@@ -7,6 +7,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import CooUsers from './pages/CooUsers';
 import Jobs from './pages/Jobs';
+import Drives from './pages/Drives';
+import DriveDetail from './pages/DriveDetail';
 import Candidates from './pages/Candidates';
 import CandidateDetail from './pages/CandidateDetail';
 import ValidationQueue from './pages/ValidationQueue';
@@ -63,6 +65,24 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Jobs />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/drives"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'recruiter', 'bh']}>
+                <Drives />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/drives/:driveId"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'kam', 'delivery_lead', 'recruiter', 'bh']}>
+                <DriveDetail />
               </ProtectedRoute>
             }
           />

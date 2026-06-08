@@ -120,6 +120,50 @@ class CallOutcome(str, enum.Enum):
     l1_other_client = "l1_other_client"
 
 
+class DriveType(str, enum.Enum):
+    walkin = "walkin"
+    virtual = "virtual"
+    college_walkin = "college_walkin"
+    followup = "followup"
+
+
+class DriveStatus(str, enum.Enum):
+    planned = "planned"
+    sourcing = "sourcing"
+    in_progress = "in_progress"
+    shortlisted = "shortlisted"
+    complete = "complete"
+    blocked = "blocked"
+    cancelled = "cancelled"
+
+
+class DriveTrackerStage(str, enum.Enum):
+    lined_up = "lined_up"          # confirmed for the drive
+    confirmed = "confirmed"        # reconfirmed via recruiter call
+    en_route = "en_route"          # started toward venue / virtual lobby
+    reached = "reached"            # reached venue / checked in
+    attended = "attended"          # attended the interview
+    no_show = "no_show"            # did not show
+
+
+class DriveCallType(str, enum.Enum):
+    recruiter_followup = "recruiter_followup"   # general recruiter follow-up
+    lead_am_pulse = "lead_am_pulse"             # Lead/AM posing as client
+    reconfirm_d1 = "reconfirm_d1"               # Phase 4.1 — 24h-before reconfirmation
+    reconfirm_dday = "reconfirm_dday"           # Phase 4.1 — 2h-before reconfirmation
+
+
+class DriveCallOutcome(str, enum.Enum):
+    """Canonical outcome values stored in drive_calls.outcome for reconfirmation
+    calls. Only `confirmed` counts as a confirmation. (Column stays String — other
+    call types may store free text.)"""
+    confirmed = "confirmed"           # will attend
+    not_picked = "not_picked"         # called, didn't pick up
+    not_confirmed = "not_confirmed"   # reached, didn't confirm
+    declined = "declined"             # won't attend
+    callback = "callback"             # asked to call back later
+
+
 class AutoRecommendation(str, enum.Enum):
     strong_submit = "Strong Submit"
     consider = "Consider"
@@ -557,6 +601,12 @@ class Candidate(Base):
     is_benched     = Column(Boolean, default=False, server_default="false")
     is_skills_sync = Column(Boolean, default=False, server_default="false")
 
+    # ── Walk-in / Drive tracking ──────────────────────────────────────────────
+    # Set when a candidate is added fresh for a specific drive (not pooled).
+    drive_id            = Column(Integer, ForeignKey("drives.id"), nullable=True, index=True)
+    drive_tracker_stage = Column(SAEnum(DriveTrackerStage, native_enum=False), nullable=True)
+    drive_reached_at    = Column(DateTime, nullable=True)
+
     job = relationship("Job", back_populates="candidates")
     sourced_by = relationship(
         "User",
@@ -570,6 +620,12 @@ class Candidate(Base):
     )
     assigned_validator = relationship("User", foreign_keys=[assigned_validator_id])
     call_logs = relationship("CallLog", back_populates="candidate")
+    drive = relationship("Drive", foreign_keys=[drive_id], back_populates="candidates")
+    drive_calls = relationship(
+        "DriveCall",
+        back_populates="candidate",
+        cascade="all, delete-orphan",
+    )
     assessment = relationship("Assessment", back_populates="candidate", uselist=False)
     validation = relationship("Validation", back_populates="candidate", uselist=False)
     submission = relationship("Submission", back_populates="candidate", uselist=False)
@@ -867,6 +923,74 @@ class ClientEmail(Base):
 
     job        = relationship("Job", foreign_keys=[job_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class Drive(Base):
+    """A walk-in / drive event (drive card) tied to a walk-in/drive job. Holds the
+    fulfilment plan (funnel math). One auto-created per walk-in/drive job; more can
+    be added for reschedules / additional cohorts (no unique constraint on job_id)."""
+    __tablename__ = "drives"
+    id            = Column(Integer, primary_key=True, index=True)
+    job_id        = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    drive_type    = Column(SAEnum(DriveType, native_enum=False), default=DriveType.walkin)
+    status        = Column(SAEnum(DriveStatus, native_enum=False), default=DriveStatus.planned)
+    # ── Funnel math (rates stored as fractions, e.g. 0.10 / 0.65) ──────────────
+    open_positions             = Column(Integer, nullable=True)        # default = job.headcount
+    conversion_rate            = Column(Numeric(5, 4), default=0.10)   # sub→select; 0.20 Infosys
+    buffer_pct                 = Column(Numeric(5, 4), default=0.25)
+    show_rate                  = Column(Numeric(5, 4), default=0.65)   # 0.65 walk-in / 0.80 virtual
+    submission_target_override = Column(Integer, nullable=True)
+    # ── Logistics ─────────────────────────────────────────────────────────────
+    drive_date_from = Column(Date, nullable=True)
+    drive_date_upto = Column(Date, nullable=True)
+    start_time      = Column(String(20), nullable=True)
+    end_time        = Column(String(20), nullable=True)
+    venue           = Column(Text, nullable=True)
+    dress_code      = Column(String(200), nullable=True)
+    virtual_link    = Column(Text, nullable=True)
+    portal_cutoff   = Column(DateTime, nullable=True)
+    # ── Owners ────────────────────────────────────────────────────────────────
+    bh_owner_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    kam_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    dl_owner_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    notes        = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at   = Column(DateTime, default=now_utc)
+    updated_at   = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+    job        = relationship("Job", foreign_keys=[job_id])
+    bh_owner   = relationship("User", foreign_keys=[bh_owner_id])
+    kam_owner  = relationship("User", foreign_keys=[kam_owner_id])
+    dl_owner   = relationship("User", foreign_keys=[dl_owner_id])
+    candidates = relationship(
+        "Candidate",
+        foreign_keys="Candidate.drive_id",
+        back_populates="drive",
+    )
+    drive_calls = relationship(
+        "DriveCall",
+        back_populates="drive",
+        cascade="all, delete-orphan",
+    )
+
+
+class DriveCall(Base):
+    """A single drive-related call to a candidate (calling process). Flexible log —
+    many per candidate. Distinct from screening `call_logs` (CallOutcome durations)."""
+    __tablename__ = "drive_calls"
+    id           = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    drive_id     = Column(Integer, ForeignKey("drives.id", ondelete="CASCADE"), nullable=False, index=True)
+    caller_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    call_type    = Column(SAEnum(DriveCallType, native_enum=False), nullable=False)
+    call_date    = Column(DateTime, default=now_utc)
+    outcome      = Column(String(100), nullable=True)   # short, e.g. "confirmed" / "no answer"
+    notes        = Column(Text, nullable=True)
+    created_at   = Column(DateTime, default=now_utc)
+
+    candidate = relationship("Candidate", foreign_keys=[candidate_id], back_populates="drive_calls")
+    drive     = relationship("Drive", foreign_keys=[drive_id], back_populates="drive_calls")
+    caller    = relationship("User", foreign_keys=[caller_id])
 
 
 # ── Job.assigned_email_id auto-refresh ────────────────────────────────────────
