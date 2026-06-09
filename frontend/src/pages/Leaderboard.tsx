@@ -1718,17 +1718,751 @@ function BHTargetsSection() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Section 4 — BH × Company (Postgres jobs table)
+// ════════════════════════════════════════════════════════════════════════════
+
+interface BHCompanyRow {
+  bh_user_id: number | null;
+  bh_name: string;
+  client_name: string;
+  role_title: string;
+  headcount: number;
+  jobs_count: number;
+  candidates_count: number;
+  dl_verified_count: number;
+  ol_job_ids: number[];
+}
+
+interface BHCandidate {
+  full_name: string;
+  email: string | null;
+  mrr_job_created_at: string | null;
+  dl_verified: boolean;
+  dl_verified_at: string | null;
+  ol_user_id: number | null;
+  ol_job_posting_id: number | null;
+  ol_step: string | null;
+  ol_created_at: string | null;
+  ol_updated_at: string | null;
+}
+
+type BhSortKey = 'name' | 'hc' | 'companies' | 'roles';
+
+function rowKey(r: { bh_user_id: number | null; client_name: string; role_title: string }) {
+  return `${r.bh_user_id ?? 'null'}|${r.client_name}|${r.role_title}`;
+}
+
+// Parse "YYYY-MM-DD HH:MM" (UTC naive) into ms-since-epoch. Returns null on
+// bad input. Coerces to ISO with a Z suffix so browsers interpret it as UTC.
+function parseUtc(s: string | null): number | null {
+  if (!s) return null;
+  const iso = s.includes('T') ? s : s.replace(' ', 'T') + ':00Z';
+  const t = new Date(iso).getTime();
+  return isNaN(t) ? null : t;
+}
+
+// Format a ms duration. < 60s → "Xm" (rounded up to 1m floor); < 24h → "Xh Ym";
+// ≥ 24h → "Xd Yh". Negative → null.
+function fmtDurationMs(ms: number): string | null {
+  if (ms < 0) return null;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60)        return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)         return `${hrs}h ${mins % 60}m`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ${hrs % 24}h`;
+}
+
+// Compact elapsed-time formatter between two timestamps.
+function fmtElapsed(fromStr: string | null, toStr: string | null): string | null {
+  const from = parseUtc(fromStr);
+  const to   = parseUtc(toStr);
+  if (from == null || to == null) return null;
+  return fmtDurationMs(to - from);
+}
+
+function StatCard({ label, value, accent }: { label: string; value: number | string; accent?: string }) {
+  return (
+    <div
+      className="flex-1 min-w-32 px-4 py-3 rounded-[10px]"
+      style={{
+        background: 'var(--surface-card)',
+        border: '1px solid var(--border-hairline)',
+      }}
+    >
+      <div className="text-[10.5px] font-medium uppercase tracking-wider" style={{ color: 'var(--ink-4)', letterSpacing: '0.06em' }}>
+        {label}
+      </div>
+      <div className="mt-1 font-mono font-semibold tabular-nums text-[22px]" style={{ color: accent ?? 'var(--ink)' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function BHCompaniesSection() {
+  const [rows, setRows] = useState<BHCompanyRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Filters
+  const [search, setSearch] = useState('');
+  const [fBh, setFBh] = useState<Set<string>>(new Set());
+  const [fClient, setFClient] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<BhSortKey>('hc');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const load = () => {
+      setLoading(true);
+      setError('');
+      api.get<{ rows: BHCompanyRow[] }>('/coo/bh-companies')
+        .then(r => setRows(r.data.rows))
+        .catch(e => {
+          const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          setError(msg || 'Failed to load BH companies.');
+        })
+        .finally(() => setLoading(false));
+    };
+    load();
+  }, []);
+
+  // Distinct option lists for filter dropdowns
+  const bhOptions = useMemo(
+    () => uniq((rows ?? []).map(r => r.bh_name)).sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+  const clientOptions = useMemo(
+    () => uniq((rows ?? []).map(r => r.client_name)).sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+
+  // Apply search + filters → flat list
+  const filtered = useMemo(() => {
+    if (!rows) return [];
+    let out = rows;
+    if (fBh.size) out = out.filter(r => fBh.has(r.bh_name));
+    if (fClient.size) out = out.filter(r => fClient.has(r.client_name));
+    const q = search.trim().toLowerCase();
+    if (q) {
+      out = out.filter(r =>
+        r.bh_name.toLowerCase().includes(q) ||
+        r.client_name.toLowerCase().includes(q) ||
+        r.role_title.toLowerCase().includes(q),
+      );
+    }
+    return out;
+  }, [rows, fBh, fClient, search]);
+
+  // Group by BH → companies → roles
+  const grouped = useMemo(() => {
+    const map = new Map<string, BHCompanyRow[]>();
+    for (const row of filtered) {
+      if (!map.has(row.bh_name)) map.set(row.bh_name, []);
+      map.get(row.bh_name)!.push(row);
+    }
+    const groups = Array.from(map.entries()).map(([bh_name, items]) => {
+      const companies = uniq(items.map(i => i.client_name)).length;
+      return {
+        bh_name,
+        items: [...items].sort((a, b) =>
+          a.client_name.localeCompare(b.client_name) ||
+          b.headcount - a.headcount,
+        ),
+        total_hc: items.reduce((s, x) => s + x.headcount, 0),
+        total_roles: items.length,
+        total_jobs: items.reduce((s, x) => s + x.jobs_count, 0),
+        total_candidates: items.reduce((s, x) => s + x.candidates_count, 0),
+        total_verified: items.reduce((s, x) => s + x.dl_verified_count, 0),
+        total_companies: companies,
+      };
+    });
+
+    groups.sort((a, b) => {
+      const dir = sortDir === 'desc' ? -1 : 1;
+      switch (sortKey) {
+        case 'name':      return a.bh_name.localeCompare(b.bh_name) * dir;
+        case 'hc':        return (a.total_hc - b.total_hc) * dir;
+        case 'companies': return (a.total_companies - b.total_companies) * dir;
+        case 'roles':     return (a.total_roles - b.total_roles) * dir;
+      }
+    });
+    return groups;
+  }, [filtered, sortKey, sortDir]);
+
+  // Aggregate summary across what's visible
+  const totals = useMemo(() => ({
+    bhs:        grouped.length,
+    companies:  uniq(filtered.map(r => `${r.bh_name}|${r.client_name}`)).length,
+    roles:      filtered.length,
+    hc:         filtered.reduce((s, r) => s + r.headcount, 0),
+    candidates: filtered.reduce((s, r) => s + r.candidates_count, 0),
+    verified:   filtered.reduce((s, r) => s + r.dl_verified_count, 0),
+  }), [grouped, filtered]);
+
+  // Per-row candidate drawer — open key → loading / data / error.
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const [drawerCache, setDrawerCache] = useState<Map<string, BHCandidate[]>>(new Map());
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState('');
+  // OL-status filter applied inside the open drawer. Resets when a different
+  // row is opened. Empty set = show all statuses (including "Not in OL").
+  const [drawerStatuses, setDrawerStatuses] = useState<Set<string>>(new Set());
+
+  const toggleDrawer = (row: BHCompanyRow) => {
+    const key = rowKey(row);
+    if (openRow === key) { setOpenRow(null); return; }
+    setOpenRow(key);
+    setDrawerStatuses(new Set());
+    if (drawerCache.has(key)) return;
+    setDrawerLoading(true);
+    setDrawerError('');
+    api.get<{ candidates: BHCandidate[] }>('/coo/bh-companies/candidates', {
+      params: {
+        bh_user_id: row.bh_user_id ?? undefined,
+        client_name: row.client_name,
+        role_title: row.role_title,
+      },
+    })
+      .then(r => {
+        setDrawerCache(prev => {
+          const next = new Map(prev);
+          next.set(key, r.data.candidates);
+          return next;
+        });
+      })
+      .catch(e => {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setDrawerError(msg || 'Failed to load candidates.');
+      })
+      .finally(() => setDrawerLoading(false));
+  };
+
+  const handleSort = (k: BhSortKey) => {
+    if (sortKey === k) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setSortKey(k); setSortDir(k === 'name' ? 'asc' : 'desc'); }
+  };
+
+  const toggleCollapse = (bh: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(bh)) next.delete(bh); else next.add(bh);
+      return next;
+    });
+  };
+  const allCollapsed = grouped.length > 0 && grouped.every(g => collapsed.has(g.bh_name));
+  const toggleAll = () => {
+    setCollapsed(allCollapsed ? new Set() : new Set(grouped.map(g => g.bh_name)));
+  };
+
+  const activeFilters = fBh.size + fClient.size + (search.trim() ? 1 : 0);
+  const clearFilters = () => { setFBh(new Set()); setFClient(new Set()); setSearch(''); };
+
+  const sortHeader = (label: string, key: BhSortKey, align: 'left' | 'right' = 'left') => {
+    const active = sortKey === key;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(key)}
+        className="inline-flex items-center gap-1 font-semibold transition-colors"
+        style={{ color: active ? 'var(--ink)' : 'var(--ink-3)' }}
+      >
+        {align === 'right' && <SortIcon active={active} dir={sortDir} />}
+        <span>{label}</span>
+        {align === 'left' && <SortIcon active={active} dir={sortDir} />}
+      </button>
+    );
+  };
+
+  return (
+    <div>
+      {/* Summary stats */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <StatCard label="Business Heads" value={totals.bhs} />
+        <StatCard label="Companies"      value={totals.companies} />
+        <StatCard label="Job Roles"      value={totals.roles} />
+        <StatCard label="HC Positions"   value={totals.hc} accent="var(--accent)" />
+        <StatCard label="Candidates"     value={totals.candidates} accent="#2563EB" />
+        <StatCard label="DL Verified"    value={totals.verified} accent="#059669" />
+      </div>
+
+      {/* Filter bar */}
+      <div
+        className="flex flex-wrap items-center gap-2.5 mb-4 px-3 py-2.5 rounded-[10px]"
+        style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)' }}
+      >
+        <div className="relative" style={{ flex: '1 1 240px', maxWidth: 360 }}>
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} />
+          <input
+            type="text"
+            placeholder="Search BH, company, or role…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-8 pr-8 py-1.5 text-[12.5px] rounded-md outline-none transition-colors"
+            style={{ background: 'var(--surface-muted)', border: '1px solid transparent', color: 'var(--ink)' }}
+            onFocus={e => (e.currentTarget.style.borderColor = 'var(--border-hairline)')}
+            onBlur={e => (e.currentTarget.style.borderColor = 'transparent')}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--ink-4)' }}
+              aria-label="Clear search"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        <MultiSelectFilter label="BHs"       options={bhOptions}     selected={fBh}     onChange={setFBh} />
+        <MultiSelectFilter label="Companies" options={clientOptions} selected={fClient} onChange={setFClient} />
+
+        <div className="flex-1" />
+
+        {activeFilters > 0 && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-[11.5px] font-medium px-2 py-1 rounded-md transition-colors"
+            style={{ color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
+          >
+            Clear ({activeFilters})
+          </button>
+        )}
+        {grouped.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="text-[11.5px] font-medium px-2 py-1 rounded-md transition-colors"
+            style={{ color: 'var(--ink-2)', border: '1px solid var(--border-hairline)' }}
+          >
+            {allCollapsed ? 'Expand all' : 'Collapse all'}
+          </button>
+        )}
+      </div>
+
+      {loading && <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-4)' }}>Loading…</div>}
+      {error && <div style={{ padding: 16, color: '#b91c1c' }}>{error}</div>}
+
+      {!loading && !error && grouped.length === 0 && (
+        <div className="text-center py-12 rounded-[10px]"
+             style={{ background: 'var(--surface-card)', border: '1px solid var(--border-hairline)', color: 'var(--ink-4)' }}>
+          No matching jobs.
+        </div>
+      )}
+
+      {!loading && !error && grouped.length > 0 && (
+        <div
+          style={{
+            border: '1px solid var(--border-hairline)',
+            borderRadius: 10,
+            overflow: 'hidden',
+            background: 'var(--surface-card)',
+          }}
+        >
+          <table className="w-full border-collapse" style={{ fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border-hairline)' }}>
+                <th className="text-left px-3 py-2.5 font-semibold" style={{ width: 220, color: 'var(--ink-2)' }}>
+                  {sortHeader('Business Head', 'name')}
+                </th>
+                <th className="text-left px-3 py-2.5 font-semibold" style={{ width: '28%', color: 'var(--ink-2)' }}>Company</th>
+                <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--ink-2)' }}>Job Role</th>
+                <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 100, color: 'var(--ink-2)' }}>
+                  {sortHeader('HC', 'hc', 'right')}
+                </th>
+                <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 70, color: 'var(--ink-2)' }}>Jobs</th>
+                <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 110, color: 'var(--ink-2)' }}>Candidates</th>
+                <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 110, color: 'var(--ink-2)' }}>DL Verified</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map(group => {
+                const isCollapsed = collapsed.has(group.bh_name);
+                return (
+                  <Fragment key={group.bh_name}>
+                    {/* Group header */}
+                    <tr style={{ background: 'var(--surface-muted)', borderTop: '1px solid var(--border-hairline)', borderBottom: '1px solid var(--border-hairline)' }}>
+                      <td colSpan={3} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleCollapse(group.bh_name)}
+                          className="flex items-center gap-1.5 font-semibold text-[13px] transition-colors"
+                          style={{ color: 'var(--ink)' }}
+                        >
+                          <ChevronRight
+                            size={13}
+                            style={{
+                              transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                              transition: 'transform 120ms ease',
+                              color: 'var(--ink-3)',
+                            }}
+                          />
+                          <span>{group.bh_name}</span>
+                          <span className="ml-1.5 text-[11px] font-normal" style={{ color: 'var(--ink-3)' }}>
+                            {group.total_companies} {group.total_companies === 1 ? 'company' : 'companies'} ·
+                            {' '}{group.total_roles} {group.total_roles === 1 ? 'role' : 'roles'}
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
+                        {group.total_hc}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums" style={{ color: 'var(--ink-2)' }}>
+                        {group.total_jobs}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums" style={{ color: '#2563EB' }}>
+                        {group.total_candidates}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums" style={{ color: '#059669' }}>
+                        {group.total_verified}
+                      </td>
+                    </tr>
+
+                    {/* Detail rows — hide when collapsed */}
+                    {!isCollapsed && group.items.map((row, idx) => {
+                      const prev = idx > 0 ? group.items[idx - 1] : null;
+                      const isFirstOfCompany = !prev || prev.client_name !== row.client_name;
+                      const key = rowKey(row);
+                      const isOpen = openRow === key;
+                      const cands = drawerCache.get(key);
+                      const baseBg = idx % 2 === 0 ? 'transparent' : 'var(--surface-muted)';
+                      return (
+                        <Fragment key={`${key}-${idx}`}>
+                          <tr
+                            style={{
+                              borderBottom: isOpen ? 'none' : '1px solid var(--border-hairline)',
+                              background: isOpen ? 'var(--accent-soft)' : baseBg,
+                            }}
+                            onMouseEnter={e => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)'; }}
+                            onMouseLeave={e => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = baseBg; }}
+                          >
+                            <td className="px-3 py-2" style={{ color: 'var(--ink-4)' }}></td>
+                            <td className="px-3 py-2 align-top" style={{ color: isFirstOfCompany ? 'var(--ink)' : 'var(--ink-4)', fontWeight: isFirstOfCompany ? 500 : 400 }}>
+                              {isFirstOfCompany ? row.client_name : <span style={{ paddingLeft: 6 }}>↳</span>}
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleDrawer(row)}
+                                disabled={row.candidates_count === 0}
+                                className="inline-flex items-center gap-1.5 text-left transition-colors"
+                                style={{
+                                  color: row.candidates_count === 0 ? 'var(--ink-3)' : 'var(--accent)',
+                                  cursor: row.candidates_count === 0 ? 'default' : 'pointer',
+                                  textDecoration: row.candidates_count === 0 ? 'none' : 'underline',
+                                  textDecorationStyle: 'dotted',
+                                  textUnderlineOffset: 3,
+                                  fontWeight: 500,
+                                }}
+                                title={row.candidates_count === 0 ? 'No candidates sourced yet' : 'Click to view candidates'}
+                              >
+                                <ChevronRight
+                                  size={11}
+                                  style={{
+                                    transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                    transition: 'transform 120ms ease',
+                                    opacity: row.candidates_count === 0 ? 0.3 : 1,
+                                  }}
+                                />
+                                <span>{row.role_title}</span>
+                              </button>
+                              {row.ol_job_ids.length > 0 && (
+                                <span
+                                  className="ml-2 font-mono tabular-nums"
+                                  style={{ color: 'var(--ink-4)', fontSize: 10.5 }}
+                                  title={`OL job_posting_id${row.ol_job_ids.length === 1 ? '' : 's'}: ${row.ol_job_ids.join(', ')}`}
+                                >
+                                  #{row.ol_job_ids.slice(0, 3).join(', #')}
+                                  {row.ol_job_ids.length > 3 && (
+                                    <span> +{row.ol_job_ids.length - 3}</span>
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold" style={{ color: 'var(--ink)' }}>
+                              {row.headcount}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: 'var(--ink-3)' }}>
+                              {row.jobs_count}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: row.candidates_count > 0 ? '#2563EB' : 'var(--ink-4)', fontWeight: row.candidates_count > 0 ? 600 : 400 }}>
+                              {row.candidates_count}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: row.dl_verified_count > 0 ? '#059669' : 'var(--ink-4)', fontWeight: row.dl_verified_count > 0 ? 600 : 400 }}>
+                              {row.candidates_count > 0
+                                ? <>{row.dl_verified_count}<span className="text-[10.5px] font-normal" style={{ color: 'var(--ink-4)' }}> /{row.candidates_count}</span></>
+                                : '—'}
+                            </td>
+                          </tr>
+
+                          {isOpen && (
+                            <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border-hairline)' }}>
+                              <td colSpan={7} className="px-0 py-0">
+                                <div className="px-6 py-3" style={{ borderTop: '1px dashed var(--border-hairline)' }}>
+                                  <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}>
+                                    Candidates · {row.role_title} <span className="font-normal" style={{ color: 'var(--ink-4)' }}>({row.client_name})</span>
+                                  </div>
+                                  {drawerLoading && !cands && (
+                                    <div className="text-[12px] py-2" style={{ color: 'var(--ink-4)' }}>Loading…</div>
+                                  )}
+                                  {drawerError && !cands && (
+                                    <div className="text-[12px] py-2" style={{ color: '#b91c1c' }}>{drawerError}</div>
+                                  )}
+                                  {cands && cands.length === 0 && (
+                                    <div className="text-[12px] py-2" style={{ color: 'var(--ink-4)' }}>No candidates found.</div>
+                                  )}
+                                  {cands && cands.length > 0 && (() => {
+                                    // Status options (with "Not in OL" sentinel for null steps), sorted with counts.
+                                    const statusCounts: Record<string, number> = {};
+                                    for (const c of cands) {
+                                      const k = c.ol_step ?? 'Not in OL';
+                                      statusCounts[k] = (statusCounts[k] || 0) + 1;
+                                    }
+                                    const statusOptions = Object.keys(statusCounts).sort();
+
+                                    // Apply status filter (empty = all).
+                                    const visibleCands = drawerStatuses.size
+                                      ? cands.filter(c => drawerStatuses.has(c.ol_step ?? 'Not in OL'))
+                                      : cands;
+
+                                    // Per-candidate elapsed (DL → current OL update) in ms.
+                                    const tatDlToCurrent = (c: BHCandidate): number | null => {
+                                      const from = parseUtc(c.dl_verified_at);
+                                      const to   = parseUtc(c.ol_updated_at);
+                                      return (from != null && to != null && to >= from) ? to - from : null;
+                                    };
+
+                                    // Two averages: (1) DL → current status across all OL-tracked verified
+                                    // candidates in view, (2) DL → Onboarded for the onboarded subset only.
+                                    const allTats = visibleCands.map(tatDlToCurrent).filter((v): v is number => v != null);
+                                    const avgAllStr = allTats.length
+                                      ? fmtDurationMs(allTats.reduce((s, v) => s + v, 0) / allTats.length)
+                                      : null;
+
+                                    const onboardedTats = visibleCands
+                                      .filter(c => c.ol_step === 'Onboarded')
+                                      .map(tatDlToCurrent)
+                                      .filter((v): v is number => v != null);
+                                    const onboardedCount = visibleCands.filter(c => c.ol_step === 'Onboarded').length;
+                                    const avgOnbStr = onboardedTats.length
+                                      ? fmtDurationMs(onboardedTats.reduce((s, v) => s + v, 0) / onboardedTats.length)
+                                      : null;
+
+                                    return (
+                                    <>
+                                      <div className="flex items-center gap-3 mb-2 text-[11px] flex-wrap" style={{ color: 'var(--ink-3)' }}>
+                                        <span className="font-mono tabular-nums">{visibleCands.length}{drawerStatuses.size > 0 && ` / ${cands.length}`} candidate{visibleCands.length === 1 ? '' : 's'}</span>
+                                        <span style={{ color: 'var(--ink-4)' }}>·</span>
+                                        <span className="font-mono tabular-nums">
+                                          <span style={{ color: '#059669', fontWeight: 600 }}>{visibleCands.filter(c => c.dl_verified).length}</span> DL verified
+                                        </span>
+                                        <span style={{ color: 'var(--ink-4)' }}>·</span>
+                                        <span className="font-mono tabular-nums">
+                                          <span style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{visibleCands.filter(c => c.ol_user_id != null).length}</span> in OL
+                                        </span>
+                                        {avgAllStr && (
+                                          <span
+                                            className="font-mono tabular-nums inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                            style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600, fontSize: 10.5 }}
+                                            title={`Average elapsed time from DL verification to current OL status across ${allTats.length} candidate${allTats.length === 1 ? '' : 's'}`}
+                                          >
+                                            avg TAT (DL → status): {avgAllStr}
+                                          </span>
+                                        )}
+                                        {onboardedCount > 0 && (
+                                          <>
+                                            <span style={{ color: 'var(--ink-4)' }}>·</span>
+                                            <span className="font-mono tabular-nums">
+                                              <span style={{ color: '#7C3AED', fontWeight: 600 }}>{onboardedCount}</span> onboarded
+                                            </span>
+                                            {avgOnbStr && (
+                                              <span
+                                                className="font-mono tabular-nums inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                                style={{ background: '#F5F3FF', color: '#6D28D9', fontWeight: 600, fontSize: 10.5 }}
+                                                title={`Average elapsed time from DL verification to OL Onboarded across ${onboardedTats.length} onboarded candidate${onboardedTats.length === 1 ? '' : 's'}`}
+                                              >
+                                                avg TAT (DL → Onboarded): {avgOnbStr}
+                                              </span>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+
+                                      {/* Status filter chips */}
+                                      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                                        <span className="text-[10.5px] font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--ink-4)', letterSpacing: '0.06em' }}>Filter:</span>
+                                        {statusOptions.map(s => {
+                                          const active = drawerStatuses.has(s);
+                                          return (
+                                            <button
+                                              key={s}
+                                              type="button"
+                                              onClick={() => {
+                                                setDrawerStatuses(prev => {
+                                                  const next = new Set(prev);
+                                                  if (next.has(s)) next.delete(s); else next.add(s);
+                                                  return next;
+                                                });
+                                              }}
+                                              className="text-[10.5px] font-medium px-2 py-0.5 rounded-full transition-colors"
+                                              style={{
+                                                background: active ? 'var(--accent-soft)' : 'var(--surface-card)',
+                                                color:      active ? 'var(--accent)'      : 'var(--ink-2)',
+                                                border: `1px solid ${active ? 'var(--accent)' : 'var(--border-hairline)'}`,
+                                              }}
+                                            >
+                                              {s} <span className="font-mono tabular-nums opacity-70">{statusCounts[s]}</span>
+                                            </button>
+                                          );
+                                        })}
+                                        {drawerStatuses.size > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setDrawerStatuses(new Set())}
+                                            className="text-[10.5px] font-medium px-2 py-0.5 rounded-full ml-1"
+                                            style={{ color: 'var(--ink-3)' }}
+                                          >
+                                            Clear
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div
+                                        style={{
+                                          maxHeight: 360,
+                                          overflowY: 'auto',
+                                          borderRadius: 6,
+                                          border: '1px solid var(--border-hairline)',
+                                          background: 'var(--surface-card)',
+                                        }}
+                                      >
+                                        <table className="w-full" style={{ fontSize: 11.5 }}>
+                                          <thead>
+                                            <tr style={{ background: 'var(--surface-muted)', position: 'sticky', top: 0, zIndex: 1 }}>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>Name</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>Email</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>DL Verified</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>OL Status</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>Job Created (MRR)</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>OL Applied</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>OL Updated</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }} title="Elapsed time from MRR job creation to last OL status update">Time to Status</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }} title="Elapsed time from DL verification to last OL status update">After DL</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {visibleCands.map((c, i) => (
+                                              <tr
+                                                key={`${c.email}-${i}`}
+                                                style={{
+                                                  borderTop: '1px solid var(--border-hairline)',
+                                                  background: i % 2 === 0 ? 'transparent' : 'var(--surface-muted)',
+                                                }}
+                                              >
+                                                <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{c.full_name || '—'}</td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>{c.email || '—'}</td>
+                                                <td className="px-3 py-1.5 whitespace-nowrap">
+                                                  {c.dl_verified ? (
+                                                    <span className="inline-flex items-center gap-1">
+                                                      <CheckCircle2 size={11} style={{ color: '#059669' }} />
+                                                      <span style={{ color: '#059669', fontWeight: 600 }}>Verified</span>
+                                                      {c.dl_verified_at && (
+                                                        <span className="font-mono" style={{ color: 'var(--ink-4)', fontSize: 10.5 }}>· {c.dl_verified_at}</span>
+                                                      )}
+                                                    </span>
+                                                  ) : (
+                                                    <span style={{ color: 'var(--ink-4)' }}>—</span>
+                                                  )}
+                                                </td>
+                                                <td className="px-3 py-1.5 whitespace-nowrap">
+                                                  {c.ol_user_id == null ? (
+                                                    <span style={{ color: 'var(--ink-4)' }} title="No OL user matched on this email">Not in OL</span>
+                                                  ) : c.ol_job_posting_id == null ? (
+                                                    <span style={{ color: 'var(--ink-4)' }} title="This Postgres job has no OL job_posting_id mapped">Job not in OL</span>
+                                                  ) : c.ol_step ? (
+                                                    <span
+                                                      className="inline-flex items-center px-1.5 py-0.5 rounded font-medium"
+                                                      style={{
+                                                        background: 'var(--accent-soft)',
+                                                        color: 'var(--accent)',
+                                                        fontSize: 10.5,
+                                                      }}
+                                                      title={`OL user #${c.ol_user_id} · job_posting_id ${c.ol_job_posting_id}`}
+                                                    >
+                                                      {c.ol_step}
+                                                    </span>
+                                                  ) : (
+                                                    <span style={{ color: 'var(--ink-4)' }} title={`OL user #${c.ol_user_id} did not apply to job_posting_id ${c.ol_job_posting_id}`}>Not applied to this role</span>
+                                                  )}
+                                                </td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-3)', fontSize: 10.5 }}>{c.mrr_job_created_at || '—'}</td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-3)', fontSize: 10.5 }}>{c.ol_created_at || '—'}</td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-3)', fontSize: 10.5 }}>{c.ol_updated_at || '—'}</td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-2)', fontSize: 11, fontWeight: 500 }}>
+                                                  {fmtElapsed(c.mrr_job_created_at, c.ol_updated_at) || <span style={{ color: 'var(--ink-4)', fontWeight: 400 }}>—</span>}
+                                                </td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: '#1D4ED8', fontSize: 11, fontWeight: 500 }}>
+                                                  {fmtElapsed(c.dl_verified_at, c.ol_updated_at) || <span style={{ color: 'var(--ink-4)', fontWeight: 400 }}>—</span>}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </>
+                                    );
+                                  })()}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: 'var(--surface-muted)', borderTop: '2px solid var(--border-hairline)' }}>
+                <td colSpan={3} className="px-3 py-2.5 text-[12px] font-semibold" style={{ color: 'var(--ink-2)' }}>
+                  Total ({totals.bhs} BH{totals.bhs === 1 ? '' : 's'}, {totals.companies} {totals.companies === 1 ? 'company' : 'companies'}, {totals.roles} {totals.roles === 1 ? 'role' : 'roles'})
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums" style={{ color: 'var(--accent)' }}>{totals.hc}</td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums" style={{ color: 'var(--ink)' }}>
+                  {filtered.reduce((s, r) => s + r.jobs_count, 0)}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums" style={{ color: '#2563EB' }}>
+                  {totals.candidates}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums" style={{ color: '#059669' }}>
+                  {totals.verified}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
-type LbTab = 'recruiter' | 'pipeline' | 'bh-targets';
+type LbTab = 'recruiter' | 'pipeline' | 'bh-targets' | 'bh-companies';
 
 const BH_TARGETS_ROLES = new Set(['coo', 'admin', 'kam']);
 
 const TABS: { key: LbTab; label: string }[] = [
-  { key: 'recruiter',  label: 'Recruiter Dashboard' },
-  { key: 'pipeline',   label: 'Client Pipeline' },
-  { key: 'bh-targets', label: 'BH Target Tracking' },
+  { key: 'recruiter',    label: 'Recruiter Dashboard' },
+  { key: 'pipeline',     label: 'Client Pipeline' },
+  { key: 'bh-targets',   label: 'BH Target Tracking' },
+  { key: 'bh-companies', label: 'BH × Companies' },
 ];
 
 export default function Leaderboard() {
@@ -1792,6 +2526,11 @@ export default function Leaderboard() {
           {visited.has('bh-targets') && <BHTargetsSection />}
         </div>
       )}
+
+      {/* BH × Companies — Postgres jobs roll-up */}
+      <div style={{ display: tab === 'bh-companies' ? 'block' : 'none' }}>
+        {visited.has('bh-companies') && <BHCompaniesSection />}
+      </div>
     </Layout>
   );
 }
