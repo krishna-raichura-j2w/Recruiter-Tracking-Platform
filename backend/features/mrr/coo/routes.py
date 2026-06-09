@@ -363,6 +363,228 @@ def client_pipeline(
     }
 
 
+# ── BH × Company (Postgres jobs table) ───────────────────────────────────────
+#
+# For each Business Head, list the companies they have jobs for, the role
+# titles created under each company, and the total headcount (HC) requested
+# across those roles. One row per (BH, company, role).
+#
+# NB: `jobs.account_manager_id` is declared as FK to `account_managers.id`
+# in the model, but production data actually stores `users.id` of BH-role
+# users. We join to `users` here to recover the real BH name.
+
+@router.get("/bh-companies")
+def bh_companies(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    from sqlalchemy import case, func
+
+    from infra.models import Candidate, Job, User, Validation, ValidationStatus
+
+    # Per-job candidate counts + DL-verified counts in one subquery.
+    # DL-verified = candidate has a Validation row with status='validated'.
+    cand_sub = (
+        db.query(
+            Candidate.job_id.label("job_id"),
+            func.count(Candidate.id).label("cnt"),
+            func.count(
+                case(
+                    (Validation.status == ValidationStatus.validated, 1),
+                ),
+            ).label("verified_cnt"),
+        )
+        .outerjoin(Validation, Validation.candidate_id == Candidate.id)
+        .group_by(Candidate.job_id)
+        .subquery()
+    )
+
+    rows_q = (
+        db.query(
+            Job.account_manager_id.label("bh_user_id"),
+            User.name.label("bh_name"),
+            Job.client_name.label("client_name"),
+            Job.role_title.label("role_title"),
+            func.coalesce(func.sum(Job.headcount), 0).label("headcount"),
+            func.count(Job.id).label("jobs_count"),
+            func.coalesce(func.sum(cand_sub.c.cnt), 0).label("candidates_count"),
+            func.coalesce(func.sum(cand_sub.c.verified_cnt), 0).label("dl_verified_count"),
+        )
+        .outerjoin(User, Job.account_manager_id == User.id)
+        .outerjoin(cand_sub, cand_sub.c.job_id == Job.id)
+        .group_by(Job.account_manager_id, User.name, Job.client_name, Job.role_title)
+        .order_by(User.name.asc(), Job.client_name.asc(), Job.role_title.asc())
+        .all()
+    )
+
+    rows = [
+        {
+            "bh_user_id":        r.bh_user_id,
+            "bh_name":           r.bh_name or "Unmapped",
+            "client_name":       r.client_name,
+            "role_title":        r.role_title,
+            "headcount":         int(r.headcount or 0),
+            "jobs_count":        int(r.jobs_count or 0),
+            "candidates_count":  int(r.candidates_count or 0),
+            "dl_verified_count": int(r.dl_verified_count or 0),
+        }
+        for r in rows_q
+    ]
+
+    return {"rows": rows}
+
+
+def _iso(v) -> str | None:
+    """Format a datetime/date for the BH × Companies drawer (UTC, naive)."""
+    from datetime import date as _date
+    from datetime import datetime as _dt
+    if v is None:
+        return None
+    if isinstance(v, _dt):
+        return v.strftime("%Y-%m-%d %H:%M")
+    if isinstance(v, _date):
+        return v.strftime("%Y-%m-%d")
+    return str(v)
+
+
+@router.get("/bh-companies/candidates")
+def bh_companies_candidates(
+    client_name: str,
+    role_title: str,
+    bh_user_id: int | None = None,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Per-candidate detail for one (BH, company, role) bucket.
+
+    Each row carries:
+      • name + email + local DL-verified state + timestamp
+      • OL user_id matched on email
+      • latest applied_jobs status from OL replica (step label,
+        created_at, updated_at)
+    """
+    from infra.models import Candidate, Job, Validation, ValidationStatus
+
+    job_q = (
+        db.query(Job.id, Job.job_id)  # id = local PK, job_id = OL job_posting_id
+        .filter(Job.client_name == client_name, Job.role_title == role_title)
+    )
+    if bh_user_id is None:
+        job_q = job_q.filter(Job.account_manager_id.is_(None))
+    else:
+        job_q = job_q.filter(Job.account_manager_id == bh_user_id)
+    job_rows = job_q.all()
+    if not job_rows:
+        return {"candidates": []}
+
+    local_job_ids   = [r.id for r in job_rows]
+    # Map: local Postgres Job.id → OL job_posting_id (Job.job_id). Some jobs
+    # have no OL counterpart (job_id NULL) — those candidates won't match in OL.
+    local_to_ol_jp: dict[int, int] = {
+        r.id: r.job_id for r in job_rows if r.job_id is not None
+    }
+    ol_jp_ids = list({jp for jp in local_to_ol_jp.values()})
+
+    # Local DB: candidate + validation timestamp (when status='validated') +
+    # the parent Job.created_at (= when the role was opened in MRR tool).
+    cand_rows = (
+        db.query(
+            Candidate.id,
+            Candidate.job_id.label("local_job_id"),
+            Candidate.full_name,
+            Candidate.email,
+            Validation.status,
+            Validation.created_at.label("validation_at"),
+            Job.created_at.label("job_created_at"),
+        )
+        .join(Job, Job.id == Candidate.job_id)
+        .outerjoin(Validation, Validation.candidate_id == Candidate.id)
+        .filter(Candidate.job_id.in_(local_job_ids))
+        .order_by(Candidate.full_name.asc())
+        .all()
+    )
+
+    # ── OL replica enrichment: match on (user_id, job_posting_id).
+    # We only fetch applied_jobs rows for the OL job_posting_ids that map to
+    # the Postgres jobs in this bucket — so a candidate's OL status reflects
+    # THIS role specifically, not their other applications elsewhere.
+    emails = [c.email.strip() for c in cand_rows if c.email and c.email.strip()]
+    email_to_uid: dict[str, int] = {}
+    # Keyed by (ol_user_id, ol_job_posting_id) → latest applied_jobs row.
+    aj_by_uid_jp: dict[tuple[int, int], dict] = {}
+
+    if emails and ol_jp_ids:
+        from features.mrr.ol_lookup.routes import _get_ol_conn
+        try:
+            ol = _get_ol_conn()
+            try:
+                with ol.cursor() as cur:
+                    fmt = ",".join(["%s"] * len(emails))
+                    cur.execute(
+                        f"SELECT id, email FROM users WHERE email IN ({fmt})",
+                        emails,
+                    )
+                    email_to_uid = {
+                        (r["email"] or "").strip().lower(): r["id"]
+                        for r in cur.fetchall()
+                        if r.get("email")
+                    }
+                    uids = list({v for v in email_to_uid.values()})
+                    if uids:
+                        fmt_u  = ",".join(["%s"] * len(uids))
+                        fmt_jp = ",".join(["%s"] * len(ol_jp_ids))
+                        cur.execute(
+                            f"""
+                            SELECT aj.user_id,
+                                   aj.job_posting_id,
+                                   aj.current_step,
+                                   cwf.workflow_step AS step_name,
+                                   aj.created_at,
+                                   aj.updated_at
+                            FROM applied_jobs aj
+                            LEFT JOIN candidate_work_flows cwf
+                                   ON cwf.step_id = aj.current_step
+                            WHERE aj.user_id IN ({fmt_u})
+                              AND aj.job_posting_id IN ({fmt_jp})
+                            ORDER BY aj.updated_at DESC
+                            """,
+                            (*uids, *ol_jp_ids),
+                        )
+                        # Keep latest aj per (user, job_posting). First match
+                        # wins since the query is ordered updated_at DESC.
+                        for r in cur.fetchall():
+                            key = (r["user_id"], r["job_posting_id"])
+                            if key not in aj_by_uid_jp:
+                                aj_by_uid_jp[key] = r
+            finally:
+                ol.close()
+        except Exception:
+            # OL replica unreachable / SSL / VPC issue — return locals only.
+            email_to_uid = {}
+            aj_by_uid_jp = {}
+
+    out = []
+    for c in cand_rows:
+        em = (c.email or "").strip().lower()
+        uid = email_to_uid.get(em)
+        jp  = local_to_ol_jp.get(c.local_job_id)
+        aj  = aj_by_uid_jp.get((uid, jp)) if (uid is not None and jp is not None) else None
+        out.append({
+            "full_name":          c.full_name,
+            "email":              c.email,
+            "mrr_job_created_at": _iso(c.job_created_at),
+            "dl_verified":        c.status == ValidationStatus.validated if c.status else False,
+            "dl_verified_at":     _iso(c.validation_at) if c.status == ValidationStatus.validated else None,
+            "ol_user_id":         uid,
+            "ol_job_posting_id":  jp,
+            "ol_step":            (aj or {}).get("step_name"),
+            "ol_created_at":      _iso((aj or {}).get("created_at")),
+            "ol_updated_at":      _iso((aj or {}).get("updated_at")),
+        })
+
+    return {"candidates": out}
+
+
 # ── Recruiter leaderboard (local DB, today's metrics) ────────────────────────
 
 RECRUITER_DAY_TARGET = 4
