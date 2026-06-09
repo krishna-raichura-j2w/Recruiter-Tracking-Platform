@@ -399,6 +399,13 @@ def bh_companies(
         .subquery()
     )
 
+    # Postgres `string_agg` collects distinct Job.job_id values (= OL
+    # job_posting_ids) for each bucket. One bucket can contain multiple jobs.
+    ol_job_ids_expr = func.array_remove(
+        func.array_agg(func.distinct(Job.job_id)),
+        None,
+    )
+
     rows_q = (
         db.query(
             Job.account_manager_id.label("bh_user_id"),
@@ -409,6 +416,7 @@ def bh_companies(
             func.count(Job.id).label("jobs_count"),
             func.coalesce(func.sum(cand_sub.c.cnt), 0).label("candidates_count"),
             func.coalesce(func.sum(cand_sub.c.verified_cnt), 0).label("dl_verified_count"),
+            ol_job_ids_expr.label("ol_job_ids"),
         )
         .outerjoin(User, Job.account_manager_id == User.id)
         .outerjoin(cand_sub, cand_sub.c.job_id == Job.id)
@@ -427,6 +435,7 @@ def bh_companies(
             "jobs_count":        int(r.jobs_count or 0),
             "candidates_count":  int(r.candidates_count or 0),
             "dl_verified_count": int(r.dl_verified_count or 0),
+            "ol_job_ids":        sorted(r.ol_job_ids or []),
         }
         for r in rows_q
     ]

@@ -1730,6 +1730,7 @@ interface BHCompanyRow {
   jobs_count: number;
   candidates_count: number;
   dl_verified_count: number;
+  ol_job_ids: number[];
 }
 
 interface BHCandidate {
@@ -1905,11 +1906,15 @@ function BHCompaniesSection() {
   const [drawerCache, setDrawerCache] = useState<Map<string, BHCandidate[]>>(new Map());
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState('');
+  // OL-status filter applied inside the open drawer. Resets when a different
+  // row is opened. Empty set = show all statuses (including "Not in OL").
+  const [drawerStatuses, setDrawerStatuses] = useState<Set<string>>(new Set());
 
   const toggleDrawer = (row: BHCompanyRow) => {
     const key = rowKey(row);
     if (openRow === key) { setOpenRow(null); return; }
     setOpenRow(key);
+    setDrawerStatuses(new Set());
     if (drawerCache.has(key)) return;
     setDrawerLoading(true);
     setDrawerError('');
@@ -2165,6 +2170,18 @@ function BHCompaniesSection() {
                                 />
                                 <span>{row.role_title}</span>
                               </button>
+                              {row.ol_job_ids.length > 0 && (
+                                <span
+                                  className="ml-2 font-mono tabular-nums"
+                                  style={{ color: 'var(--ink-4)', fontSize: 10.5 }}
+                                  title={`OL job_posting_id${row.ol_job_ids.length === 1 ? '' : 's'}: ${row.ol_job_ids.join(', ')}`}
+                                >
+                                  #{row.ol_job_ids.slice(0, 3).join(', #')}
+                                  {row.ol_job_ids.length > 3 && (
+                                    <span> +{row.ol_job_ids.length - 3}</span>
+                                  )}
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold" style={{ color: 'var(--ink)' }}>
                               {row.headcount}
@@ -2199,47 +2216,118 @@ function BHCompaniesSection() {
                                     <div className="text-[12px] py-2" style={{ color: 'var(--ink-4)' }}>No candidates found.</div>
                                   )}
                                   {cands && cands.length > 0 && (() => {
-                                    // Avg TAT from DL-verified → OL onboarded, for the onboarded subset.
-                                    const onboardedTats = cands
-                                      .filter(c => c.ol_step === 'Onboarded' && c.dl_verified_at && c.ol_updated_at)
-                                      .map(c => {
-                                        const from = parseUtc(c.dl_verified_at);
-                                        const to   = parseUtc(c.ol_updated_at);
-                                        return (from != null && to != null && to >= from) ? to - from : null;
-                                      })
+                                    // Status options (with "Not in OL" sentinel for null steps), sorted with counts.
+                                    const statusCounts: Record<string, number> = {};
+                                    for (const c of cands) {
+                                      const k = c.ol_step ?? 'Not in OL';
+                                      statusCounts[k] = (statusCounts[k] || 0) + 1;
+                                    }
+                                    const statusOptions = Object.keys(statusCounts).sort();
+
+                                    // Apply status filter (empty = all).
+                                    const visibleCands = drawerStatuses.size
+                                      ? cands.filter(c => drawerStatuses.has(c.ol_step ?? 'Not in OL'))
+                                      : cands;
+
+                                    // Per-candidate elapsed (DL → current OL update) in ms.
+                                    const tatDlToCurrent = (c: BHCandidate): number | null => {
+                                      const from = parseUtc(c.dl_verified_at);
+                                      const to   = parseUtc(c.ol_updated_at);
+                                      return (from != null && to != null && to >= from) ? to - from : null;
+                                    };
+
+                                    // Two averages: (1) DL → current status across all OL-tracked verified
+                                    // candidates in view, (2) DL → Onboarded for the onboarded subset only.
+                                    const allTats = visibleCands.map(tatDlToCurrent).filter((v): v is number => v != null);
+                                    const avgAllStr = allTats.length
+                                      ? fmtDurationMs(allTats.reduce((s, v) => s + v, 0) / allTats.length)
+                                      : null;
+
+                                    const onboardedTats = visibleCands
+                                      .filter(c => c.ol_step === 'Onboarded')
+                                      .map(tatDlToCurrent)
                                       .filter((v): v is number => v != null);
-                                    const onboardedCount = cands.filter(c => c.ol_step === 'Onboarded').length;
-                                    const avgTatStr = onboardedTats.length
+                                    const onboardedCount = visibleCands.filter(c => c.ol_step === 'Onboarded').length;
+                                    const avgOnbStr = onboardedTats.length
                                       ? fmtDurationMs(onboardedTats.reduce((s, v) => s + v, 0) / onboardedTats.length)
                                       : null;
+
                                     return (
                                     <>
                                       <div className="flex items-center gap-3 mb-2 text-[11px] flex-wrap" style={{ color: 'var(--ink-3)' }}>
-                                        <span className="font-mono tabular-nums">{cands.length} candidate{cands.length === 1 ? '' : 's'}</span>
+                                        <span className="font-mono tabular-nums">{visibleCands.length}{drawerStatuses.size > 0 && ` / ${cands.length}`} candidate{visibleCands.length === 1 ? '' : 's'}</span>
                                         <span style={{ color: 'var(--ink-4)' }}>·</span>
                                         <span className="font-mono tabular-nums">
-                                          <span style={{ color: '#059669', fontWeight: 600 }}>{cands.filter(c => c.dl_verified).length}</span> DL verified
+                                          <span style={{ color: '#059669', fontWeight: 600 }}>{visibleCands.filter(c => c.dl_verified).length}</span> DL verified
                                         </span>
                                         <span style={{ color: 'var(--ink-4)' }}>·</span>
                                         <span className="font-mono tabular-nums">
-                                          <span style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{cands.filter(c => c.ol_user_id != null).length}</span> in OL
+                                          <span style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{visibleCands.filter(c => c.ol_user_id != null).length}</span> in OL
                                         </span>
+                                        {avgAllStr && (
+                                          <span
+                                            className="font-mono tabular-nums inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                            style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600, fontSize: 10.5 }}
+                                            title={`Average elapsed time from DL verification to current OL status across ${allTats.length} candidate${allTats.length === 1 ? '' : 's'}`}
+                                          >
+                                            avg TAT (DL → status): {avgAllStr}
+                                          </span>
+                                        )}
                                         {onboardedCount > 0 && (
                                           <>
                                             <span style={{ color: 'var(--ink-4)' }}>·</span>
                                             <span className="font-mono tabular-nums">
                                               <span style={{ color: '#7C3AED', fontWeight: 600 }}>{onboardedCount}</span> onboarded
                                             </span>
-                                            {avgTatStr && (
+                                            {avgOnbStr && (
                                               <span
                                                 className="font-mono tabular-nums inline-flex items-center gap-1 px-2 py-0.5 rounded"
                                                 style={{ background: '#F5F3FF', color: '#6D28D9', fontWeight: 600, fontSize: 10.5 }}
                                                 title={`Average elapsed time from DL verification to OL Onboarded across ${onboardedTats.length} onboarded candidate${onboardedTats.length === 1 ? '' : 's'}`}
                                               >
-                                                avg TAT (DL → Onboarded): {avgTatStr}
+                                                avg TAT (DL → Onboarded): {avgOnbStr}
                                               </span>
                                             )}
                                           </>
+                                        )}
+                                      </div>
+
+                                      {/* Status filter chips */}
+                                      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                                        <span className="text-[10.5px] font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--ink-4)', letterSpacing: '0.06em' }}>Filter:</span>
+                                        {statusOptions.map(s => {
+                                          const active = drawerStatuses.has(s);
+                                          return (
+                                            <button
+                                              key={s}
+                                              type="button"
+                                              onClick={() => {
+                                                setDrawerStatuses(prev => {
+                                                  const next = new Set(prev);
+                                                  if (next.has(s)) next.delete(s); else next.add(s);
+                                                  return next;
+                                                });
+                                              }}
+                                              className="text-[10.5px] font-medium px-2 py-0.5 rounded-full transition-colors"
+                                              style={{
+                                                background: active ? 'var(--accent-soft)' : 'var(--surface-card)',
+                                                color:      active ? 'var(--accent)'      : 'var(--ink-2)',
+                                                border: `1px solid ${active ? 'var(--accent)' : 'var(--border-hairline)'}`,
+                                              }}
+                                            >
+                                              {s} <span className="font-mono tabular-nums opacity-70">{statusCounts[s]}</span>
+                                            </button>
+                                          );
+                                        })}
+                                        {drawerStatuses.size > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setDrawerStatuses(new Set())}
+                                            className="text-[10.5px] font-medium px-2 py-0.5 rounded-full ml-1"
+                                            style={{ color: 'var(--ink-3)' }}
+                                          >
+                                            Clear
+                                          </button>
                                         )}
                                       </div>
                                       <div
@@ -2262,10 +2350,11 @@ function BHCompaniesSection() {
                                               <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>OL Applied</th>
                                               <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }}>OL Updated</th>
                                               <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }} title="Elapsed time from MRR job creation to last OL status update">Time to Status</th>
+                                              <th className="text-left px-3 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-3)' }} title="Elapsed time from DL verification to last OL status update">After DL</th>
                                             </tr>
                                           </thead>
                                           <tbody>
-                                            {cands.map((c, i) => (
+                                            {visibleCands.map((c, i) => (
                                               <tr
                                                 key={`${c.email}-${i}`}
                                                 style={{
@@ -2314,6 +2403,9 @@ function BHCompaniesSection() {
                                                 <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-3)', fontSize: 10.5 }}>{c.ol_updated_at || '—'}</td>
                                                 <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--ink-2)', fontSize: 11, fontWeight: 500 }}>
                                                   {fmtElapsed(c.mrr_job_created_at, c.ol_updated_at) || <span style={{ color: 'var(--ink-4)', fontWeight: 400 }}>—</span>}
+                                                </td>
+                                                <td className="px-3 py-1.5 font-mono whitespace-nowrap" style={{ color: '#1D4ED8', fontSize: 11, fontWeight: 500 }}>
+                                                  {fmtElapsed(c.dl_verified_at, c.ol_updated_at) || <span style={{ color: 'var(--ink-4)', fontWeight: 400 }}>—</span>}
                                                 </td>
                                               </tr>
                                             ))}
