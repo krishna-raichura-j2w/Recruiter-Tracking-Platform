@@ -440,6 +440,83 @@ def bh_companies(
         for r in rows_q
     ]
 
+    # ── Enrich each row with `client_submitted_count`.
+    #
+    # Definition (per user): a candidate counts as "client submitted" if
+    # their OL applied_jobs row for THIS bucket's job_posting_id has
+    # current_step >= 7 (anything from "Client Submit" onwards in the
+    # pipeline). One trip to OL; bucketed back to Python aggregations.
+    cand_pairs = (
+        db.query(
+            Candidate.email,
+            Job.account_manager_id.label("bh_uid"),
+            Job.client_name,
+            Job.role_title,
+            Job.job_id.label("ol_jp_id"),
+        )
+        .join(Job, Job.id == Candidate.job_id)
+        .filter(Candidate.email.isnot(None), Job.job_id.isnot(None))
+        .all()
+    )
+
+    submitted_counts: dict[tuple, int] = {}
+    if cand_pairs:
+        emails = list({(p.email or "").strip().lower() for p in cand_pairs if p.email})
+        jp_ids = list({p.ol_jp_id for p in cand_pairs if p.ol_jp_id})
+
+        ol_user_by_email: dict[str, int] = {}
+        submitted_pairs: set[tuple[int, int]] = set()
+
+        if emails and jp_ids:
+            try:
+                from features.mrr.ol_lookup.routes import _get_ol_conn
+                ol = _get_ol_conn()
+                try:
+                    with ol.cursor() as cur:
+                        fmt_e = ",".join(["%s"] * len(emails))
+                        cur.execute(
+                            f"SELECT id, LOWER(email) AS em FROM users "
+                            f"WHERE LOWER(email) IN ({fmt_e})",
+                            emails,
+                        )
+                        for r in cur.fetchall():
+                            ol_user_by_email[r["em"]] = r["id"]
+
+                        uids = list({v for v in ol_user_by_email.values()})
+                        if uids:
+                            fmt_u  = ",".join(["%s"] * len(uids))
+                            fmt_jp = ",".join(["%s"] * len(jp_ids))
+                            cur.execute(
+                                f"""
+                                SELECT user_id, job_posting_id
+                                FROM applied_jobs
+                                WHERE user_id IN ({fmt_u})
+                                  AND job_posting_id IN ({fmt_jp})
+                                  AND current_step >= 7
+                                """,
+                                (*uids, *jp_ids),
+                            )
+                            for r in cur.fetchall():
+                                submitted_pairs.add((r["user_id"], r["job_posting_id"]))
+                finally:
+                    ol.close()
+            except Exception:
+                # OL unreachable → fall through with empty data; counts will be 0.
+                ol_user_by_email = {}
+                submitted_pairs = set()
+
+        for p in cand_pairs:
+            uid = ol_user_by_email.get((p.email or "").strip().lower())
+            if uid is not None and (uid, p.ol_jp_id) in submitted_pairs:
+                key = (p.bh_uid, p.client_name, p.role_title)
+                submitted_counts[key] = submitted_counts.get(key, 0) + 1
+
+    for row in rows:
+        # Map "Unmapped" label back to None for the lookup key.
+        bh_uid = row["bh_user_id"]
+        key = (bh_uid, row["client_name"], row["role_title"])
+        row["client_submitted_count"] = submitted_counts.get(key, 0)
+
     return {"rows": rows}
 
 

@@ -1730,6 +1730,7 @@ interface BHCompanyRow {
   jobs_count: number;
   candidates_count: number;
   dl_verified_count: number;
+  client_submitted_count: number;
   ol_job_ids: number[];
 }
 
@@ -1875,6 +1876,7 @@ function BHCompaniesSection() {
         total_jobs: items.reduce((s, x) => s + x.jobs_count, 0),
         total_candidates: items.reduce((s, x) => s + x.candidates_count, 0),
         total_verified: items.reduce((s, x) => s + x.dl_verified_count, 0),
+        total_submitted: items.reduce((s, x) => s + x.client_submitted_count, 0),
         total_companies: companies,
       };
     });
@@ -1899,6 +1901,7 @@ function BHCompaniesSection() {
     hc:         filtered.reduce((s, r) => s + r.headcount, 0),
     candidates: filtered.reduce((s, r) => s + r.candidates_count, 0),
     verified:   filtered.reduce((s, r) => s + r.dl_verified_count, 0),
+    submitted:  filtered.reduce((s, r) => s + r.client_submitted_count, 0),
   }), [grouped, filtered]);
 
   // Per-row candidate drawer — open key → loading / data / error.
@@ -1985,6 +1988,7 @@ function BHCompaniesSection() {
         <StatCard label="HC Positions"   value={totals.hc} accent="var(--accent)" />
         <StatCard label="Candidates"     value={totals.candidates} accent="#2563EB" />
         <StatCard label="DL Verified"    value={totals.verified} accent="#059669" />
+        <StatCard label="Client Submitted" value={totals.submitted} accent="#7C3AED" />
       </div>
 
       {/* Filter bar */}
@@ -2077,6 +2081,7 @@ function BHCompaniesSection() {
                 <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 70, color: 'var(--ink-2)' }}>Jobs</th>
                 <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 110, color: 'var(--ink-2)' }}>Candidates</th>
                 <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 110, color: 'var(--ink-2)' }}>DL Verified</th>
+                <th className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ width: 130, color: 'var(--ink-2)' }} title="Candidates whose OL applied_jobs current_step is ≥ 7 (Client Submit and beyond)">Client Submitted</th>
               </tr>
             </thead>
             <tbody>
@@ -2119,6 +2124,9 @@ function BHCompaniesSection() {
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums" style={{ color: '#059669' }}>
                         {group.total_verified}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums" style={{ color: '#7C3AED' }}>
+                        {group.total_submitted}
                       </td>
                     </tr>
 
@@ -2197,11 +2205,16 @@ function BHCompaniesSection() {
                                 ? <>{row.dl_verified_count}<span className="text-[10.5px] font-normal" style={{ color: 'var(--ink-4)' }}> /{row.candidates_count}</span></>
                                 : '—'}
                             </td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums" style={{ color: row.client_submitted_count > 0 ? '#7C3AED' : 'var(--ink-4)', fontWeight: row.client_submitted_count > 0 ? 600 : 400 }}>
+                              {row.candidates_count > 0
+                                ? <>{row.client_submitted_count}<span className="text-[10.5px] font-normal" style={{ color: 'var(--ink-4)' }}> /{row.candidates_count}</span></>
+                                : '—'}
+                            </td>
                           </tr>
 
                           {isOpen && (
                             <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border-hairline)' }}>
-                              <td colSpan={7} className="px-0 py-0">
+                              <td colSpan={8} className="px-0 py-0">
                                 <div className="px-6 py-3" style={{ borderTop: '1px dashed var(--border-hairline)' }}>
                                   <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}>
                                     Candidates · {row.role_title} <span className="font-normal" style={{ color: 'var(--ink-4)' }}>({row.client_name})</span>
@@ -2440,6 +2453,9 @@ function BHCompaniesSection() {
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums" style={{ color: '#059669' }}>
                   {totals.verified}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums" style={{ color: '#7C3AED' }}>
+                  {totals.submitted}
                 </td>
               </tr>
             </tfoot>
