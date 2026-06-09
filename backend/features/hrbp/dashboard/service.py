@@ -164,6 +164,32 @@ def get_kpis(db: Session, current_user: User) -> dict:
         exits_base.filter(HRBPExitTracking.status == "completed").scalar() or 0
     )
 
+    # Today's tickets (created today, all statuses, scoped)
+    today_tq = db.query(HRBPTicket).filter(
+        func.date(HRBPTicket.created_at) == today_date
+    )
+    today_tq = _ticket_scope(today_tq, current_user, db)
+    today_tickets = today_tq.count()
+
+    # PO outcome amounts (closed tickets only, scoped)
+    closed_base = (
+        db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
+        .filter(HRBPTicket.status == "closed")
+    )
+    closed_base_retained = _ticket_scope(
+        db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
+        .filter(HRBPTicket.status == "closed", HRBPTicket.po_outcome == "retained"),
+        current_user, db,
+    )
+    closed_base_loss = _ticket_scope(
+        db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
+        .filter(HRBPTicket.status == "closed", HRBPTicket.po_outcome == "loss"),
+        current_user, db,
+    )
+
+    po_retained = float(closed_base_retained.scalar() or 0)
+    po_loss     = float(closed_base_loss.scalar() or 0)
+
     return {
         "open_tickets":       open_tickets,
         "sla_breaches":       sla_breaches,
@@ -173,6 +199,9 @@ def get_kpis(db: Session, current_user: User) -> dict:
         "exits_this_month":   exits_this_month,
         "exits_this_quarter": exits_this_quarter,
         "exits_completed":    exits_completed,
+        "today_tickets":      today_tickets,
+        "po_retained":        po_retained,
+        "po_loss":            po_loss,
     }
 
 

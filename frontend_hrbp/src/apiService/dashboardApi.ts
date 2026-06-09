@@ -24,6 +24,9 @@ export interface DashboardKpis {
   exits_this_month:   number;
   exits_this_quarter: number;
   exits_completed:    number;
+  today_tickets:      number;
+  po_retained:        number;
+  po_loss:            number;
 }
 
 export interface MyTicketItem {
