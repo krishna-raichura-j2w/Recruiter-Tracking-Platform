@@ -2467,16 +2467,985 @@ function BHCompaniesSection() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Section 5 — BH Hourly Tracker (live, hourly OL pipeline events)
+// ════════════════════════════════════════════════════════════════════════════
+
+interface HourlyMetric { key: string; label: string }
+interface HourlyHour   { key: string; label: string }
+type HourlyTotals = Record<string, number>;
+interface BHHourlyRow {
+  bh_name:     string;
+  client_name: string;
+  totals:      HourlyTotals;
+  hourly:      Record<string, HourlyTotals>;
+  row_total:   number;
+}
+interface BHHourlyResponse {
+  date:              string;
+  metrics:           HourlyMetric[];
+  hours:             HourlyHour[];
+  rows:              BHHourlyRow[];
+  totals:            HourlyTotals;
+  totals_row_total:  number;
+}
+
+// Color palette per metric — header + cell bg
+const METRIC_PAL: Record<string, { hdr: string; cell: string; ink: string }> = {
+  client_submit: { hdr: '#1E40AF', cell: '#DBEAFE', ink: '#1E3A8A' }, // blue
+  l1:            { hdr: '#B45309', cell: '#FEF3C7', ink: '#92400E' }, // amber
+  l2_l3:         { hdr: '#7C3AED', cell: '#EDE9FE', ink: '#5B21B6' }, // violet
+  selections:    { hdr: '#0F766E', cell: '#CCFBF1', ink: '#115E59' }, // teal
+  onboarded:     { hdr: '#166534', cell: '#DCFCE7', ink: '#14532D' }, // green
+};
+
+// ── Redesigned hourly breakdown card ──
+// Two-pane layout. Left pane: total skyline (single horizontal bar chart of
+// hourly activity, color-stacked by metric). Right pane: per-metric "lanes"
+// with bigger numbers, peak ★ marker, and relative shading scaled per row.
+// Empty hours collapse to a small dot so the eye can ignore them.
+function HourlyBreakdownCard({
+  bhName,
+  clientName,
+  totals,
+  hourly,
+  hours,
+  metrics,
+  rowTotal,
+}: {
+  bhName: string;
+  clientName: string;
+  totals: HourlyTotals;
+  hourly: Record<string, HourlyTotals>;
+  hours: HourlyHour[];
+  metrics: HourlyMetric[];
+  rowTotal: number;
+}) {
+  // Per-hour stacked total (used for the skyline bar chart on top)
+  const hourTotals = hours.map(h => {
+    const cnts = hourly[h.key] ?? {};
+    return { ...h, total: metrics.reduce((s, m) => s + (cnts[m.key] ?? 0), 0), cnts };
+  });
+  const peakHourTotal = Math.max(1, ...hourTotals.map(h => h.total));
+  const dayPeakHourKey = hourTotals.reduce((best, cur) => cur.total > best.total ? cur : best, hourTotals[0]).key;
+
+  // Per-metric peak hour (used for the ★ marker)
+  const peakByMetric: Record<string, string> = {};
+  for (const m of metrics) {
+    let peakKey = '';
+    let peakVal = 0;
+    for (const h of hours) {
+      const v = hourly[h.key]?.[m.key] ?? 0;
+      if (v > peakVal) { peakVal = v; peakKey = h.key; }
+    }
+    if (peakVal > 0) peakByMetric[m.key] = peakKey;
+  }
+
+  // Per-metric max (for relative shading within a row)
+  const maxByMetric: Record<string, number> = {};
+  for (const m of metrics) {
+    let mx = 0;
+    for (const h of hours) {
+      const v = hourly[h.key]?.[m.key] ?? 0;
+      if (v > mx) mx = v;
+    }
+    maxByMetric[m.key] = mx;
+  }
+
+  // Helpers
+  const intensity = (val: number, max: number) => {
+    if (!val || !max) return 0;
+    return Math.max(0.15, val / max);
+  };
+  const cellBg = (val: number, max: number, palCell: string) => {
+    const i = intensity(val, max);
+    if (!i) return undefined;
+    // Use opacity over the metric's pastel — gives clean low/high shading.
+    return palCell;
+  };
+
+  return (
+    <div className="px-4 py-3 bg-gradient-to-br from-slate-50 to-white border-t border-b border-slate-200">
+      {/* Header */}
+      <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+        <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
+          Hourly breakdown
+        </div>
+        <span className="text-slate-300">·</span>
+        <span className="text-[12px] font-semibold text-slate-700">{clientName}</span>
+        <span className="text-slate-300">·</span>
+        <span className="text-[11px] text-slate-400">{bhName}</span>
+        <span className="ml-auto text-[11px] text-slate-500 font-medium">
+          Total <span className="font-bold text-slate-900">{rowTotal}</span> events
+        </span>
+      </div>
+
+      {/* ── Day summary chips (per metric) ── */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {metrics.map(m => {
+          const p   = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+          const v   = totals[m.key] ?? 0;
+          const pk  = peakByMetric[m.key];
+          const pkLabel = pk ? hours.find(h => h.key === pk)?.label : '';
+          return (
+            <div
+              key={m.key}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border ${v ? '' : 'opacity-50'}`}
+              style={{ background: v ? p.cell : '#F8FAFC', borderColor: (v ? p.hdr : '#CBD5E1') + '44' }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ background: p.hdr }} />
+              <span className="text-[11px] font-semibold" style={{ color: p.ink }}>{m.label}</span>
+              <span className="text-[14px] font-black tabular-nums" style={{ color: p.ink }}>{v}</span>
+              {pk && v > 1 && (
+                <span className="text-[10px] font-medium ml-0.5 px-1 py-0.5 rounded-md" style={{ color: p.hdr, background: '#fff' }}>
+                  peak {pkLabel}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Skyline: stacked-metric bar chart, one bar per hour ── */}
+      <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+        <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">
+          Activity per hour
+        </div>
+        <div className="flex items-end gap-1.5" style={{ height: 84 }}>
+          {hourTotals.map(h => {
+            const heightPct = (h.total / peakHourTotal) * 100;
+            const isPeak = h.key === dayPeakHourKey && h.total > 0;
+            return (
+              <div key={h.key} className="flex-1 min-w-[28px] flex flex-col items-center justify-end">
+                {/* Number on top of the bar */}
+                <div
+                  className="text-[11px] font-bold tabular-nums mb-0.5"
+                  style={{ color: h.total ? '#0F172A' : '#CBD5E1' }}
+                >
+                  {h.total || '·'}
+                </div>
+                {/* Stacked vertical bar (metric segments inside) */}
+                <div
+                  className="w-full rounded-md overflow-hidden flex flex-col-reverse"
+                  style={{
+                    height: h.total ? `max(${heightPct}%, 4px)` : 4,
+                    background: h.total ? 'transparent' : '#F1F5F9',
+                    boxShadow: isPeak ? '0 0 0 2px #0F172A' : 'none',
+                  }}
+                >
+                  {metrics.map(m => {
+                    const v = h.cnts[m.key] ?? 0;
+                    if (!v) return null;
+                    const segHeight = (v / h.total) * 100;
+                    const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                    return <div key={m.key} style={{ height: `${segHeight}%`, background: p.hdr }} title={`${m.label}: ${v}`} />;
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Hour labels under the bars */}
+        <div className="flex gap-1.5 mt-1.5">
+          {hourTotals.map(h => (
+            <div key={h.key}
+              className={`flex-1 min-w-[28px] text-center text-[10px] font-medium ${h.key === dayPeakHourKey && h.total > 0 ? 'text-slate-900 font-bold' : 'text-slate-400'}`}
+            >
+              {h.label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Per-metric lanes — bigger cells, relative row shading, ★ on peaks ── */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="text-[12px] w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead>
+              <tr>
+                <th className="text-left px-3 py-2 sticky left-0 bg-white z-10 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider text-[10px]"
+                  style={{ minWidth: 130 }}>
+                  Metric
+                </th>
+                {hours.map(h => (
+                  <th key={h.key}
+                    className={`text-center px-1 py-2 border-b border-slate-200 font-bold text-[10px] ${h.key === dayPeakHourKey ? 'text-slate-900 bg-slate-100' : 'text-slate-400'}`}
+                    style={{ minWidth: 44 }}>
+                    {h.label}
+                  </th>
+                ))}
+                <th className="text-center px-2 py-2 border-b border-slate-200 bg-slate-900 text-white font-bold text-[10px] uppercase tracking-wider"
+                  style={{ minWidth: 60 }}>
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.map(m => {
+                const p   = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                const total = totals[m.key] ?? 0;
+                const maxV  = maxByMetric[m.key] ?? 0;
+                const pkKey = peakByMetric[m.key];
+                return (
+                  <tr key={m.key} className="border-t border-slate-100">
+                    <td className="text-left px-3 py-2 sticky left-0 z-10 border-r border-slate-200 font-semibold whitespace-nowrap"
+                      style={{ background: '#fff', color: p.ink }}>
+                      <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: p.hdr }} />
+                      {m.label}
+                    </td>
+                    {hours.map(h => {
+                      const v = hourly[h.key]?.[m.key] ?? 0;
+                      const i = intensity(v, maxV);
+                      const isPk = v > 0 && h.key === pkKey;
+                      return (
+                        <td key={h.key} className="text-center relative"
+                          style={{
+                            padding: 0,
+                            background: v ? cellBg(v, maxV, p.cell) : '#FAFBFC',
+                            borderRight: '1px solid #F1F5F9',
+                          }}>
+                          <div
+                            className="flex items-center justify-center"
+                            style={{
+                              minHeight: 36,
+                              fontSize: v ? 14 : 11,
+                              fontWeight: v ? 800 : 400,
+                              color: v ? p.ink : '#CBD5E1',
+                              opacity: v ? Math.max(0.55, i) + 0.45 : 1,
+                              outline: isPk ? `2px solid ${p.hdr}` : 'none',
+                              outlineOffset: -2,
+                            }}
+                          >
+                            {v ? (
+                              <span className="tabular-nums flex items-center gap-0.5">
+                                {v}
+                                {isPk && maxV > 1 && (
+                                  <span className="text-[9px]" style={{ color: p.hdr }}>★</span>
+                                )}
+                              </span>
+                            ) : '·'}
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td className="text-center font-black border-l border-slate-200"
+                      style={{ background: total ? p.hdr : '#F8FAFC', color: total ? '#fff' : '#94A3B8', fontSize: 13 }}>
+                      {total || '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* All-metrics row total — sticky-feel, smaller and subtler */}
+              <tr className="border-t-2 border-slate-200 bg-slate-50">
+                <td className="text-left px-3 py-2 sticky left-0 z-10 border-r border-slate-200 font-bold uppercase tracking-wider text-[10px] text-slate-600 whitespace-nowrap"
+                  style={{ background: '#F1F5F9' }}>
+                  All metrics
+                </td>
+                {hours.map(h => {
+                  const sum = metrics.reduce((s, m) => s + (hourly[h.key]?.[m.key] ?? 0), 0);
+                  const isPk = h.key === dayPeakHourKey && sum > 0;
+                  return (
+                    <td key={h.key} className="text-center"
+                      style={{
+                        background: isPk ? '#0F172A' : (sum ? '#E2E8F0' : '#F8FAFC'),
+                        color:      isPk ? '#fff'    : (sum ? '#0F172A' : '#CBD5E1'),
+                        fontWeight: sum ? 700 : 400,
+                        fontSize: sum ? 12 : 11,
+                        padding: 6,
+                        borderRight: '1px solid #E2E8F0',
+                      }}>
+                      {sum || '·'}
+                    </td>
+                  );
+                })}
+                <td className="text-center font-black border-l border-slate-200 bg-slate-900 text-white"
+                  style={{ fontSize: 13, padding: 6 }}>
+                  {rowTotal || '—'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BHHourlyTrackerSection() {
+  const [data, setData]       = useState<BHHourlyResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [selDate, setSelDate] = useState(todayISO());
+  const [search, setSearch]   = useState('');
+  const [fBh, setFBh]         = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [collapsedBhs, setCollapsedBhs] = useState<Set<string>>(new Set());
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [sortKey, setSortKey] = useState<string>('row_total');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const isToday = selDate === todayISO();
+
+  const fetchData = (d = selDate) => {
+    setLoading(true);
+    setError('');
+    api.get<BHHourlyResponse>('/coo/bh-hourly', { params: { date: d } })
+      .then(r => { setData(r.data); setLastRefreshed(new Date()); })
+      .catch(e => {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(msg || 'Failed to load BH hourly tracker.');
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live auto-refresh every 60 seconds when viewing today
+  useEffect(() => {
+    if (!autoRefresh || !isToday) return;
+    const t = setInterval(() => fetchData(selDate), 60_000);
+    return () => clearInterval(t);
+  }, [autoRefresh, isToday, selDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDateChange = (val: string) => { setSelDate(val); fetchData(val); };
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+
+  const toggleExpand = (rowKey: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey);
+      return next;
+    });
+  };
+
+  const expandAll = () => {
+    if (!data) return;
+    setExpanded(new Set(filteredRows.map(r => `${r.bh_name}|${r.client_name}`)));
+  };
+  const collapseAll = () => setExpanded(new Set());
+
+  const toggleBhCollapse = (bhName: string) => {
+    setCollapsedBhs(prev => {
+      const next = new Set(prev);
+      if (next.has(bhName)) next.delete(bhName); else next.add(bhName);
+      return next;
+    });
+  };
+  const collapseAllBhs = () => setCollapsedBhs(new Set(bhGroups.map(g => g.bh_name)));
+  const expandAllBhs   = () => setCollapsedBhs(new Set());
+
+  const bhOptions = useMemo(
+    () => uniq((data?.rows ?? []).map(r => r.bh_name || 'Unmapped').sort()),
+    [data],
+  );
+
+  const filteredRows = useMemo(() => {
+    if (!data) return [];
+    let rows = data.rows;
+    if (fBh.size) rows = rows.filter(r => fBh.has(r.bh_name || 'Unmapped'));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      rows = rows.filter(r =>
+        r.client_name.toLowerCase().includes(q)
+        || (r.bh_name || '').toLowerCase().includes(q),
+      );
+    }
+    if (sortKey) {
+      rows = [...rows].sort((a, b) => {
+        if (sortKey === 'bh') {
+          const cmp = (a.bh_name || '').localeCompare(b.bh_name || '');
+          return sortDir === 'desc' ? -cmp : cmp;
+        }
+        if (sortKey === 'client') {
+          const cmp = a.client_name.localeCompare(b.client_name);
+          return sortDir === 'desc' ? -cmp : cmp;
+        }
+        if (sortKey === 'row_total') {
+          return sortDir === 'desc' ? b.row_total - a.row_total : a.row_total - b.row_total;
+        }
+        const av = a.totals[sortKey] ?? 0;
+        const bv = b.totals[sortKey] ?? 0;
+        return sortDir === 'desc' ? bv - av : av - bv;
+      });
+    }
+    return rows;
+  }, [data, fBh, search, sortKey, sortDir]);
+
+  const metrics = useMemo(() => data?.metrics ?? [], [data]);
+  const hours   = useMemo(() => data?.hours   ?? [], [data]);
+
+  // Column-level totals across filtered rows (matches what's on screen)
+  const filteredTotals = useMemo(() => {
+    const t: HourlyTotals = {};
+    for (const m of metrics) t[m.key] = filteredRows.reduce((s, r) => s + (r.totals[m.key] ?? 0), 0);
+    return t;
+  }, [filteredRows, metrics]);
+  const filteredGrandTotal = useMemo(
+    () => Object.values(filteredTotals).reduce((s, v) => s + v, 0),
+    [filteredTotals],
+  );
+
+  // Hourly column totals (used in expanded view header strip)
+  const hourlyColumnTotals = useMemo(() => {
+    const out: Record<string, HourlyTotals> = {};
+    for (const h of hours) {
+      const hT: HourlyTotals = {};
+      for (const m of metrics) {
+        hT[m.key] = filteredRows.reduce(
+          (s, r) => s + (r.hourly?.[h.key]?.[m.key] ?? 0),
+          0,
+        );
+      }
+      out[h.key] = hT;
+    }
+    return out;
+  }, [filteredRows, hours, metrics]);
+
+  // BH groupings — aggregate clients + per-hour rollups for each BH.
+  // Sort BH groups by descending row_total so the busiest BH shows first.
+  // Inside each group, clients respect the active sort.
+  interface BHGroup {
+    bh_name:   string;
+    clients:   BHHourlyRow[];
+    totals:    HourlyTotals;
+    row_total: number;
+    hourly:    Record<string, HourlyTotals>;
+  }
+  const bhGroups = useMemo<BHGroup[]>(() => {
+    const map = new Map<string, BHGroup>();
+    for (const r of filteredRows) {
+      let g = map.get(r.bh_name);
+      if (!g) {
+        g = {
+          bh_name:   r.bh_name,
+          clients:   [],
+          totals:    Object.fromEntries(metrics.map(m => [m.key, 0])),
+          row_total: 0,
+          hourly:    {},
+        };
+        map.set(r.bh_name, g);
+      }
+      g.clients.push(r);
+      for (const m of metrics) {
+        g.totals[m.key] = (g.totals[m.key] ?? 0) + (r.totals[m.key] ?? 0);
+      }
+      g.row_total += r.row_total;
+      for (const [hKey, hCnts] of Object.entries(r.hourly)) {
+        const dest = (g.hourly[hKey] = g.hourly[hKey] ?? Object.fromEntries(metrics.map(m => [m.key, 0])));
+        for (const m of metrics) {
+          dest[m.key] = (dest[m.key] ?? 0) + (hCnts[m.key] ?? 0);
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.row_total - a.row_total);
+  }, [filteredRows, metrics]);
+
+  // Per-BH totals across ALL rows (ignores BH filter) — used by chip strip
+  // so a user always sees every BH's daily total even after clicking one.
+  const bhChipTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!data) return map;
+    for (const r of data.rows) {
+      map.set(r.bh_name, (map.get(r.bh_name) ?? 0) + r.row_total);
+    }
+    return map;
+  }, [data]);
+  const bhChipList = useMemo(
+    () => Array.from(bhChipTotals.entries()).sort((a, b) => b[1] - a[1]),
+    [bhChipTotals],
+  );
+
+  const dayLabel = isToday ? 'Today' : fmtDate(selDate);
+  const totalCols = 3 + metrics.length + 1; // BH + Client + caret + N metrics + row total
+
+  // Subtle "live" pulse for the today indicator
+  const livePulse = isToday && autoRefresh;
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+          BH Hourly Tracker
+          <span className="text-slate-400 font-normal text-sm">— {dayLabel}</span>
+          {livePulse && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10px] font-semibold text-rose-700">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500" />
+              </span>
+              LIVE
+            </span>
+          )}
+        </h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          {lastRefreshed && (
+            <span className="text-[11px] text-slate-400">
+              Updated {lastRefreshed.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+            </span>
+          )}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600">
+            <Calendar size={12} className="text-blue-500" />
+            <input
+              type="date"
+              max={todayISO()}
+              value={selDate}
+              onChange={e => e.target.value && handleDateChange(e.target.value)}
+              className="border-none outline-none text-xs font-semibold text-slate-700 bg-transparent cursor-pointer"
+            />
+          </div>
+          {isToday && (
+            <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={e => setAutoRefresh(e.target.checked)}
+                className="h-3 w-3 cursor-pointer"
+              />
+              Auto-refresh
+            </label>
+          )}
+          <button
+            onClick={() => fetchData()}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100">
+        <Filter size={13} className="text-slate-400" />
+        <MultiSelectFilter label="BH" options={bhOptions} selected={fBh} onChange={setFBh} />
+        <div className="relative">
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search BH / client…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-52 bg-white"
+          />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={expandAllBhs}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
+            title="Expand all BH groups"
+          >
+            <ChevronDown size={11} /> Open BHs
+          </button>
+          <button
+            onClick={collapseAllBhs}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
+            title="Collapse all BH groups"
+          >
+            <ChevronUp size={11} /> Close BHs
+          </button>
+          <div className="w-px h-5 bg-slate-200 mx-0.5" />
+          <button
+            onClick={expandAll}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
+            title="Expand hourly view for every client"
+          >
+            <ChevronDown size={11} /> Expand hourly
+          </button>
+          <button
+            onClick={collapseAll}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
+          >
+            <ChevronUp size={11} /> Collapse hourly
+          </button>
+          {(fBh.size > 0 || search) && (
+            <button
+              onClick={() => { setFBh(new Set()); setSearch(''); }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
+            >
+              <X size={11} /> Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── BH quick-filter chips: click to toggle filter ── */}
+      {bhChipList.length > 0 && (
+        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mr-1">BH:</span>
+          <button
+            onClick={() => setFBh(new Set())}
+            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+              fBh.size === 0
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            All ({data?.rows.length ?? 0})
+          </button>
+          {bhChipList.map(([bhName, total]) => {
+            const isActive = fBh.has(bhName);
+            return (
+              <button
+                key={bhName}
+                onClick={() => {
+                  setFBh(prev => {
+                    const next = new Set(prev);
+                    if (next.has(bhName)) next.delete(bhName); else next.add(bhName);
+                    return next;
+                  });
+                }}
+                className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                  isActive
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                }`}
+                title={`${bhName} — ${total} pipeline events`}
+              >
+                <span className="truncate max-w-[160px]">{bhName}</span>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+                  }`}
+                >
+                  {total}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── KPI strip — quick totals across the filtered view ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
+        {metrics.map(m => {
+          const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+          return (
+            <div
+              key={m.key}
+              className="rounded-xl px-3 py-2.5 border"
+              style={{ background: p.cell, borderColor: p.hdr + '33' }}
+            >
+              <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: p.hdr }}>
+                {m.label}
+              </div>
+              <div className="text-2xl font-black mt-0.5" style={{ color: p.ink }}>
+                {filteredTotals[m.key] ?? 0}
+              </div>
+            </div>
+          );
+        })}
+        <div className="rounded-xl px-3 py-2.5 border bg-slate-900 border-slate-900 text-white">
+          <div className="text-[10px] uppercase tracking-wide font-bold text-slate-300">Total Events</div>
+          <div className="text-2xl font-black mt-0.5">{filteredGrandTotal}</div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">{error}</div>
+      )}
+
+      {/* ── Main table ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm" style={{ minWidth: 920 }}>
+            {loading && !data ? (
+              <tbody>
+                <tr>
+                  <td colSpan={totalCols} className="py-16 text-center text-slate-400">
+                    <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-slate-300" />
+                    Loading…
+                  </td>
+                </tr>
+              </tbody>
+            ) : (
+              <>
+                <thead>
+                  <tr>
+                    <th className="py-3 px-3" style={{ background: '#0F172A', width: 32 }} />
+                    <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-indigo-700"
+                      style={{ background: '#3730A3', minWidth: 150 }}
+                      onClick={() => handleSort('bh')}>
+                      <span className="flex items-center gap-1">BH <SortIcon active={sortKey === 'bh'} dir={sortDir} /></span>
+                    </th>
+                    <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-green-700"
+                      style={{ background: '#15803D', minWidth: 170 }}
+                      onClick={() => handleSort('client')}>
+                      <span className="flex items-center gap-1">Client Name <SortIcon active={sortKey === 'client'} dir={sortDir} /></span>
+                    </th>
+                    {metrics.map(m => {
+                      const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                      return (
+                        <th key={m.key}
+                          className="text-center py-2 px-2 text-[10px] font-bold border-r border-white/30 whitespace-nowrap cursor-pointer select-none"
+                          style={{ background: p.hdr, color: '#fff', minWidth: 100 }}
+                          onClick={() => handleSort(m.key)}>
+                          <span className="flex items-center justify-center gap-1">
+                            {m.label} <SortIcon active={sortKey === m.key} dir={sortDir} />
+                          </span>
+                        </th>
+                      );
+                    })}
+                    <th
+                      className="text-center py-2 px-2 text-[10px] font-bold whitespace-nowrap cursor-pointer select-none text-white"
+                      style={{ background: '#0F172A', minWidth: 90 }}
+                      onClick={() => handleSort('row_total')}
+                    >
+                      <span className="flex items-center justify-center gap-1">
+                        Day Total <SortIcon active={sortKey === 'row_total'} dir={sortDir} />
+                      </span>
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {bhGroups.length === 0 ? (
+                    <tr>
+                      <td colSpan={totalCols} className="py-14 text-center text-sm text-slate-400">
+                        {search || fBh.size ? 'No matches found.' : 'No pipeline events for this day yet.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    <>
+                      {bhGroups.flatMap((group) => {
+                        const bhCollapsed = collapsedBhs.has(group.bh_name);
+                        // Inside-group client sort follows the active table sort
+                        const clients = [...group.clients].sort((a, b) => {
+                          if (sortKey === 'client') {
+                            const cmp = a.client_name.localeCompare(b.client_name);
+                            return sortDir === 'desc' ? -cmp : cmp;
+                          }
+                          if (sortKey === 'bh') {
+                            return 0; // already grouped by BH
+                          }
+                          if (sortKey === 'row_total') {
+                            return sortDir === 'desc' ? b.row_total - a.row_total : a.row_total - b.row_total;
+                          }
+                          const av = a.totals[sortKey] ?? 0;
+                          const bv = b.totals[sortKey] ?? 0;
+                          return sortDir === 'desc' ? bv - av : av - bv;
+                        });
+
+                        const nodes: React.ReactNode[] = [];
+
+                        // ── BH group header row ──
+                        nodes.push(
+                          <tr
+                            key={`bhg-${group.bh_name}`}
+                            onClick={() => toggleBhCollapse(group.bh_name)}
+                            className="cursor-pointer border-t-2 border-indigo-300 hover:brightness-95 transition-all"
+                            style={{ background: 'linear-gradient(90deg, #312E81 0%, #4338CA 100%)' }}
+                          >
+                            <td className="text-center py-2 px-2">
+                              {bhCollapsed
+                                ? <ChevronRight size={14} className="text-white mx-auto" />
+                                : <ChevronDown  size={14} className="text-white mx-auto" />}
+                            </td>
+                            <td colSpan={2} className="py-2 px-3 text-xs font-bold text-white whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <span className="uppercase tracking-wide text-[11px]">{group.bh_name}</span>
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white/20 text-white">
+                                  {group.clients.length} client{group.clients.length === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                            </td>
+                            {metrics.map(m => {
+                              const v = group.totals[m.key] ?? 0;
+                              const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                              return (
+                                <td
+                                  key={m.key}
+                                  className="text-center text-xs font-black py-2 px-2"
+                                  style={{
+                                    background: v ? p.hdr : 'rgba(255,255,255,0.06)',
+                                    color:      v ? '#fff' : 'rgba(255,255,255,0.5)',
+                                  }}
+                                >
+                                  {v || '—'}
+                                </td>
+                              );
+                            })}
+                            <td
+                              className="text-center text-xs font-black py-2 px-2 text-white"
+                              style={{ background: '#0F172A' }}
+                            >
+                              {group.row_total || '—'}
+                            </td>
+                          </tr>,
+                        );
+
+                        // ── Client rows under this BH group (hidden when collapsed) ──
+                        if (!bhCollapsed) {
+                          clients.forEach((row, ri) => {
+                            const rowKey = `${row.bh_name}|${row.client_name}`;
+                            const isExpanded = expanded.has(rowKey);
+                            nodes.push(
+                              <tr
+                                key={rowKey}
+                                className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer"
+                                onClick={() => toggleExpand(rowKey)}
+                              >
+                                <td className="text-center py-2.5 px-2 border-r border-slate-100 bg-slate-50">
+                                  {isExpanded
+                                    ? <ChevronDown size={14} className="text-slate-500 mx-auto" />
+                                    : <ChevronRight size={14} className="text-slate-400 mx-auto" />}
+                                </td>
+                                <td
+                                  className="py-2.5 px-3 text-xs font-medium border-r border-indigo-100 whitespace-nowrap align-top"
+                                  style={{ color: '#6366F1', background: ri % 2 === 0 ? '#EEF2FF' : '#E0E7FF' }}
+                                >
+                                  <span className="text-indigo-300 mr-1">└</span>
+                                  <span className="text-indigo-400/80 text-[10px]">{group.bh_name}</span>
+                                </td>
+                                <td
+                                  className="py-2.5 px-3 text-xs font-semibold border-r border-slate-200 whitespace-nowrap"
+                                  style={{ color: '#15803D', background: ri % 2 === 0 ? '#F0FDF4' : '#ECFDF5' }}
+                                >
+                                  {row.client_name}
+                                </td>
+                                {metrics.map(m => {
+                                  const v = row.totals[m.key] ?? 0;
+                                  const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                                  return (
+                                    <td key={m.key}
+                                      className="text-center text-xs font-bold py-2.5 px-2 border-r border-slate-100"
+                                      style={{ background: v ? p.cell : undefined }}>
+                                      {v ? <span style={{ color: p.ink }}>{v}</span> : <span className="text-slate-300">—</span>}
+                                    </td>
+                                  );
+                                })}
+                                <td
+                                  className="text-center text-xs font-black py-2.5 px-2"
+                                  style={{ background: row.row_total > 0 ? '#0F172A' : '#F8FAFC', color: row.row_total > 0 ? '#fff' : '#94A3B8' }}
+                                >
+                                  {row.row_total || '—'}
+                                </td>
+                              </tr>,
+                            );
+
+                            // ── Per-client hourly breakdown ──
+                            if (isExpanded) {
+                              nodes.push(
+                                <tr key={`${rowKey}-hourly`}>
+                                  <td colSpan={totalCols} className="p-0">
+                                    <HourlyBreakdownCard
+                                      bhName={row.bh_name}
+                                      clientName={row.client_name}
+                                      totals={row.totals}
+                                      hourly={row.hourly}
+                                      hours={hours}
+                                      metrics={metrics}
+                                      rowTotal={row.row_total}
+                                    />
+                                  </td>
+                                </tr>,
+                              );
+                            }
+                          });
+
+                          // ── BH subtotal row (closes the group) ──
+                          nodes.push(
+                            <tr key={`bhsub-${group.bh_name}`} className="border-t border-indigo-200">
+                              <td className="py-2 px-2 bg-indigo-50" />
+                              <td colSpan={2} className="py-2 px-3 text-[11px] font-bold text-indigo-900 whitespace-nowrap bg-indigo-50">
+                                Subtotal — {group.bh_name}
+                              </td>
+                              {metrics.map(m => {
+                                const v = group.totals[m.key] ?? 0;
+                                const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                                return (
+                                  <td
+                                    key={m.key}
+                                    className="text-center text-xs font-black py-2 px-2 border-r border-indigo-100"
+                                    style={{ background: '#EEF2FF', color: v ? p.ink : '#94A3B8' }}
+                                  >
+                                    {v || '—'}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center text-xs font-black py-2 px-2"
+                                style={{ background: '#312E81', color: '#fff' }}>
+                                {group.row_total || '—'}
+                              </td>
+                            </tr>,
+                          );
+                        }
+
+                        return nodes;
+                      })}
+
+                      {/* ── Footer: filtered totals ── */}
+                      <tr className="border-t-2 border-slate-300">
+                        <td className="py-3 px-2 text-center text-[10px] font-bold text-white" style={{ background: '#0F172A' }}>Σ</td>
+                        <td colSpan={2} className="py-3 px-3 text-xs font-black border-r border-slate-200 whitespace-nowrap" style={{ color: '#15803D', background: '#D1FAE5' }}>
+                          TOTAL&nbsp;({filteredRows.length} client{filteredRows.length === 1 ? '' : 's'})
+                        </td>
+                        {metrics.map(m => {
+                          const v = filteredTotals[m.key] ?? 0;
+                          const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                          return (
+                            <td key={m.key} className="text-center text-xs font-black py-3 px-2 border-r border-slate-200"
+                              style={{ color: p.ink, background: p.cell }}>
+                              {v || '—'}
+                            </td>
+                          );
+                        })}
+                        <td className="text-center text-xs font-black py-3 px-2 text-white" style={{ background: '#0F172A' }}>
+                          {filteredGrandTotal || '—'}
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </>
+            )}
+          </table>
+        </div>
+      </div>
+
+      {/* ── Aggregated hourly trend across whole view ── */}
+      {!loading && filteredRows.length > 0 && (
+        <div className="mt-4 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-600">Hourly trend — all clients</div>
+            <span className="text-[11px] text-slate-400">
+              {fBh.size > 0 || search
+                ? `Aggregated across ${filteredRows.length} matching client${filteredRows.length === 1 ? '' : 's'}`
+                : `Aggregated across ${filteredRows.length} clients`}
+            </span>
+          </div>
+          <HourlyBreakdownCard
+            bhName={fBh.size === 1 ? Array.from(fBh)[0] : 'All BHs'}
+            clientName={fBh.size === 0 && !search ? 'All clients' : `${filteredRows.length} client${filteredRows.length === 1 ? '' : 's'}`}
+            totals={filteredTotals}
+            hourly={hourlyColumnTotals}
+            hours={hours}
+            metrics={metrics}
+            rowTotal={filteredGrandTotal}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
-type LbTab = 'recruiter' | 'pipeline' | 'bh-targets' | 'bh-companies';
+type LbTab = 'recruiter' | 'pipeline' | 'bh-hourly' | 'bh-targets' | 'bh-companies';
 
 const BH_TARGETS_ROLES = new Set(['coo', 'admin', 'kam']);
 
 const TABS: { key: LbTab; label: string }[] = [
   { key: 'recruiter',    label: 'Recruiter Dashboard' },
   { key: 'pipeline',     label: 'Client Pipeline' },
+  { key: 'bh-hourly',    label: 'BH Hourly Tracker' },
   { key: 'bh-targets',   label: 'BH Target Tracking' },
   { key: 'bh-companies', label: 'BH × Companies' },
 ];
@@ -2534,6 +3503,11 @@ export default function Leaderboard() {
       {/* Client Pipeline — mounts (and fetches) only after user opens it */}
       <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
         {visited.has('pipeline') && <ClientPipelineSection />}
+      </div>
+
+      {/* BH Hourly Tracker — live hourly OL pipeline events */}
+      <div style={{ display: tab === 'bh-hourly' ? 'block' : 'none' }}>
+        {visited.has('bh-hourly') && <BHHourlyTrackerSection />}
       </div>
 
       {/* BH Target Tracking — visible to coo, admin, kam only */}

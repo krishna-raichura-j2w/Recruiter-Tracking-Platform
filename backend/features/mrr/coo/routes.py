@@ -245,6 +245,7 @@ from core.sql_loader import load_sql  # noqa: E402
 
 _SQL         = load_sql("002-coo_leaderboard_pipeline.sql")
 _CLIENT_SQL  = load_sql("003-coo_client_pipeline.sql")
+_HOURLY_SQL  = load_sql("004-bh_hourly_pipeline.sql")
 
 
 # ── BH Dashboard (commented out — replaced by client-pipeline) ────────────────
@@ -360,6 +361,163 @@ def client_pipeline(
         "rows":    rows,
         "columns": columns,
         "date":    sel_date.isoformat(),
+    }
+
+
+# ── BH × Client Hourly Tracker ───────────────────────────────────────────────
+#
+# Per (BH, client) row with 5 collapsed metric columns and an hourly breakdown
+# (IST). Each cell counts applied_jobs whose updated_at falls in that IST hour
+# of the selected date AND whose current_step matches the metric's step bucket.
+#
+# Bucketing (mirrors STEP_TO_COL but collapses L2 + L3 into one column):
+#   Client Submit     → step 7
+#   L1 Interview      → 11, 12, 13, 14   (L1 reject + L1 accept paths)
+#   L2/L3 Interview   → 16, 17, 18, 19, 21, 22, 23, 47
+#   Selections        → 33
+#   Onboarded         → 41, 44, 54
+#
+# Hours rendered are the IST business window 09:00–21:00 (13 columns).
+
+HOURLY_METRICS: list[tuple[str, str, tuple[int, ...]]] = [
+    ("client_submit", "Client Submit",   (7,)),
+    ("l1",            "L1 Interview",    (11, 12, 13, 14)),
+    ("l2_l3",         "L2/L3 Interview", (16, 17, 18, 19, 21, 22, 23, 47)),
+    ("selections",    "Selections",      (33,)),
+    ("onboarded",     "Onboarded",       (41, 44, 54)),
+]
+
+# step_id → metric key
+_STEP_TO_METRIC: dict[int, str] = {
+    sid: key for key, _label, sids in HOURLY_METRICS for sid in sids
+}
+
+HOURLY_RANGE = list(range(9, 22))  # 9 AM … 9 PM IST (inclusive)
+
+
+def _hour_label(h: int) -> str:
+    suffix = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12} {suffix}"
+
+
+@router.get("/bh-hourly")
+def bh_hourly(
+    date: str | None = None,
+    _=Depends(get_current_user),
+):
+    """
+    Per (BH, client) hourly breakdown of pipeline events for a single IST day.
+
+    Response shape:
+      {
+        "date": "YYYY-MM-DD",
+        "metrics": [{"key", "label"}, ...],            # 5 metric columns
+        "hours":   [{"key": "9", "label": "9 AM"}, …], # 13 hour columns (9 AM–9 PM)
+        "rows": [
+          {
+            "bh_name", "client_name",
+            "totals":  {<metric_key>: int, ...},      # day-level totals per metric
+            "hourly":  {<hour_int>: {<metric_key>: int, ...}, ...},
+            "row_total": int                          # sum across all metrics today
+          }, ...
+        ],
+        "totals":     {<metric_key>: int, ...},        # column totals (all rows)
+        "totals_row_total": int,
+      }
+    """
+    from datetime import date as _date
+
+    ist_now   = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    today_ist = ist_now.date()
+
+    if date:
+        try:
+            sel_date = _date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(400, "date must be YYYY-MM-DD")
+    else:
+        sel_date = today_ist
+
+    conn = None
+    try:
+        conn = _get_mysql_conn()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, f"DB connection failed: {exc}")
+
+    db_rows = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_HOURLY_SQL, {"sel_date": sel_date.isoformat()})
+            db_rows = cur.fetchall()
+    except Exception as exc:
+        raise HTTPException(500, f"Query failed: {exc}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    # client → {totals: {metric: n}, hourly: {hour: {metric: n}}}
+    agg: dict[str, dict] = {}
+    for r in db_rows:
+        client = (r.get("client") or "").strip()
+        if not client:
+            continue
+        step_id = int(float(r.get("step_id") or 0))
+        metric  = _STEP_TO_METRIC.get(step_id)
+        if not metric:
+            continue
+        hour_raw = r.get("hour_ist")
+        hour     = int(hour_raw) if hour_raw is not None else -1
+        cnt      = int(r.get("cnt") or 0)
+
+        bucket = agg.setdefault(client, {"totals": {}, "hourly": {}})
+        bucket["totals"][metric] = bucket["totals"].get(metric, 0) + cnt
+        hr_bucket = bucket["hourly"].setdefault(hour, {})
+        hr_bucket[metric] = hr_bucket.get(metric, 0) + cnt
+
+    metric_keys = [k for k, _l, _s in HOURLY_METRICS]
+
+    rows = []
+    for client, data in sorted(agg.items()):
+        totals = {k: data["totals"].get(k, 0) for k in metric_keys}
+        hourly = {
+            h: {k: data["hourly"].get(h, {}).get(k, 0) for k in metric_keys}
+            for h in HOURLY_RANGE
+            if h in data["hourly"]
+        }
+        # Include "other hours" bucket if any data fell outside 9-21
+        other_hours = {h: cnts for h, cnts in data["hourly"].items() if h not in HOURLY_RANGE}
+        if other_hours:
+            merged: dict[str, int] = {k: 0 for k in metric_keys}
+            for cnts in other_hours.values():
+                for k, v in cnts.items():
+                    merged[k] = merged.get(k, 0) + v
+            hourly[-1] = merged
+
+        row_total = sum(totals.values())
+        rows.append({
+            "bh_name":     _lookup_bh(client) or "Unmapped",
+            "client_name": client,
+            "totals":      totals,
+            "hourly":      hourly,
+            "row_total":   row_total,
+        })
+
+    # Column totals
+    grand_totals = {k: sum(r["totals"][k] for r in rows) for k in metric_keys}
+
+    return {
+        "date":               sel_date.isoformat(),
+        "metrics":            [{"key": k, "label": lbl} for k, lbl, _s in HOURLY_METRICS],
+        "hours":              [{"key": str(h), "label": _hour_label(h)} for h in HOURLY_RANGE],
+        "rows":               rows,
+        "totals":             grand_totals,
+        "totals_row_total":   sum(grand_totals.values()),
     }
 
 
