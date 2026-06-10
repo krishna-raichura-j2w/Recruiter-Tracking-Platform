@@ -63,6 +63,9 @@ import dayjs, { Dayjs } from "dayjs";
 import { SectionLoader } from "@/components/Loader";
 
 export const Route = createFileRoute("/_authenticated/cadence")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    create: search.create === "true" || search.create === true,
+  }),
   component: CadenceSchedulerPage,
 });
 
@@ -476,6 +479,7 @@ const mapSessionToCadence = (item: any, todayDateStr: string): Cadence => {
 function CadenceSchedulerPage() {
   const { user, can } = useAuth();
   const navigate = useNavigate();
+  const { create: openCreate } = Route.useSearch();
 
   function handleRaiseTicket(c: Cadence) {
     const comment = checkInComments[c.id] || c.comment || "";
@@ -497,6 +501,7 @@ function CadenceSchedulerPage() {
 
   // Dialog/Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEffect(() => { if (openCreate) setShowCreateModal(true); }, [openCreate]);
   const [modalDate, setModalDate] = useState("");
   const [modalTime, setModalTime] = useState("30 mins");
   const [modalMeetingTime, setModalMeetingTime] = useState("10:30");

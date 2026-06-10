@@ -69,8 +69,12 @@ export interface AIChatResult {
 
 // ── API calls ─────────────────────────────────────────────────────────────────
 
-export async function fetchKpis(): Promise<DashboardKpis> {
-  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/kpis`);
+export async function fetchKpis(dateFrom?: string, dateTo?: string): Promise<DashboardKpis> {
+  const params = new URLSearchParams();
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/dashboard/kpis${qs}`);
   return handleResponse<DashboardKpis>(res);
 }
 
