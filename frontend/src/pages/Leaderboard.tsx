@@ -2499,6 +2499,56 @@ const METRIC_PAL: Record<string, { hdr: string; cell: string; ink: string }> = {
   onboarded:     { hdr: '#166534', cell: '#DCFCE7', ink: '#14532D' }, // green
 };
 
+// Inline hourly sparkline — 13 stacked-color bars side-by-side, one per IST hour.
+// Each bar's height is the row's total events that hour relative to the row's
+// peak hour. Within each bar, colored segments stack by metric. Click a bar →
+// drill-down for that hour.
+function HourlySparkline({
+  hours, hourly, metrics, onBarClick,
+}: {
+  hours: HourlyHour[];
+  hourly: Record<string, HourlyTotals>;
+  metrics: HourlyMetric[];
+  onBarClick?: (hour: number) => void;
+}) {
+  const perHour = hours.map(h => {
+    const cnts = hourly[h.key] ?? {};
+    const total = metrics.reduce((s, m) => s + (cnts[m.key] ?? 0), 0);
+    return { ...h, total, cnts };
+  });
+  const peak = Math.max(1, ...perHour.map(h => h.total));
+  return (
+    <div className="flex items-end gap-[2px]" style={{ height: 32 }} title="Hourly activity (IST)">
+      {perHour.map(h => {
+        const pct = h.total ? Math.max(8, (h.total / peak) * 100) : 0;
+        const clickable = h.total > 0 && !!onBarClick;
+        return (
+          <div
+            key={h.key}
+            className={`flex-1 flex flex-col-reverse rounded-sm overflow-hidden relative group ${clickable ? 'cursor-pointer' : ''}`}
+            style={{ height: '100%', background: h.total ? 'transparent' : '#F1F5F9', minWidth: 6 }}
+            onClick={clickable ? (e) => { e.stopPropagation(); onBarClick(Number(h.key)); } : undefined}
+            title={h.total ? `${h.label}: ${h.total} event${h.total === 1 ? '' : 's'}` : `${h.label}: —`}
+          >
+            {h.total > 0 && (
+              <div className="absolute inset-x-0 bottom-0 flex flex-col-reverse rounded-sm overflow-hidden"
+                style={{ height: `${pct}%` }}>
+                {metrics.map(m => {
+                  const v = h.cnts[m.key] ?? 0;
+                  if (!v) return null;
+                  const segH = (v / h.total) * 100;
+                  const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                  return <div key={m.key} style={{ height: `${segH}%`, background: p.hdr }} />;
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Redesigned hourly breakdown card ──
 // Two-pane layout. Left pane: total skyline (single horizontal bar chart of
 // hourly activity, color-stacked by metric). Right pane: per-metric "lanes"
@@ -3099,8 +3149,6 @@ function BHHourlyTrackerSection() {
   const [selDate, setSelDate] = useState(todayISO());
   const [search, setSearch]   = useState('');
   const [fBh, setFBh]         = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [collapsedBhs, setCollapsedBhs] = useState<Set<string>>(new Set());
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [sortKey, setSortKey] = useState<string>('row_total');
@@ -3139,30 +3187,6 @@ function BHHourlyTrackerSection() {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
     else { setSortKey(key); setSortDir('desc'); }
   };
-
-  const toggleExpand = (rowKey: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey);
-      return next;
-    });
-  };
-
-  const expandAll = () => {
-    if (!data) return;
-    setExpanded(new Set(filteredRows.map(r => `${r.bh_name}|${r.client_name}`)));
-  };
-  const collapseAll = () => setExpanded(new Set());
-
-  const toggleBhCollapse = (bhName: string) => {
-    setCollapsedBhs(prev => {
-      const next = new Set(prev);
-      if (next.has(bhName)) next.delete(bhName); else next.add(bhName);
-      return next;
-    });
-  };
-  const collapseAllBhs = () => setCollapsedBhs(new Set(bhGroups.map(g => g.bh_name)));
-  const expandAllBhs   = () => setCollapsedBhs(new Set());
 
   const bhOptions = useMemo(
     () => uniq((data?.rows ?? []).map(r => r.bh_name || 'Unmapped').sort()),
@@ -3270,23 +3294,7 @@ function BHHourlyTrackerSection() {
     return Array.from(map.values()).sort((a, b) => b.row_total - a.row_total);
   }, [filteredRows, metrics]);
 
-  // Per-BH totals across ALL rows (ignores BH filter) — used by chip strip
-  // so a user always sees every BH's daily total even after clicking one.
-  const bhChipTotals = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!data) return map;
-    for (const r of data.rows) {
-      map.set(r.bh_name, (map.get(r.bh_name) ?? 0) + r.row_total);
-    }
-    return map;
-  }, [data]);
-  const bhChipList = useMemo(
-    () => Array.from(bhChipTotals.entries()).sort((a, b) => b[1] - a[1]),
-    [bhChipTotals],
-  );
-
   const dayLabel = isToday ? 'Today' : fmtDate(selDate);
-  const totalCols = 3 + metrics.length + 1; // BH + Client + caret + N metrics + row total
 
   // Subtle "live" pulse for the today indicator
   const livePulse = isToday && autoRefresh;
@@ -3360,115 +3368,48 @@ function BHHourlyTrackerSection() {
             className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-52 bg-white"
           />
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        {(fBh.size > 0 || search) && (
           <button
-            onClick={expandAllBhs}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
-            title="Expand all BH groups"
+            onClick={() => { setFBh(new Set()); setSearch(''); }}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
           >
-            <ChevronDown size={11} /> Open BHs
+            <X size={11} /> Clear
           </button>
-          <button
-            onClick={collapseAllBhs}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
-            title="Collapse all BH groups"
-          >
-            <ChevronUp size={11} /> Close BHs
-          </button>
-          <div className="w-px h-5 bg-slate-200 mx-0.5" />
-          <button
-            onClick={expandAll}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
-            title="Expand hourly view for every client"
-          >
-            <ChevronDown size={11} /> Expand hourly
-          </button>
-          <button
-            onClick={collapseAll}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 bg-white"
-          >
-            <ChevronUp size={11} /> Collapse hourly
-          </button>
-          {(fBh.size > 0 || search) && (
-            <button
-              onClick={() => { setFBh(new Set()); setSearch(''); }}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
-            >
-              <X size={11} /> Clear
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* ── BH quick-filter chips: click to toggle filter ── */}
-      {bhChipList.length > 0 && (
-        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mr-1">BH:</span>
-          <button
-            onClick={() => setFBh(new Set())}
-            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
-              fBh.size === 0
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            All ({data?.rows.length ?? 0})
-          </button>
-          {bhChipList.map(([bhName, total]) => {
-            const isActive = fBh.has(bhName);
-            return (
-              <button
-                key={bhName}
-                onClick={() => {
-                  setFBh(prev => {
-                    const next = new Set(prev);
-                    if (next.has(bhName)) next.delete(bhName); else next.add(bhName);
-                    return next;
-                  });
-                }}
-                className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
-                  isActive
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-                }`}
-                title={`${bhName} — ${total} pipeline events`}
-              >
-                <span className="truncate max-w-[160px]">{bhName}</span>
-                <span
-                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                  }`}
-                >
-                  {total}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── KPI strip — quick totals across the filtered view ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
+      {/* ── KPI cards — five metric tiles + grand total ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
         {metrics.map(m => {
           const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
           return (
-            <div
+            <button
               key={m.key}
-              className="rounded-xl px-3 py-2.5 border"
+              onClick={() => {
+                if (!(filteredTotals[m.key] ?? 0)) return;
+                openDrill({
+                  date: selDate,
+                  bh_name: fBh.size === 1 ? Array.from(fBh)[0] : null,
+                  metric: m.key,
+                  metric_label: m.label,
+                });
+              }}
+              className="rounded-xl px-3 py-3 border text-left transition-transform hover:-translate-y-0.5 hover:shadow-sm"
               style={{ background: p.cell, borderColor: p.hdr + '33' }}
             >
-              <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: p.hdr }}>
+              <div className="text-[10px] uppercase tracking-wide font-bold flex items-center gap-1.5" style={{ color: p.hdr }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.hdr }} />
                 {m.label}
               </div>
-              <div className="text-2xl font-black mt-0.5" style={{ color: p.ink }}>
+              <div className="text-3xl font-black mt-1 tabular-nums" style={{ color: p.ink }}>
                 {filteredTotals[m.key] ?? 0}
               </div>
-            </div>
+            </button>
           );
         })}
-        <div className="rounded-xl px-3 py-2.5 border bg-slate-900 border-slate-900 text-white">
+        <div className="rounded-xl px-3 py-3 border bg-slate-900 border-slate-900 text-white">
           <div className="text-[10px] uppercase tracking-wide font-bold text-slate-300">Total Events</div>
-          <div className="text-2xl font-black mt-0.5">{filteredGrandTotal}</div>
+          <div className="text-3xl font-black mt-1 tabular-nums">{filteredGrandTotal}</div>
         </div>
       </div>
 
@@ -3476,352 +3417,222 @@ function BHHourlyTrackerSection() {
         <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">{error}</div>
       )}
 
-      {/* ── Main table ── */}
+      {/* ── Flat table: BH | Client | 5 metrics | Hourly sparkline | Total ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: 920 }}>
-            {loading && !data ? (
-              <tbody>
+        {loading && !data ? (
+          <div className="py-16 text-center text-slate-400">
+            <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-slate-300" />
+            Loading…
+          </div>
+        ) : bhGroups.length === 0 ? (
+          <div className="py-14 text-center text-sm text-slate-400">
+            {search || fBh.size ? 'No matches found.' : 'No pipeline events for this day yet.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 1100, borderCollapse: 'separate', borderSpacing: 0 }}>
+              <thead className="sticky top-0 z-10">
                 <tr>
-                  <td colSpan={totalCols} className="py-16 text-center text-slate-400">
-                    <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-slate-300" />
-                    Loading…
-                  </td>
+                  <th className="text-left py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200 whitespace-nowrap cursor-pointer select-none"
+                    style={{ minWidth: 150 }}
+                    onClick={() => handleSort('bh')}>
+                    <span className="flex items-center gap-1">BH <SortIcon active={sortKey === 'bh'} dir={sortDir} /></span>
+                  </th>
+                  <th className="text-left py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200 whitespace-nowrap cursor-pointer select-none"
+                    style={{ minWidth: 180 }}
+                    onClick={() => handleSort('client')}>
+                    <span className="flex items-center gap-1">Client <SortIcon active={sortKey === 'client'} dir={sortDir} /></span>
+                  </th>
+                  {metrics.map(m => {
+                    const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                    return (
+                      <th key={m.key}
+                        className="text-center py-2.5 px-2 text-[11px] font-bold uppercase tracking-wider bg-slate-50 border-b border-slate-200 whitespace-nowrap cursor-pointer select-none"
+                        style={{ color: p.hdr, minWidth: 88 }}
+                        onClick={() => handleSort(m.key)}>
+                        <span className="flex items-center justify-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.hdr }} />
+                          {m.label} <SortIcon active={sortKey === m.key} dir={sortDir} />
+                        </span>
+                      </th>
+                    );
+                  })}
+                  <th className="text-left py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200 whitespace-nowrap"
+                    style={{ minWidth: 200 }}>
+                    Hourly (9 AM – 9 PM IST)
+                  </th>
+                  <th className="text-center py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-700 bg-slate-100 border-b border-slate-200 whitespace-nowrap cursor-pointer select-none"
+                    style={{ minWidth: 80 }}
+                    onClick={() => handleSort('row_total')}>
+                    <span className="flex items-center justify-center gap-1">
+                      Total <SortIcon active={sortKey === 'row_total'} dir={sortDir} />
+                    </span>
+                  </th>
                 </tr>
-              </tbody>
-            ) : (
-              <>
-                <thead>
-                  <tr>
-                    <th className="py-3 px-3" style={{ background: '#0F172A', width: 32 }} />
-                    <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-indigo-700"
-                      style={{ background: '#3730A3', minWidth: 150 }}
-                      onClick={() => handleSort('bh')}>
-                      <span className="flex items-center gap-1">BH <SortIcon active={sortKey === 'bh'} dir={sortDir} /></span>
-                    </th>
-                    <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-green-700"
-                      style={{ background: '#15803D', minWidth: 170 }}
-                      onClick={() => handleSort('client')}>
-                      <span className="flex items-center gap-1">Client Name <SortIcon active={sortKey === 'client'} dir={sortDir} /></span>
-                    </th>
-                    {metrics.map(m => {
-                      const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
-                      return (
-                        <th key={m.key}
-                          className="text-center py-2 px-2 text-[10px] font-bold border-r border-white/30 whitespace-nowrap cursor-pointer select-none"
-                          style={{ background: p.hdr, color: '#fff', minWidth: 100 }}
-                          onClick={() => handleSort(m.key)}>
-                          <span className="flex items-center justify-center gap-1">
-                            {m.label} <SortIcon active={sortKey === m.key} dir={sortDir} />
-                          </span>
-                        </th>
-                      );
-                    })}
-                    <th
-                      className="text-center py-2 px-2 text-[10px] font-bold whitespace-nowrap cursor-pointer select-none text-white"
-                      style={{ background: '#0F172A', minWidth: 90 }}
-                      onClick={() => handleSort('row_total')}
-                    >
-                      <span className="flex items-center justify-center gap-1">
-                        Day Total <SortIcon active={sortKey === 'row_total'} dir={sortDir} />
-                      </span>
-                    </th>
-                  </tr>
-                </thead>
+              </thead>
 
-                <tbody>
-                  {bhGroups.length === 0 ? (
-                    <tr>
-                      <td colSpan={totalCols} className="py-14 text-center text-sm text-slate-400">
-                        {search || fBh.size ? 'No matches found.' : 'No pipeline events for this day yet.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    <>
-                      {bhGroups.flatMap((group) => {
-                        const bhCollapsed = collapsedBhs.has(group.bh_name);
-                        // Inside-group client sort follows the active table sort
-                        const clients = [...group.clients].sort((a, b) => {
-                          if (sortKey === 'client') {
-                            const cmp = a.client_name.localeCompare(b.client_name);
-                            return sortDir === 'desc' ? -cmp : cmp;
-                          }
-                          if (sortKey === 'bh') {
-                            return 0; // already grouped by BH
-                          }
-                          if (sortKey === 'row_total') {
-                            return sortDir === 'desc' ? b.row_total - a.row_total : a.row_total - b.row_total;
-                          }
-                          const av = a.totals[sortKey] ?? 0;
-                          const bv = b.totals[sortKey] ?? 0;
-                          return sortDir === 'desc' ? bv - av : av - bv;
-                        });
-
-                        const nodes: React.ReactNode[] = [];
-
-                        // ── BH group header row ──
-                        nodes.push(
-                          <tr
-                            key={`bhg-${group.bh_name}`}
-                            onClick={() => toggleBhCollapse(group.bh_name)}
-                            className="cursor-pointer border-t-2 border-indigo-300 hover:brightness-95 transition-all"
-                            style={{ background: 'linear-gradient(90deg, #312E81 0%, #4338CA 100%)' }}
-                          >
-                            <td className="text-center py-2 px-2">
-                              {bhCollapsed
-                                ? <ChevronRight size={14} className="text-white mx-auto" />
-                                : <ChevronDown  size={14} className="text-white mx-auto" />}
-                            </td>
-                            <td colSpan={2} className="py-2 px-3 text-xs font-bold text-white whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <span className="uppercase tracking-wide text-[11px]">{group.bh_name}</span>
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white/20 text-white">
-                                  {group.clients.length} client{group.clients.length === 1 ? '' : 's'}
-                                </span>
+              <tbody>
+                {bhGroups.flatMap((group) => {
+                  const clients = [...group.clients].sort((a, b) => {
+                    if (sortKey === 'client') {
+                      const cmp = a.client_name.localeCompare(b.client_name);
+                      return sortDir === 'desc' ? -cmp : cmp;
+                    }
+                    if (sortKey === 'bh')       return 0;
+                    if (sortKey === 'row_total') return sortDir === 'desc' ? b.row_total - a.row_total : a.row_total - b.row_total;
+                    const av = a.totals[sortKey] ?? 0;
+                    const bv = b.totals[sortKey] ?? 0;
+                    return sortDir === 'desc' ? bv - av : av - bv;
+                  });
+                  return clients.map((row, ri) => {
+                    const isBhFirst = ri === 0;
+                    return (
+                      <tr key={`${row.bh_name}|${row.client_name}`}
+                        className="hover:bg-slate-50/70 transition-colors"
+                        style={{ borderTop: isBhFirst ? '2px solid #E2E8F0' : '1px solid #F1F5F9' }}>
+                        {/* BH — only printed on first row of each group */}
+                        <td className="py-3 px-3 align-middle whitespace-nowrap"
+                          style={{ background: isBhFirst ? '#FAFBFC' : '#fff' }}>
+                          {isBhFirst ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-block w-1 h-7 rounded-full bg-indigo-500" />
+                              <div className="leading-tight">
+                                <div className="text-[12px] font-bold text-slate-900 truncate" style={{ maxWidth: 140 }}>
+                                  {group.bh_name}
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  {group.clients.length} client{group.clients.length === 1 ? '' : 's'} · {group.row_total} events
+                                </div>
                               </div>
-                            </td>
-                            {metrics.map(m => {
-                              const v = group.totals[m.key] ?? 0;
-                              const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
-                              return (
-                                <td
-                                  key={m.key}
-                                  className={`text-center text-xs font-black py-2 px-2 ${v ? 'cursor-pointer hover:brightness-110' : ''}`}
-                                  style={{
-                                    background: v ? p.hdr : 'rgba(255,255,255,0.06)',
-                                    color:      v ? '#fff' : 'rgba(255,255,255,0.5)',
-                                  }}
-                                  onClick={(e) => {
-                                    if (!v) return;
-                                    e.stopPropagation();
-                                    openDrill({
-                                      date: selDate,
-                                      bh_name: group.bh_name,
-                                      metric: m.key,
-                                      metric_label: m.label,
-                                    });
-                                  }}
-                                  title={v ? `View ${v} candidate${v === 1 ? '' : 's'} for ${m.label} — ${group.bh_name}` : ''}
-                                >
-                                  {v || '—'}
-                                </td>
-                              );
-                            })}
-                            <td
-                              className={`text-center text-xs font-black py-2 px-2 text-white ${group.row_total ? 'cursor-pointer hover:brightness-125' : ''}`}
-                              style={{ background: '#0F172A' }}
-                              onClick={(e) => {
-                                if (!group.row_total) return;
-                                e.stopPropagation();
-                                openDrill({
-                                  date: selDate,
-                                  bh_name: group.bh_name,
-                                  metric_label: `All events`,
-                                });
-                              }}
-                              title={group.row_total ? `View all ${group.row_total} events for ${group.bh_name}` : ''}
-                            >
-                              {group.row_total || '—'}
-                            </td>
-                          </tr>,
-                        );
-
-                        // ── Client rows under this BH group (hidden when collapsed) ──
-                        if (!bhCollapsed) {
-                          clients.forEach((row, ri) => {
-                            const rowKey = `${row.bh_name}|${row.client_name}`;
-                            const isExpanded = expanded.has(rowKey);
-                            nodes.push(
-                              <tr
-                                key={rowKey}
-                                className="border-t border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer"
-                                onClick={() => toggleExpand(rowKey)}
-                              >
-                                <td className="text-center py-2.5 px-2 border-r border-slate-100 bg-slate-50">
-                                  {isExpanded
-                                    ? <ChevronDown size={14} className="text-slate-500 mx-auto" />
-                                    : <ChevronRight size={14} className="text-slate-400 mx-auto" />}
-                                </td>
-                                <td
-                                  className="py-2.5 px-3 text-xs font-medium border-r border-indigo-100 whitespace-nowrap align-top"
-                                  style={{ color: '#6366F1', background: ri % 2 === 0 ? '#EEF2FF' : '#E0E7FF' }}
-                                >
-                                  <span className="text-indigo-300 mr-1">└</span>
-                                  <span className="text-indigo-400/80 text-[10px]">{group.bh_name}</span>
-                                </td>
-                                <td
-                                  className="py-2.5 px-3 text-xs font-semibold border-r border-slate-200 whitespace-nowrap"
-                                  style={{ color: '#15803D', background: ri % 2 === 0 ? '#F0FDF4' : '#ECFDF5' }}
-                                >
-                                  {row.client_name}
-                                </td>
-                                {metrics.map(m => {
-                                  const v = row.totals[m.key] ?? 0;
-                                  const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
-                                  return (
-                                    <td key={m.key}
-                                      className={`text-center text-xs font-bold py-2.5 px-2 border-r border-slate-100 ${v ? 'cursor-pointer hover:brightness-95' : ''}`}
-                                      style={{ background: v ? p.cell : undefined }}
-                                      onClick={(e) => {
-                                        if (!v) return;
-                                        e.stopPropagation();
-                                        openDrill({
-                                          date: selDate,
-                                          bh_name: row.bh_name,
-                                          client_name: row.client_name,
-                                          metric: m.key,
-                                          metric_label: m.label,
-                                        });
-                                      }}
-                                      title={v ? `View ${v} candidate${v === 1 ? '' : 's'} — ${m.label} · ${row.client_name}` : ''}
-                                    >
-                                      {v ? <span style={{ color: p.ink }}>{v}</span> : <span className="text-slate-300">—</span>}
-                                    </td>
-                                  );
-                                })}
-                                <td
-                                  className={`text-center text-xs font-black py-2.5 px-2 ${row.row_total > 0 ? 'cursor-pointer hover:brightness-110' : ''}`}
-                                  style={{ background: row.row_total > 0 ? '#0F172A' : '#F8FAFC', color: row.row_total > 0 ? '#fff' : '#94A3B8' }}
-                                  onClick={(e) => {
-                                    if (!row.row_total) return;
-                                    e.stopPropagation();
-                                    openDrill({
-                                      date: selDate,
-                                      bh_name: row.bh_name,
-                                      client_name: row.client_name,
-                                      metric_label: 'All events',
-                                    });
-                                  }}
-                                  title={row.row_total ? `View all ${row.row_total} events for ${row.client_name}` : ''}
-                                >
-                                  {row.row_total || '—'}
-                                </td>
-                              </tr>,
-                            );
-
-                            // ── Per-client hourly breakdown ──
-                            if (isExpanded) {
-                              nodes.push(
-                                <tr key={`${rowKey}-hourly`}>
-                                  <td colSpan={totalCols} className="p-0">
-                                    <HourlyBreakdownCard
-                                      bhName={row.bh_name}
-                                      clientName={row.client_name}
-                                      totals={row.totals}
-                                      hourly={row.hourly}
-                                      hours={hours}
-                                      metrics={metrics}
-                                      rowTotal={row.row_total}
-                                      onCellClick={(metricKey, metricLabel, hour) =>
-                                        openDrill({
-                                          date: selDate,
-                                          bh_name: row.bh_name,
-                                          client_name: row.client_name,
-                                          metric: metricKey,
-                                          metric_label: metricLabel,
-                                          hour,
-                                        })
-                                      }
-                                    />
-                                  </td>
-                                </tr>,
-                              );
-                            }
-                          });
-
-                          // ── BH subtotal row (closes the group) ──
-                          nodes.push(
-                            <tr key={`bhsub-${group.bh_name}`} className="border-t border-indigo-200">
-                              <td className="py-2 px-2 bg-indigo-50" />
-                              <td colSpan={2} className="py-2 px-3 text-[11px] font-bold text-indigo-900 whitespace-nowrap bg-indigo-50">
-                                Subtotal — {group.bh_name}
-                              </td>
-                              {metrics.map(m => {
-                                const v = group.totals[m.key] ?? 0;
-                                const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
-                                return (
-                                  <td
-                                    key={m.key}
-                                    className="text-center text-xs font-black py-2 px-2 border-r border-indigo-100"
-                                    style={{ background: '#EEF2FF', color: v ? p.ink : '#94A3B8' }}
-                                  >
-                                    {v || '—'}
-                                  </td>
-                                );
-                              })}
-                              <td className="text-center text-xs font-black py-2 px-2"
-                                style={{ background: '#312E81', color: '#fff' }}>
-                                {group.row_total || '—'}
-                              </td>
-                            </tr>,
-                          );
-                        }
-
-                        return nodes;
-                      })}
-
-                      {/* ── Footer: filtered totals ── */}
-                      <tr className="border-t-2 border-slate-300">
-                        <td className="py-3 px-2 text-center text-[10px] font-bold text-white" style={{ background: '#0F172A' }}>Σ</td>
-                        <td colSpan={2} className="py-3 px-3 text-xs font-black border-r border-slate-200 whitespace-nowrap" style={{ color: '#15803D', background: '#D1FAE5' }}>
-                          TOTAL&nbsp;({filteredRows.length} client{filteredRows.length === 1 ? '' : 's'})
+                            </div>
+                          ) : (
+                            <span className="inline-block w-1 h-4 rounded-full bg-slate-200 ml-1" />
+                          )}
                         </td>
+
+                        {/* Client */}
+                        <td className="py-3 px-3 text-[13px] font-semibold text-slate-800 align-middle whitespace-nowrap">
+                          {row.client_name}
+                        </td>
+
+                        {/* Metric cells — big numbers, color-tinted when non-zero */}
                         {metrics.map(m => {
-                          const v = filteredTotals[m.key] ?? 0;
+                          const v = row.totals[m.key] ?? 0;
                           const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
                           return (
-                            <td key={m.key} className="text-center text-xs font-black py-3 px-2 border-r border-slate-200"
-                              style={{ color: p.ink, background: p.cell }}>
-                              {v || '—'}
+                            <td key={m.key}
+                              className={`text-center align-middle ${v ? 'cursor-pointer hover:brightness-95' : ''}`}
+                              style={{
+                                padding: '6px 8px',
+                                background: v ? p.cell : undefined,
+                              }}
+                              onClick={() => {
+                                if (!v) return;
+                                openDrill({
+                                  date: selDate,
+                                  bh_name: row.bh_name,
+                                  client_name: row.client_name,
+                                  metric: m.key,
+                                  metric_label: m.label,
+                                });
+                              }}
+                              title={v ? `View ${v} ${m.label} — ${row.client_name}` : ''}
+                            >
+                              {v ? (
+                                <span className="text-[18px] font-black tabular-nums" style={{ color: p.ink }}>{v}</span>
+                              ) : (
+                                <span className="text-slate-300 text-[15px]">·</span>
+                              )}
                             </td>
                           );
                         })}
-                        <td className="text-center text-xs font-black py-3 px-2 text-white" style={{ background: '#0F172A' }}>
-                          {filteredGrandTotal || '—'}
+
+                        {/* Inline hourly sparkline */}
+                        <td className="py-2 px-3 align-middle" style={{ minWidth: 200 }}>
+                          <HourlySparkline
+                            hours={hours}
+                            hourly={row.hourly}
+                            metrics={metrics}
+                            onBarClick={(hour) =>
+                              openDrill({
+                                date: selDate,
+                                bh_name: row.bh_name,
+                                client_name: row.client_name,
+                                metric_label: 'All events',
+                                hour,
+                              })
+                            }
+                          />
+                        </td>
+
+                        {/* Row total */}
+                        <td className={`text-center align-middle ${row.row_total > 0 ? 'cursor-pointer hover:brightness-110' : ''}`}
+                          style={{
+                            padding: '8px',
+                            background: row.row_total > 0 ? '#0F172A' : '#F8FAFC',
+                            color:      row.row_total > 0 ? '#fff'    : '#94A3B8',
+                          }}
+                          onClick={() => {
+                            if (!row.row_total) return;
+                            openDrill({
+                              date: selDate,
+                              bh_name: row.bh_name,
+                              client_name: row.client_name,
+                              metric_label: 'All events',
+                            });
+                          }}
+                          title={row.row_total ? `View all ${row.row_total} events for ${row.client_name}` : ''}
+                        >
+                          <span className="text-[16px] font-black tabular-nums">{row.row_total || '—'}</span>
                         </td>
                       </tr>
-                    </>
-                  )}
-                </tbody>
-              </>
-            )}
-          </table>
-        </div>
+                    );
+                  });
+                })}
+
+                {/* Footer: grand totals across the filtered view */}
+                <tr style={{ borderTop: '2px solid #E2E8F0' }}>
+                  <td colSpan={2} className="py-3 px-3 text-[11px] font-black uppercase tracking-wider text-slate-700 bg-slate-100">
+                    Total · {filteredRows.length} client{filteredRows.length === 1 ? '' : 's'}
+                  </td>
+                  {metrics.map(m => {
+                    const v = filteredTotals[m.key] ?? 0;
+                    const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                    return (
+                      <td key={m.key} className="text-center align-middle"
+                        style={{ padding: '8px', background: p.cell }}>
+                        <span className="text-[16px] font-black tabular-nums" style={{ color: p.ink }}>
+                          {v || '—'}
+                        </span>
+                      </td>
+                    );
+                  })}
+                  <td className="py-2 px-3 bg-slate-100">
+                    <HourlySparkline
+                      hours={hours}
+                      hourly={hourlyColumnTotals}
+                      metrics={metrics}
+                      onBarClick={(hour) =>
+                        openDrill({
+                          date: selDate,
+                          bh_name: fBh.size === 1 ? Array.from(fBh)[0] : null,
+                          metric_label: 'All events',
+                          hour,
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="text-center text-white text-[16px] font-black tabular-nums" style={{ background: '#0F172A', padding: 8 }}>
+                    {filteredGrandTotal || '—'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ── Aggregated hourly trend across whole view ── */}
-      {!loading && filteredRows.length > 0 && (
-        <div className="mt-4 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-600">Hourly trend — all clients</div>
-            <span className="text-[11px] text-slate-400">
-              {fBh.size > 0 || search
-                ? `Aggregated across ${filteredRows.length} matching client${filteredRows.length === 1 ? '' : 's'}`
-                : `Aggregated across ${filteredRows.length} clients`}
-            </span>
-          </div>
-          <HourlyBreakdownCard
-            bhName={fBh.size === 1 ? Array.from(fBh)[0] : 'All BHs'}
-            clientName={fBh.size === 0 && !search ? 'All clients' : `${filteredRows.length} client${filteredRows.length === 1 ? '' : 's'}`}
-            totals={filteredTotals}
-            hourly={hourlyColumnTotals}
-            hours={hours}
-            metrics={metrics}
-            rowTotal={filteredGrandTotal}
-            onCellClick={(metricKey, metricLabel, hour) =>
-              openDrill({
-                date: selDate,
-                bh_name: fBh.size === 1 ? Array.from(fBh)[0] : null,
-                metric: metricKey,
-                metric_label: metricLabel,
-                hour,
-              })
-            }
-          />
-        </div>
-      )}
-
-      {/* Drill-down modal for any clicked cell */}
+      {/* Click any number / sparkline bar / KPI tile to open the drill-down modal */}
       <BHHourlyDetailsModal open={!!drillScope} onClose={closeDrill} scope={drillScope} />
     </div>
   );

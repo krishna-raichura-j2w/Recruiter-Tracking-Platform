@@ -23,6 +23,7 @@ from features.mrr.boolean_builder.routes import (  # noqa: E402
 from features.mrr.calls.routes import router as calls_router  # noqa: E402
 from features.mrr.candidates.routes import router as candidates_router  # noqa: E402
 from features.mrr.clients.routes import router as clients_router  # noqa: E402
+from features.mrr.bh_target_email.routes import router as bh_target_email_router  # noqa: E402
 from features.mrr.coo.routes import router as coo_router  # noqa: E402
 from features.mrr.dashboard.routes import router as dashboard_router  # noqa: E402
 from features.mrr.demand_status.routes import (  # noqa: E402
@@ -412,6 +413,7 @@ app.include_router(form_config_router,        prefix="/api")
 app.include_router(probing_router,            prefix="/api")
 app.include_router(boolean_builder_router,    prefix="/api")
 app.include_router(coo_router,                prefix="/api")
+app.include_router(bh_target_email_router,    prefix="/api")
 app.include_router(pods_router,               prefix="/api")
 app.include_router(leaves_router,             prefix="/api")
 app.include_router(client_emails_router,      prefix="/api")
