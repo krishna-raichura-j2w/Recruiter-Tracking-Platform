@@ -1123,11 +1123,19 @@ def recruiter_leaderboard(
     _caller_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     _scope_to_pod = _caller_role in ("bh", "kam", "delivery_lead") and current_user.pod_id is not None
 
+    # Base list: every active recruiter AND every active delivery lead — both
+    # primary and secondary role assignments. DLs are always shown so the
+    # leaderboard renders their row even on days they didn't source anything.
     rec_query = (
         db.query(User)
         .filter(
             User.is_active == True,  # noqa: E712
-            or_(User.role == UserRole.recruiter, User.secondary_role == "recruiter"),
+            or_(
+                User.role == UserRole.recruiter,
+                User.secondary_role == "recruiter",
+                User.role == UserRole.delivery_lead,
+                User.secondary_role == "delivery_lead",
+            ),
         )
     )
     if _scope_to_pod:
@@ -1137,9 +1145,9 @@ def recruiter_leaderboard(
         .all()
     )
     rec_ids_set = {u.id for u in recruiters}
-    # …plus any user who has sourced a candidate today, even if not classified
-    # as a recruiter (e.g. delivery leads who source directly). Without this,
-    # POD TOTAL diverges from the candidates table.
+    # …plus any user who has sourced a candidate today, even if they're not
+    # classified as a recruiter or DL (rare edge case — e.g. KAM sourcing
+    # directly). Without this, POD TOTAL diverges from the candidates table.
     extra_sourcer_ids = [
         row[0]
         for row in db.query(Candidate.sourced_by_id)
@@ -1154,8 +1162,8 @@ def recruiter_leaderboard(
     ]
     if extra_sourcer_ids:
         extras_q = db.query(User).filter(User.id.in_(extra_sourcer_ids))
-        # Honour pod-scoping for non-recruiter sourcers too — a BH should not
-        # see a DL from another pod show up just because they sourced today.
+        # Honour pod-scoping for the extras branch too — a BH should not see
+        # a sourcer from another pod show up just because they sourced today.
         if _scope_to_pod:
             extras_q = extras_q.filter(User.pod_id == current_user.pod_id)
         recruiters = recruiters + extras_q.all()
