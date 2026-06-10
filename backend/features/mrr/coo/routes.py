@@ -370,21 +370,25 @@ def client_pipeline(
 # (IST). Each cell counts applied_jobs whose updated_at falls in that IST hour
 # of the selected date AND whose current_step matches the metric's step bucket.
 #
-# Bucketing (mirrors STEP_TO_COL but collapses L2 + L3 into one column):
-#   Client Submit     → step 7
-#   L1 Interview      → 11, 12, 13, 14   (L1 reject + L1 accept paths)
-#   L2/L3 Interview   → 16, 17, 18, 19, 21, 22, 23, 47
-#   Selections        → 33
-#   Onboarded         → 41, 44, 54
+# Bucketing verified against candidate_work_flows table:
+#   Client Submit     → 7                                  (Client Submit)
+#   L1 Interview      → 11, 12, 13, 14                     (L1 outcomes + L2-scheduled proxy)
+#                        11 L1 No Show / 12 L1 Reject / 13 L1 Select / 14 Schedule L2
+#   L2/L3 Interview   → 16, 17, 18, 19, 21, 22, 23, 58     (L2 + L3 outcomes + L4-scheduled proxy)
+#                        16 L2 No Show / 17 L2 Reject / 18 L2 Select / 19 Schedule L3
+#                        21 L3 No Show / 22 L3 Reject / 23 L3 Select / 58 Schedule L4
+#   Selections        → 47, 33                             (client confirmed select OR offer accepted)
+#                        47 Confirm Final Select / 33 Offer Accepted
+#   Onboarded         → 44                                 (candidate actually joined)
 #
 # Hours rendered are the IST business window 09:00–21:00 (13 columns).
 
 HOURLY_METRICS: list[tuple[str, str, tuple[int, ...]]] = [
     ("client_submit", "Client Submit",   (7,)),
     ("l1",            "L1 Interview",    (11, 12, 13, 14)),
-    ("l2_l3",         "L2/L3 Interview", (16, 17, 18, 19, 21, 22, 23, 47)),
-    ("selections",    "Selections",      (33,)),
-    ("onboarded",     "Onboarded",       (41, 44, 54)),
+    ("l2_l3",         "L2/L3 Interview", (16, 17, 18, 19, 21, 22, 23, 58)),
+    ("selections",    "Selections",      (47, 33)),
+    ("onboarded",     "Onboarded",       (44,)),
 ]
 
 # step_id → metric key
