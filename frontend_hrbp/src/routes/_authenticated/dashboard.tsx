@@ -34,9 +34,11 @@ import {
   CalendarOff,
   ShieldCheck,
   MessageSquare,
+  CalendarRange,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
+import dayjs from "dayjs";
 import {
   fetchKpis,
   fetchMyTickets,
@@ -51,6 +53,7 @@ import {
   type ConsultantAtRisk,
   type ActivityItem,
 } from "@/apiService/dashboardApi";
+import { CustomDateRangePicker } from "@/components/CustomDateRangePicker";
 import { ScrollList } from "@/components/ScrollList";
 import type { Ticket as TicketDetail } from "@/apiService/ticketTypes";
 
@@ -75,6 +78,127 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   },
   component: Dashboard,
 });
+
+// ── Date filter types & helpers ───────────────────────────────────────────────
+
+type FilterPreset = "today" | "this_week" | "last_week" | "this_month" | "last_month" | "overall" | "custom";
+
+interface DateRange {
+  date_from: string;
+  date_to: string;
+}
+
+const FILTER_PRESETS: { key: FilterPreset; label: string }[] = [
+  { key: "today",      label: "Today" },
+  { key: "this_week",  label: "This Week" },
+  { key: "last_week",  label: "Last Week" },
+  { key: "this_month", label: "This Month" },
+  { key: "last_month", label: "Last Month" },
+  { key: "overall",   label: "Overall" },
+  { key: "custom",    label: "Custom" },
+];
+
+function fmtDate(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+function getPresetRange(preset: FilterPreset, customFrom?: string, customTo?: string): DateRange {
+  const today = new Date();
+  switch (preset) {
+    case "today":
+      return { date_from: fmtDate(today), date_to: fmtDate(today) };
+    case "this_week": {
+      const day = today.getDay();
+      const diff = day === 0 ? 6 : day - 1;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - diff);
+      return { date_from: fmtDate(monday), date_to: fmtDate(today) };
+    }
+    case "last_week": {
+      const day = today.getDay();
+      const diff = day === 0 ? 6 : day - 1;
+      const thisMonday = new Date(today);
+      thisMonday.setDate(today.getDate() - diff);
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+      const lastSunday = new Date(thisMonday);
+      lastSunday.setDate(thisMonday.getDate() - 1);
+      return { date_from: fmtDate(lastMonday), date_to: fmtDate(lastSunday) };
+    }
+    case "this_month": {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { date_from: fmtDate(first), date_to: fmtDate(today) };
+    }
+    case "last_month": {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last  = new Date(today.getFullYear(), today.getMonth(), 0);
+      return { date_from: fmtDate(first), date_to: fmtDate(last) };
+    }
+    case "overall":
+      return { date_from: "", date_to: "" };
+    case "custom":
+      return { date_from: customFrom ?? fmtDate(today), date_to: customTo ?? fmtDate(today) };
+  }
+}
+
+// ── Date filter bar ───────────────────────────────────────────────────────────
+
+function DateFilterBar({
+  preset, customFrom, customTo,
+  onChange,
+}: {
+  preset: FilterPreset;
+  customFrom: string;
+  customTo: string;
+  onChange: (preset: FilterPreset, customFrom?: string, customTo?: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1 shadow-sm">
+        {FILTER_PRESETS.filter((p) => p.key !== "custom").map((p) => (
+          <button
+            key={p.key}
+            onClick={() => onChange(p.key)}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              preset === p.key
+                ? "bg-sky-600 text-white shadow-sm"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+        <button
+          onClick={() => onChange("custom", customFrom, customTo)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+            preset === "custom"
+              ? "bg-sky-600 text-white shadow-sm"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          }`}
+        >
+          <CalendarRange className="w-3 h-3" />
+          Custom
+        </button>
+      </div>
+
+      {preset === "custom" && (
+        <CustomDateRangePicker
+          value={[
+            customFrom ? dayjs(customFrom) : null,
+            customTo   ? dayjs(customTo)   : null,
+          ]}
+          onChange={([from, to]) => {
+            onChange(
+              "custom",
+              from ? from.format("YYYY-MM-DD") : customFrom,
+              to   ? to.format("YYYY-MM-DD")   : customTo,
+            );
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -206,6 +330,7 @@ function Dashboard() {
   const navigate = useNavigate();
 
   const [kpis, setKpis]                       = useState<DashboardKpis | null>(null);
+  const [overallKpis, setOverallKpis]         = useState<DashboardKpis | null>(null);
   const [myTickets, setMyTickets]             = useState<MyTicketItem[]>([]);
   const [cadence, setCadence]                 = useState<TodayCadenceItem[]>([]);
   const [pinned, setPinned]                   = useState<TicketDetail | null>(null);
@@ -213,6 +338,7 @@ function Dashboard() {
   const [activity, setActivity]               = useState<ActivityItem[]>([]);
 
   const [loadingKpis, setLoadingKpis]               = useState(true);
+  const [loadingOverallKpis, setLoadingOverallKpis] = useState(true);
   const [loadingTickets, setLoadingTickets]         = useState(true);
   const [loadingCadence, setLoadingCadence]         = useState(true);
   const [loadingPinned, setLoadingPinned]           = useState(true);
@@ -220,18 +346,36 @@ function Dashboard() {
   const [loadingActivity, setLoadingActivity]       = useState(true);
   const [unpinning, setUnpinning]                   = useState(false);
 
-  const load = useCallback(async () => {
+  // Date filter state — default: today
+  const todayStr = fmtDate(new Date());
+  const [filterPreset, setFilterPreset] = useState<FilterPreset>("today");
+  const [customFrom, setCustomFrom]     = useState(todayStr);
+  const [customTo, setCustomTo]         = useState(todayStr);
+
+  const activeDateRange = getPresetRange(filterPreset, customFrom, customTo);
+
+  const loadKpis = useCallback((range: DateRange) => {
     setLoadingKpis(true);
+    fetchKpis(range.date_from, range.date_to)
+      .then(setKpis)
+      .catch(() => toast.error("Failed to load KPIs"))
+      .finally(() => setLoadingKpis(false));
+  }, []);
+
+  const loadOverallKpisData = useCallback(() => {
+    setLoadingOverallKpis(true);
+    fetchKpis()
+      .then(setOverallKpis)
+      .catch(() => {})
+      .finally(() => setLoadingOverallKpis(false));
+  }, []);
+
+  const load = useCallback(async () => {
     setLoadingTickets(true);
     setLoadingCadence(true);
     setLoadingPinned(true);
     setLoadingAtRisk(true);
     setLoadingActivity(true);
-
-    fetchKpis()
-      .then(setKpis)
-      .catch(() => toast.error("Failed to load KPIs"))
-      .finally(() => setLoadingKpis(false));
 
     fetchMyTickets(5)
       .then(setMyTickets)
@@ -259,7 +403,22 @@ function Dashboard() {
       .finally(() => setLoadingActivity(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadOverallKpisData(); }, [load, loadOverallKpisData]);
+  useEffect(() => {
+    if (filterPreset !== "overall") loadKpis(activeDateRange);
+  }, [filterPreset, customFrom, customTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleFilterChange(preset: FilterPreset, cf?: string, ct?: string) {
+    setFilterPreset(preset);
+    if (cf !== undefined) setCustomFrom(cf);
+    if (ct !== undefined) setCustomTo(ct);
+  }
+
+  function handleRefresh() {
+    load();
+    loadKpis(activeDateRange);
+    loadOverallKpisData();
+  }
 
   async function handleUnpin() {
     setUnpinning(true);
@@ -274,129 +433,152 @@ function Dashboard() {
     }
   }
 
+  // Dynamic KPI label for "today_tickets" based on active filter
+  const ticketsInRangeLabel = filterPreset === "today" ? "Today's Tickets"
+    : filterPreset === "this_week"  ? "This Week's Tickets"
+    : filterPreset === "last_week"  ? "Last Week's Tickets"
+    : filterPreset === "this_month" ? "This Month's Tickets"
+    : filterPreset === "last_month" ? "Last Month's Tickets"
+    : "Tickets in Range";
+
+  const ticketsInRangeSub = filterPreset === "today" ? "Created today"
+    : `${activeDateRange.date_from} → ${activeDateRange.date_to}`;
+
   return (
     <div className="flex flex-col h-full bg-slate-50 text-slate-800">
       <TopBar title="Overview" subtitle="Your HR Operations snapshot — tickets, cadence, and consultant health at a glance." />
 
       <main className="flex-1 overflow-y-auto p-6 space-y-5">
 
-        {/* Greeting Banner */}
-        <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 shadow-sm">
-          <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
-            👋 {greeting()}, {user?.name ?? "there"}.
-          </h1>
-          <p className="text-sm text-slate-500 mt-1.5">
-            Here's what's happening across your HR operations today.
-          </p>
+        {/* Greeting Banner + Date Filter */}
+        <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 shadow-sm space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
+                👋 {greeting()}, {user?.name ?? "there"}.
+              </h1>
+              <p className="text-sm text-slate-500 mt-1.5">
+                Here's what's happening across your HR operations today.
+              </p>
+            </div>
+            <DateFilterBar
+              preset={filterPreset}
+              customFrom={customFrom}
+              customTo={customTo}
+              onChange={handleFilterChange}
+            />
+          </div>
         </div>
 
         {/* KPI Cards */}
-        <div className="flex gap-4 flex-wrap">
-          <KpiCard
-            icon={<IconBox className="bg-sky-100"><ClipboardList className="w-5 h-5 text-sky-600" /></IconBox>}
-            label="Open Tickets"
-            value={loadingKpis ? "—" : (kpis?.open_tickets ?? 0)}
-            accentText="text-sky-600" sub="Status: open"
-            onClick={() => navigate({ to: "/tickets" })}
-          />
-          <KpiCard
-            icon={<IconBox className="bg-red-100"><AlertCircle className="w-5 h-5 text-red-600" /></IconBox>}
-            label="SLA Breaches"
-            value={loadingKpis ? "—" : (kpis?.sla_breaches ?? 0)}
-            accentText="text-red-600" sub="Deadline passed"
-            onClick={() => navigate({ to: "/tickets" })}
-          />
-          <KpiCard
-            icon={<IconBox className="bg-orange-100"><IndianRupee className="w-5 h-5 text-orange-600" /></IconBox>}
-            label="PO at Risk"
-            value={loadingKpis ? "—" : fmtInr(kpis?.po_at_risk ?? 0)}
-            accentText="text-orange-600" sub="From open tickets"
-            onClick={() => navigate({ to: "/tickets" })}
-          />
-          {user?.role !== "po_finance" && (
-            <KpiCard
-              icon={<IconBox className="bg-violet-100"><CalendarClock className="w-5 h-5 text-violet-600" /></IconBox>}
-              label="Cadence Overdue"
-              value={loadingKpis ? "—" : (kpis?.cadence_overdue ?? 0)}
-              accentText="text-violet-600" sub="Sessions pending"
-              onClick={() => navigate({ to: "/cadence" })}
-            />
-          )}
-          <KpiCard
-            icon={<IconBox className="bg-indigo-100"><CalendarDays className="w-5 h-5 text-indigo-600" /></IconBox>}
-            label="Today's Tickets"
-            value={loadingKpis ? "—" : (kpis?.today_tickets ?? 0)}
-            accentText="text-indigo-600" sub="Created today"
-            onClick={() => navigate({ to: "/tickets" })}
-          />
-        </div>
+        {(() => {
+          const isOverall = filterPreset === "overall";
+          const d = isOverall ? overallKpis : kpis;
+          const loading = isOverall ? loadingOverallKpis : loadingKpis;
+          return (<>
+            <div className="flex gap-4 flex-wrap">
+              <KpiCard
+                icon={<IconBox className="bg-sky-100"><ClipboardList className="w-5 h-5 text-sky-600" /></IconBox>}
+                label="Open Tickets"
+                value={loading ? "—" : (d?.open_tickets ?? 0)}
+                accentText="text-sky-600" sub="Status: open"
+                onClick={() => navigate({ to: "/tickets" })}
+              />
+              <KpiCard
+                icon={<IconBox className="bg-red-100"><AlertCircle className="w-5 h-5 text-red-600" /></IconBox>}
+                label="SLA Breaches"
+                value={loading ? "—" : (d?.sla_breaches ?? 0)}
+                accentText="text-red-600" sub="Deadline passed"
+                onClick={() => navigate({ to: "/tickets" })}
+              />
+              <KpiCard
+                icon={<IconBox className="bg-orange-100"><IndianRupee className="w-5 h-5 text-orange-600" /></IconBox>}
+                label="PO at Risk"
+                value={loading ? "—" : fmtInr(d?.po_at_risk ?? 0)}
+                accentText="text-orange-600" sub="From open tickets"
+                onClick={() => navigate({ to: "/tickets" })}
+              />
+              {user?.role !== "po_finance" && (
+                <KpiCard
+                  icon={<IconBox className="bg-violet-100"><CalendarClock className="w-5 h-5 text-violet-600" /></IconBox>}
+                  label="Cadence Overdue"
+                  value={loading ? "—" : (d?.cadence_overdue ?? 0)}
+                  accentText="text-violet-600" sub="Sessions pending"
+                  onClick={() => navigate({ to: "/cadence" })}
+                />
+              )}
+              <KpiCard
+                icon={<IconBox className="bg-indigo-100"><CalendarDays className="w-5 h-5 text-indigo-600" /></IconBox>}
+                label={isOverall ? "Total Tickets" : ticketsInRangeLabel}
+                value={loading ? "—" : (d?.today_tickets ?? 0)}
+                accentText="text-indigo-600"
+                sub={isOverall ? "All time" : ticketsInRangeSub}
+                onClick={() => navigate({ to: "/tickets" })}
+              />
+            </div>
 
-        {/* PO Outcomes */}
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">PO Outcomes</p>
-          <div className="flex gap-4 flex-wrap">
-            <KpiCard
-              icon={<IconBox className="bg-emerald-100"><TrendingUp className="w-5 h-5 text-emerald-600" /></IconBox>}
-              label="PO Retained"
-              value={loadingKpis ? "—" : fmtInr(kpis?.po_retained ?? 0)}
-              accentText="text-emerald-600" sub="Closed — retained"
-              onClick={() => navigate({ to: "/tickets" })}
-            />
-            <KpiCard
-              icon={<IconBox className="bg-orange-100"><Scale className="w-5 h-5 text-orange-600" /></IconBox>}
-              label="PO at Risk"
-              value={loadingKpis ? "—" : fmtInr(kpis?.po_at_risk ?? 0)}
-              accentText="text-orange-600" sub="Open tickets with risk"
-              onClick={() => navigate({ to: "/tickets" })}
-            />
-            <KpiCard
-              icon={<IconBox className="bg-red-100"><TrendingDown className="w-5 h-5 text-red-600" /></IconBox>}
-              label="PO Loss"
-              value={loadingKpis ? "—" : fmtInr(kpis?.po_loss ?? 0)}
-              accentText="text-red-600" sub="Closed — lost"
-              onClick={() => navigate({ to: "/tickets" })}
-            />
-          </div>
-        </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">PO Outcomes</p>
+              <div className="flex gap-4 flex-wrap">
+                <KpiCard
+                  icon={<IconBox className="bg-emerald-100"><TrendingUp className="w-5 h-5 text-emerald-600" /></IconBox>}
+                  label="PO Retained"
+                  value={loading ? "—" : fmtInr(d?.po_retained ?? 0)}
+                  accentText="text-emerald-600" sub="Closed — retained"
+                  onClick={() => navigate({ to: "/tickets" })}
+                />
+                <KpiCard
+                  icon={<IconBox className="bg-orange-100"><Scale className="w-5 h-5 text-orange-600" /></IconBox>}
+                  label="PO at Risk"
+                  value={loading ? "—" : fmtInr(d?.po_at_risk ?? 0)}
+                  accentText="text-orange-600" sub="Open tickets with risk"
+                  onClick={() => navigate({ to: "/tickets" })}
+                />
+                <KpiCard
+                  icon={<IconBox className="bg-red-100"><TrendingDown className="w-5 h-5 text-red-600" /></IconBox>}
+                  label="PO Loss"
+                  value={loading ? "—" : fmtInr(d?.po_loss ?? 0)}
+                  accentText="text-red-600" sub="Closed — lost"
+                  onClick={() => navigate({ to: "/tickets" })}
+                />
+              </div>
+            </div>
 
-        {/* Exit Tracking KPIs */}
-        <div>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">Exit Tracking</p>
-          <div className="flex gap-4 flex-wrap">
-            <KpiCard
-              icon={<IconBox className="bg-amber-100"><LogOut className="w-5 h-5 text-amber-600" /></IconBox>}
-              label="Exits Initiated"
-              value={loadingKpis ? "—" : (kpis?.exits_initiated ?? 0)}
-              accentText="text-amber-600"
-              sub="Pending acknowledgement"
-              onClick={() => navigate({ to: "/exits" })}
-            />
-            <KpiCard
-              icon={<IconBox className="bg-rose-100"><Calendar className="w-5 h-5 text-rose-600" /></IconBox>}
-              label="This Month"
-              value={loadingKpis ? "—" : (kpis?.exits_this_month ?? 0)}
-              accentText="text-rose-600"
-              sub="Exit initiations logged"
-              onClick={() => navigate({ to: "/exits" })}
-            />
-            <KpiCard
-              icon={<IconBox className="bg-blue-100"><BarChart2 className="w-5 h-5 text-blue-600" /></IconBox>}
-              label="This Quarter"
-              value={loadingKpis ? "—" : (kpis?.exits_this_quarter ?? 0)}
-              accentText="text-blue-600"
-              sub="Exits in current quarter"
-              onClick={() => navigate({ to: "/exits" })}
-            />
-            <KpiCard
-              icon={<IconBox className="bg-emerald-100"><UserCheck className="w-5 h-5 text-emerald-600" /></IconBox>}
-              label="Completed Exits"
-              value={loadingKpis ? "—" : (kpis?.exits_completed ?? 0)}
-              accentText="text-emerald-600"
-              sub="Consultants offboarded"
-              onClick={() => navigate({ to: "/exits" })}
-            />
-          </div>
-        </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">Exit Tracking</p>
+              <div className="flex gap-4 flex-wrap">
+                <KpiCard
+                  icon={<IconBox className="bg-amber-100"><LogOut className="w-5 h-5 text-amber-600" /></IconBox>}
+                  label="Exits Initiated"
+                  value={loading ? "—" : (d?.exits_initiated ?? 0)}
+                  accentText="text-amber-600" sub="Pending acknowledgement"
+                  onClick={() => navigate({ to: "/exits" })}
+                />
+                <KpiCard
+                  icon={<IconBox className="bg-rose-100"><Calendar className="w-5 h-5 text-rose-600" /></IconBox>}
+                  label="This Month"
+                  value={loading ? "—" : (d?.exits_this_month ?? 0)}
+                  accentText="text-rose-600" sub="Exit initiations logged"
+                  onClick={() => navigate({ to: "/exits" })}
+                />
+                <KpiCard
+                  icon={<IconBox className="bg-blue-100"><BarChart2 className="w-5 h-5 text-blue-600" /></IconBox>}
+                  label="This Quarter"
+                  value={loading ? "—" : (d?.exits_this_quarter ?? 0)}
+                  accentText="text-blue-600" sub="Exits in current quarter"
+                  onClick={() => navigate({ to: "/exits" })}
+                />
+                <KpiCard
+                  icon={<IconBox className="bg-emerald-100"><UserCheck className="w-5 h-5 text-emerald-600" /></IconBox>}
+                  label="Completed Exits"
+                  value={loading ? "—" : (d?.exits_completed ?? 0)}
+                  accentText="text-emerald-600" sub="Consultants offboarded"
+                  onClick={() => navigate({ to: "/exits" })}
+                />
+              </div>
+            </div>
+          </>);
+        })()}
 
         {/* Quick Actions */}
         <div>
@@ -677,7 +859,7 @@ function Dashboard() {
                   Unpin
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700" onClick={load}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700" onClick={handleRefresh}>
                 <RefreshCw className="w-3.5 h-3.5" />
               </Button>
             </div>

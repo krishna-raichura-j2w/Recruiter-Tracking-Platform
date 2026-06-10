@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -12,11 +14,13 @@ router = APIRouter(prefix="/dashboard", tags=["hrbp-dashboard"])
 
 @router.get("/kpis")
 def get_kpis(
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     try:
-        data = service.get_kpis(db, current_user)
+        data = service.get_kpis(db, current_user, date_from=date_from, date_to=date_to)
         return success_response(data=data, message="KPIs fetched")
     except Exception as exc:
         return error_response(message=str(exc))

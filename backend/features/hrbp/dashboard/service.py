@@ -87,13 +87,27 @@ def _cadence_schedule_ids_for_bh(db: Session, user_id: int):
 
 # ── KPI counters ──────────────────────────────────────────────────────────────
 
-def get_kpis(db: Session, current_user: User) -> dict:
+def _apply_date_filter(q, column, date_from: date | None, date_to: date | None):
+    if date_from:
+        q = q.filter(func.date(column) >= date_from)
+    if date_to:
+        q = q.filter(func.date(column) <= date_to)
+    return q
+
+
+def get_kpis(
+    db: Session,
+    current_user: User,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
     role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
-    # Base active tickets query — open + escalated (scoped)
+    # Base active tickets query — open + escalated (scoped), filtered by creation date
     _active = HRBPTicket.status.in_(["open", "escalated"])
     tq = db.query(HRBPTicket).filter(_active)
     tq = _ticket_scope(tq, current_user, db)
+    tq = _apply_date_filter(tq, HRBPTicket.created_at, date_from, date_to)
 
     open_tickets = tq.count()
 
@@ -101,14 +115,12 @@ def get_kpis(db: Session, current_user: User) -> dict:
         tq.filter(HRBPTicket.sla_deadline < _now()).count()
     )
 
-    po_at_risk_row = (
-        db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
-        .filter(_active)
-    )
+    po_at_risk_row = db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0)).filter(_active)
     po_at_risk_row = _ticket_scope(po_at_risk_row, current_user, db)
+    po_at_risk_row = _apply_date_filter(po_at_risk_row, HRBPTicket.created_at, date_from, date_to)
     po_at_risk = float(po_at_risk_row.scalar() or 0)
 
-    # Cadence overdue: sessions that were scheduled before today and still not_started
+    # Cadence overdue: sessions scheduled before today that are still not_started (not date-range filtered)
     today = _today()
     if role in ("hrbp", "bh"):
         schedule_ids = (
@@ -148,44 +160,55 @@ def get_kpis(db: Session, current_user: User) -> dict:
         _bh_client_ids = [r.id for r in db.query(HRBPClient.id).filter_by(bh_id=current_user.id).all()]
         exits_base = exits_base.filter(HRBPExitTracking.client_id.in_(_bh_client_ids))
 
+    exits_base_dated = _apply_date_filter(exits_base, HRBPExitTracking.created_at, date_from, date_to)
+
     exits_initiated = (
-        exits_base.filter(HRBPExitTracking.status == "initiated").scalar() or 0
+        exits_base_dated.filter(HRBPExitTracking.status == "initiated").scalar() or 0
     )
 
-    exits_this_month = (
-        exits_base.filter(func.date(HRBPExitTracking.created_at) >= month_start).scalar() or 0
-    )
-
-    exits_this_quarter = (
-        exits_base.filter(func.date(HRBPExitTracking.created_at) >= quarter_start).scalar() or 0
-    )
+    # When a date range is active use it; otherwise fall back to calendar month/quarter
+    if date_from or date_to:
+        exits_this_month = (
+            exits_base_dated.scalar() or 0
+        )
+        exits_this_quarter = (
+            exits_base_dated.scalar() or 0
+        )
+    else:
+        exits_this_month = (
+            exits_base.filter(func.date(HRBPExitTracking.created_at) >= month_start).scalar() or 0
+        )
+        exits_this_quarter = (
+            exits_base.filter(func.date(HRBPExitTracking.created_at) >= quarter_start).scalar() or 0
+        )
 
     exits_completed = (
-        exits_base.filter(HRBPExitTracking.status == "completed").scalar() or 0
+        exits_base_dated.filter(HRBPExitTracking.status == "completed").scalar() or 0
     )
 
-    # Today's tickets (created today, all statuses, scoped)
-    today_tq = db.query(HRBPTicket).filter(
-        func.date(HRBPTicket.created_at) == today_date
-    )
+    # Tickets created in selected date range (all statuses, scoped)
+    today_tq = db.query(HRBPTicket)
+    if not (date_from or date_to):
+        today_tq = today_tq.filter(func.date(HRBPTicket.created_at) == today_date)
+    else:
+        today_tq = _apply_date_filter(today_tq, HRBPTicket.created_at, date_from, date_to)
     today_tq = _ticket_scope(today_tq, current_user, db)
     today_tickets = today_tq.count()
 
-    # PO outcome amounts (closed tickets only, scoped)
-    closed_base = (
-        db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
-        .filter(HRBPTicket.status == "closed")
-    )
+    # PO outcome amounts (closed tickets, scoped, date-filtered)
     closed_base_retained = _ticket_scope(
         db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
         .filter(HRBPTicket.status == "closed", HRBPTicket.po_outcome == "retained"),
         current_user, db,
     )
+    closed_base_retained = _apply_date_filter(closed_base_retained, HRBPTicket.created_at, date_from, date_to)
+
     closed_base_loss = _ticket_scope(
         db.query(func.coalesce(func.sum(HRBPTicket.po_risk_amount), 0))
         .filter(HRBPTicket.status == "closed", HRBPTicket.po_outcome == "loss"),
         current_user, db,
     )
+    closed_base_loss = _apply_date_filter(closed_base_loss, HRBPTicket.created_at, date_from, date_to)
 
     po_retained = float(closed_base_retained.scalar() or 0)
     po_loss     = float(closed_base_loss.scalar() or 0)
