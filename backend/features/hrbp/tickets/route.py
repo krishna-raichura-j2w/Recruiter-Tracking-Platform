@@ -15,6 +15,7 @@ from features.hrbp.tickets.schema import (
     CloseTicketPayload,
     StepReassignPayload,
     StepSlaExtendPayload,
+    StepSubmissionCreate,
     TicketCommentCreate,
     TicketCreate,
     TicketUpdate,
@@ -169,6 +170,21 @@ def reassign_step(
     try:
         data = service.reassign_step(db, ticket_id, payload, current_user)
         return success_response(data=data, message="Step reassigned successfully")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{ticket_id}/steps/{step_number}/submit")
+def submit_step(
+    ticket_id: int,
+    step_number: int,
+    payload: StepSubmissionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        data = service.submit_step(db, ticket_id, step_number, payload, current_user)
+        return success_response(data=data, message="Step submitted successfully")
     except Exception as exc:
         return error_response(message=str(exc))
 

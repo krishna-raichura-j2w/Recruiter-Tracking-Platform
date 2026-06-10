@@ -7,6 +7,8 @@ import type {
   TicketDetailResponse,
   StepSlaExtendPayload,
   StepReassignPayload,
+  StepSubmissionCreate,
+  StepSubmission,
   SopDefinition,
   UserOption,
   EmailTemplateResponse,
@@ -203,6 +205,22 @@ export async function listAllHrbpUsers(): Promise<UserOption[]> {
   const raw = json?.data;
   if (Array.isArray(raw)) return raw;
   return raw?.items ?? [];
+}
+
+// ── Step submissions ──────────────────────────────────────────────────────
+
+export async function submitTicketStep(
+  ticketId: number,
+  stepNumber: number,
+  payload: StepSubmissionCreate,
+): Promise<StepSubmission> {
+  const res = await fetchWithAuth(
+    `${getBaseUrl()}api/hrbp/tickets/${ticketId}/steps/${stepNumber}/submit`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+  );
+  const json = await res.json();
+  if (!res.ok || json?.meta?.status === false) throw new Error(json?.meta?.message ?? "Submit failed");
+  return json.data as StepSubmission;
 }
 
 // ── Email templates ───────────────────────────────────────────────────────
