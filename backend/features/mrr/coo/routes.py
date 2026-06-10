@@ -371,22 +371,26 @@ def client_pipeline(
 # of the selected date AND whose current_step matches the metric's step bucket.
 #
 # Bucketing verified against candidate_work_flows table:
-#   Client Submit     → 7                                  (Client Submit)
-#   L1 Interview      → 11, 12, 13, 14                     (L1 outcomes + L2-scheduled proxy)
-#                        11 L1 No Show / 12 L1 Reject / 13 L1 Select / 14 Schedule L2
-#   L2/L3 Interview   → 16, 17, 18, 19, 21, 22, 23, 58     (L2 + L3 outcomes + L4-scheduled proxy)
-#                        16 L2 No Show / 17 L2 Reject / 18 L2 Select / 19 Schedule L3
-#                        21 L3 No Show / 22 L3 Reject / 23 L3 Select / 58 Schedule L4
-#   Selections        → 47, 33                             (client confirmed select OR offer accepted)
+#   Client Submit     → 7                                          (Client Submit)
+#   L1 Interview      → 9, 10, 11, 12, 13                          (L1 scheduling + outcomes)
+#                        9  Schedule L1   / 10 Reschedule L1
+#                        11 L1 No Show    / 12 L1 Reject   / 13 L1 Select
+#   L2/L3 Interview   → 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 58 (L2 + L3 scheduling + outcomes)
+#                        14 Schedule L2   / 15 Reschedule L2
+#                        16 L2 No Show    / 17 L2 Reject   / 18 L2 Select
+#                        19 Schedule L3   / 20 Reschedule L3
+#                        21 L3 No Show    / 22 L3 Reject   / 23 L3 Select
+#                        58 Schedule L4 (proxy for L3 cleared)
+#   Selections        → 47, 33                                     (client confirmed select OR offer accepted)
 #                        47 Confirm Final Select / 33 Offer Accepted
-#   Onboarded         → 44                                 (candidate actually joined)
+#   Onboarded         → 44                                         (candidate actually joined)
 #
 # Hours rendered are the IST business window 09:00–21:00 (13 columns).
 
 HOURLY_METRICS: list[tuple[str, str, tuple[int, ...]]] = [
     ("client_submit", "Client Submit",   (7,)),
-    ("l1",            "L1 Interview",    (11, 12, 13, 14)),
-    ("l2_l3",         "L2/L3 Interview", (16, 17, 18, 19, 21, 22, 23, 58)),
+    ("l1",            "L1 Interview",    (9, 10, 11, 12, 13)),
+    ("l2_l3",         "L2/L3 Interview", (14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 58)),
     ("selections",    "Selections",      (47, 33)),
     ("onboarded",     "Onboarded",       (44,)),
 ]
@@ -522,6 +526,176 @@ def bh_hourly(
         "rows":               rows,
         "totals":             grand_totals,
         "totals_row_total":   sum(grand_totals.values()),
+    }
+
+
+# ── BH × Client Hourly Tracker — row-level drill-down ────────────────────────
+#
+# Returns the individual applied_jobs rows behind any cell in the BH Hourly
+# Tracker UI. Filter by any combination of {date, bh_name, client_name,
+# metric, hour} to scope the drill-down.
+
+@router.get("/bh-hourly/details")
+def bh_hourly_details(
+    date: str | None = None,
+    bh_name: str | None = None,
+    client_name: str | None = None,
+    metric: str | None = None,
+    hour: int | None = None,
+    _=Depends(get_current_user),
+):
+    from datetime import date as _date
+
+    ist_now   = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    today_ist = ist_now.date()
+
+    if date:
+        try:
+            sel_date = _date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(400, "date must be YYYY-MM-DD")
+    else:
+        sel_date = today_ist
+
+    # Resolve metric → step IDs (or use all 16 tracked steps if no metric)
+    metric_step_ids: tuple[int, ...] | None = None
+    if metric:
+        for key, _label, sids in HOURLY_METRICS:
+            if key == metric:
+                metric_step_ids = sids
+                break
+        if metric_step_ids is None:
+            raise HTTPException(400, f"unknown metric: {metric}")
+    step_ids = metric_step_ids or tuple(_STEP_TO_METRIC.keys())
+
+    # Resolve bh_name → list of client names (via CSV mapping). Pre-resolved
+    # so the SQL stays simple (one IN clause). If the BH has zero clients in
+    # the mapping, return empty rather than scanning the whole replica.
+    bh_client_names: list[str] | None = None
+    if bh_name and bh_name not in ("All BHs", "Unmapped"):
+        bh_map = _load_client_bh_map()  # {client_lower: bh_name}
+        bh_client_names = [k for k, v in bh_map.items() if v == bh_name]
+        if not bh_client_names:
+            return {
+                "date": sel_date.isoformat(),
+                "filters": {"bh_name": bh_name, "client_name": client_name, "metric": metric, "hour": hour},
+                "rows": [],
+                "total": 0,
+            }
+
+    # Build WHERE clauses
+    where = [
+        "DATE(CONVERT_TZ(aj.updated_at, '+00:00', '+05:30')) = %(sel_date)s",
+        f"aj.current_step IN ({','.join(str(s) for s in step_ids)})",
+        "jp.id IS NOT NULL",
+        "cl.id NOT IN (1, 2)",
+    ]
+    params: dict = {"sel_date": sel_date.isoformat()}
+
+    if hour is not None:
+        where.append("HOUR(CONVERT_TZ(aj.updated_at, '+00:00', '+05:30')) = %(hour)s")
+        params["hour"] = int(hour)
+
+    if client_name:
+        where.append("LOWER(cl.company_name) = %(client_lower)s")
+        params["client_lower"] = client_name.strip().lower()
+    elif bh_client_names is not None:
+        # Lowercased exact-match list. Build a pure-SQL IN list of escaped strings.
+        # Names from our CSV mapping are stable and admin-managed; we still escape.
+        esc = lambda s: s.replace("\\", "\\\\").replace("'", "''")
+        in_list = ",".join(f"'{esc(n)}'" for n in bh_client_names)
+        where.append(f"LOWER(cl.company_name) IN ({in_list})")
+
+    if bh_name == "Unmapped":
+        # Unmapped = BH lookup returned empty. Resolve in Python after the
+        # query because the BH map lives in CSV, not in the OL DB.
+        pass
+
+    sql = f"""
+        SELECT
+            aj.id                                                          AS applied_job_id,
+            aj.current_step                                                AS step_id,
+            cwf.workflow_step                                              AS step_label,
+            DATE(CONVERT_TZ(aj.updated_at, '+00:00', '+05:30'))            AS event_date_ist,
+            HOUR(CONVERT_TZ(aj.updated_at, '+00:00', '+05:30'))            AS event_hour_ist,
+            DATE_FORMAT(CONVERT_TZ(aj.updated_at, '+00:00', '+05:30'),
+                        '%%Y-%%m-%%d %%H:%%i')                            AS moved_at_ist,
+            DATE_FORMAT(CONVERT_TZ(aj.created_at, '+00:00', '+05:30'),
+                        '%%Y-%%m-%%d %%H:%%i')                            AS applied_at_ist,
+            cl.company_name                                                AS client_name,
+            jp.id                                                          AS job_posting_id,
+            jp.title                                                       AS job_title,
+            TRIM(CONCAT(IFNULL(us.first_name,''),' ',IFNULL(us.middle_name,''),
+                        ' ',IFNULL(us.last_name,'')))                     AS candidate,
+            us.email                                                       AS candidate_email,
+            ud.contact_phone                                               AS candidate_phone,
+            TRIM(CONCAT(IFNULL(ur.first_name,''),' ',IFNULL(ur.last_name,''))) AS recruiter,
+            ur.email                                                       AS recruiter_email
+        FROM      applied_jobs            aj
+        LEFT JOIN job_postings            jp  ON jp.id       = aj.job_posting_id
+        LEFT JOIN clients                 cl  ON cl.user_id  = jp.client_id
+        LEFT JOIN candidate_work_flows    cwf ON cwf.step_id = aj.current_step
+        LEFT JOIN users                   us  ON us.id       = aj.user_id
+        LEFT JOIN user_details            ud  ON ud.user_id  = us.id
+        LEFT JOIN users                   ur  ON ur.id       = aj.applied_by_id
+        WHERE {' AND '.join(where)}
+        ORDER BY aj.updated_at DESC
+        LIMIT 500
+    """
+
+    conn = None
+    try:
+        conn = _get_mysql_conn()
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            db_rows = cur.fetchall()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Query failed: {exc}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    # Annotate each row with bucket + bh_name, and filter Unmapped in Python.
+    rows = []
+    for r in db_rows:
+        sid = int(r.get("step_id") or 0)
+        bucket = _STEP_TO_METRIC.get(sid)
+        row_bh = _lookup_bh(r.get("client_name") or "") or "Unmapped"
+        if bh_name == "Unmapped" and row_bh != "Unmapped":
+            continue
+        # Map bucket key → label
+        bucket_label = next((lbl for k, lbl, _s in HOURLY_METRICS if k == bucket), bucket)
+        rows.append({
+            "applied_job_id":   r.get("applied_job_id"),
+            "step_id":          sid,
+            "step_label":       r.get("step_label"),
+            "bucket":           bucket,
+            "bucket_label":     bucket_label,
+            "event_date_ist":   str(r.get("event_date_ist") or ""),
+            "event_hour_ist":   r.get("event_hour_ist"),
+            "moved_at_ist":     r.get("moved_at_ist"),
+            "applied_at_ist":   r.get("applied_at_ist"),
+            "client_name":      r.get("client_name"),
+            "bh_name":          row_bh,
+            "job_posting_id":   r.get("job_posting_id"),
+            "job_title":        r.get("job_title"),
+            "candidate":        r.get("candidate"),
+            "candidate_email":  r.get("candidate_email"),
+            "candidate_phone":  r.get("candidate_phone"),
+            "recruiter":        r.get("recruiter"),
+            "recruiter_email":  r.get("recruiter_email"),
+        })
+
+    return {
+        "date":    sel_date.isoformat(),
+        "filters": {"bh_name": bh_name, "client_name": client_name, "metric": metric, "hour": hour},
+        "rows":    rows,
+        "total":   len(rows),
     }
 
 

@@ -3,6 +3,7 @@ import {
   AlertTriangle, CheckCircle2, RefreshCw,
   Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Filter,
   Mail, Send, ShieldCheck, ChevronRight, CalendarOff,
+  ExternalLink, User, Building2, Briefcase, Phone, Clock,
 } from 'lucide-react';
 import LottieLib from 'lottie-react';
 import leaderboardAnim from '../assets/lottie-leaderboard.json';
@@ -2511,6 +2512,7 @@ function HourlyBreakdownCard({
   hours,
   metrics,
   rowTotal,
+  onCellClick,
 }: {
   bhName: string;
   clientName: string;
@@ -2519,6 +2521,10 @@ function HourlyBreakdownCard({
   hours: HourlyHour[];
   metrics: HourlyMetric[];
   rowTotal: number;
+  // Drill-down hook: invoked when the user clicks a metric × hour cell.
+  // Receives the metric key, its display label, and the IST hour (0–23 — or
+  // null when the user clicks a "metric total" cell that spans all hours).
+  onCellClick?: (metricKey: string, metricLabel: string, hour: number | null) => void;
 }) {
   // Per-hour stacked total (used for the skyline bar chart on top)
   const hourTotals = hours.map(h => {
@@ -2696,13 +2702,17 @@ function HourlyBreakdownCard({
                       const v = hourly[h.key]?.[m.key] ?? 0;
                       const i = intensity(v, maxV);
                       const isPk = v > 0 && h.key === pkKey;
+                      const clickable = v > 0 && !!onCellClick;
                       return (
-                        <td key={h.key} className="text-center relative"
+                        <td key={h.key} className={`text-center relative ${clickable ? 'cursor-pointer hover:brightness-95' : ''}`}
                           style={{
                             padding: 0,
                             background: v ? cellBg(v, maxV, p.cell) : '#FAFBFC',
                             borderRight: '1px solid #F1F5F9',
-                          }}>
+                          }}
+                          onClick={clickable ? () => onCellClick(m.key, m.label, Number(h.key)) : undefined}
+                          title={clickable ? `View ${v} ${m.label} @ ${h.label}` : ''}
+                        >
                           <div
                             className="flex items-center justify-center"
                             style={{
@@ -2727,8 +2737,10 @@ function HourlyBreakdownCard({
                         </td>
                       );
                     })}
-                    <td className="text-center font-black border-l border-slate-200"
-                      style={{ background: total ? p.hdr : '#F8FAFC', color: total ? '#fff' : '#94A3B8', fontSize: 13 }}>
+                    <td className={`text-center font-black border-l border-slate-200 ${total > 0 && onCellClick ? 'cursor-pointer hover:brightness-110' : ''}`}
+                      style={{ background: total ? p.hdr : '#F8FAFC', color: total ? '#fff' : '#94A3B8', fontSize: 13 }}
+                      onClick={total > 0 && onCellClick ? () => onCellClick(m.key, m.label, null) : undefined}
+                      title={total > 0 && onCellClick ? `View all ${total} ${m.label}` : ''}>
                       {total || '—'}
                     </td>
                   </tr>
@@ -2770,6 +2782,316 @@ function HourlyBreakdownCard({
   );
 }
 
+// ── Drill-down modal: candidate-level detail behind any tracker cell ─────────
+
+interface BHHourlyDetailRow {
+  applied_job_id:  number;
+  step_id:         number;
+  step_label:      string | null;
+  bucket:          string | null;
+  bucket_label:    string | null;
+  event_date_ist:  string;
+  event_hour_ist:  number | null;
+  moved_at_ist:    string | null;
+  applied_at_ist:  string | null;
+  client_name:     string | null;
+  bh_name:         string | null;
+  job_posting_id:  number | null;
+  job_title:       string | null;
+  candidate:       string | null;
+  candidate_email: string | null;
+  candidate_phone: string | null;
+  recruiter:       string | null;
+  recruiter_email: string | null;
+}
+interface BHHourlyDetailsResponse {
+  date:    string;
+  filters: { bh_name: string | null; client_name: string | null; metric: string | null; hour: number | null };
+  rows:    BHHourlyDetailRow[];
+  total:   number;
+}
+interface DrillScope {
+  date:         string;
+  bh_name?:     string | null;
+  client_name?: string | null;
+  metric?:      string | null;       // one of HOURLY_METRICS keys
+  metric_label?: string | null;
+  hour?:        number | null;
+}
+
+function BHHourlyDetailsModal({
+  open, onClose, scope,
+}: {
+  open: boolean;
+  onClose: () => void;
+  scope: DrillScope | null;
+}) {
+  const [data, setData]       = useState<BHHourlyDetailsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+  const [search, setSearch]   = useState('');
+
+  useEffect(() => {
+    if (!open || !scope) return;
+    setLoading(true);
+    setError('');
+    setData(null);
+    setSearch('');
+    const params: Record<string, string> = { date: scope.date };
+    if (scope.bh_name)     params.bh_name     = scope.bh_name;
+    if (scope.client_name) params.client_name = scope.client_name;
+    if (scope.metric)      params.metric      = scope.metric;
+    if (scope.hour != null) params.hour       = String(scope.hour);
+    api.get<BHHourlyDetailsResponse>('/coo/bh-hourly/details', { params })
+      .then(r => setData(r.data))
+      .catch(e => {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(msg || 'Failed to load details.');
+      })
+      .finally(() => setLoading(false));
+  }, [open, scope]);
+
+  // Close on Esc
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const filteredRows = useMemo(() => {
+    if (!data) return [];
+    if (!search.trim()) return data.rows;
+    const q = search.toLowerCase();
+    return data.rows.filter(r =>
+      (r.candidate || '').toLowerCase().includes(q)
+      || (r.candidate_email || '').toLowerCase().includes(q)
+      || (r.candidate_phone || '').toLowerCase().includes(q)
+      || (r.client_name || '').toLowerCase().includes(q)
+      || (r.recruiter || '').toLowerCase().includes(q)
+      || (r.job_title || '').toLowerCase().includes(q)
+      || (r.step_label || '').toLowerCase().includes(q),
+    );
+  }, [data, search]);
+
+  // Group rows by client for the company-wise view
+  const groupedByClient = useMemo(() => {
+    const map = new Map<string, BHHourlyDetailRow[]>();
+    for (const r of filteredRows) {
+      const key = r.client_name || 'Unknown';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [filteredRows]);
+
+  if (!open || !scope) return null;
+
+  // Build a readable scope title
+  const scopeBits: string[] = [];
+  if (scope.metric_label) scopeBits.push(scope.metric_label);
+  if (scope.bh_name)      scopeBits.push(`BH: ${scope.bh_name}`);
+  if (scope.client_name)  scopeBits.push(`Client: ${scope.client_name}`);
+  if (scope.hour != null) {
+    const h = scope.hour;
+    const h12 = h % 12 || 12;
+    scopeBits.push(`${h12} ${h < 12 ? 'AM' : 'PM'}`);
+  }
+  scopeBits.push(scope.date === todayISO() ? 'Today' : fmtDate(scope.date));
+
+  const pal = (scope.metric && METRIC_PAL[scope.metric]) || { hdr: '#0F172A', cell: '#F1F5F9', ink: '#0F172A' };
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-start justify-center pt-10 pb-10 px-4 overflow-y-auto"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl border border-slate-200 overflow-hidden flex flex-col"
+        style={{ maxHeight: 'calc(100vh - 80px)' }}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 flex-shrink-0" style={{ background: pal.cell }}>
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-wider font-bold flex items-center gap-2" style={{ color: pal.hdr }}>
+              <ExternalLink size={11} />
+              Drill-down
+            </div>
+            <div className="text-base font-bold mt-0.5 truncate" style={{ color: pal.ink }}>
+              {scopeBits.join(' · ')}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              {loading
+                ? 'Loading…'
+                : data ? `${data.total} candidate${data.total === 1 ? '' : 's'} across ${groupedByClient.length} client${groupedByClient.length === 1 ? '' : 's'}` : ''}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-500 hover:text-slate-900 hover:bg-white/60 rounded-lg p-1.5 transition-colors flex-shrink-0"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Filter bar */}
+        <div className="px-5 py-2.5 border-b border-slate-100 bg-slate-50/60 flex items-center gap-2 flex-shrink-0">
+          <div className="relative flex-1 max-w-md">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search name, email, phone, client, recruiter, role…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 bg-white"
+              autoFocus
+            />
+          </div>
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-white border border-slate-200"
+            >
+              Clear
+            </button>
+          )}
+          {data && data.rows.length > 0 && (
+            <span className="text-[11px] text-slate-400 ml-auto">
+              {filteredRows.length === data.rows.length
+                ? `${data.rows.length} row${data.rows.length === 1 ? '' : 's'}`
+                : `${filteredRows.length} of ${data.rows.length}`}
+            </span>
+          )}
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1">
+          {loading ? (
+            <div className="py-16 text-center text-slate-400">
+              <RefreshCw size={28} className="animate-spin mx-auto mb-2 text-slate-300" />
+              Loading details…
+            </div>
+          ) : error ? (
+            <div className="m-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">{error}</div>
+          ) : !data || data.rows.length === 0 ? (
+            <div className="py-16 text-center text-slate-400 text-sm">
+              No candidates match this slice.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {groupedByClient.map(([client, rows]) => (
+                <div key={client} className="">
+                  {/* Client group header — company-wise grouping */}
+                  <div className="px-5 py-2 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 sticky top-0 z-10">
+                    <div className="flex items-center gap-2">
+                      <Building2 size={13} className="text-slate-500" />
+                      <span className="text-[13px] font-bold text-slate-800">{client}</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                        {rows.length}
+                      </span>
+                      {rows[0]?.bh_name && (
+                        <>
+                          <span className="text-slate-300">·</span>
+                          <span className="text-[11px] text-indigo-700 font-medium">{rows[0].bh_name}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Candidate rows */}
+                  <div className="divide-y divide-slate-100">
+                    {rows.map(r => {
+                      const stepPal = (r.bucket && METRIC_PAL[r.bucket]) || { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
+                      return (
+                        <div
+                          key={r.applied_job_id}
+                          className="px-5 py-3 hover:bg-slate-50/60 transition-colors"
+                        >
+                          <div className="flex items-start gap-4 flex-wrap">
+                            {/* Candidate */}
+                            <div className="min-w-[200px] flex-1">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <User size={12} className="text-slate-400" />
+                                <span className="text-[13px] font-semibold text-slate-900 truncate">
+                                  {r.candidate || '—'}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                                {r.candidate_email && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Mail size={10} />
+                                    {r.candidate_email}
+                                  </span>
+                                )}
+                                {r.candidate_phone && (
+                                  <>
+                                    <span className="text-slate-300">·</span>
+                                    <span className="inline-flex items-center gap-1">
+                                      <Phone size={10} />
+                                      {r.candidate_phone}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Role */}
+                            <div className="min-w-[140px] flex-1">
+                              <div className="flex items-center gap-1.5 text-[12px] text-slate-700">
+                                <Briefcase size={11} className="text-slate-400" />
+                                <span className="truncate">{r.job_title || '—'}</span>
+                              </div>
+                              {r.recruiter && (
+                                <div className="text-[11px] text-slate-500 mt-0.5 truncate" title={r.recruiter_email || ''}>
+                                  by {r.recruiter}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Step / status */}
+                            <div className="min-w-[140px]">
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md"
+                                style={{ background: stepPal.cell, color: stepPal.ink, border: `1px solid ${stepPal.hdr}33` }}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ background: stepPal.hdr }} />
+                                {r.step_label || `step ${r.step_id}`}
+                              </span>
+                              {r.bucket_label && r.bucket_label !== r.step_label && (
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {r.bucket_label}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Time */}
+                            <div className="min-w-[140px] text-right">
+                              <div className="text-[11px] text-slate-600 inline-flex items-center gap-1">
+                                <Clock size={10} />
+                                <span className="tabular-nums">{r.moved_at_ist}</span>
+                              </div>
+                              {r.applied_at_ist && r.applied_at_ist !== r.moved_at_ist && (
+                                <div className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
+                                  applied {r.applied_at_ist}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BHHourlyTrackerSection() {
   const [data, setData]       = useState<BHHourlyResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2783,6 +3105,10 @@ function BHHourlyTrackerSection() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [sortKey, setSortKey] = useState<string>('row_total');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [drillScope, setDrillScope] = useState<DrillScope | null>(null);
+
+  const openDrill = (s: DrillScope) => setDrillScope(s);
+  const closeDrill = () => setDrillScope(null);
 
   const isToday = selDate === todayISO();
 
@@ -3260,19 +3586,40 @@ function BHHourlyTrackerSection() {
                               return (
                                 <td
                                   key={m.key}
-                                  className="text-center text-xs font-black py-2 px-2"
+                                  className={`text-center text-xs font-black py-2 px-2 ${v ? 'cursor-pointer hover:brightness-110' : ''}`}
                                   style={{
                                     background: v ? p.hdr : 'rgba(255,255,255,0.06)',
                                     color:      v ? '#fff' : 'rgba(255,255,255,0.5)',
                                   }}
+                                  onClick={(e) => {
+                                    if (!v) return;
+                                    e.stopPropagation();
+                                    openDrill({
+                                      date: selDate,
+                                      bh_name: group.bh_name,
+                                      metric: m.key,
+                                      metric_label: m.label,
+                                    });
+                                  }}
+                                  title={v ? `View ${v} candidate${v === 1 ? '' : 's'} for ${m.label} — ${group.bh_name}` : ''}
                                 >
                                   {v || '—'}
                                 </td>
                               );
                             })}
                             <td
-                              className="text-center text-xs font-black py-2 px-2 text-white"
+                              className={`text-center text-xs font-black py-2 px-2 text-white ${group.row_total ? 'cursor-pointer hover:brightness-125' : ''}`}
                               style={{ background: '#0F172A' }}
+                              onClick={(e) => {
+                                if (!group.row_total) return;
+                                e.stopPropagation();
+                                openDrill({
+                                  date: selDate,
+                                  bh_name: group.bh_name,
+                                  metric_label: `All events`,
+                                });
+                              }}
+                              title={group.row_total ? `View all ${group.row_total} events for ${group.bh_name}` : ''}
                             >
                               {group.row_total || '—'}
                             </td>
@@ -3313,15 +3660,39 @@ function BHHourlyTrackerSection() {
                                   const p = METRIC_PAL[m.key] ?? { hdr: '#475569', cell: '#F1F5F9', ink: '#334155' };
                                   return (
                                     <td key={m.key}
-                                      className="text-center text-xs font-bold py-2.5 px-2 border-r border-slate-100"
-                                      style={{ background: v ? p.cell : undefined }}>
+                                      className={`text-center text-xs font-bold py-2.5 px-2 border-r border-slate-100 ${v ? 'cursor-pointer hover:brightness-95' : ''}`}
+                                      style={{ background: v ? p.cell : undefined }}
+                                      onClick={(e) => {
+                                        if (!v) return;
+                                        e.stopPropagation();
+                                        openDrill({
+                                          date: selDate,
+                                          bh_name: row.bh_name,
+                                          client_name: row.client_name,
+                                          metric: m.key,
+                                          metric_label: m.label,
+                                        });
+                                      }}
+                                      title={v ? `View ${v} candidate${v === 1 ? '' : 's'} — ${m.label} · ${row.client_name}` : ''}
+                                    >
                                       {v ? <span style={{ color: p.ink }}>{v}</span> : <span className="text-slate-300">—</span>}
                                     </td>
                                   );
                                 })}
                                 <td
-                                  className="text-center text-xs font-black py-2.5 px-2"
+                                  className={`text-center text-xs font-black py-2.5 px-2 ${row.row_total > 0 ? 'cursor-pointer hover:brightness-110' : ''}`}
                                   style={{ background: row.row_total > 0 ? '#0F172A' : '#F8FAFC', color: row.row_total > 0 ? '#fff' : '#94A3B8' }}
+                                  onClick={(e) => {
+                                    if (!row.row_total) return;
+                                    e.stopPropagation();
+                                    openDrill({
+                                      date: selDate,
+                                      bh_name: row.bh_name,
+                                      client_name: row.client_name,
+                                      metric_label: 'All events',
+                                    });
+                                  }}
+                                  title={row.row_total ? `View all ${row.row_total} events for ${row.client_name}` : ''}
                                 >
                                   {row.row_total || '—'}
                                 </td>
@@ -3341,6 +3712,16 @@ function BHHourlyTrackerSection() {
                                       hours={hours}
                                       metrics={metrics}
                                       rowTotal={row.row_total}
+                                      onCellClick={(metricKey, metricLabel, hour) =>
+                                        openDrill({
+                                          date: selDate,
+                                          bh_name: row.bh_name,
+                                          client_name: row.client_name,
+                                          metric: metricKey,
+                                          metric_label: metricLabel,
+                                          hour,
+                                        })
+                                      }
                                     />
                                   </td>
                                 </tr>,
@@ -3427,9 +3808,21 @@ function BHHourlyTrackerSection() {
             hours={hours}
             metrics={metrics}
             rowTotal={filteredGrandTotal}
+            onCellClick={(metricKey, metricLabel, hour) =>
+              openDrill({
+                date: selDate,
+                bh_name: fBh.size === 1 ? Array.from(fBh)[0] : null,
+                metric: metricKey,
+                metric_label: metricLabel,
+                hour,
+              })
+            }
           />
         </div>
       )}
+
+      {/* Drill-down modal for any clicked cell */}
+      <BHHourlyDetailsModal open={!!drillScope} onClose={closeDrill} scope={drillScope} />
     </div>
   );
 }
