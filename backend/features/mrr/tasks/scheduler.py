@@ -8,9 +8,11 @@ For each open job with a deadline set:
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from core.database import SessionLocal
 from core.sql_loader import load_sql
 from infra.models import Job, JobStatus, NotifType, User
@@ -23,8 +25,79 @@ from features.mrr.notifications.service import push
 # check per tick. Prevents duplicate notifications when uvicorn runs with
 # --workers > 1.
 _SCHED_LOCK_KEY = 3133731337
+# Separate lock key for the hourly BH-target email job.
+_BH_EMAIL_LOCK_KEY = 3133731338
 
 log = logging.getLogger(__name__)
+
+
+def send_bh_target_email():
+    """Send the BH Target Tracking daily email. Scheduled hourly 10:00–20:00 IST.
+
+    Multi-worker safe: a transaction-scoped advisory lock lets only ONE worker
+    proceed, and a per-(date,hour) row in bh_email_send_log guarantees exactly
+    one email per hour even if the job somehow fires twice. Recipients come from
+    the BH_REPORT_EMAILS_SEND env var (comma-separated).
+    """
+    from core.email import send_outlook_email
+    from features.mrr.bh_target_email import service
+
+    db = SessionLocal()
+    try:
+        # Idempotency ledger (created lazily — no migration needed).
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS bh_email_send_log ("
+            "sent_key TEXT PRIMARY KEY, sent_at TIMESTAMPTZ DEFAULT now())",
+        ))
+        db.commit()
+
+        # Only one worker proceeds per tick; others fail the lock and return.
+        acquired = db.execute(
+            text("SELECT pg_try_advisory_xact_lock(:k)"),
+            {"k": _BH_EMAIL_LOCK_KEY},
+        ).scalar()
+        if not acquired:
+            return
+
+        ist_now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        sent_key = ist_now.strftime("%Y-%m-%d-%H")  # one send per IST hour
+
+        # Claim this hour; if already claimed, another worker/tick handled it.
+        claimed = db.execute(
+            text(
+                "INSERT INTO bh_email_send_log (sent_key) VALUES (:k) "
+                "ON CONFLICT (sent_key) DO NOTHING RETURNING sent_key",
+            ),
+            {"k": sent_key},
+        ).rowcount
+        if not claimed:
+            db.commit()  # release lock
+            return
+
+        recipients = [
+            e.strip()
+            for e in (os.getenv("BH_REPORT_EMAILS_SEND") or "").split(",")
+            if e.strip()
+        ]
+        if not recipients:
+            log.warning("BH email: BH_REPORT_EMAILS_SEND is empty — skipping send.")
+            db.rollback()  # don't persist the claim so it can retry later
+            return
+
+        data = service.collect_bh_rows(db, ist_now.date())
+        html = service.render_html(data["date"], data["rows"], data["totals"])
+        pretty = datetime.strptime(data["date"], "%Y-%m-%d").strftime("%d %b %Y")
+        subject = f"BH Target Tracking — Daily Snapshot ({pretty})"
+
+        send_outlook_email(recipients, subject, html)
+        db.commit()  # persist the claim + release lock only after a successful send
+        log.info("BH target email sent to %s for %s", recipients, sent_key)
+
+    except Exception as e:  # noqa: BLE001
+        log.error("BH target email error: %s", e)
+        db.rollback()
+    finally:
+        db.close()
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -188,8 +261,19 @@ def start():
         max_instances=1,
         coalesce=True,
     )
+    # BH target email — hourly from 10:00 to 20:00 IST.
+    # Container clock is UTC; IST = UTC+5:30, so 10:00–20:00 IST = 04:30–14:30 UTC
+    # at minute 30 (hours 4..14 inclusive → 11 sends/day). Using UTC avoids any
+    # tzdata dependency in the slim image.
+    _scheduler.add_job(
+        send_bh_target_email,
+        CronTrigger(hour="4-14", minute=30),
+        id="bh_target_email",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
-    log.info("Deadline scheduler started.")
+    log.info("MRR scheduler started (deadline_check + bh_target_email).")
 
 
 def stop():
