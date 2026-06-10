@@ -106,6 +106,7 @@ export interface Ticket {
   consultant_count?: number;
   comments: TicketComment[];
   activity_log: ActivityLogEntry[];
+  step_submissions: StepSubmission[];
 }
 
 // ── List response ─────────────────────────────────────────────────────────
@@ -181,6 +182,11 @@ export interface SopDefinition {
     owner_role: string;
     sla_working_hours: number;
     escalate_to_role: string;
+    email_template_id: string | null;
+    hard_gate: string | null;
+    kra_ref: string;
+    medium: "email" | "document" | "form" | "rag" | "document_ai_summary" | "comment" | "status_update";
+    medium_config: Record<string, unknown> | null;
   }>;
 }
 
@@ -207,4 +213,34 @@ export interface UserOption {
   name: string;
   email: string;
   role: string;
+}
+
+// ── Step submission ───────────────────────────────────────────────────────────
+
+export type StepMedium =
+  | "email"
+  | "document"
+  | "form"
+  | "rag"
+  | "document_ai_summary"
+  | "comment"
+  | "status_update";
+
+export interface StepSubmissionCreate {
+  medium: StepMedium;
+  form_data?: Record<string, unknown>;
+  attachments?: string[];
+}
+
+export interface StepSubmission {
+  id: number;
+  ticket_id: number;
+  step_number: number;
+  medium: StepMedium;
+  submitted_by: number;
+  submitted_by_name: string | null;
+  submitted_at: string | null;
+  form_data: Record<string, unknown> | null;
+  attachments: string[];
+  ai_summary: string | null;
 }

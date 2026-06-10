@@ -11,6 +11,7 @@ from infra.hrbp_models import (
     HRBPTicket,
     HRBPTicketActivityLog,
     HRBPTicketComment,
+    HRBPTicketStepSubmission,
     hrbp_ticket_consultants,
 )
 from infra.models import User
@@ -22,6 +23,7 @@ from features.hrbp.tickets.schema import (
     CloseTicketPayload,
     StepReassignPayload,
     StepSlaExtendPayload,
+    StepSubmissionCreate,
     TicketCommentCreate,
     TicketCreate,
     TicketUpdate,
@@ -131,6 +133,20 @@ def _enrich_ticket(db: Session, ticket: HRBPTicket) -> dict:
         ld["actor_name"] = _user_name(db, lg.actor_id)
         d["activity_log"].append(ld)
 
+    # step submissions
+    submissions = (
+        db.query(HRBPTicketStepSubmission)
+        .filter_by(ticket_id=ticket.id)
+        .order_by(HRBPTicketStepSubmission.step_number, HRBPTicketStepSubmission.submitted_at)
+        .all()
+    )
+    d["step_submissions"] = []
+    for sub in submissions:
+        sd = {col.name: getattr(sub, col.name) for col in sub.__table__.columns}
+        sd["submitted_by_name"] = _user_name(db, sub.submitted_by)
+        sd["attachments"] = sub.attachments or []
+        d["step_submissions"].append(sd)
+
     return d
 
 
@@ -145,14 +161,58 @@ def _log(db: Session, ticket_id: int, actor_id: int | None, action: str, metadat
 
 # ── Create ───────────────────────────────────────────────────────────────────
 
-def _sla_hours_for_role(role: str, steps_definition: list[dict]) -> int | None:
-    """Sum sla_working_hours across all SOP steps owned by this role."""
-    total = sum(
-        s.get("sla_working_hours", 0)
-        for s in steps_definition
-        if s.get("owner_role") == role
-    )
-    return total if total > 0 else None
+def _expand_hierarchy_to_steps(
+    role_hierarchy: list[dict],
+    steps_definition: list[dict],
+) -> list[dict]:
+    """
+    Convert wizard role-level hierarchy to a flat per-SOP-step hierarchy.
+
+    The wizard collects one user per role occurrence (HRBP, BH, HRBP post-decision).
+    This function expands that into one entry per SOP step, assigning the correct
+    user to each step based on the role that owns it.
+    """
+    # Build a mapping: (role, occurrence_index) -> user info
+    role_occurrence: dict[str, int] = {}
+    role_user_map: dict[tuple, dict] = {}
+    for h in role_hierarchy:
+        role = h.get("role", "")
+        occ = role_occurrence.get(role, 0)
+        role_occurrence[role] = occ + 1
+        role_user_map[(role, occ)] = {
+            "user_id":    h.get("user_id"),
+            "user_name":  h.get("user_name"),
+            "user_email": h.get("user_email"),
+        }
+
+    # Walk steps_definition and assign user by role + consecutive-group occurrence
+    result: list[dict] = []
+    current_role: str | None = None
+    role_group_idx: dict[str, int] = {}
+
+    for s in steps_definition:
+        role = s.get("owner_role", "hrbp")
+        if role != current_role:
+            # New consecutive group for this role — increment its group counter
+            role_group_idx[role] = role_group_idx.get(role, -1) + 1
+            current_role = role
+
+        user_info = role_user_map.get((role, role_group_idx[role]), {})
+        result.append({
+            "order":            s["number"],
+            "role":             role,
+            "label":            s["action_label"],
+            "user_id":          user_info.get("user_id"),
+            "user_name":        user_info.get("user_name"),
+            "user_email":       user_info.get("user_email"),
+            "sla_window":       f"{s.get('sla_working_hours', 0)}h",
+            "sla_hours":        s.get("sla_working_hours"),
+            "resolved_at":      None,
+            "resolved_by_id":   None,
+            "resolved_by_name": None,
+        })
+
+    return result
 
 
 def create(db: Session, payload: TicketCreate, raised_by: User) -> dict:
@@ -175,12 +235,14 @@ def create(db: Session, payload: TicketCreate, raised_by: User) -> dict:
         names += f" +{len(consultants) - 3}"
     title = f"{sop.name} — {names}"
 
-    # Embed computed sla_hours per hierarchy step from the SOP steps_definition
+    # Expand role-level hierarchy from wizard into one entry per SOP step
     steps_def: list[dict] = sop.steps_definition or []
-    hierarchy = [
-        {**step.model_dump(), "sla_hours": _sla_hours_for_role(step.role, steps_def)}
-        for step in payload.hierarchy_json
-    ]
+    role_hierarchy = [step.model_dump() for step in payload.hierarchy_json]
+    hierarchy = (
+        _expand_hierarchy_to_steps(role_hierarchy, steps_def)
+        if steps_def
+        else [{**h, "sla_hours": None} for h in role_hierarchy]
+    )
 
     ticket = HRBPTicket(
         ticket_number=_next_ticket_number(db),
@@ -400,6 +462,14 @@ def advance_step(db: Session, ticket_id: int, current_user: User) -> dict:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket.status == "closed":
         raise HTTPException(status_code=400, detail="Ticket is already closed")
+
+    # Allow the current step owner, ticket creator, or escalation manager to advance
+    current_hierarchy = ticket.hierarchy_json[ticket.current_step - 1] if ticket.hierarchy_json else None
+    is_step_owner = current_hierarchy and current_hierarchy.get("user_id") == current_user.id
+    is_creator    = ticket.raised_by_id == current_user.id
+    is_esc_mgr    = ticket.escalation_mgr_id == current_user.id
+    if not (is_step_owner or is_creator or is_esc_mgr):
+        raise HTTPException(status_code=403, detail="Not authorized to advance this step")
 
     _advance_step(db, ticket, current_user)
     db.commit()
@@ -625,3 +695,55 @@ def update_ticket(db: Session, ticket_id: int, payload: TicketUpdate, current_us
     db.commit()
     db.refresh(ticket)
     return _enrich_ticket(db, ticket)
+
+# ── Step submission ───────────────────────────────────────────────────────────
+
+def submit_step(
+    db: Session,
+    ticket_id: int,
+    step_number: int,
+    payload: StepSubmissionCreate,
+    current_user,
+) -> dict:
+    ticket = db.query(HRBPTicket).filter_by(id=ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status == "closed":
+        raise HTTPException(status_code=400, detail="Ticket is closed")
+
+    # Only the person assigned to the current hierarchy step may submit
+    current_hierarchy = ticket.hierarchy_json[ticket.current_step - 1] if ticket.hierarchy_json else None
+    if current_hierarchy and current_hierarchy.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your turn on this ticket")
+
+    # Prevent duplicate submission for the same step
+    existing = (
+        db.query(HRBPTicketStepSubmission)
+        .filter_by(ticket_id=ticket_id, step_number=step_number)
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Step {step_number} already submitted")
+
+    sub = HRBPTicketStepSubmission(
+        ticket_id=ticket_id,
+        step_number=step_number,
+        medium=payload.medium,
+        submitted_by=current_user.id,
+        form_data=payload.form_data,
+        attachments=payload.attachments or [],
+    )
+    db.add(sub)
+
+    _log(db, ticket_id, current_user.id, "step_submitted", {
+        "sop_step": step_number,
+        "medium": payload.medium,
+    })
+
+    db.commit()
+    db.refresh(sub)
+
+    sd = {col.name: getattr(sub, col.name) for col in sub.__table__.columns}
+    sd["submitted_by_name"] = _user_name(db, sub.submitted_by)
+    sd["attachments"] = sub.attachments or []
+    return sd

@@ -12,6 +12,7 @@ import { TicketPriorityBadge } from "@/components/tickets/TicketPriorityBadge";
 import { TicketStatusBadge } from "@/components/tickets/TicketStatusBadge";
 import { SLACountdown } from "@/components/tickets/SLACountdown";
 import { TicketHierarchyProgress } from "@/components/tickets/TicketHierarchyProgress";
+import { StepActionPanel } from "@/components/tickets/StepActionPanel";
 import { TicketCommentThread } from "@/components/tickets/TicketCommentThread";
 import { RichTextEditor } from "@/components/tickets/RichTextEditor";
 import { fmtDateTime } from "@/lib/formatDate";
@@ -20,6 +21,7 @@ import { PageLoader } from "@/components/Loader";
 import {
   getTicket,
   addTicketComment,
+  advanceTicketStep,
   closeTicket,
   updateTicket,
   uploadTicketFile,
@@ -573,6 +575,7 @@ function TicketDetailPage() {
   // Sidebar comment input state
   const [commentText, setCommentText] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [resolveSubmitting, setResolveSubmitting] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [pinLoading, setPinLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -656,6 +659,22 @@ function TicketDetailPage() {
     ticket?.status === "open" &&
     currentHierarchyStep?.user_id === user?.id;
   const isCreator = ticket?.raised_by_id === user?.id;
+
+  // With per-step hierarchy, current_step == sop step number — find it directly
+  const currentSopStep = sopSteps?.find((s) => s.number === ticket?.current_step) ?? null;
+
+  // Resolve is only allowed once the current step's medium action has been submitted
+  const currentStepSubmitted = (ticket?.step_submissions ?? []).some(
+    (s) => s.step_number === ticket?.current_step,
+  );
+
+  // Prefill data for form/status_update widgets — sourced from the primary consultant
+  const primaryConsultant = ticket?.consultants?.[0] ?? null;
+  const stepPrefillData: Record<string, unknown> = {
+    current_ctc:  primaryConsultant?.monthly_po ?? undefined,
+    exit_date:    primaryConsultant?.po_end_date ?? undefined,
+    consultant:   primaryConsultant?.name ?? undefined,
+  };
 
   const SLA_MANAGE_ROLES = ["admin", "ops_head", "coo", "ceo"];
   const isCanManageStep =
@@ -750,6 +769,20 @@ function TicketDetailPage() {
       setCommentText("");
     } finally {
       setCommentSubmitting(false);
+    }
+  }
+
+  async function handleResolve() {
+    if (!ticket) return;
+    setResolveSubmitting(true);
+    try {
+      const updated = await advanceTicketStep(ticket.id);
+      setTicket(updated);
+      toast.success("Step resolved — advanced to next");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to advance step");
+    } finally {
+      setResolveSubmitting(false);
     }
   }
 
@@ -1264,56 +1297,60 @@ function TicketDetailPage() {
                 {currentHierarchyStep.user_name && (
                   <p className="text-sm text-gray-600 mt-0.5">{currentHierarchyStep.user_name}</p>
                 )}
-                {/* Comment input in resolution flow */}
+
+                {/* Per-step action widget */}
+                {currentSopStep != null && (
+                  <div className="mt-3">
+                    <StepActionPanel
+                      ticketId={ticket.id}
+                      hierarchyStepNumber={ticket.current_step}
+                      sopSteps={[currentSopStep]}
+                      submissions={ticket.step_submissions ?? []}
+                      isMyTurn={isMyTurn}
+                      onSubmitted={() => fetchTicket()}
+                      onAllStepsDone={() => {}}
+                      prefillData={stepPrefillData}
+                    />
+                  </div>
+                )}
+
+                {/* Comment box — always visible when ticket is open */}
                 <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
-                  <p className="text-xs text-gray-500 font-medium">
-                    {isMyTurn
-                      ? "Your turn — add a comment or resolve to advance."
-                      : "Add an internal note."}
+                  <p className="text-xs font-medium text-gray-500">
+                    {isMyTurn ? "Add a comment (optional)" : "Add an internal note"}
                   </p>
                   <textarea
                     placeholder="Write a comment…"
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
-                    rows={3}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                    rows={2}
+                    className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
                   />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">{commentText.length} chars</span>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={!commentText.trim() || commentSubmitting}
-                        onClick={() => handleSidebarComment(false)}
-                        className="gap-1.5 text-xs"
-                      >
-                        {commentSubmitting ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Send className="w-3.5 h-3.5" />
-                        )}
-                        Comment
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm"
+                      disabled={!commentText.trim() || commentSubmitting}
+                      onClick={() => handleSidebarComment(false)}
+                      className="flex-1 gap-1.5 text-xs h-8">
+                      {commentSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      Comment
+                    </Button>
+                    {isMyTurn && (
+                      <Button type="button" size="sm"
+                        disabled={resolveSubmitting || (currentSopStep != null && !currentStepSubmitted)}
+                        onClick={handleResolve}
+                        title={currentSopStep != null && !currentStepSubmitted ? "Complete the step action above before resolving" : ""}
+                        className="flex-1 gap-1.5 text-xs h-8 bg-green-600 hover:bg-green-700 disabled:opacity-50">
+                        {resolveSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        Resolve & Pass
                       </Button>
-                      {isMyTurn && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={!commentText.trim() || commentSubmitting}
-                          onClick={() => handleSidebarComment(true)}
-                          className="gap-1.5 text-xs bg-green-600 hover:bg-green-700"
-                        >
-                          {commentSubmitting ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          )}
-                          Resolve & Pass to Next
-                        </Button>
-                      )}
-                    </div>
+                    )}
                   </div>
+                  {/* Hint when step action is pending */}
+                  {isMyTurn && currentSopStep != null && !currentStepSubmitted && (
+                    <p className="text-[10px] text-amber-600 font-medium">
+                      ⚠ Complete the step action above to enable Resolve.
+                    </p>
+                  )}
                 </div>
 
                 {isCanManageStep && (
@@ -1363,6 +1400,7 @@ function TicketDetailPage() {
                   status={ticket.status}
                   sopSteps={sopSteps ?? undefined}
                   comments={ticket.comments}
+                  stepSubmissions={ticket.step_submissions ?? []}
                 />
               )}
             </div>

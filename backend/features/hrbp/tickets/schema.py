@@ -134,6 +134,28 @@ class ConsultantSummary(BaseModel):
         from_attributes = True
 
 
+class StepSubmissionCreate(BaseModel):
+    medium: str
+    form_data: dict[str, Any] | None = None
+    attachments: list[str] = []
+
+
+class StepSubmissionResponse(BaseModel):
+    id: int
+    ticket_id: int
+    step_number: int
+    medium: str
+    submitted_by: int
+    submitted_by_name: str | None = None
+    submitted_at: datetime | None
+    form_data: dict[str, Any] | None
+    attachments: list[str] = []
+    ai_summary: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class TicketResponse(BaseModel):
     id: int
     ticket_number: str
@@ -165,6 +187,7 @@ class TicketResponse(BaseModel):
     consultants: list[ConsultantSummary] = []
     comments: list[TicketCommentResponse] = []
     activity_log: list[ActivityLogResponse] = []
+    step_submissions: list[StepSubmissionResponse] = []
 
     class Config:
         from_attributes = True

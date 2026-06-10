@@ -379,6 +379,20 @@ class HRBPNotificationHistory(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
 
 
+class HRBPTicketStepSubmission(Base):
+    __tablename__ = "hrbp_ticket_step_submissions"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id    = Column(Integer, ForeignKey("hrbp_tickets.id", ondelete="CASCADE"), nullable=False)
+    step_number  = Column(SmallInteger, nullable=False)
+    medium       = Column(Text, nullable=False)
+    submitted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    submitted_at = Column(DateTime(timezone=True), default=_now)
+    form_data    = Column(JSONB)
+    attachments  = Column(ARRAY(Text))
+    ai_summary   = Column(Text)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 
 class HRBPExitTracking(Base):
