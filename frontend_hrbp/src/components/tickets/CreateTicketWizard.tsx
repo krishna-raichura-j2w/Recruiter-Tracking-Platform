@@ -23,6 +23,7 @@ import {
   listUsersByRole,
   uploadTicketFile,
 } from "@/apiService/ticketApi";
+import { getClientsApi, getConsultantsApi } from "@/apiService/api";
 import type {
   SopDefinition,
   HierarchyStep,
@@ -45,9 +46,9 @@ interface Consultant {
 interface CreateTicketWizardProps {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
-  clients: Client[];
-  consultants: Consultant[];
+  onCreated?: () => void;
+  clients?: Client[];
+  consultants?: Consultant[];
   initialClientId?: number;
   initialConsultantIds?: number[];
   initialBhId?: number;
@@ -80,6 +81,26 @@ export function CreateTicketWizard({
   const [sopsLoading, setSopsLoading] = useState(false);
   const [bhUsers, setBhUsers] = useState<UserOption[]>([]);
   const [usersByRole, setUsersByRole] = useState<Record<string, UserOption[]>>({});
+
+  // Self-fetch clients/consultants when not provided via props
+  const [_clients, setInternalClients] = useState<Client[]>([]);
+  const [_consultants, setInternalConsultants] = useState<Consultant[]>([]);
+  const resolvedClients = clients ?? _clients;
+  const resolvedConsultants = consultants ?? _consultants;
+
+  useEffect(() => {
+    if (!open || (clients && consultants)) return;
+    Promise.all([
+      getClientsApi({ per_page: -1 }),
+      getConsultantsApi({ per_page: -1 }),
+    ])
+      .then(([c, cs]) => {
+        setInternalClients((c.data ?? []) as unknown as Client[]);
+        setInternalConsultants((cs.data ?? []) as unknown as Consultant[]);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -187,8 +208,8 @@ export function CreateTicketWizard({
 
   // Auto-compute PO risk for step 4 from selected consultants
   const selectedConsultantsData = useMemo(
-    () => consultants.filter((c) => step1.consultantIds.includes(c.id)),
-    [consultants, step1.consultantIds],
+    () => resolvedConsultants.filter((c) => step1.consultantIds.includes(c.id)),
+    [resolvedConsultants, step1.consultantIds],
   );
 
   // ── Computed PO risk (used in priority step for context) ────────────────
@@ -282,7 +303,7 @@ export function CreateTicketWizard({
         toast.success("Ticket created successfully");
       }
       handleClose();
-      onCreated();
+      onCreated?.();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to create ticket");
     } finally {
@@ -337,8 +358,8 @@ export function CreateTicketWizard({
             <Step1Entities
               data={step1}
               onChange={setStep1}
-              clients={clients}
-              consultants={consultants}
+              clients={resolvedClients}
+              consultants={resolvedConsultants}
               bhUsers={bhUsers}
               onClientChange={setSelectedClientId}
             />

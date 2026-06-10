@@ -17,18 +17,11 @@ import {
   TrendingUp,
   DoorOpen,
   ClipboardList,
-  AlertCircle,
   IndianRupee,
   CalendarClock,
   CalendarDays,
   Scale,
-  LogOut,
-  Calendar,
-  BarChart2,
-  UserCheck,
   FilePlus,
-  AlertOctagon,
-  Building2,
   CalendarCheck,
   Inbox,
   CalendarOff,
@@ -61,6 +54,8 @@ import { TicketStatusBadge } from "@/components/tickets/TicketStatusBadge";
 import { TicketPriorityBadge } from "@/components/tickets/TicketPriorityBadge";
 import { SLACountdown } from "@/components/tickets/SLACountdown";
 import { SectionLoader } from "@/components/Loader";
+import { CreateTicketWizard } from "@/components/tickets/CreateTicketWizard";
+import { InitiateExitDialog } from "@/components/InitiateExitDialog";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   beforeLoad: () => {
@@ -345,6 +340,8 @@ function Dashboard() {
   const [loadingAtRisk, setLoadingAtRisk]           = useState(true);
   const [loadingActivity, setLoadingActivity]       = useState(true);
   const [unpinning, setUnpinning]                   = useState(false);
+  const [wizardOpen, setWizardOpen]                 = useState(false);
+  const [exitOpen, setExitOpen]                     = useState(false);
 
   // Date filter state — default: today
   const todayStr = fmtDate(new Date());
@@ -484,20 +481,6 @@ function Dashboard() {
                 accentText="text-sky-600" sub="Status: open"
                 onClick={() => navigate({ to: "/tickets" })}
               />
-              <KpiCard
-                icon={<IconBox className="bg-red-100"><AlertCircle className="w-5 h-5 text-red-600" /></IconBox>}
-                label="SLA Breaches"
-                value={loading ? "—" : (d?.sla_breaches ?? 0)}
-                accentText="text-red-600" sub="Deadline passed"
-                onClick={() => navigate({ to: "/tickets" })}
-              />
-              <KpiCard
-                icon={<IconBox className="bg-orange-100"><IndianRupee className="w-5 h-5 text-orange-600" /></IconBox>}
-                label="PO at Risk"
-                value={loading ? "—" : fmtInr(d?.po_at_risk ?? 0)}
-                accentText="text-orange-600" sub="From open tickets"
-                onClick={() => navigate({ to: "/tickets" })}
-              />
               {user?.role !== "po_finance" && (
                 <KpiCard
                   icon={<IconBox className="bg-violet-100"><CalendarClock className="w-5 h-5 text-violet-600" /></IconBox>}
@@ -521,17 +504,17 @@ function Dashboard() {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">PO Outcomes</p>
               <div className="flex gap-4 flex-wrap">
                 <KpiCard
-                  icon={<IconBox className="bg-emerald-100"><TrendingUp className="w-5 h-5 text-emerald-600" /></IconBox>}
-                  label="PO Retained"
-                  value={loading ? "—" : fmtInr(d?.po_retained ?? 0)}
-                  accentText="text-emerald-600" sub="Closed — retained"
-                  onClick={() => navigate({ to: "/tickets" })}
-                />
-                <KpiCard
                   icon={<IconBox className="bg-orange-100"><Scale className="w-5 h-5 text-orange-600" /></IconBox>}
                   label="PO at Risk"
                   value={loading ? "—" : fmtInr(d?.po_at_risk ?? 0)}
                   accentText="text-orange-600" sub="Open tickets with risk"
+                  onClick={() => navigate({ to: "/tickets" })}
+                />
+                <KpiCard
+                  icon={<IconBox className="bg-emerald-100"><TrendingUp className="w-5 h-5 text-emerald-600" /></IconBox>}
+                  label="PO Retained"
+                  value={loading ? "—" : fmtInr(d?.po_retained ?? 0)}
+                  accentText="text-emerald-600" sub="Closed — retained"
                   onClick={() => navigate({ to: "/tickets" })}
                 />
                 <KpiCard
@@ -540,40 +523,6 @@ function Dashboard() {
                   value={loading ? "—" : fmtInr(d?.po_loss ?? 0)}
                   accentText="text-red-600" sub="Closed — lost"
                   onClick={() => navigate({ to: "/tickets" })}
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-0.5">Exit Tracking</p>
-              <div className="flex gap-4 flex-wrap">
-                <KpiCard
-                  icon={<IconBox className="bg-amber-100"><LogOut className="w-5 h-5 text-amber-600" /></IconBox>}
-                  label="Exits Initiated"
-                  value={loading ? "—" : (d?.exits_initiated ?? 0)}
-                  accentText="text-amber-600" sub="Pending acknowledgement"
-                  onClick={() => navigate({ to: "/exits" })}
-                />
-                <KpiCard
-                  icon={<IconBox className="bg-rose-100"><Calendar className="w-5 h-5 text-rose-600" /></IconBox>}
-                  label="This Month"
-                  value={loading ? "—" : (d?.exits_this_month ?? 0)}
-                  accentText="text-rose-600" sub="Exit initiations logged"
-                  onClick={() => navigate({ to: "/exits" })}
-                />
-                <KpiCard
-                  icon={<IconBox className="bg-blue-100"><BarChart2 className="w-5 h-5 text-blue-600" /></IconBox>}
-                  label="This Quarter"
-                  value={loading ? "—" : (d?.exits_this_quarter ?? 0)}
-                  accentText="text-blue-600" sub="Exits in current quarter"
-                  onClick={() => navigate({ to: "/exits" })}
-                />
-                <KpiCard
-                  icon={<IconBox className="bg-emerald-100"><UserCheck className="w-5 h-5 text-emerald-600" /></IconBox>}
-                  label="Completed Exits"
-                  value={loading ? "—" : (d?.exits_completed ?? 0)}
-                  accentText="text-emerald-600" sub="Consultants offboarded"
-                  onClick={() => navigate({ to: "/exits" })}
                 />
               </div>
             </div>
@@ -592,35 +541,92 @@ function Dashboard() {
                 : user?.role === "bh"  ? "Raise a ticket for your business unit"
                 : "Raise a new HR operations ticket"
               }
-              onClick={() => navigate({ to: "/tickets" })}
-            />
-            <QuickAction
-              icon={<IconBox className="bg-red-100"><AlertOctagon className="w-5 h-5 text-red-600" /></IconBox>}
-              label="Breached SLAs"
-              description="View all overdue tickets"
-              onClick={() => navigate({ to: "/tickets" })}
-            />
-            <QuickAction
-              icon={<IconBox className="bg-violet-100"><Building2 className="w-5 h-5 text-violet-600" /></IconBox>}
-              label="Clients"
-              description="Manage clients & consultants"
-              onClick={() => navigate({ to: "/clients" })}
+              onClick={() => setWizardOpen(true)}
             />
             {user?.role !== "po_finance" && (
               <QuickAction
                 icon={<IconBox className="bg-violet-100"><CalendarCheck className="w-5 h-5 text-violet-600" /></IconBox>}
-                label="Cadence Scheduler"
-                description="View & schedule cadence"
-                onClick={() => navigate({ to: "/cadence" })}
+                label="Create Cadence"
+                description="Schedule a new cadence session"
+                onClick={() => navigate({ to: "/cadence", search: { create: true } })}
               />
             )}
             <QuickAction
-              icon={<DoorOpen className="w-9 h-9 text-rose-500" />}
-              label="Exit Tracking"
-              description="View & log exit initiations"
-              onClick={() => navigate({ to: "/exits" })}
+              icon={<IconBox className="bg-rose-100"><DoorOpen className="w-5 h-5 text-rose-600" /></IconBox>}
+              label="Initiate Exit"
+              description="Log an exit initiation"
+              onClick={() => setExitOpen(true)}
             />
           </div>
+        </div>
+
+        {/* Pinned Ticket — full width */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Pin className="w-4 h-4 text-amber-500" />
+              <h2 className="text-sm font-bold text-slate-800">Pinned Ticket</h2>
+            </div>
+            <div className="flex items-center gap-1">
+              {pinned && (
+                <Button variant="ghost" size="sm" disabled={unpinning}
+                  className="text-slate-400 text-xs gap-1 hover:text-red-600 hover:bg-red-50"
+                  onClick={handleUnpin}>
+                  {unpinning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PinOff className="w-3.5 h-3.5" />}
+                  Unpin
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700" onClick={handleRefresh}>
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+          {loadingPinned ? (
+            <SectionLoader />
+          ) : !pinned ? (
+            <div className="flex flex-col items-center justify-center h-36 text-slate-400 gap-1.5 px-6 text-center">
+              <PinOff className="w-8 h-8 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-500">No pinned ticket</p>
+              <p className="text-xs text-slate-400">Open any ticket and click the Pin button to keep it here for quick access.</p>
+            </div>
+          ) : (
+            <div className="px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => navigate({ to: `/tickets/${pinned.id}` })}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="font-mono text-sm font-bold text-sky-600">{pinned.ticket_number}</span>
+                    <span className="text-slate-200">·</span>
+                    <span className="text-xs text-slate-400">{pinned.sop_type ?? pinned.sop_name}</span>
+                    <TicketPriorityBadge priority={pinned.priority} />
+                    <TicketStatusBadge status={pinned.status} />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3 leading-snug">{pinned.title}</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">Client</p>
+                      <p className="font-medium text-slate-700 mt-0.5">{pinned.client_name ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">Raised By</p>
+                      <p className="font-medium text-slate-700 mt-0.5">{pinned.raised_by_name ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">SLA</p>
+                      <div className="mt-0.5"><SLACountdown deadline={pinned.sla_deadline} compact /></div>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">Current Step</p>
+                      <p className="font-medium text-slate-700 mt-0.5">
+                        {pinned.current_step}/{pinned.hierarchy_json?.length ?? "?"} — {pinned.hierarchy_json?.[pinned.current_step - 1]?.label ?? "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* My Tickets + Today's Cadence */}
@@ -729,7 +735,7 @@ function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           {/* Consultants at Risk */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <TrendingDown className="w-4 h-4 text-orange-500" />
@@ -743,6 +749,7 @@ function Dashboard() {
                 View All <ChevronRight className="w-3.5 h-3.5" />
               </Button>
             </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
             {loadingAtRisk ? (
               <SectionLoader />
             ) : atRisk.length === 0 ? (
@@ -794,10 +801,11 @@ function Dashboard() {
                 })}
               </div>
             )}
+            </div>
           </div>
 
           {/* Recent Activity Feed */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-sky-500" />
@@ -807,6 +815,7 @@ function Dashboard() {
                 </div>
               </div>
             </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent divide-y divide-slate-50">
             {loadingActivity ? (
               <SectionLoader />
             ) : activity.length === 0 ? (
@@ -815,105 +824,38 @@ function Dashboard() {
                 <p className="text-sm font-medium">No recent activity</p>
               </div>
             ) : (
-              <ScrollList maxHeight="320px">
-                {activity.map((a) => (
-                  <div key={a.id}
-                    className="flex items-start gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
-                    onClick={() => a.ticket_id && navigate({ to: `/tickets/${a.ticket_id}` })}>
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 mt-0.5 ${avatarColor(a.actor_name)}`}>
-                      {a.actor_name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-700 leading-snug">
-                        <span className="font-semibold">{a.actor_name}</span>
-                        {" "}<span className="text-slate-500">{a.action}</span>
-                        {a.ticket_number && (
-                          <span className="font-mono font-bold text-sky-600 ml-1">{a.ticket_number}</span>
-                        )}
-                      </p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <Clock className="w-2.5 h-2.5 text-slate-300" />
-                        <span className="text-[10px] text-slate-400">{timeAgo(a.created_at)}</span>
-                      </div>
-                    </div>
+              activity.map((a) => (
+                <div key={a.id}
+                  className="flex items-start gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                  onClick={() => a.ticket_id && navigate({ to: `/tickets/${a.ticket_id}` })}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 mt-0.5 ${avatarColor(a.actor_name)}`}>
+                    {a.actor_name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
                   </div>
-                ))}
-              </ScrollList>
-            )}
-          </div>
-        </div>
-
-        {/* Pinned Ticket — full width */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Pin className="w-4 h-4 text-amber-500" />
-              <h2 className="text-sm font-bold text-slate-800">Pinned Ticket</h2>
-            </div>
-            <div className="flex items-center gap-1">
-              {pinned && (
-                <Button variant="ghost" size="sm" disabled={unpinning}
-                  className="text-slate-400 text-xs gap-1 hover:text-red-600 hover:bg-red-50"
-                  onClick={handleUnpin}>
-                  {unpinning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PinOff className="w-3.5 h-3.5" />}
-                  Unpin
-                </Button>
-              )}
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700" onClick={handleRefresh}>
-                <RefreshCw className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          {loadingPinned ? (
-            <SectionLoader />
-          ) : !pinned ? (
-            <div className="flex flex-col items-center justify-center h-36 text-slate-400 gap-1.5 px-6 text-center">
-              <PinOff className="w-8 h-8 text-slate-300" />
-              <p className="text-sm font-semibold text-slate-500">No pinned ticket</p>
-              <p className="text-xs text-slate-400">Open any ticket and click the Pin button to keep it here for quick access.</p>
-            </div>
-          ) : (
-            <div className="px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
-              onClick={() => navigate({ to: `/tickets/${pinned.id}` })}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="font-mono text-sm font-bold text-sky-600">{pinned.ticket_number}</span>
-                    <span className="text-slate-200">·</span>
-                    <span className="text-xs text-slate-400">{pinned.sop_type ?? pinned.sop_name}</span>
-                    <TicketPriorityBadge priority={pinned.priority} />
-                    <TicketStatusBadge status={pinned.status} />
-                  </div>
-                  <h3 className="text-sm font-semibold text-slate-900 mb-3 leading-snug">{pinned.title}</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">Client</p>
-                      <p className="font-medium text-slate-700 mt-0.5">{pinned.client_name ?? "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">Raised By</p>
-                      <p className="font-medium text-slate-700 mt-0.5">{pinned.raised_by_name ?? "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">SLA</p>
-                      <div className="mt-0.5"><SLACountdown deadline={pinned.sla_deadline} compact /></div>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 uppercase tracking-wide text-[10px]">Current Step</p>
-                      <p className="font-medium text-slate-700 mt-0.5">
-                        {pinned.current_step}/{pinned.hierarchy_json?.length ?? "?"} — {pinned.hierarchy_json?.[pinned.current_step - 1]?.label ?? "—"}
-                      </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-700 leading-snug">
+                      <span className="font-semibold">{a.actor_name}</span>
+                      {" "}<span className="text-slate-500">{a.action}</span>
+                      {a.ticket_number && (
+                        <span className="font-mono font-bold text-sky-600 ml-1">{a.ticket_number}</span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Clock className="w-2.5 h-2.5 text-slate-300" />
+                      <span className="text-[10px] text-slate-400">{timeAgo(a.created_at)}</span>
                     </div>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
-              </div>
+              ))
+            )}
             </div>
-          )}
+          </div>
         </div>
 
       </main>
+
+      {/* Dialogs */}
+      <CreateTicketWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <InitiateExitDialog open={exitOpen} onClose={() => setExitOpen(false)} />
     </div>
   );
 }
