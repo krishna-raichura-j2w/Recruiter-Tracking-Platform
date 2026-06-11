@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 ExitReason = Literal["resignation", "project_roll_off", "contract_closure", "conversion", "absconding", "no_show", "termination"]
 ExitType   = Literal["voluntary", "involuntary"]
-ExitStatus = Literal["initiated", "acknowledged", "completed"]
+ExitStatus = Literal["initiated", "acknowledged", "retention_in_progress", "retained", "completed"]
 
 
 class ExitCreate(BaseModel):
@@ -17,18 +17,23 @@ class ExitCreate(BaseModel):
     exit_reason:         ExitReason
     exit_type:           ExitType
     exit_date:           date | None = None
+    last_working_day:    date | None = None
     notice_period_start: date | None = None
     replacement_needed:  bool = False
     notes:               str | None = None
+    hr_efforts:          str | None = None
     source_ticket_id:    int | None = None
 
 
 class ExitUpdate(BaseModel):
     status:              ExitStatus | None = None
     exit_date:           date | None = None
+    last_working_day:    date | None = None
     notice_period_start: date | None = None
     replacement_needed:  bool | None = None
     notes:               str | None = None
+    hr_efforts:          str | None = None
+    retention_reason:    str | None = None
 
 
 class ExitResponse(BaseModel):
@@ -42,11 +47,15 @@ class ExitResponse(BaseModel):
     exit_reason:         str
     exit_type:           str
     exit_date:           date | None
+    last_working_day:    date | None
     notice_period_start: date | None
     po_impact:           float | None
     status:              str
     replacement_needed:  bool
     notes:               str | None
+    hr_efforts:          str | None
+    retained_at:         datetime | None = None
+    retention_reason:    str | None = None
     source_ticket_id:    int | None = None
     source_ticket_number: str | None = None
     created_at:          datetime | None

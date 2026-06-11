@@ -173,3 +173,44 @@ export async function chatWithAI(message: string, history: ChatMessage[]): Promi
   });
   return handleResponse<AIChatResult>(res);
 }
+
+// ── Monthly Report ────────────────────────────────────────────────────────────
+
+export interface ReportRow {
+  emp_id:      string | null;
+  emp_name:    string;
+  exit_type:   string;
+  client_name: string | null;
+  lwd:         string | null;
+  po_value:    number | null;
+  margin:      number | null;
+  hr_efforts:  string | null;
+}
+
+export interface ReportSection {
+  count:        number;
+  total_po:     number;
+  total_margin: number;
+  records:      ReportRow[];
+}
+
+export interface MonthlyReport {
+  month:                  number;
+  year:                   number;
+  label:                  string;
+  exits:                  ReportSection;
+  exits_in_progress:      ReportSection;
+  retentions:             ReportSection;
+  retentions_in_progress: ReportSection;
+}
+
+export async function fetchMonthlyReport(month: number, year: number): Promise<MonthlyReport> {
+  const res = await fetchWithAuth(
+    `${getBaseUrl()}api/hrbp/reports/monthly?month=${month}&year=${year}`
+  );
+  return handleResponse<MonthlyReport>(res);
+}
+
+export function getMonthlyReportExportUrl(month: number, year: number): string {
+  return `${getBaseUrl()}api/hrbp/reports/monthly/export?month=${month}&year=${year}`;
+}

@@ -551,28 +551,42 @@ def close_ticket(db: Session, ticket_id: int, payload: CloseTicketPayload, curre
             if payload.new_ctc is not None:
                 consultant.monthly_ctc = payload.new_ctc
 
-    elif payload.po_outcome == "loss" and payload.consultant_exited:
-        for consultant in consultant_rows:
-            tenure_left = _tenure_left_months(consultant.po_end_date)
-            monthly_po = float(consultant.monthly_po) if consultant.monthly_po is not None else 0
-            po_impact = monthly_po * tenure_left
+    elif payload.po_outcome == "loss":
+        # Resolve exit_status: new field takes priority, fall back to legacy bool
+        resolved_status = payload.exit_status
+        if resolved_status is None and payload.consultant_exited:
+            resolved_status = "exited"
 
-            exit_record = HRBPExitTracking(
-                consultant_id      = consultant.id,
-                client_id          = ticket.client_id,
-                initiated_by_id    = current_user.id,
-                exit_reason        = payload.exit_reason or "end_of_contract",
-                exit_type          = payload.exit_type or "involuntary",
-                exit_date          = payload.exit_date,
-                po_impact          = po_impact if po_impact > 0 else None,
-                status             = "completed",
-                replacement_needed = payload.replacement_needed,
-                notes              = payload.notes,
-                source_ticket_id   = ticket.id,
-            )
-            db.add(exit_record)
+        if resolved_status in ("exited", "retention_in_progress", "retained"):
+            now = _now()
+            for consultant in consultant_rows:
+                tenure_left = _tenure_left_months(consultant.po_end_date)
+                monthly_po = float(consultant.monthly_po) if consultant.monthly_po is not None else 0
+                po_impact = monthly_po * tenure_left
 
-            consultant.is_active = False
+                db_status = "completed" if resolved_status == "exited" else resolved_status
+
+                exit_record = HRBPExitTracking(
+                    consultant_id      = consultant.id,
+                    client_id          = ticket.client_id,
+                    initiated_by_id    = current_user.id,
+                    exit_reason        = payload.exit_reason or "end_of_contract",
+                    exit_type          = payload.exit_type or "involuntary",
+                    exit_date          = payload.last_working_day,
+                    last_working_day   = payload.last_working_day,
+                    po_impact          = po_impact if po_impact > 0 else None,
+                    status             = db_status,
+                    replacement_needed = payload.replacement_needed,
+                    notes              = payload.notes,
+                    hr_efforts         = payload.hr_efforts,
+                    retention_reason   = payload.retention_reason,
+                    retained_at        = now if resolved_status == "retained" else None,
+                    source_ticket_id   = ticket.id,
+                )
+                db.add(exit_record)
+
+                if resolved_status == "exited":
+                    consultant.is_active = False
 
     db.commit()
     db.refresh(ticket)

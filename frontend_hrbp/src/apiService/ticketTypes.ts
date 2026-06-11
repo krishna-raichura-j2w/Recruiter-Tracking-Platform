@@ -137,13 +137,17 @@ export interface CloseTicketPayload {
   new_po_monthly?: number | null;
   new_margin?: number | null;
   new_ctc?: number | null;
-  // PO Loss — exit
-  consultant_exited?: boolean;
-  exit_date?: string | null;         // YYYY-MM-DD
+  // PO Loss — exit status and details
+  exit_status?: "exited" | "retention_in_progress" | "retained" | null;
+  last_working_day?: string | null;  // YYYY-MM-DD
   exit_reason?: string | null;
   exit_type?: string | null;
   replacement_needed?: boolean;
+  hr_efforts?: string | null;
+  retention_reason?: string | null;
   notes?: string | null;
+  // legacy — kept for backwards compat
+  consultant_exited?: boolean;
 }
 
 // ── Step SLA extension payload ────────────────────────────────────────────

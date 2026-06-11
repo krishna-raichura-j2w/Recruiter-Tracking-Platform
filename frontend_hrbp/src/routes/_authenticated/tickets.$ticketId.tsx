@@ -264,20 +264,22 @@ function CloseTicketDialog({ open, onClose, consultants, submitting, onSubmit }:
   const [newCtc, setNewCtc]             = useState("");
 
   // PO Loss / exit state
-  const [consultantExited, setConsultantExited] = useState<boolean | null>(null);
+  const [exitStatus, setExitStatus] = useState<"exited" | "retention_in_progress" | "retained" | null>(null);
   const [exitDate, setExitDate]     = useState<Dayjs | null>(null);
   const [exitReason, setExitReason] = useState("");
   const [exitType, setExitType]     = useState("");
   const [replacementNeeded, setReplacementNeeded] = useState(false);
+  const [hrEfforts, setHrEfforts]   = useState("");
+  const [retentionReason, setRetentionReason] = useState("");
   const [exitNotes, setExitNotes]   = useState("");
 
   function reset() {
     setStage("outcome");
     setNewPoEndDate(null);
     setNewPoMonthly(""); setNewMargin(""); setNewCtc("");
-    setConsultantExited(null);
+    setExitStatus(null);
     setExitDate(null); setExitReason(""); setExitType("");
-    setReplacementNeeded(false); setExitNotes("");
+    setReplacementNeeded(false); setHrEfforts(""); setRetentionReason(""); setExitNotes("");
   }
 
   function handleOpenChange(v: boolean) {
@@ -297,11 +299,13 @@ function CloseTicketDialog({ open, onClose, consultants, submitting, onSubmit }:
   function submitLoss() {
     onSubmit({
       po_outcome:         "loss",
-      consultant_exited:  consultantExited === true,
-      exit_date:          exitDate    ? exitDate.format("YYYY-MM-DD") : null,
+      exit_status:        exitStatus ?? undefined,
+      last_working_day:   exitDate ? exitDate.format("YYYY-MM-DD") : null,
       exit_reason:        exitReason  || null,
       exit_type:          exitType    || null,
       replacement_needed: replacementNeeded,
+      hr_efforts:         hrEfforts   || null,
+      retention_reason:   retentionReason || null,
       notes:              exitNotes   || null,
     });
   }
@@ -452,36 +456,31 @@ function CloseTicketDialog({ open, onClose, consultants, submitting, onSubmit }:
               )}
             </div>
 
-            {/* Exit question */}
+            {/* Consultant status — 3-way */}
             <div className="mt-4 space-y-3">
-              <Label className="text-sm font-medium">Has the consultant exited?</Label>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConsultantExited(true)}
-                  className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
-                    consultantExited === true
-                      ? "border-red-400 bg-red-100 text-red-800"
-                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  Yes, Exited
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConsultantExited(false)}
-                  className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
-                    consultantExited === false
-                      ? "border-slate-400 bg-slate-100 text-slate-800"
-                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  Not Yet
-                </button>
+              <Label className="text-sm font-medium">Consultant Status</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { value: "exited",                label: "Exited",                  cls: "border-red-400 bg-red-100 text-red-800",       def: "border-slate-200 hover:bg-red-50 text-slate-700" },
+                    { value: "retention_in_progress", label: "Retention in Progress",   cls: "border-amber-400 bg-amber-100 text-amber-800", def: "border-slate-200 hover:bg-amber-50 text-slate-700" },
+                    { value: "retained",              label: "Retained",                cls: "border-emerald-400 bg-emerald-100 text-emerald-800", def: "border-slate-200 hover:bg-emerald-50 text-slate-700" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setExitStatus(opt.value)}
+                    className={`rounded-lg border py-2 text-xs font-medium transition-colors ${exitStatus === opt.value ? opt.cls : opt.def}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
 
-              {consultantExited === true && (
+              {exitStatus !== null && (
                 <div className="space-y-3 pt-1">
+                  {/* Exit reason + type — shown for exited and retention states */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Exit Reason</Label>
@@ -505,24 +504,62 @@ function CloseTicketDialog({ open, onClose, consultants, submitting, onSubmit }:
                       </Select>
                     </div>
                   </div>
+
+                  {/* LWD — shown for exited; optional for others */}
                   <div className="space-y-1">
-                    <Label className="text-xs">Exit Date</Label>
-                    <CustomDatePicker value={exitDate} onChange={setExitDate} placeholder="Last working day…" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="replacement_needed"
-                      checked={replacementNeeded}
-                      onChange={(e) => setReplacementNeeded(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300"
-                    />
-                    <Label htmlFor="replacement_needed" className="text-xs font-normal cursor-pointer">
-                      Replacement needed
+                    <Label className="text-xs">
+                      Last Working Day (LWD){exitStatus === "exited" && <span className="text-red-500 ml-0.5">*</span>}
                     </Label>
+                    <CustomDatePicker value={exitDate} onChange={setExitDate} placeholder="Select LWD…" />
                   </div>
+
+                  {/* Retention reason — only for retained */}
+                  {exitStatus === "retained" && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Retention Reason</Label>
+                      <Select value={retentionReason} onValueChange={setRetentionReason}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="What saved the consultant?" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="salary_hike">Salary Hike</SelectItem>
+                          <SelectItem value="role_change">Role / Designation Change</SelectItem>
+                          <SelectItem value="manager_change">Manager Change</SelectItem>
+                          <SelectItem value="client_change">Client / Project Change</SelectItem>
+                          <SelectItem value="personal_counselling">Personal Counselling</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* HR Efforts — shown for all states */}
                   <div className="space-y-1">
-                    <Label className="text-xs">Notes</Label>
+                    <Label className="text-xs">HR Efforts / Remarks</Label>
+                    <Textarea
+                      value={hrEfforts}
+                      onChange={(e) => setHrEfforts(e.target.value)}
+                      placeholder="Describe actions taken by HR…"
+                      rows={2}
+                      className="text-xs resize-none"
+                    />
+                  </div>
+
+                  {exitStatus === "exited" && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="replacement_needed"
+                        checked={replacementNeeded}
+                        onChange={(e) => setReplacementNeeded(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-300"
+                      />
+                      <Label htmlFor="replacement_needed" className="text-xs font-normal cursor-pointer">
+                        Replacement needed
+                      </Label>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Internal Notes</Label>
                     <Textarea
                       value={exitNotes}
                       onChange={(e) => setExitNotes(e.target.value)}
@@ -539,7 +576,7 @@ function CloseTicketDialog({ open, onClose, consultants, submitting, onSubmit }:
               <Button variant="ghost" size="sm" onClick={() => setStage("outcome")}>Back</Button>
               <Button
                 onClick={submitLoss}
-                disabled={submitting || consultantExited === null}
+                disabled={submitting || exitStatus === null}
                 className="bg-red-600 hover:bg-red-500 text-white"
               >
                 {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
