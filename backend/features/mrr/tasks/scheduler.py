@@ -87,7 +87,11 @@ def send_bh_target_email():
         data = service.collect_bh_rows(db, ist_now.date())
         html = service.render_html(data["date"], data["rows"], data["totals"])
         pretty = datetime.strptime(data["date"], "%Y-%m-%d").strftime("%d %b %Y")
-        subject = f"BH Target Tracking — Daily Snapshot ({pretty})"
+        # IST time the snapshot reflects, e.g. "10 AM", "11 AM", "8 PM".
+        hour12 = ((ist_now.hour - 1) % 12) + 1
+        ampm = "AM" if ist_now.hour < 12 else "PM"
+        time_label = f"{hour12} {ampm}"
+        subject = f"BH Target Tracking — {time_label} IST Snapshot ({pretty})"
 
         send_outlook_email(recipients, subject, html)
         db.commit()  # persist the claim + release lock only after a successful send

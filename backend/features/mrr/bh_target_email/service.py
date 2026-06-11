@@ -240,7 +240,7 @@ def render_html(date_str: str, rows: list[dict], totals: dict) -> str:
         <tr><td colspan="2" style="padding:10px 14px;background:#0F172A;color:#fff;font-size:15px;font-weight:700;">Overall Performance &mdash; {pretty_date}</td></tr>
         <tr><td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;color:#475569;">New Demand</td>
             <td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;text-align:right;font-weight:700;color:#0F172A;">{_fmt(totals['new_demand'])}</td></tr>
-        <tr><td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;color:#475569;">Offer Letter Submission</td>
+        <tr><td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;color:#475569;">Submission</td>
             <td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;text-align:right;font-weight:700;color:#0F172A;">{_fmt(totals['offer_letter_subs'])}</td></tr>
         <tr><td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;color:#475569;">Interviews</td>
             <td style="padding:8px 14px;border-bottom:1px solid #E2E8F0;text-align:right;font-weight:700;color:#0F172A;">{_fmt(totals['interviews'])}</td></tr>
@@ -260,7 +260,7 @@ def render_html(date_str: str, rows: list[dict], totals: dict) -> str:
         for lbl, align in [
             ("BH",                "left"),
             ("New Demand",        "right"),
-            ("Offer Letter Subs", "right"),
+            ("Submissions", "right"),
             ("Interviews",        "right"),
             ("Selections",        "right"),
             ("Onboarding HC",     "right"),
@@ -315,7 +315,7 @@ def render_html(date_str: str, rows: list[dict], totals: dict) -> str:
             ("BH",                "left"),
             ("Company",           "left"),
             ("New Demand",        "right"),
-            ("Offer Letter Subs", "right"),
+            ("Submissions", "right"),
             ("Interviews",        "right"),
             ("Selections",        "right"),
             ("Onboarding HC",     "right"),
