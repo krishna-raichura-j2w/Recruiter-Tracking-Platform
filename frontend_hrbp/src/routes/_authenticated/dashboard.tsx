@@ -28,6 +28,13 @@ import {
   ShieldCheck,
   MessageSquare,
   CalendarRange,
+  ChevronLeft,
+  Download,
+  FileBarChart2,
+  UserCheck,
+  UserX,
+  UserMinus,
+  UserCog,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -40,12 +47,18 @@ import {
   unpinTicket,
   fetchConsultantsAtRisk,
   fetchRecentActivity,
+  fetchMonthlyReport,
+  getMonthlyReportExportUrl,
   type DashboardKpis,
   type MyTicketItem,
   type TodayCadenceItem,
   type ConsultantAtRisk,
   type ActivityItem,
+  type MonthlyReport,
+  type ReportSection,
+  type ReportRow,
 } from "@/apiService/dashboardApi";
+import { fetchWithAuth } from "@/apiService/api";
 import { CustomDateRangePicker } from "@/components/CustomDateRangePicker";
 import { ScrollList } from "@/components/ScrollList";
 import type { Ticket as TicketDetail } from "@/apiService/ticketTypes";
@@ -314,6 +327,202 @@ function IconBox({ children, className }: { children: React.ReactNode; className
   return (
     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${className}`}>
       {children}
+    </div>
+  );
+}
+
+// ── Monthly Report ────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+const SECTION_CONFIG = [
+  { key: "exits_in_progress"      as const, label: "Exit in Progress"       },
+  { key: "exits"                  as const, label: "Exits"                  },
+  { key: "retentions"             as const, label: "Retentions"             },
+  { key: "retentions_in_progress" as const, label: "Retentions in Progress" },
+] as const;
+
+function ReportTable({ section, sectionLabel }: { section: ReportSection; sectionLabel: string }) {
+  if (section.count === 0) {
+    return (
+      <p className="text-xs text-slate-400 italic px-2 py-3">No records for {sectionLabel} this month.</p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-slate-50 border-b border-slate-100">
+            {["Emp ID","Emp Name","Exit Type","Client","LWD","PO Value","Margin","HR Efforts"].map((h) => (
+              <th key={h} className="px-3 py-2 text-left font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50">
+          {section.records.map((r: ReportRow, i: number) => (
+            <tr key={i} className="hover:bg-slate-50 transition-colors">
+              <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{r.emp_id ?? "—"}</td>
+              <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">{r.emp_name}</td>
+              <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.exit_type}</td>
+              <td className="px-3 py-2 text-slate-600 max-w-[160px] truncate">{r.client_name ?? "—"}</td>
+              <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                {r.lwd ? new Date(r.lwd).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"2-digit" }) : "—"}
+              </td>
+              <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">
+                {r.po_value != null ? `₹${r.po_value.toLocaleString("en-IN")}` : "—"}
+              </td>
+              <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">
+                {r.margin != null ? `₹${r.margin.toLocaleString("en-IN")}` : "—"}
+              </td>
+              <td className="px-3 py-2 text-slate-500 max-w-[240px]">{r.hr_efforts || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-yellow-50 border-t border-yellow-100 font-semibold">
+            <td className="px-3 py-2" colSpan={4}>Total — {section.count} record{section.count !== 1 ? "s" : ""}</td>
+            <td className="px-3 py-2" />
+            <td className="px-3 py-2 text-right text-slate-800">₹{section.total_po.toLocaleString("en-IN")}</td>
+            <td className="px-3 py-2 text-right text-slate-800">₹{section.total_margin.toLocaleString("en-IN")}</td>
+            <td className="px-3 py-2" />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function MonthlyReportSection() {
+  const today = new Date();
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [year,  setYear]  = useState(today.getFullYear());
+  const [report, setReport]       = useState<MonthlyReport | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchMonthlyReport(month, year)
+      .then(setReport)
+      .catch(() => setReport(null))
+      .finally(() => setLoading(false));
+  }, [month, year]);
+
+  function prevMonth() {
+    if (month === 1) { setMonth(12); setYear(y => y - 1); }
+    else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (month === 12) { setMonth(1); setYear(y => y + 1); }
+    else setMonth(m => m + 1);
+  }
+  const isCurrentMonth = month === today.getMonth() + 1 && year === today.getFullYear();
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const url = getMonthlyReportExportUrl(month, year);
+      const res = await fetchWithAuth(url);
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `HRBP_Monthly_Report_${MONTH_NAMES[month - 1]}_${year}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch {
+      toast.error("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totalExits = (report?.exits.count ?? 0) + (report?.exits_in_progress.count ?? 0);
+  const totalRetentions = (report?.retentions.count ?? 0) + (report?.retentions_in_progress.count ?? 0);
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <FileBarChart2 className="w-4 h-4 text-sky-500" />
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Monthly Report</h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">Exits, Retentions &amp; HR Efforts</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Summary badges */}
+          {report && (
+            <div className="hidden sm:flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <UserX className="w-2.5 h-2.5" />{totalExits} Exit{totalExits !== 1 ? "s" : ""}
+              </span>
+              <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <UserCheck className="w-2.5 h-2.5" />{totalRetentions} Retention{totalRetentions !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
+          {/* Month navigator */}
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+            <button onClick={prevMonth} className="p-0.5 rounded hover:bg-slate-200 transition-colors">
+              <ChevronLeft className="w-3.5 h-3.5 text-slate-600" />
+            </button>
+            <span className="text-xs font-semibold text-slate-700 min-w-[72px] text-center">
+              {MONTH_NAMES[month - 1]} {year}
+            </span>
+            <button
+              onClick={nextMonth}
+              disabled={isCurrentMonth}
+              className="p-0.5 rounded hover:bg-slate-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+            </button>
+          </div>
+          {/* Export */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={exporting || loading || !report}
+            className="text-xs gap-1.5 h-7"
+          >
+            {exporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+            Export
+          </Button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {loading ? (
+        <SectionLoader />
+      ) : !report ? (
+        <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-2">
+          <FileBarChart2 className="w-8 h-8 text-slate-300" />
+          <p className="text-sm font-medium">Could not load report</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {SECTION_CONFIG.map(({ key, label }) => {
+            const sec: ReportSection = report[key];
+            return (
+              <div key={key}>
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-700 tracking-wide">
+                    {label} — {MONTH_NAMES[month - 1]}'{String(year).slice(2)}
+                  </span>
+                  <div className="flex items-center gap-3 text-[10px] font-medium text-slate-500">
+                    <span>{sec.count} record{sec.count !== 1 ? "s" : ""}</span>
+                    {sec.total_po > 0 && <span>PO ₹{sec.total_po.toLocaleString("en-IN")}</span>}
+                    {sec.total_margin > 0 && <span>Margin ₹{sec.total_margin.toLocaleString("en-IN")}</span>}
+                  </div>
+                </div>
+                <ReportTable section={sec} sectionLabel={label} />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -850,6 +1059,11 @@ function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Monthly Report — visible to all except po_finance */}
+        {user?.role !== "po_finance" && (
+          <MonthlyReportSection />
+        )}
 
       </main>
 

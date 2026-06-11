@@ -72,13 +72,19 @@ class CloseTicketPayload(BaseModel):
     new_margin:      Decimal | None = None
     new_ctc:         Decimal | None = None
 
-    # PO Loss — exit details (only relevant when consultant_exited=True)
-    consultant_exited: bool = False
-    exit_date:         date | None = None
-    exit_reason:       str | None = None   # resignation | project_roll_off | contract_closure | conversion | absconding | no_show | termination
-    exit_type:         str | None = None   # voluntary | involuntary
+    # PO Loss — exit status and details
+    # exit_status: "exited" → completed, "retention_in_progress" → ongoing, "retained" → saved
+    exit_status:        str | None = None
+    last_working_day:   date | None = None
+    exit_reason:        str | None = None   # resignation | project_roll_off | contract_closure | conversion | absconding | no_show | termination
+    exit_type:          str | None = None   # voluntary | involuntary
     replacement_needed: bool = False
-    notes:             str | None = None
+    hr_efforts:         str | None = None
+    retention_reason:   str | None = None
+    notes:              str | None = None
+
+    # kept for backwards-compat — treated as exit_status="exited" when True
+    consultant_exited:  bool = False
 
 
 # ── Update (partial — only creator can update) ───────────────────────────────
