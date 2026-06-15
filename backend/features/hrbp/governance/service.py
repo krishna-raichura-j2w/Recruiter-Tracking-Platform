@@ -334,30 +334,33 @@ def _build_prompt(
     cat_lookup: dict,
 ) -> tuple[str, str]:
     system_prompt = (
-        "You are an HR governance analyst reviewing a manager's observation about a consultant.\n\n"
-        "SCORING SCALE: 0 = BEST performance, 4 = WORST performance.\n"
-        "  Positive behaviour / improvement / praise   → suggest a LOWER level (toward 0)\n"
-        "  Negative behaviour / complaint / failure    → suggest a HIGHER level (toward 4)\n"
-        "  Unclear, neutral, or unrelated to category  → OMIT that category entirely\n\n"
-        "MANDATORY RULES — you must follow every one of these:\n"
-        "1. Only include a category if the comment DIRECTLY and EXPLICITLY describes behaviour "
-        "that belongs to that specific category. Do not infer or assume connections.\n"
-        "2. If you are not fully certain whether a comment is positive or negative for a "
-        "category, OMIT that category. Never guess the direction.\n"
-        "3. NEVER increase a category level (move toward 4 / worse) unless the comment "
-        "clearly and unambiguously describes a problem, failure, or complaint for that exact "
-        "category. Vague or ambiguous language is NOT enough — omit it.\n"
-        "4. Each category is independent. Mentioning behaviour for one category must NOT "
-        "cause changes in other categories unless those others are explicitly mentioned.\n"
-        "5. Generic phrases such as 'doing well', 'good work', 'performing fine', or "
-        "'no issues' without specifics may ONLY improve Performance or Conduct at most — "
-        "never other categories unless explicitly stated.\n"
-        "6. If the comment contains no clear, category-specific, unambiguous behaviour, "
-        "return an empty adjustments object.\n\n"
+        "You are an HR governance scoring assistant. A manager has written an observation about a consultant.\n"
+        "Your job: for each relevant category, decide whether the score should improve, worsen, or stay — and by how much.\n\n"
+        "IMPORTANT: The manager writes comments ALREADY KNOWING the consultant's current score. "
+        "Do NOT try to match comment words to level descriptions. "
+        "Only detect DIRECTION (better / worse) and INTENSITY (mild / strong).\n\n"
+        "RESPONSE FORMAT — return a signed delta for each affected category:\n"
+        "  -2 = significant improvement  (strong positive: exceptional result, outstanding praise, major turnaround)\n"
+        "  -1 = improvement              (clear positive: progress noted, issue resolved, doing better, improved)\n"
+        "  +1 = worsening                (clear negative: problem noted, concern raised, inconsistency flagged)\n"
+        "  +2 = significant worsening    (strong negative: escalation raised, formal action, repeated violation, client complaint)\n\n"
+        "INTENSITY GUIDE — judge the weight of the language:\n"
+        "  -2 triggers on: 'significantly improved', 'exceptional', 'outstanding', 'client sent appreciation', "
+        "'major turnaround', 'fully resolved a long-standing issue', 'exceeded expectations'\n"
+        "  -1 triggers on: 'improved', 'better', 'good progress', 'on track', 'resolved', 'completed', "
+        "'following up well', 'showing improvement', 'doing well in X'\n"
+        "  +1 triggers on: 'some issues', 'occasional problem', 'minor concern', 'flagged informally', "
+        "'needs attention', 'not consistent', 'slipping'\n"
+        "  +2 triggers on: 'severe', 'escalated', 'formal warning issued', 'repeated violation', "
+        "'client raised a complaint', 'HR intervention required'\n\n"
+        "RULES:\n"
+        "1. Only include a category if the comment DIRECTLY and EXPLICITLY mentions behaviour for that category.\n"
+        "2. If the direction (positive or negative) for a category is unclear, OMIT that category.\n"
+        "3. Each category is independent — a mention of one must not cause changes in others.\n"
+        "4. If no category is clearly and directly affected, return an empty adjustments object.\n\n"
         "Respond ONLY with valid JSON (no markdown, no extra text):\n"
-        "{\"adjustments\": {\"<category_key>\": <integer 0-4>}, "
-        "\"explanation\": \"<one concise sentence per changed category, "
-        "or 'No category-specific behaviour identified.' if adjustments is empty>\"}"
+        "{\"adjustments\": {\"<category_key>\": <delta -2 to +2>}, "
+        "\"explanation\": \"<one concise sentence per changed category, or 'No relevant changes.' if empty>\"}"
     )
 
     matrix_lines = []
@@ -369,27 +372,23 @@ def _build_prompt(
         cur_escs = row.escalations
         esc_deg = min(cur_escs, 2)
         effective_idx = min(4, cur_idx + esc_deg)
-
-        options_text = "\n".join(
-            f"    {o['index']}  \"{o['label']}\"  ({o['score']}/{cat['max_score']} pts)"
-            + (" [◀ CURRENT]" if o["index"] == effective_idx else "")
-            for o in cat["options"]
+        cur_opt = cat["options"][effective_idx]
+        esc_note = (
+            f" | {cur_escs} escalation{'s' if cur_escs > 1 else ''} (deduction applied)"
+            if cur_escs > 0 else ""
         )
         matrix_lines.append(
-            f"[{cat_key}] {cat['label']} (max {cat['max_score']} pts)\n"
-            f"  Description: {cat.get('description', '')}\n"
-            f"  Levels (0=BEST → 4=WORST):\n{options_text}"
+            f"[{cat_key}] {cat['label']} — {cat.get('description', '')}\n"
+            f"  Current: {cur_opt['score']}/{cat['max_score']} pts{esc_note}"
         )
 
     user_prompt = (
         f"Consultant: {consultant_name}\n"
         f"Manager observation: \"{comment}\"\n\n"
-        f"Active scoring matrix (levels 0=BEST → 4=WORST):\n"
-        + "\n\n".join(matrix_lines)
-        + "\n\nAnalyse the observation strictly against the rules above. "
-        "Include only categories with direct, unambiguous evidence in the comment. "
-        "If the comment is vague, neutral, or cannot be confidently classified for a category, "
-        "return an empty adjustments object."
+        f"Active categories (current score shown — do not match words to descriptions):\n"
+        + "\n".join(matrix_lines)
+        + "\n\nReturn a delta for each category directly mentioned. "
+        "Base it on direction and intensity of the language, not on level label matching."
     )
     return system_prompt, user_prompt
 
@@ -431,35 +430,39 @@ def analyze_comment(
     esc_adjustments: dict[str, int] = {}
     changes_detail: dict = {}
 
-    for cat_key, new_idx in ai_adjustments.items():
+    for cat_key, raw_delta in ai_adjustments.items():
         cat = cat_lookup.get(cat_key)
         if not cat:
             continue
         try:
-            new_idx = int(new_idx)
+            delta = int(raw_delta)
         except (TypeError, ValueError):
             continue
-        new_idx = max(0, min(4, new_idx))
+        # Clamp to the allowed range — AI must not jump more than 2 levels per comment
+        delta = max(-2, min(2, delta))
+        if delta == 0:
+            continue
 
         row = score_rows.get(cat_key)
         if not row or not row.is_active:
             continue
+
         cur_idx = row.option_index
         cur_escs = row.escalations
-        esc_deg = min(cur_escs, 2)
-        effective_idx = min(4, cur_idx + esc_deg)
+        is_improvement = delta < 0
 
-        new_idx = max(effective_idx - 2, min(effective_idx + 2, new_idx))
-        if new_idx == effective_idx:
-            continue
-
-        actual_new_idx = new_idx
-        is_improvement = new_idx < effective_idx
-        if is_improvement and actual_new_idx == cur_idx and cur_escs > 0:
+        if is_improvement and cur_idx == 0 and cur_escs > 0:
+            # Already at the best base level — burn off one escalation instead of
+            # trying to move the index below 0
             esc_adjustments[cat_key] = -1
             actual_new_idx = cur_idx
-        elif not is_improvement:
-            actual_new_idx = min(4, new_idx)
+        else:
+            # Apply delta directly to option_index (comment is written relative to current score)
+            actual_new_idx = max(0, min(4, cur_idx + delta))
+
+        # Nothing changed (e.g. already at 0 with no escalations and delta is -1)
+        if actual_new_idx == cur_idx and cat_key not in esc_adjustments:
+            continue
 
         validated[cat_key] = actual_new_idx
 
