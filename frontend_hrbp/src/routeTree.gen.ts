@@ -22,10 +22,12 @@ import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authen
 import { Route as AuthenticatedCadenceRouteImport } from './routes/_authenticated/cadence'
 import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
 import { Route as AuthenticatedTicketsIndexRouteImport } from './routes/_authenticated/tickets.index'
+import { Route as AuthenticatedGovernanceIndexRouteImport } from './routes/_authenticated/governance.index'
 import { Route as AuthenticatedExitsIndexRouteImport } from './routes/_authenticated/exits.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
 import { Route as AuthenticatedTicketsTicketIdRouteImport } from './routes/_authenticated/tickets.$ticketId'
+import { Route as AuthenticatedGovernanceConsultantIdRouteImport } from './routes/_authenticated/governance.$consultantId'
 import { Route as AuthenticatedConsultantsConsultantIdRouteImport } from './routes/_authenticated/consultants.$consultantId'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
@@ -102,6 +104,12 @@ const AuthenticatedTicketsIndexRoute =
     path: '/tickets/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedGovernanceIndexRoute =
+  AuthenticatedGovernanceIndexRouteImport.update({
+    id: '/governance/',
+    path: '/governance/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedExitsIndexRoute = AuthenticatedExitsIndexRouteImport.update({
   id: '/exits/',
   path: '/exits/',
@@ -122,6 +130,12 @@ const AuthenticatedTicketsTicketIdRoute =
   AuthenticatedTicketsTicketIdRouteImport.update({
     id: '/tickets/$ticketId',
     path: '/tickets/$ticketId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedGovernanceConsultantIdRoute =
+  AuthenticatedGovernanceConsultantIdRouteImport.update({
+    id: '/governance/$consultantId',
+    path: '/governance/$consultantId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedConsultantsConsultantIdRoute =
@@ -178,10 +192,12 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
+  '/governance/$consultantId': typeof AuthenticatedGovernanceConsultantIdRoute
   '/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/exits/': typeof AuthenticatedExitsIndexRoute
+  '/governance/': typeof AuthenticatedGovernanceIndexRoute
   '/tickets/': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -202,10 +218,12 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
+  '/governance/$consultantId': typeof AuthenticatedGovernanceConsultantIdRoute
   '/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/exits': typeof AuthenticatedExitsIndexRoute
+  '/governance': typeof AuthenticatedGovernanceIndexRoute
   '/tickets': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRoutesById {
@@ -228,10 +246,12 @@ export interface FileRoutesById {
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
+  '/_authenticated/governance/$consultantId': typeof AuthenticatedGovernanceConsultantIdRoute
   '/_authenticated/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/exits/': typeof AuthenticatedExitsIndexRoute
+  '/_authenticated/governance/': typeof AuthenticatedGovernanceIndexRoute
   '/_authenticated/tickets/': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRouteTypes {
@@ -254,10 +274,12 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/clients/$clientId'
     | '/consultants/$consultantId'
+    | '/governance/$consultantId'
     | '/tickets/$ticketId'
     | '/admin/'
     | '/clients/'
     | '/exits/'
+    | '/governance/'
     | '/tickets/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -278,10 +300,12 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/clients/$clientId'
     | '/consultants/$consultantId'
+    | '/governance/$consultantId'
     | '/tickets/$ticketId'
     | '/admin'
     | '/clients'
     | '/exits'
+    | '/governance'
     | '/tickets'
   id:
     | '__root__'
@@ -303,10 +327,12 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/users'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/consultants/$consultantId'
+    | '/_authenticated/governance/$consultantId'
     | '/_authenticated/tickets/$ticketId'
     | '/_authenticated/admin/'
     | '/_authenticated/clients/'
     | '/_authenticated/exits/'
+    | '/_authenticated/governance/'
     | '/_authenticated/tickets/'
   fileRoutesById: FileRoutesById
 }
@@ -411,6 +437,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTicketsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/governance/': {
+      id: '/_authenticated/governance/'
+      path: '/governance'
+      fullPath: '/governance/'
+      preLoaderRoute: typeof AuthenticatedGovernanceIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/exits/': {
       id: '/_authenticated/exits/'
       path: '/exits'
@@ -437,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/tickets/$ticketId'
       fullPath: '/tickets/$ticketId'
       preLoaderRoute: typeof AuthenticatedTicketsTicketIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/governance/$consultantId': {
+      id: '/_authenticated/governance/$consultantId'
+      path: '/governance/$consultantId'
+      fullPath: '/governance/$consultantId'
+      preLoaderRoute: typeof AuthenticatedGovernanceConsultantIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/consultants/$consultantId': {
@@ -498,10 +538,12 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedConsultantsConsultantIdRoute: typeof AuthenticatedConsultantsConsultantIdRoute
+  AuthenticatedGovernanceConsultantIdRoute: typeof AuthenticatedGovernanceConsultantIdRoute
   AuthenticatedTicketsTicketIdRoute: typeof AuthenticatedTicketsTicketIdRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
   AuthenticatedExitsIndexRoute: typeof AuthenticatedExitsIndexRoute
+  AuthenticatedGovernanceIndexRoute: typeof AuthenticatedGovernanceIndexRoute
   AuthenticatedTicketsIndexRoute: typeof AuthenticatedTicketsIndexRoute
 }
 
@@ -520,10 +562,13 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedConsultantsConsultantIdRoute:
     AuthenticatedConsultantsConsultantIdRoute,
+  AuthenticatedGovernanceConsultantIdRoute:
+    AuthenticatedGovernanceConsultantIdRoute,
   AuthenticatedTicketsTicketIdRoute: AuthenticatedTicketsTicketIdRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
   AuthenticatedExitsIndexRoute: AuthenticatedExitsIndexRoute,
+  AuthenticatedGovernanceIndexRoute: AuthenticatedGovernanceIndexRoute,
   AuthenticatedTicketsIndexRoute: AuthenticatedTicketsIndexRoute,
 }
 

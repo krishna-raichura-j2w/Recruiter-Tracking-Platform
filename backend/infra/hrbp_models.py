@@ -473,3 +473,53 @@ class HRBPCadenceSession(Base):
     completed_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ── Governance Score ──────────────────────────────────────────────────────────
+
+class HRBPGovernanceScore(Base):
+    """Stores the current governance score per consultant per category.
+    Auto-initialised at option_index=0 (max score) on first access.
+    is_active=False when the HRBP removes the category for this consultant.
+    """
+    __tablename__ = "hrbp_governance_scores"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id  = Column(Integer, ForeignKey("hrbp_consultants.id", ondelete="CASCADE"), nullable=False)
+    category_key   = Column(Text, nullable=False)   # e.g. "timing", "performance", or "custom_xyz"
+    option_index   = Column(Integer, default=0)     # 0 = best, 4 = worst
+    escalations    = Column(Integer, default=0)     # 0-3
+    net_score      = Column(Integer, default=0)     # computed: base_score - escalation_deduction
+    is_active      = Column(Boolean, default=True)  # False = removed by HRBP
+    updated_at     = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPGovernanceCustomCategory(Base):
+    """Custom categories added by HRBP for a specific consultant (beyond the 9 defaults)."""
+    __tablename__ = "hrbp_governance_custom_categories"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id  = Column(Integer, ForeignKey("hrbp_consultants.id", ondelete="CASCADE"), nullable=False)
+    key            = Column(Text, nullable=False)     # e.g. "custom_client_satisfaction"
+    label          = Column(Text, nullable=False)
+    max_score      = Column(Integer, nullable=False)
+    escalation_base = Column(Integer, default=2)
+    description    = Column(Text, default="")
+    options        = Column(JSONB, nullable=False)    # list of 5 {index, label, score}
+    created_at     = Column(DateTime(timezone=True), default=_now)
+
+
+class HRBPGovernanceCommentHistory(Base):
+    """Immutable audit trail — one row per comment submitted by an HRBP user."""
+    __tablename__ = "hrbp_governance_comment_history"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    consultant_id  = Column(Integer, ForeignKey("hrbp_consultants.id", ondelete="CASCADE"), nullable=False)
+    comment        = Column(Text, nullable=False)
+    explanation    = Column(Text)
+    score_before   = Column(Integer)
+    score_after    = Column(Integer)
+    score_delta    = Column(Integer)
+    changes_detail = Column(JSONB)        # {category_key: {from_idx, to_idx, from_score, to_score, score_diff, ...}}
+    created_by     = Column(Integer, ForeignKey("users.id"))
+    created_at     = Column(DateTime(timezone=True), default=_now)
