@@ -8,7 +8,8 @@ export type Module =
   | "communication"
   | "notifications"
   | "exits"
-  | "activity_log";
+  | "activity_log"
+  | "governance";
 
 export type Action = "read" | "create" | "update" | "delete" | "export";
 
@@ -27,6 +28,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     communication: { read: true },
     notifications: { read: true },
     exits:         { read: true, create: true,  update: true,  delete: false },
+    governance:    { read: true, create: true,  update: true,  delete: false },
   },
 
   bh: {

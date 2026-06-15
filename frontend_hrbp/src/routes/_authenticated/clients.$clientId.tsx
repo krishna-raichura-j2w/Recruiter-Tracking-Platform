@@ -32,6 +32,7 @@ import { fmtINR } from "@/lib/mockData";
 import { Search, Download, Upload, CheckCircle2, AlertCircle, Trash2, Plus, Loader2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { getConsultantsApi, downloadConsultantTemplateApi, bulkUpsertConsultantsApi, deleteConsultantApi, createConsultantApi } from "@/apiService/api";
+import { getScoreSummary, type ScoreSummary } from "@/apiService/governanceApi";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
@@ -51,6 +52,35 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   loader: () => ({ client: {} }),
   component: ClientDetail,
 });
+
+function gradeTone(tone: string) {
+  switch (tone) {
+    case "success":  return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    case "info":     return "bg-blue-100 text-blue-800 border-blue-200";
+    case "warning":  return "bg-amber-100 text-amber-800 border-amber-200";
+    default:         return "bg-rose-100 text-rose-800 border-rose-200";
+  }
+}
+
+function ConsultantScoreCell({ consultantId }: { consultantId: number }) {
+  const [summary, setSummary] = useState<ScoreSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getScoreSummary(consultantId)
+      .then((s) => { if (!cancelled) setSummary(s); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [consultantId]);
+
+  if (!summary) return <span className="text-slate-400 text-xs">…</span>;
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-sm font-semibold text-slate-700">{summary.total_score}/100</span>
+      <Badge className={`text-[10px] px-1 py-0 ${gradeTone(summary.tone)}`}>{summary.grade}</Badge>
+    </div>
+  );
+}
 
 type BulkResult = { inserted: number; updated: number; errors: { row: number; error: string }[] };
 
@@ -528,16 +558,17 @@ function ClientDetail() {
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center whitespace-nowrap">PO End Date</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center whitespace-nowrap">Created At</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-center whitespace-nowrap">Updated At</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Gov. Score</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide text-right pr-6">Status</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableLoader colSpan={12} />
+                <TableLoader colSpan={13} />
               ) : consultants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="h-24 text-center text-slate-500 font-medium">
+                  <TableCell colSpan={13} className="h-24 text-center text-slate-500 font-medium">
                     No Data found!
                   </TableCell>
                 </TableRow>
@@ -559,6 +590,9 @@ function ClientDetail() {
                     <TableCell className="text-center text-sm text-slate-600 whitespace-nowrap">{formatDate(c.po_end_date)}</TableCell>
                     <TableCell className="text-center text-sm text-slate-600 whitespace-nowrap">{formatDateTime(c.created_at)}</TableCell>
                     <TableCell className="text-center text-sm text-slate-600 whitespace-nowrap">{formatDateTime(c.updated_at)}</TableCell>
+                    <TableCell>
+                      <ConsultantScoreCell consultantId={c.id} />
+                    </TableCell>
                     <TableCell className="text-right pr-6">
                       {c.is_active ? (
                         <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200">Active</Badge>
