@@ -1,7 +1,11 @@
 import json
+import logging
 
 from openai import OpenAI
+from sqlalchemy import text as _sa_text
 from sqlalchemy.orm import Session
+
+_log = logging.getLogger(__name__)
 
 from core.config import settings
 from features.hrbp.governance.constants import CATEGORY_MAP
@@ -386,7 +390,15 @@ def analyze_team_comment(
                 targeted_ids.append(matched["consultant_id"])
                 member_adjustments.append((matched, adjustments))
 
+    # Fetch project name once — stored on each individual history row so it
+    # remains readable even if the project is later renamed.
+    project_row = db.query(HRBPProject).filter_by(id=project_id).first()
+    project_name = project_row.name if project_row else ""
+
     all_changes: dict = {}
+    # Collect per-member delta results for mirroring to individual history after flush.
+    _mirror_rows: list[dict] = []
+
     for m, adjustments in member_adjustments:
         result = _apply_governance_deltas(db, m["consultant_id"], adjustments)
         if result["changes_detail"]:
@@ -397,6 +409,18 @@ def analyze_team_comment(
                 "score_delta":    result["score_delta"],
                 "changes_detail": result["changes_detail"],
             }
+            _mirror_rows.append({
+                "consultant_id":  m["consultant_id"],
+                "comment":        comment,
+                "explanation":    explanation,
+                "score_before":   result["score_before"],
+                "score_after":    result["score_after"],
+                "score_delta":    result["score_delta"],
+                "changes_detail": json.dumps(result["changes_detail"]),
+                "project_id":     project_id,
+                "project_name":   project_name,
+                "created_by":     created_by,
+            })
 
     proj_after  = _project_avg_score(db, project_id)
     score_after = proj_after["avg_pct"]
@@ -413,7 +437,31 @@ def analyze_team_comment(
         created_by=created_by,
     )
     db.add(history)
-    db.flush()
+    db.flush()  # project history committed first
+
+    # Mirror to each affected consultant's individual governance history.
+    # Uses raw SQL + savepoint so a missing migration never breaks the project save.
+    _mirror_sql = _sa_text("""
+        INSERT INTO hrbp_governance_comment_history
+            (consultant_id, comment, explanation, score_before, score_after,
+             score_delta, changes_detail, source, project_id, project_name, created_by)
+        VALUES
+            (:consultant_id, :comment, :explanation, :score_before, :score_after,
+             :score_delta, CAST(:changes_detail AS jsonb), 'project', :project_id, :project_name, :created_by)
+    """)
+    for row in _mirror_rows:
+        try:
+            sp = db.begin_nested()
+            db.execute(_mirror_sql, row)
+            db.flush()
+            sp.commit()
+        except Exception as exc:
+            sp.rollback()
+            _log.warning(
+                "Could not mirror project comment to individual history "
+                "(run migration 037?) consultant=%s err=%s",
+                row["consultant_id"], exc,
+            )
 
     return {
         "targeted_count":  len(targeted_ids),

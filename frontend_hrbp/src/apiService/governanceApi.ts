@@ -96,6 +96,9 @@ export interface CommentHistoryEntry {
   score_after: number | null;
   score_delta: number | null;
   changes_detail: Record<string, CategoryChange> | null;
+  source: "direct" | "project";
+  project_id: number | null;
+  project_name: string | null;
   created_by: number | null;
   created_at: string | null;
 }
