@@ -265,19 +265,18 @@ def start():
         max_instances=1,
         coalesce=True,
     )
-    # BH target email — hourly from 10:00 to 20:00 IST.
-    # Container clock is UTC; IST = UTC+5:30, so 10:00–20:00 IST = 04:30–14:30 UTC
-    # at minute 30 (hours 4..14 inclusive → 11 sends/day). Using UTC avoids any
-    # tzdata dependency in the slim image.
-    _scheduler.add_job(
-        send_bh_target_email,
-        CronTrigger(hour="4-14", minute=30),
-        id="bh_target_email",
-        max_instances=1,
-        coalesce=True,
-    )
+    # BH target email — DISABLED. The hourly BH Target Tracking email is turned
+    # off per request; no recipients should receive it. Re-enable by restoring
+    # this add_job block (hourly 10:00–20:00 IST = 04:30–14:30 UTC at minute 30).
+    # _scheduler.add_job(
+    #     send_bh_target_email,
+    #     CronTrigger(hour="4-14", minute=30),
+    #     id="bh_target_email",
+    #     max_instances=1,
+    #     coalesce=True,
+    # )
     _scheduler.start()
-    log.info("MRR scheduler started (deadline_check + bh_target_email).")
+    log.info("MRR scheduler started (deadline_check only; bh_target_email disabled).")
 
 
 def stop():

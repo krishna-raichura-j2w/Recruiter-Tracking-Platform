@@ -252,15 +252,12 @@ def create_candidate_full(db: Session, data: dict, current_user, drive_id: int |
     """Full source-a-candidate orchestration shared by the normal `POST /candidates`
     route and the drive add-candidate route, so both save identical data and run the
     same side effects: OL duplicate check, candidate insert, OL onboarding/benched
-    flags, activity log, and min-load caller assignment.
+    flags, activity log, and self-assignment (the sourcer is always the caller).
 
     `data` is a CandidateCreate-shaped dict. When `drive_id` is given the candidate is
     linked to that drive (and starts at tracker stage lined_up via create_candidate)."""
-    import json as _json
-
     from features.mrr.activity.service import log as log_activity
-    from features.mrr.notifications.service import push
-    from infra.models import Job, NotifType
+    from infra.models import Job
 
     role = current_user.role.value
     if drive_id is not None:
@@ -328,8 +325,10 @@ def create_candidate_full(db: Session, data: dict, current_user, drive_id: int |
         entity_id=candidate.id,
     )
 
-    # Caller assignment:
-    #  - Recruiter sourced → hand off to a recruiter caller (min-load).
+    # Caller assignment: the person who sourced the candidate is ALWAYS the
+    # caller — no min-load handoff to another recruiter.
+    #  - Recruiter sourced → assigned to themselves (status → handed_to_recruiter
+    #    so the normal calling flow continues).
     #  - DL sourced → DL keeps the candidate; no "handed to recruiter" badge.
     if job:
         if role == "delivery_lead":
@@ -337,28 +336,7 @@ def create_candidate_full(db: Session, data: dict, current_user, drive_id: int |
             db.commit()
             db.refresh(candidate)
         else:
-            caller_ids = (
-                _json.loads(job.caller_ids or "[]")
-                if isinstance(job.caller_ids, str)
-                else []
-            )
-            if not caller_ids and job.assigned_caller_id:
-                caller_ids = [job.assigned_caller_id]
-            if caller_ids:
-                from features.mrr.allocation.service import _batch_caller_counts
-
-                caller_counts = _batch_caller_counts(db, caller_ids)
-                caller_id = min(caller_ids, key=lambda uid: caller_counts.get(uid, 0))
-                candidate = assign_candidate(db, candidate.id, caller_id)
-                if caller_id != current_user.id:
-                    push(
-                        db,
-                        caller_id,
-                        f"New candidate sourced: {candidate.full_name} for {job.role_title} ({job.client_name}). Ready for your call.",
-                        NotifType.candidate_sourced,
-                        entity_id=candidate.id,
-                    )
-                    db.commit()
+            candidate = assign_candidate(db, candidate.id, current_user.id)
 
     return candidate
 

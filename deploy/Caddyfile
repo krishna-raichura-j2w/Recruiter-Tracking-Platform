@@ -4,18 +4,34 @@
 mrr-process-tracker.joulestowatts.com {
     encode zstd gzip
 
-    # Vite-built hashed assets (filenames change when content changes) → cache forever.
-    @assets path /assets/* /hrbp/assets/*
-    header @assets Cache-Control "public, max-age=31536000, immutable"
+    # Interview Assist (FastAPI + built React app) runs on the host via pm2, port 5000.
+    # handle_path strips the /ai-interview-agent prefix; the app is built with
+    # base=/ai-interview-agent/ so its asset/API/WS URLs all carry the prefix.
+    # 172.19.0.1 is the docker bridge gateway = the host.
+    redir /ai-interview-agent /ai-interview-agent/ 301
 
-    # Everything else (index.html, /api/*, root-level static files) → no browser cache.
-    # This guarantees users always pull the freshest index.html after a deploy, which
-    # in turn references the latest hashed JS/CSS so they get the new bundle.
-    @nocache not path /assets/* /hrbp/assets/*
-    header @nocache Cache-Control "no-store"
+    handle_path /ai-interview-agent/* {
+        reverse_proxy 172.19.0.1:5000 {
+            # /stream WebSocket + streaming responses need no buffering.
+            flush_interval -1
+        }
+    }
 
-    reverse_proxy app:8000 {
-        # SSE / EventSource (used by features/notifications) needs streaming + no buffering.
-        flush_interval -1
+    # Everything else: the recruiter tracking app container.
+    handle {
+        # Vite-built hashed assets (filenames change when content changes) → cache forever.
+        @assets path /assets/* /hrbp/assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+
+        # Everything else (index.html, /api/*, root-level static files) → no browser cache.
+        # This guarantees users always pull the freshest index.html after a deploy, which
+        # in turn references the latest hashed JS/CSS so they get the new bundle.
+        @nocache not path /assets/* /hrbp/assets/*
+        header @nocache Cache-Control "no-store"
+
+        reverse_proxy app:8000 {
+            # SSE / EventSource (used by features/notifications) needs streaming + no buffering.
+            flush_interval -1
+        }
     }
 }
