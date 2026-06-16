@@ -4,6 +4,8 @@ from infra.models import (
     Candidate,
     CandidateStatus,
     ConsultantMail,
+    Drive,
+    DriveTrackerStage,
     Job,
     NotifType,
     UserRole,
@@ -321,4 +323,27 @@ def validate_candidate(
 
     db.commit()
     db.refresh(validation)
+
+    # Auto-link a freshly validated candidate into their walk-in/drive lineup.
+    # Runs in its own transaction AFTER the validation commit so a drive-linking
+    # hiccup can never undo the validation. Only acts on drive jobs and never
+    # clobbers a candidate already added to a drive (drive_id already set).
+    if candidate and vstatus == ValidationStatus.validated and candidate.drive_id is None:
+        try:
+            job = candidate.job
+            if job and (job.walkin or job.drive):
+                drive = (
+                    db.query(Drive).filter(Drive.job_id == candidate.job_id).first()
+                )
+                if drive is None:
+                    from features.mrr.drives.service import ensure_drive_for_job
+
+                    drive = ensure_drive_for_job(db, job)
+                if drive is not None:
+                    candidate.drive_id = drive.id
+                    candidate.drive_tracker_stage = DriveTrackerStage.confirmed
+                    db.commit()
+        except Exception:
+            db.rollback()
+
     return validation
