@@ -367,4 +367,5 @@ def build_and_upload(
     wb.save(buf)
     buf.seek(0)
 
-    return upload_bytes(buf.read(), "tickets_report.xlsx")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return upload_bytes(buf.read(), f"tickets_data_{timestamp}.xlsx")

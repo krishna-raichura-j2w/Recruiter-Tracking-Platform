@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from datetime import date
+from datetime import date, datetime, timezone
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -113,4 +113,5 @@ def build_and_upload(
     wb.save(buf)
     buf.seek(0)
 
-    return upload_bytes(buf.read(), "cadence_registry.xlsx")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return upload_bytes(buf.read(), f"cadence_data_{timestamp}.xlsx")

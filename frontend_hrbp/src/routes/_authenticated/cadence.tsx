@@ -535,8 +535,8 @@ function CadenceSchedulerPage() {
   // Search, Table & Timeline filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [tableFilter, setTableFilter] = useState<"all" | "pending" | "completed">("all");
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(4); // May (0-indexed is May)
+  const [currentYear, setCurrentYear] = useState(() => dayjs().year());
+  const [currentMonth, setCurrentMonth] = useState(() => dayjs().month()); // 0-indexed
   const [timelineSessions, setTimelineSessions] = useState<CadenceSessionItem[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
@@ -548,6 +548,8 @@ function CadenceSchedulerPage() {
   const [registryTotalPages, setRegistryTotalPages] = useState(1);
   const [loadingRegistry, setLoadingRegistry] = useState(false);
   const [registryDateRange, setRegistryDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
+  const [registryRefreshKey, setRegistryRefreshKey] = useState(0);
+  const refreshRegistry = useCallback(() => setRegistryRefreshKey((k) => k + 1), []);
 
   // Edit/Checkin temp states
   const [checkInComments, setCheckInComments] = useState<Record<string, string>>({});
@@ -789,7 +791,7 @@ function CadenceSchedulerPage() {
     };
 
     fetchRegistrySessions();
-  }, [user?.id, currentYear, currentMonth, tableFilter, cadenceTagFilter, registryPage, registryPerPage, registryDateRange]);
+  }, [user?.id, currentYear, currentMonth, tableFilter, cadenceTagFilter, registryPage, registryPerPage, registryDateRange, registryRefreshKey]);
 
   // Stats
   const pendingCount = useMemo(
@@ -1062,6 +1064,7 @@ function CadenceSchedulerPage() {
       }),
     );
     await refreshCadenceSummary();
+    refreshRegistry();
     toast.success("Cadence check-in logged successfully");
   };
 
@@ -1091,6 +1094,7 @@ function CadenceSchedulerPage() {
       }),
     );
     await refreshCadenceSummary();
+    refreshRegistry();
     toast.success("RAG status updated");
   };
 

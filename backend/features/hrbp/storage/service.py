@@ -82,7 +82,7 @@ def _s3_client():
 
 
 def upload_bytes_s3(data: bytes, filename: str) -> str:
-    """Upload raw bytes to AWS S3."""
+    """Upload raw bytes to AWS S3 and return a presigned download URL."""
     if not AWS_ACCESS_KEY or not AWS_SECRET_KEY or not AWS_BUCKET:
         raise HTTPException(status_code=500, detail="AWS S3 is not configured")
 
@@ -90,12 +90,22 @@ def upload_bytes_s3(data: bytes, filename: str) -> str:
     unique_name = f"{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
     key = f"exports/{unique_name}"
 
+    client = _s3_client()
     try:
-        _s3_client().put_object(Bucket=AWS_BUCKET, Key=key, Body=data)
+        client.put_object(
+            Bucket=AWS_BUCKET,
+            Key=key,
+            Body=data,
+            ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ContentDisposition=f'attachment; filename="{filename}"',
+        )
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": AWS_BUCKET, "Key": key},
+            ExpiresIn=3600,  # 1 hour
+        )
     except (BotoCoreError, ClientError) as exc:
         raise HTTPException(status_code=500, detail=f"S3 upload failed: {exc}") from exc
-
-    return f"https://{AWS_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{key}"
 
 
 def upload_file_s3(file: UploadFile) -> str:
