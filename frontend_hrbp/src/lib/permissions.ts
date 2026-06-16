@@ -9,7 +9,8 @@ export type Module =
   | "notifications"
   | "exits"
   | "activity_log"
-  | "governance";
+  | "governance"
+  | "projects";
 
 export type Action = "read" | "create" | "update" | "delete" | "export";
 
@@ -29,6 +30,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionMap> = {
     notifications: { read: true },
     exits:         { read: true, create: true,  update: true,  delete: false },
     governance:    { read: true, create: true,  update: true,  delete: false },
+    projects:      { read: true, create: true,  update: true,  delete: true  },
   },
 
   bh: {
