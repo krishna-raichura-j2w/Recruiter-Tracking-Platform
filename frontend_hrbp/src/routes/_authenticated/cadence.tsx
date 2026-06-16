@@ -953,8 +953,10 @@ function CadenceSchedulerPage() {
         };
 
         const isToday = modalDate === TODAY_DATE_STR;
+        const newCadenceId = `cad-${res.data.id || Date.now()}`;
+        const scheduleId = res.data.id;
         const newCadence: Cadence = {
-          id: `cad-${res.data.id || Date.now()}`,
+          id: newCadenceId,
           date: res.data.start_date,
           time: formatTime12Hour(modalMeetingTime || "10:30"),
           client: selectedClientObj?.name || "Acme Financial",
@@ -968,9 +970,29 @@ function CadenceSchedulerPage() {
           comment: "",
           status: isToday ? "today" : "pending",
           history: [],
+          scheduleId,
         };
 
         setCadences([newCadence, ...cadences]);
+
+        // Fetch the first session for this schedule to get the sessionId,
+        // so that check-ins on the newly created cadence persist to the DB.
+        getCadenceScheduleSessionsApi(scheduleId)
+          .then((sessionsRes) => {
+            if (sessionsRes.meta.status && sessionsRes.data?.length > 0) {
+              const targetSession =
+                (sessionsRes.data as any[]).find((s) => s.scheduled_date === modalDate) ??
+                sessionsRes.data[0];
+              setCadences((prev) =>
+                prev.map((c) =>
+                  c.id === newCadenceId
+                    ? { ...c, sessionId: (targetSession as any).id }
+                    : c
+                )
+              );
+            }
+          })
+          .catch(() => {});
 
         const { dateFrom, dateTo } = getMonthDateRange(currentYear, currentMonth);
         if (modalDate >= dateFrom && modalDate <= dateTo) {

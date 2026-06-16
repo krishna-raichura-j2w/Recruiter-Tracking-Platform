@@ -583,7 +583,11 @@ export async function updateCadenceSessionApi(
     } catch (e) {}
     throw new Error(errMsg);
   }
-  return response.json();
+  const data = await response.json();
+  if (!data?.meta?.status) {
+    throw new Error(data?.meta?.message || "Failed to update cadence session");
+  }
+  return data;
 }
 
 export async function getCadenceScheduleSessionsApi(
