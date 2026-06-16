@@ -3,6 +3,7 @@ import math
 import re
 
 from openai import OpenAI
+from sqlalchemy import text as _sa_text
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -522,24 +523,49 @@ def analyze_comment(
 
 
 def get_comment_history(db: Session, consultant_id: int) -> list[dict]:
-    rows = (
-        db.query(HRBPGovernanceCommentHistory)
-        .filter(HRBPGovernanceCommentHistory.consultant_id == consultant_id)
-        .order_by(HRBPGovernanceCommentHistory.created_at.desc())
-        .all()
-    )
+    # Use raw SQL so we can include the project-source columns added in migration 037
+    # while falling back cleanly if the migration has not been applied yet.
+    _with_project = _sa_text("""
+        SELECT id, consultant_id, comment, explanation,
+               score_before, score_after, score_delta, changes_detail,
+               COALESCE(source, 'direct') AS source,
+               project_id, project_name,
+               created_by, created_at
+        FROM hrbp_governance_comment_history
+        WHERE consultant_id = :cid
+        ORDER BY created_at DESC
+    """)
+    _without_project = _sa_text("""
+        SELECT id, consultant_id, comment, explanation,
+               score_before, score_after, score_delta, changes_detail,
+               'direct' AS source,
+               NULL AS project_id, NULL AS project_name,
+               created_by, created_at
+        FROM hrbp_governance_comment_history
+        WHERE consultant_id = :cid
+        ORDER BY created_at DESC
+    """)
+    try:
+        rows = db.execute(_with_project, {"cid": consultant_id}).mappings().fetchall()
+    except Exception:
+        db.rollback()
+        rows = db.execute(_without_project, {"cid": consultant_id}).mappings().fetchall()
+
     return [
         {
-            "id": r.id,
-            "consultant_id": r.consultant_id,
-            "comment": r.comment,
-            "explanation": r.explanation,
-            "score_before": r.score_before,
-            "score_after": r.score_after,
-            "score_delta": r.score_delta,
-            "changes_detail": r.changes_detail or {},
-            "created_by": r.created_by,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "id":             row["id"],
+            "consultant_id":  row["consultant_id"],
+            "comment":        row["comment"],
+            "explanation":    row["explanation"],
+            "score_before":   row["score_before"],
+            "score_after":    row["score_after"],
+            "score_delta":    row["score_delta"],
+            "changes_detail": row["changes_detail"] or {},
+            "source":         row["source"] or "direct",
+            "project_id":     row["project_id"],
+            "project_name":   row["project_name"],
+            "created_by":     row["created_by"],
+            "created_at":     row["created_at"].isoformat() if row["created_at"] else None,
         }
-        for r in rows
+        for row in rows
     ]

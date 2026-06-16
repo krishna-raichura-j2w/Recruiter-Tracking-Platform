@@ -42,6 +42,7 @@ import {
   Settings2,
   User,
   X,
+  FolderKanban,
 } from "lucide-react";
 import { getConsultantDetailsApi } from "@/apiService/api";
 import {
@@ -497,10 +498,16 @@ function HistoryCard({ entry }: { entry: CommentHistoryEntry }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-slate-700 line-clamp-2">"{entry.comment}"</p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <span className="text-xs text-slate-400">{formatRelative(entry.created_at)}</span>
             {entry.score_before !== null && entry.score_after !== null && (
               <span className="text-xs text-slate-400">{entry.score_before} → {entry.score_after}</span>
+            )}
+            {entry.source === "project" && entry.project_name && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+                <FolderKanban className="h-3 w-3" />
+                via {entry.project_name}
+              </span>
             )}
           </div>
         </div>

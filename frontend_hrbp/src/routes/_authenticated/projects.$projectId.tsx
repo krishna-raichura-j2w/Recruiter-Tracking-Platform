@@ -46,6 +46,8 @@ import {
   ChevronDown,
   ChevronUp,
   Settings2,
+  Pencil,
+  AlertTriangle,
 } from "lucide-react";
 import { getConsultantsApi } from "@/apiService/api";
 import {
@@ -56,6 +58,8 @@ import {
   removeMember,
   analyzeTeamComment,
   getProjectCommentHistory,
+  updateProject,
+  deleteProject,
   type ProjectSummary,
   type ProjectMember,
   type TeamCommentResult,
@@ -761,6 +765,178 @@ function ScoreGraphTab({
   );
 }
 
+// ── Edit Project Dialog ───────────────────────────────────────────────────────
+
+function EditProjectDialog({
+  open,
+  onOpenChange,
+  project,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  project: ProjectSummary;
+  onSaved: (updated: ProjectSummary) => void;
+}) {
+  const [name, setName]         = useState(project.name);
+  const [desc, setDesc]         = useState(project.description ?? "");
+  const [status, setStatus]     = useState(project.status ?? "active");
+  const [saving, setSaving]     = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName(project.name);
+      setDesc(project.description ?? "");
+      setStatus(project.status ?? "active");
+    }
+  }, [open, project]);
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await updateProject(project.id, {
+        name: name.trim(),
+        description: desc.trim(),
+        status,
+      });
+      toast.success("Project updated");
+      onSaved(updated);
+      onOpenChange(false);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update project");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-blue-500" />
+            Edit Project
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Project Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Project name"
+              className="text-sm"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Description <span className="text-slate-400">(optional)</span></Label>
+            <Textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Brief description…"
+              rows={3}
+              className="text-sm resize-none"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!name.trim() || saving}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Delete Project Dialog ─────────────────────────────────────────────────────
+
+function DeleteProjectDialog({
+  open,
+  onOpenChange,
+  projectName,
+  onConfirmed,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  projectName: string;
+  onConfirmed: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      onConfirmed();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-rose-600">
+            <AlertTriangle className="h-4 w-4" />
+            Delete Project
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Are you sure you want to delete <span className="font-semibold text-slate-900">"{projectName}"</span>?
+            This will remove all members and comment history for this project. This action cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => onOpenChange(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex-1 bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Trash2 className="h-4 w-4 mr-1.5" />}
+              Delete Project
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 function ProjectDetailPage() {
@@ -772,8 +948,10 @@ function ProjectDetailPage() {
   const [history,   setHistory]   = useState<ProjectCommentHistory[]>([]);
   const [loading,   setLoading]   = useState(true);
 
-  const [activeTab,  setActiveTab]  = useState<"team" | "comments" | "score_graph">("team");
-  const [addOpen,    setAddOpen]    = useState(false);
+  const [activeTab,   setActiveTab]   = useState<"team" | "comments" | "score_graph">("team");
+  const [addOpen,     setAddOpen]     = useState(false);
+  const [editOpen,    setEditOpen]    = useState(false);
+  const [deleteOpen,  setDeleteOpen]  = useState(false);
 
   const [comment,    setComment]    = useState("");
   const [analyzing,  setAnalyzing]  = useState(false);
@@ -829,6 +1007,17 @@ function ProjectDetailPage() {
     }
   };
 
+  const handleDeleteProject = async () => {
+    try {
+      await deleteProject(Number(projectId));
+      toast.success("Project deleted");
+      nav({ to: "/projects" });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete project");
+      setDeleteOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-full">
@@ -866,7 +1055,25 @@ function ProjectDetailPage() {
               <Users className="h-7 w-7 text-blue-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-black text-slate-900 truncate">{project?.name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black text-slate-900 truncate">{project?.name}</h1>
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(true)}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
+                  title="Edit project"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
+                  title="Delete project"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
               {project?.description && (
                 <p className="text-sm text-slate-400 mt-0.5">{project.description}</p>
               )}
@@ -1055,6 +1262,22 @@ function ProjectDetailPage() {
         projectId={Number(projectId)}
         existingIds={members.map((m) => m.consultant_id)}
         onAdded={refreshMembers}
+      />
+
+      {project && (
+        <EditProjectDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          project={project}
+          onSaved={(updated) => setProject(updated)}
+        />
+      )}
+
+      <DeleteProjectDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        projectName={project?.name ?? ""}
+        onConfirmed={handleDeleteProject}
       />
     </div>
   );
