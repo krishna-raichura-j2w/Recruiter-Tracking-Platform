@@ -22,11 +22,13 @@ import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authen
 import { Route as AuthenticatedCadenceRouteImport } from './routes/_authenticated/cadence'
 import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
 import { Route as AuthenticatedTicketsIndexRouteImport } from './routes/_authenticated/tickets.index'
+import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated/projects.index'
 import { Route as AuthenticatedGovernanceIndexRouteImport } from './routes/_authenticated/governance.index'
 import { Route as AuthenticatedExitsIndexRouteImport } from './routes/_authenticated/exits.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
 import { Route as AuthenticatedTicketsTicketIdRouteImport } from './routes/_authenticated/tickets.$ticketId'
+import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_authenticated/projects.$projectId'
 import { Route as AuthenticatedGovernanceConsultantIdRouteImport } from './routes/_authenticated/governance.$consultantId'
 import { Route as AuthenticatedConsultantsConsultantIdRouteImport } from './routes/_authenticated/consultants.$consultantId'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
@@ -104,6 +106,12 @@ const AuthenticatedTicketsIndexRoute =
     path: '/tickets/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedProjectsIndexRoute =
+  AuthenticatedProjectsIndexRouteImport.update({
+    id: '/projects/',
+    path: '/projects/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedGovernanceIndexRoute =
   AuthenticatedGovernanceIndexRouteImport.update({
     id: '/governance/',
@@ -130,6 +138,12 @@ const AuthenticatedTicketsTicketIdRoute =
   AuthenticatedTicketsTicketIdRouteImport.update({
     id: '/tickets/$ticketId',
     path: '/tickets/$ticketId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedProjectsProjectIdRoute =
+  AuthenticatedProjectsProjectIdRouteImport.update({
+    id: '/projects/$projectId',
+    path: '/projects/$projectId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedGovernanceConsultantIdRoute =
@@ -193,11 +207,13 @@ export interface FileRoutesByFullPath {
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
   '/governance/$consultantId': typeof AuthenticatedGovernanceConsultantIdRoute
+  '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
   '/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/exits/': typeof AuthenticatedExitsIndexRoute
   '/governance/': typeof AuthenticatedGovernanceIndexRoute
+  '/projects/': typeof AuthenticatedProjectsIndexRoute
   '/tickets/': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -219,11 +235,13 @@ export interface FileRoutesByTo {
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
   '/governance/$consultantId': typeof AuthenticatedGovernanceConsultantIdRoute
+  '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
   '/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/exits': typeof AuthenticatedExitsIndexRoute
   '/governance': typeof AuthenticatedGovernanceIndexRoute
+  '/projects': typeof AuthenticatedProjectsIndexRoute
   '/tickets': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRoutesById {
@@ -247,11 +265,13 @@ export interface FileRoutesById {
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/consultants/$consultantId': typeof AuthenticatedConsultantsConsultantIdRoute
   '/_authenticated/governance/$consultantId': typeof AuthenticatedGovernanceConsultantIdRoute
+  '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
   '/_authenticated/tickets/$ticketId': typeof AuthenticatedTicketsTicketIdRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/exits/': typeof AuthenticatedExitsIndexRoute
   '/_authenticated/governance/': typeof AuthenticatedGovernanceIndexRoute
+  '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute
   '/_authenticated/tickets/': typeof AuthenticatedTicketsIndexRoute
 }
 export interface FileRouteTypes {
@@ -275,11 +295,13 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/consultants/$consultantId'
     | '/governance/$consultantId'
+    | '/projects/$projectId'
     | '/tickets/$ticketId'
     | '/admin/'
     | '/clients/'
     | '/exits/'
     | '/governance/'
+    | '/projects/'
     | '/tickets/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -301,11 +323,13 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/consultants/$consultantId'
     | '/governance/$consultantId'
+    | '/projects/$projectId'
     | '/tickets/$ticketId'
     | '/admin'
     | '/clients'
     | '/exits'
     | '/governance'
+    | '/projects'
     | '/tickets'
   id:
     | '__root__'
@@ -328,11 +352,13 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/consultants/$consultantId'
     | '/_authenticated/governance/$consultantId'
+    | '/_authenticated/projects/$projectId'
     | '/_authenticated/tickets/$ticketId'
     | '/_authenticated/admin/'
     | '/_authenticated/clients/'
     | '/_authenticated/exits/'
     | '/_authenticated/governance/'
+    | '/_authenticated/projects/'
     | '/_authenticated/tickets/'
   fileRoutesById: FileRoutesById
 }
@@ -437,6 +463,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTicketsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/projects/': {
+      id: '/_authenticated/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof AuthenticatedProjectsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/governance/': {
       id: '/_authenticated/governance/'
       path: '/governance'
@@ -470,6 +503,13 @@ declare module '@tanstack/react-router' {
       path: '/tickets/$ticketId'
       fullPath: '/tickets/$ticketId'
       preLoaderRoute: typeof AuthenticatedTicketsTicketIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/projects/$projectId': {
+      id: '/_authenticated/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/governance/$consultantId': {
@@ -539,11 +579,13 @@ interface AuthenticatedRouteChildren {
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedConsultantsConsultantIdRoute: typeof AuthenticatedConsultantsConsultantIdRoute
   AuthenticatedGovernanceConsultantIdRoute: typeof AuthenticatedGovernanceConsultantIdRoute
+  AuthenticatedProjectsProjectIdRoute: typeof AuthenticatedProjectsProjectIdRoute
   AuthenticatedTicketsTicketIdRoute: typeof AuthenticatedTicketsTicketIdRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
   AuthenticatedExitsIndexRoute: typeof AuthenticatedExitsIndexRoute
   AuthenticatedGovernanceIndexRoute: typeof AuthenticatedGovernanceIndexRoute
+  AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
   AuthenticatedTicketsIndexRoute: typeof AuthenticatedTicketsIndexRoute
 }
 
@@ -564,11 +606,13 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedConsultantsConsultantIdRoute,
   AuthenticatedGovernanceConsultantIdRoute:
     AuthenticatedGovernanceConsultantIdRoute,
+  AuthenticatedProjectsProjectIdRoute: AuthenticatedProjectsProjectIdRoute,
   AuthenticatedTicketsTicketIdRoute: AuthenticatedTicketsTicketIdRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
   AuthenticatedExitsIndexRoute: AuthenticatedExitsIndexRoute,
   AuthenticatedGovernanceIndexRoute: AuthenticatedGovernanceIndexRoute,
+  AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
   AuthenticatedTicketsIndexRoute: AuthenticatedTicketsIndexRoute,
 }
 

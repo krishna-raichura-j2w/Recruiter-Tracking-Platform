@@ -14,6 +14,7 @@ from sqlalchemy import (
     Table,
     Text,
     Time,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
@@ -523,3 +524,52 @@ class HRBPGovernanceCommentHistory(Base):
     changes_detail = Column(JSONB)        # {category_key: {from_idx, to_idx, from_score, to_score, score_diff, ...}}
     created_by     = Column(Integer, ForeignKey("users.id"))
     created_at     = Column(DateTime(timezone=True), default=_now)
+
+
+# ── Project Tables ────────────────────────────────────────────────────────────
+
+class HRBPProject(Base):
+    """A named project that groups consultants and tracks team governance health."""
+    __tablename__ = "hrbp_projects"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    name        = Column(Text, nullable=False)
+    description = Column(Text, default="")
+    client_id   = Column(Integer, ForeignKey("hrbp_clients.id", ondelete="SET NULL"), nullable=True)
+    status      = Column(Text, default="active")   # active | archived
+    created_by  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at  = Column(DateTime(timezone=True), default=_now)
+    updated_at  = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HRBPProjectMember(Base):
+    """A consultant assigned to a project, with cohort badge and performance tier."""
+    __tablename__ = "hrbp_project_members"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    project_id      = Column(Integer, ForeignKey("hrbp_projects.id",     ondelete="CASCADE"), nullable=False)
+    consultant_id   = Column(Integer, ForeignKey("hrbp_consultants.id",  ondelete="CASCADE"), nullable=False)
+    cohort          = Column(Text, default="bedrock")   # star | high_performer | rising | bedrock | new_joiner | watch | rescue
+    perf_tier       = Column(Text, default="middle")    # top_20 | middle | bottom_20
+    role_in_project = Column(Text, default="")
+    added_by        = Column(Integer, ForeignKey("users.id"), nullable=True)
+    added_at        = Column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (UniqueConstraint("project_id", "consultant_id", name="uq_project_member"),)
+
+
+class HRBPProjectCommentHistory(Base):
+    """Immutable log of team-level AI-analysed comments. Targeted at specific members or all."""
+    __tablename__ = "hrbp_project_comment_history"
+
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    project_id              = Column(Integer, ForeignKey("hrbp_projects.id", ondelete="CASCADE"), nullable=False)
+    comment                 = Column(Text, nullable=False)
+    explanation             = Column(Text)
+    targeted_consultant_ids = Column(JSONB, default=list)   # [] = all members targeted
+    changes_detail          = Column(JSONB)                 # {consultant_id: {cat_key: {from, to, diff}}}
+    score_before            = Column(Integer)               # avg project score before
+    score_after             = Column(Integer)               # avg project score after
+    score_delta             = Column(Integer)
+    created_by              = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at              = Column(DateTime(timezone=True), default=_now)

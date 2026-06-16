@@ -17,6 +17,7 @@ import {
   DoorOpen,
   ActivitySquare,
   BarChart3,
+  FolderKanban,
 } from "lucide-react";
 import {
   Sidebar,
@@ -44,6 +45,7 @@ const ALL_NAV_ITEMS: { title: string; url: string; icon: React.ElementType; modu
   // { title: "Communication Hub", url: "/communication",   icon: Mail,            module: "communication" },
   { title: "Exit Tracking",     url: "/exits",           icon: DoorOpen,        module: "exits"         },
   { title: "Governance Score",  url: "/governance",      icon: BarChart3,       module: "governance"    },
+  { title: "Projects",          url: "/projects",        icon: FolderKanban,    module: "projects"      },
   { title: "Notifications",     url: "/notifications",   icon: Bell,            module: "notifications" },
   { title: "Activity Log",      url: "/activity-log",    icon: ActivitySquare,  module: "activity_log"  },
 ];

@@ -29,12 +29,16 @@ from features.hrbp.po_revisions.route import router as po_revisions_router
 from features.hrbp.send_email.route import router as send_email_router
 from features.hrbp.reports.route import router as reports_router
 from features.hrbp.governance.route import router as governance_router
+from features.hrbp.projects.route import router as projects_router
 
 hrbp_router = APIRouter(prefix="/hrbp")
 
 # Roles permitted to access HRBP data endpoints.
 # Add new roles here as the system grows — no other file needs to change.
 _HRBP_ROLES = Depends(require_roles("hrbp", "bh", "admin", "ops_head", "coo", "ceo", "po_finance"))
+
+# Projects are restricted to HRBP role only.
+_HRBP_ONLY = Depends(require_roles("hrbp"))
 
 # Auth router is open to any authenticated user (needed for token refresh + profile).
 hrbp_router.include_router(auth_router)
@@ -67,3 +71,4 @@ hrbp_router.include_router(po_revisions_router,       dependencies=[_HRBP_ROLES]
 hrbp_router.include_router(send_email_router,         dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(reports_router,            dependencies=[_HRBP_ROLES])
 hrbp_router.include_router(governance_router,         dependencies=[_HRBP_ROLES])
+hrbp_router.include_router(projects_router,           dependencies=[_HRBP_ONLY])
