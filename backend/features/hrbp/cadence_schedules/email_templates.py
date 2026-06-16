@@ -32,9 +32,9 @@ def cadence_created_html(
     if google_meet_link:
         meet_row = f"""
         <tr>
-          <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Google Meet Link</td>
-          <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">
-            <a href="{google_meet_link}" style="color:#4f46e5;text-decoration:none;font-weight:600;">Join Meeting</a>
+          <td style="padding:12px 0;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;width:40%;vertical-align:top;">Google Meet</td>
+          <td style="padding:12px 0;font-size:14px;border-bottom:1px solid #e5e7eb;vertical-align:top;">
+            <a href="{google_meet_link}" style="color:#4f46e5;text-decoration:none;font-weight:700;">Join Meeting →</a>
           </td>
         </tr>"""
 
@@ -42,72 +42,77 @@ def cadence_created_html(
     if project_name:
         project_row = f"""
         <tr>
-          <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Project</td>
-          <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">{project_name}</td>
+          <td style="padding:12px 0;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;width:40%;vertical-align:top;">Project</td>
+          <td style="padding:12px 0;font-size:14px;color:#111827;border-bottom:1px solid #e5e7eb;vertical-align:top;">{project_name}</td>
         </tr>"""
 
     if google_meet_link:
         meet_cta = (
-            '<div style="margin:32px 0;text-align:center;">'
-            f'<a href="{google_meet_link}" style="display:inline-block;background:#4f46e5;'
-            'color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;'
-            'font-size:15px;font-weight:600;">Join Google Meet</a></div>'
+            '<div style="margin:28px 0;text-align:center;">'
+            f'<a href="{google_meet_link}" style="display:inline-block;background-color:#4f46e5;'
+            'color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;'
+            'font-size:15px;font-weight:700;letter-spacing:0.3px;">Join Google Meet</a></div>'
         )
     else:
         meet_cta = ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:32px 0;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cadence Meeting Scheduled</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#f3f4f6;padding:40px 16px;">
     <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+      <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
 
-        <!-- Header -->
+        <!-- Header — solid fallback + gradient for supporting clients -->
         <tr>
-          <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:32px 40px;">
-            <p style="margin:0;font-size:11px;color:#c4b5fd;letter-spacing:2px;text-transform:uppercase;">J2W HRBP Platform</p>
-            <h1 style="margin:8px 0 0;font-size:22px;color:#ffffff;font-weight:700;">Cadence Meeting Scheduled</h1>
+          <td style="background-color:#4f46e5;background:linear-gradient(135deg,#4f46e5 0%,#6d28d9 100%);padding:36px 40px;">
+            <p style="margin:0 0 6px 0;font-size:11px;color:#e0d9ff;letter-spacing:3px;text-transform:uppercase;font-weight:700;">J2W HRBP Platform</p>
+            <h1 style="margin:0;font-size:24px;color:#ffffff;font-weight:800;line-height:1.3;">Cadence Meeting Scheduled</h1>
           </td>
         </tr>
 
         <!-- Body -->
         <tr>
-          <td style="padding:32px 40px;">
-            <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">
-              Hi <strong>{recipient_name}</strong>,
+          <td style="padding:36px 40px;background-color:#ffffff;">
+
+            <p style="margin:0 0 8px 0;font-size:16px;color:#111827;line-height:1.6;">
+              Hi <strong style="color:#111827;">{recipient_name}</strong>,
             </p>
-            <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">
-              A cadence meeting has been scheduled by <strong>{created_by_name}</strong>. You have been added as a participant. Here are the details:
+            <p style="margin:0 0 28px 0;font-size:15px;color:#374151;line-height:1.7;">
+              A cadence meeting has been scheduled by <strong style="color:#111827;">{created_by_name}</strong>. You have been added as a participant. Here are the details:
             </p>
 
             <!-- Details table -->
-            <table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #f3f4f6;">
-              <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;width:40%;">Client</td>
-                <td style="padding:8px 0;font-size:14px;font-weight:600;border-bottom:1px solid #f3f4f6;">{client_name}</td>
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border-top:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+              <tr style="background-color:#f9fafb;">
+                <td style="padding:12px 16px;color:#374151;font-size:14px;font-weight:700;border-bottom:1px solid #e5e7eb;width:40%;vertical-align:top;">Client</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111827;font-weight:700;border-bottom:1px solid #e5e7eb;vertical-align:top;">{client_name}</td>
               </tr>
               <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Consultant</td>
-                <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">{consultant_name}</td>
+                <td style="padding:12px 16px;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">Consultant</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111827;border-bottom:1px solid #e5e7eb;vertical-align:top;">{consultant_name}</td>
               </tr>
               {project_row}
               <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Meeting Type</td>
-                <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">{meeting_label}</td>
+                <td style="padding:12px 16px;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">Meeting Type</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111827;border-bottom:1px solid #e5e7eb;vertical-align:top;">{meeting_label}</td>
+              </tr>
+              <tr style="background-color:#f9fafb;">
+                <td style="padding:12px 16px;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">Date</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111827;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">{date_range}</td>
               </tr>
               <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Date</td>
-                <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">{date_range}</td>
+                <td style="padding:12px 16px;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">Time (IST)</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111827;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">{time_str}</td>
               </tr>
-              <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Time (IST)</td>
-                <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">{time_str}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#6b7280;font-size:14px;border-bottom:1px solid #f3f4f6;">Duration</td>
-                <td style="padding:8px 0;font-size:14px;border-bottom:1px solid #f3f4f6;">{duration_minutes} minutes</td>
+              <tr style="background-color:#f9fafb;">
+                <td style="padding:12px 16px;color:#374151;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;vertical-align:top;">Duration</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111827;border-bottom:1px solid #e5e7eb;vertical-align:top;">{duration_minutes} minutes</td>
               </tr>
               {meet_row}
             </table>
@@ -115,17 +120,26 @@ def cadence_created_html(
             <!-- Meet CTA -->
             {meet_cta}
 
-            <p style="margin:24px 0 0;font-size:13px;color:#9ca3af;line-height:1.6;">
-              A calendar invite has also been sent to your Google Calendar. If you have any questions, please reach out to <strong>{created_by_name}</strong>.
-            </p>
+            <!-- Note box -->
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:28px;">
+              <tr>
+                <td style="background-color:#f0f0ff;border-left:4px solid #4f46e5;border-radius:0 6px 6px 0;padding:14px 16px;">
+                  <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">
+                    A calendar invite has also been sent to your Google Calendar. If you have any questions, please reach out to <strong style="color:#111827;">{created_by_name}</strong>.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
           </td>
         </tr>
 
         <!-- Footer -->
         <tr>
-          <td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #f3f4f6;">
-            <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
-              This is an automated notification from the J2W HRBP Platform &nbsp;·&nbsp; support@joulestowatts.com
+          <td style="background-color:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;line-height:1.6;">
+              This is an automated notification from the J2W HRBP Platform &nbsp;·&nbsp;
+              <a href="mailto:support@joulestowatts.com" style="color:#4f46e5;text-decoration:none;">support@joulestowatts.com</a>
             </p>
           </td>
         </tr>
