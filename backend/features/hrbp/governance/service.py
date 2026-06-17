@@ -522,6 +522,30 @@ def analyze_comment(
     }
 
 
+def reset_consultant_scores(db: Session, consultant_id: int) -> dict:
+    """Reset all active governance scores to option_index=0 (best/baseline), escalations=0."""
+    cat_lookup = _build_category_lookup(db, consultant_id)
+    all_rows = get_or_init_scores(db, consultant_id)
+    reset_count = 0
+    for row in all_rows:
+        if not row.is_active:
+            continue
+        cat = cat_lookup.get(row.category_key)
+        if not cat:
+            continue
+        row.option_index = 0
+        row.escalations = 0
+        row.net_score = cat["options"][0]["score"]
+        reset_count += 1
+    db.flush()
+    summary = get_score_summary(db, consultant_id)
+    return {
+        "reset_count":   reset_count,
+        "new_score":     summary["total_score"],
+        "new_possible":  summary["total_possible"],
+    }
+
+
 def get_comment_history(db: Session, consultant_id: int) -> list[dict]:
     # Use raw SQL so we can include the project-source columns added in migration 037
     # while falling back cleanly if the migration has not been applied yet.

@@ -162,6 +162,21 @@ def analyze_comment(
         return error_response(message=str(exc))
 
 
+@router.post("/consultants/{consultant_id}/reset-scores")
+def reset_scores(
+    consultant_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        data = service.reset_consultant_scores(db, consultant_id)
+        db.commit()
+        return success_response(data=data, message="Scores reset to baseline")
+    except Exception as exc:
+        db.rollback()
+        return error_response(message=str(exc))
+
+
 @router.get("/consultants/{consultant_id}/comment-history")
 def get_comment_history(
     consultant_id: int,

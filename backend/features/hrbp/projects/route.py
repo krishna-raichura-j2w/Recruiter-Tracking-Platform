@@ -9,6 +9,7 @@ from features.hrbp.projects.schema import (
     MemberAdd,
     MemberUpdate,
     ProjectCreate,
+    ProjectKpisSet,
     ProjectUpdate,
     TeamCommentRequest,
 )
@@ -188,6 +189,35 @@ def analyze_team_comment(
         )
         db.commit()
         return success_response(data=data, message="Team comment analysed")
+    except Exception as exc:
+        db.rollback()
+        return error_response(message=str(exc))
+
+
+@router.get("/{project_id}/kpis")
+def get_project_kpis(
+    project_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        data = service.get_project_kpis(db, project_id)
+        return success_response(data=data, message="KPIs fetched")
+    except Exception as exc:
+        return error_response(message=str(exc))
+
+
+@router.post("/{project_id}/kpis")
+def set_project_kpis(
+    project_id: int,
+    payload: ProjectKpisSet,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        data = service.set_project_kpis(db, project_id, [k.model_dump() for k in payload.kpis])
+        db.commit()
+        return success_response(data=data, message="KPIs updated")
     except Exception as exc:
         db.rollback()
         return error_response(message=str(exc))

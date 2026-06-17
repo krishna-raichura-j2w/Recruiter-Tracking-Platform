@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from openai import OpenAI
 from sqlalchemy import text as _sa_text
@@ -10,6 +11,7 @@ _log = logging.getLogger(__name__)
 from core.config import settings
 from features.hrbp.governance.constants import CATEGORY_MAP
 from features.hrbp.governance.service import (
+    _auto_generate_options,
     _build_category_lookup,
     _calc_escalation_deduction,
     _calc_net_score,
@@ -19,8 +21,11 @@ from features.hrbp.governance.service import (
 )
 from infra.hrbp_models import (
     HRBPConsultant,
+    HRBPGovernanceCustomCategory,
+    HRBPGovernanceScore,
     HRBPProject,
     HRBPProjectCommentHistory,
+    HRBPProjectKpiDefinition,
     HRBPProjectMember,
 )
 
@@ -220,6 +225,126 @@ def list_members(db: Session, project_id: int) -> list[dict]:
     return result
 
 
+def _make_project_custom_key(label: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:30]
+    return f"custom_{slug}"
+
+
+# ── Project KPI definitions ───────────────────────────────────────────────────
+
+def get_project_kpis(db: Session, project_id: int) -> list[dict]:
+    rows = (
+        db.query(HRBPProjectKpiDefinition)
+        .filter_by(project_id=project_id)
+        .order_by(HRBPProjectKpiDefinition.sort_order)
+        .all()
+    )
+    return [
+        {
+            "id":             r.id,
+            "category_key":   r.category_key,
+            "label":          r.label,
+            "max_score":      r.max_score,
+            "escalation_base": r.escalation_base,
+            "description":    r.description,
+            "is_custom":      r.is_custom,
+            "options":        r.options,
+            "sort_order":     r.sort_order,
+        }
+        for r in rows
+    ]
+
+
+def set_project_kpis(db: Session, project_id: int, kpis: list[dict]) -> list[dict]:
+    """Replace all KPI definitions for a project."""
+    db.query(HRBPProjectKpiDefinition).filter_by(project_id=project_id).delete()
+    for i, kpi in enumerate(kpis):
+        key = kpi["category_key"]
+        if kpi.get("is_custom") and not key.startswith("custom_"):
+            key = _make_project_custom_key(kpi["label"])
+        row = HRBPProjectKpiDefinition(
+            project_id=project_id,
+            category_key=key,
+            label=kpi["label"],
+            max_score=kpi.get("max_score", 10),
+            escalation_base=kpi.get("escalation_base", 2),
+            description=kpi.get("description", ""),
+            is_custom=bool(kpi.get("is_custom", False)),
+            options=kpi.get("options"),
+            sort_order=i,
+        )
+        db.add(row)
+    db.flush()
+    return get_project_kpis(db, project_id)
+
+
+def sync_consultant_kpis_to_project(db: Session, consultant_id: int, project_id: int) -> None:
+    """Sync a consultant's active governance categories to match the project's KPI definitions.
+    Called when a consultant is added to a project that has KPI definitions.
+    Categories in the project set are activated; others are deactivated.
+    """
+    kpis = (
+        db.query(HRBPProjectKpiDefinition)
+        .filter_by(project_id=project_id)
+        .all()
+    )
+    if not kpis:
+        return  # No KPIs defined for this project — don't touch consultant categories
+
+    # Ensure all standard score rows exist
+    get_or_init_scores(db, consultant_id)
+
+    # Build the expected set of consultant-level category keys
+    expected: dict[str, HRBPProjectKpiDefinition] = {}
+    for kpi in kpis:
+        if kpi.is_custom:
+            # Project custom key "custom_{slug}" → consultant key "custom_{slug}_{consultant_id}"
+            expected[f"{kpi.category_key}_{consultant_id}"] = kpi
+        else:
+            expected[kpi.category_key] = kpi
+
+    all_rows = db.query(HRBPGovernanceScore).filter_by(consultant_id=consultant_id).all()
+    existing_keys = {r.category_key for r in all_rows}
+
+    # Activate / deactivate existing rows
+    for row in all_rows:
+        row.is_active = row.category_key in expected
+
+    # Create missing score rows (and custom category definitions for custom KPIs)
+    for consultant_key, kpi in expected.items():
+        if consultant_key not in existing_keys:
+            cat = CATEGORY_MAP.get(kpi.category_key)
+            net = cat["options"][0]["score"] if cat else kpi.max_score
+            db.add(HRBPGovernanceScore(
+                consultant_id=consultant_id,
+                category_key=consultant_key,
+                option_index=0,
+                escalations=0,
+                net_score=net,
+                is_active=True,
+            ))
+
+        if kpi.is_custom:
+            existing_cc = (
+                db.query(HRBPGovernanceCustomCategory)
+                .filter_by(consultant_id=consultant_id, key=consultant_key)
+                .first()
+            )
+            if not existing_cc:
+                options = kpi.options or _auto_generate_options(kpi.max_score)
+                db.add(HRBPGovernanceCustomCategory(
+                    consultant_id=consultant_id,
+                    key=consultant_key,
+                    label=kpi.label,
+                    max_score=kpi.max_score,
+                    escalation_base=kpi.escalation_base or 2,
+                    description=kpi.description or "",
+                    options=options,
+                ))
+
+    db.flush()
+
+
 def add_member(
     db: Session,
     project_id: int,
@@ -255,6 +380,8 @@ def add_member(
     )
     db.add(m)
     db.flush()
+    # Sync consultant's governance categories to match project KPI definitions (if any)
+    sync_consultant_kpis_to_project(db, consultant_id, project_id)
     return {"project_id": project_id, "consultant_id": consultant_id, "cohort": cohort, "perf_tier": perf_tier}
 
 
