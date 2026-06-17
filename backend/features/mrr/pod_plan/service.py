@@ -469,6 +469,158 @@ def _client_id_to_ct_map(db: Session, setup_id: int) -> dict[int, int]:
     return client_id_to_ct
 
 
+# ── BH ↔ OL submission reconciliation (per-candidate drill-down) ───────────────
+
+def _ol_status_label(step: str | None, stage: str | None) -> str:
+    """Human-readable Offer-Letter status from the OL candidate_work_flows row."""
+    step = (step or "").strip()
+    stage = (stage or "").strip()
+    if step and stage and step.lower() != stage.lower():
+        return f"{step} ({stage})"
+    return step or stage or "—"
+
+
+def fetch_bh_ol_reconciliation(db: Session, setup_id: int, bounds: dict) -> list[dict]:
+    """Per-candidate reconciliation rows for one BH: the current tool's DL-verified
+    submissions in the window, each annotated with the status the OL tool shows.
+
+    Population: candidates with a ``validated`` Validation, sourced
+    (``candidates.sourced_at``) inside the [period_start, period_end] IST window,
+    by an active member of this BH's pod, for one of the BH's customer-target
+    clients. This is the per-candidate expansion of the leaderboard's "DL Subs"
+    column (``dl_rows`` in routes.py) — same joins, same ``sourced_at`` window, no
+    submission requirement — so the row count reconciles with that column. Offer-letter
+    status is matched by candidate email against the OL replica; the replica being
+    unavailable degrades the status column to "OL unavailable" rather than failing.
+    """
+    # ── 1. MRR Postgres: DL-verified candidates sourced in window for this BH ──
+    rows = db.execute(
+        text("""
+            SELECT DISTINCT c.id            AS candidate_id,
+                   c.full_name              AS candidate_name,
+                   c.email                  AS candidate_email,
+                   c.status                 AS mrr_status,
+                   j.client_name            AS client_name,
+                   j.job_id                 AS demand_id,
+                   j.role_title             AS role_title,
+                   r.name                   AS recruiter_name
+            FROM validations v
+            JOIN candidates c ON c.id = v.candidate_id
+            JOIN jobs j ON j.id = c.job_id
+            JOIN bh_customer_targets ct ON (
+                ct.client_id = j.client_id
+                OR (ct.client_ids IS NOT NULL AND ct.client_ids @> to_jsonb(j.client_id))
+            ) AND ct.setup_id = :sid
+            JOIN bh_pod_setups bs ON bs.id = ct.setup_id
+            JOIN pods p ON p.id = bs.pod_id
+            LEFT JOIN users r ON r.id = c.sourced_by_id
+            WHERE v.status = 'validated'
+              AND c.sourced_at >= :ps AND c.sourced_at < :pe
+              AND c.email IS NOT NULL AND c.email <> ''
+              AND EXISTS (
+                  SELECT 1 FROM users u
+                  WHERE u.id = c.sourced_by_id AND u.pod_id = p.id AND u.is_active = true
+              )
+            ORDER BY recruiter_name, candidate_name
+        """),
+        {"sid": setup_id, "ps": bounds["period_start_utc"], "pe": bounds["period_end_utc"]},
+    ).mappings().all()
+
+    out: list[dict] = []
+    for r in rows:
+        out.append({
+            "candidate_id": r["candidate_id"],
+            "candidate_name": r["candidate_name"],
+            "candidate_email": r["candidate_email"],
+            "mrr_status": r["mrr_status"].value if hasattr(r["mrr_status"], "value") else r["mrr_status"],
+            "client_name": r["client_name"],
+            "demand_id": r["demand_id"],
+            "role_title": r["role_title"],
+            "recruiter_name": r["recruiter_name"],
+            "ol_status": None,
+        })
+
+    if not out:
+        return out
+
+    # ── 2. OL replica: batch-match candidate emails → current offer-letter status ──
+    from core.config import settings
+
+    if not settings.ol_replica_host:
+        for row in out:
+            row["ol_status"] = "OL unavailable"
+        return out
+
+    import pymysql
+
+    # email (lowercased) → demand_id, to prefer the exact job application in OL
+    email_to_demand: dict[str, int | None] = {}
+    for row in out:
+        email_to_demand.setdefault((row["candidate_email"] or "").lower(), row["demand_id"])
+    emails = list(email_to_demand.keys())
+
+    try:
+        conn = pymysql.connect(
+            host=settings.ol_replica_host, port=settings.ol_replica_port,
+            user=settings.ol_replica_user, password=settings.ol_replica_password,
+            database=settings.ol_replica_database,
+            connect_timeout=5, cursorclass=pymysql.cursors.DictCursor, ssl_disabled=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                ph = ",".join(["%s"] * len(emails))
+                cur.execute(
+                    f"SELECT id, LOWER(email) AS email FROM users WHERE LOWER(email) IN ({ph})",
+                    emails,
+                )
+                user_rows = cur.fetchall()
+                email_to_uid = {u["email"]: int(u["id"]) for u in user_rows}
+                uid_to_email = {int(u["id"]): u["email"] for u in user_rows}
+
+                apps_by_uid: dict[int, list[dict]] = {}
+                if email_to_uid:
+                    uids = list(email_to_uid.values())
+                    uph = ",".join(["%s"] * len(uids))
+                    cur.execute(
+                        f"""
+                        SELECT aj.user_id, aj.job_posting_id,
+                               aj.current_step, aj.updated_at,
+                               cwf.workflow_step AS step_name, cwf.stage AS step_stage
+                        FROM applied_jobs aj
+                        LEFT JOIN candidate_work_flows cwf ON cwf.step_id = aj.current_step
+                        WHERE aj.user_id IN ({uph})
+                        ORDER BY aj.updated_at DESC
+                        """,
+                        uids,
+                    )
+                    for a in cur.fetchall():
+                        apps_by_uid.setdefault(int(a["user_id"]), []).append(a)
+        finally:
+            conn.close()
+    except Exception:
+        for row in out:
+            row["ol_status"] = "OL unavailable"
+        return out
+
+    for row in out:
+        email = (row["candidate_email"] or "").lower()
+        uid = email_to_uid.get(email)
+        if uid is None:
+            row["ol_status"] = "Not found in OL"
+            continue
+        apps = apps_by_uid.get(uid, [])
+        if not apps:
+            row["ol_status"] = "No application in OL"
+            continue
+        demand_id = row["demand_id"]
+        # Prefer the application that matches this candidate's job (demand); else most recent.
+        match = next((a for a in apps if demand_id is not None and a["job_posting_id"] == demand_id), None)
+        chosen = match or apps[0]
+        row["ol_status"] = _ol_status_label(chosen.get("step_name"), chosen.get("step_stage"))
+
+    return out
+
+
 def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[str, dict[int, int]]:
     """Pull daily Subs, Selections and Onboardings from the OL replica in ONE round-trip.
 
