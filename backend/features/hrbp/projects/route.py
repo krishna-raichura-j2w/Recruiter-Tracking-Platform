@@ -23,10 +23,10 @@ router = APIRouter(prefix="/projects", tags=["hrbp-projects"])
 @router.get("")
 def list_projects(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     try:
-        data = service.list_projects(db)
+        data = service.list_projects(db, current_user=current_user)
         return success_response(data=data, message="Projects fetched")
     except Exception as exc:
         return error_response(message=str(exc))

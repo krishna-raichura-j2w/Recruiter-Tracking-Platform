@@ -108,17 +108,9 @@ def list_consultants(
     bh_client_ids: list[int] | None = None
 
     if role == "hrbp":
-        uid = current_user.id
-        rows = db.query(HRBPClient.id).filter(
-            or_(
-                HRBPClient.hrbp_ids.contains([uid]),
-                and_(
-                    func.coalesce(func.array_length(HRBPClient.hrbp_ids, 1), 0) == 0,
-                    HRBPClient.hrbp_id == uid,
-                ),
-            )
-        ).all()
-        bh_client_ids = [r[0] for r in rows]
+        # Filter directly by the consultant's hrbp_id — each HRBP sees only
+        # the consultants assigned to them, not consultants of other HRBPs.
+        hrbp_ids = [current_user.id]
     elif role == "bh":
         rows = db.query(HRBPClient.id).filter(HRBPClient.bh_id == current_user.id).all()
         bh_client_ids = [r[0] for r in rows]

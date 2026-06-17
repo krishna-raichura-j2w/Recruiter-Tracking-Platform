@@ -124,8 +124,11 @@ def _apply_governance_deltas(db: Session, consultant_id: int, deltas: dict) -> d
 
 # ── Projects CRUD ─────────────────────────────────────────────────────────────
 
-def list_projects(db: Session) -> list[dict]:
-    projects = db.query(HRBPProject).order_by(HRBPProject.created_at.desc()).all()
+def list_projects(db: Session, current_user=None) -> list[dict]:
+    q = db.query(HRBPProject).order_by(HRBPProject.created_at.desc())
+    if current_user and getattr(current_user.role, "value", current_user.role) == "hrbp":
+        q = q.filter(HRBPProject.created_by == current_user.id)
+    projects = q.all()
     result = []
     for p in projects:
         score = _project_avg_score(db, p.id)
