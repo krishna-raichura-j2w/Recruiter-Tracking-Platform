@@ -253,6 +253,11 @@ export const podPlanApi = {
 
   getOlOnly: (date: string, start?: string, end?: string) =>
     api.get('/pod-plan/bh-leaderboard/ol-only', { params: { date, start, end } }).then(r => r.data as OlOnlyResponse),
+
+  // Per-BH OL reconciliation: DL-verified submissions in the window + their Offer-Letter status.
+  getBHOlReconciliation: (setupId: number, date: string, start?: string, end?: string) =>
+    api.get(`/pod-plan/bh-leaderboard/${setupId}/ol-reconciliation`, { params: { date, start, end } })
+      .then(r => r.data.rows as BHOlReconRow[]),
 };
 
 // ── BH Leaderboard types ───────────────────────────────────────────────────────
@@ -292,6 +297,19 @@ export interface BHInfo {
   setup_id: number;
   pod_id: number;
   bh_name: string;
+}
+
+// One row of the per-BH OL reconciliation table (a DL-verified submission).
+export interface BHOlReconRow {
+  candidate_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  mrr_status: string | null;
+  client_name: string;
+  demand_id: number | null;
+  role_title: string;
+  recruiter_name: string | null;
+  ol_status: string | null;
 }
 
 export interface BHListResponse {

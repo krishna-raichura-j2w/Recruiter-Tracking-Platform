@@ -10,7 +10,7 @@ import leaderboardAnim from '../assets/lottie-leaderboard.json';
 import Layout from '../components/Layout';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { podPlanApi, type BHInfo, type BHDetailResponse, type BHLeaderboardCustomer, type OlOnlyBH } from '../api/podPlan';
+import { podPlanApi, type BHInfo, type BHDetailResponse, type BHLeaderboardCustomer, type OlOnlyBH, type BHOlReconRow } from '../api/podPlan';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
@@ -1437,6 +1437,14 @@ function BHTargetsSection() {
   const [detail, setDetail] = useState<BHDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [overview, setOverview] = useState<BHLeaderboardCustomer[] | null>(null);
+  // Per-BH OL reconciliation table (DL-verified submissions + their Offer-Letter status)
+  const olReconCache = useRef<Map<number, BHOlReconRow[]>>(new Map());
+  const [olRecon, setOlRecon] = useState<BHOlReconRow[] | null>(null);
+  const [olReconLoading, setOlReconLoading] = useState(false);
+  // Reconciliation table filters ('' = All)
+  const [olFltStatus, setOlFltStatus] = useState('');
+  const [olFltRecruiter, setOlFltRecruiter] = useState('');
+  const [olFltClient, setOlFltClient] = useState('');
   // OL-only BHs (target not set) — fetched once per date, drives buttons + overview 2nd table + detail
   const [olOnly, setOlOnly] = useState<OlOnlyBH[] | null>(null);
   const [month, setMonth] = useState('');
@@ -1445,7 +1453,9 @@ function BHTargetsSection() {
   useEffect(() => {
     setListLoading(true);
     detailCache.current = new Map();
+    olReconCache.current = new Map();
     setDetail(null);
+    setOlRecon(null);
     setView('overview');
     podPlanApi.getBHList(period.end)
       .then(r => {
@@ -1489,9 +1499,47 @@ function BHTargetsSection() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, periodKey]);
 
+  // Fetch the OL reconciliation table when a specific BH is the active view
+  useEffect(() => {
+    // Each BH/date change starts unfiltered
+    setOlFltStatus(''); setOlFltRecruiter(''); setOlFltClient('');
+    if (typeof view !== 'number') { setOlRecon(null); return; }
+    const cached = olReconCache.current.get(view);
+    if (cached) { setOlRecon(cached); return; }
+    setOlRecon(null);
+    setOlReconLoading(true);
+    podPlanApi.getBHOlReconciliation(view, period.end, period.start, period.end)
+      .then(r => {
+        olReconCache.current.set(view, r);
+        setOlRecon(r);
+      })
+      .catch(() => setOlRecon([]))
+      .finally(() => setOlReconLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, periodKey]);
+
   const selectBH = (setupId: number) => {
     setView(setupId);
   };
+
+  // Distinct, sorted filter options derived from the current reconciliation rows
+  const olReconOptions = useMemo(() => {
+    const uniq = (vals: (string | null)[]) =>
+      Array.from(new Set(vals.map(v => (v || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return {
+      statuses: uniq((olRecon || []).map(r => r.ol_status)),
+      recruiters: uniq((olRecon || []).map(r => r.recruiter_name)),
+      clients: uniq((olRecon || []).map(r => r.client_name)),
+    };
+  }, [olRecon]);
+
+  const olReconFiltered = useMemo(() => (olRecon || []).filter(r =>
+    (!olFltStatus || (r.ol_status || '') === olFltStatus)
+    && (!olFltRecruiter || (r.recruiter_name || '') === olFltRecruiter)
+    && (!olFltClient || (r.client_name || '') === olFltClient)
+  ), [olRecon, olFltStatus, olFltRecruiter, olFltClient]);
+
+  const olFltActive = !!(olFltStatus || olFltRecruiter || olFltClient);
 
   return (
     <div>
@@ -1712,10 +1760,93 @@ function BHTargetsSection() {
             {!detailLoading && !detail && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Select a BH to view data.</div>}
           </div>
           )}
+
+          {typeof view === 'number' && (
+            <div style={{ marginTop: 18, border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 18px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>DL Subs — Offer Letter Status</span>
+                <span style={{ fontSize: 11, color: '#64748b', marginLeft: 10 }}>
+                  DL-verified candidates (same as the DL Subs column) · status pulled from the Offer Letter tool by email
+                  {olRecon && olRecon.length > 0 ? (olFltActive ? ` · ${olReconFiltered.length}/${olRecon.length}` : ` · ${olRecon.length}`) : ''}
+                </span>
+                {!olReconLoading && olRecon && olRecon.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                    {([
+                      { label: 'Status', value: olFltStatus, set: setOlFltStatus, opts: olReconOptions.statuses },
+                      { label: 'Recruiter', value: olFltRecruiter, set: setOlFltRecruiter, opts: olReconOptions.recruiters },
+                      { label: 'Client', value: olFltClient, set: setOlFltClient, opts: olReconOptions.clients },
+                    ] as const).map(f => (
+                      <select key={f.label} value={f.value} onChange={e => f.set(e.target.value)}
+                        style={{ padding: '5px 9px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                 color: f.value ? '#1e3a5f' : '#6b7280', background: f.value ? '#eff6ff' : '#fff', maxWidth: 220 }}>
+                        <option value="">All {f.label}s</option>
+                        {f.opts.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ))}
+                    {olFltActive && (
+                      <button onClick={() => { setOlFltStatus(''); setOlFltRecruiter(''); setOlFltClient(''); }}
+                        style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 12, fontWeight: 700, color: '#dc2626', background: '#fff', cursor: 'pointer' }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {olReconLoading && <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Loading…</div>}
+              {!olReconLoading && olRecon && olRecon.length === 0 && (
+                <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No DL-verified candidates in this period.</div>
+              )}
+              {!olReconLoading && olRecon && olRecon.length > 0 && olReconFiltered.length === 0 && (
+                <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No rows match the selected filters.</div>
+              )}
+              {!olReconLoading && olRecon && olReconFiltered.length > 0 && (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', textAlign: 'left' }}>
+                        {['Client', 'Demand ID', 'Job Title', 'Candidate Name', 'Candidate Email', 'Offer Letter Status', 'Recruiter'].map(h => (
+                          <th key={h} style={{ padding: '9px 14px', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {olReconFiltered.map((row, i) => (
+                        <tr key={row.candidate_id} style={{ background: i % 2 ? '#fbfdff' : '#fff' }}>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9', color: '#1e293b' }}>{row.client_name || '—'}</td>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{row.demand_id ?? '—'}</td>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9', color: '#1e293b' }}>{row.role_title || '—'}</td>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{row.candidate_name || '—'}</td>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{row.candidate_email || '—'}</td>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9' }}>
+                            <span style={{ ...olStatusBadgeStyle(row.ol_status), display: 'inline-block', padding: '2px 9px', borderRadius: 999, fontSize: 11.5, fontWeight: 700 }}>
+                              {row.ol_status || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 14px', borderBottom: '1px solid #f1f5f9', color: '#475569' }}>{row.recruiter_name || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
   );
+}
+
+// Color the Offer-Letter status badge by keyword (mirrors export_ol_candidate_status._ol_color).
+function olStatusBadgeStyle(status: string | null): { background: string; color: string } {
+  const s = (status || '').toLowerCase();
+  if (s.includes('join') || s.includes('onboard')) return { background: '#dcfce7', color: '#166534' };
+  if (s.includes('offer')) return { background: '#d1fae5', color: '#065f46' };
+  if (s.includes('select') || s.includes('cleared') || s.includes('pass')) return { background: '#cffafe', color: '#155e75' };
+  if (s.includes('reject') || s.includes('fail') || s.includes('drop')) return { background: '#fee2e2', color: '#991b1b' };
+  if (s.includes('interview')) return { background: '#fef9c3', color: '#854d0e' };
+  if (s.includes('not found') || s.includes('no application') || s.includes('unavailable')) return { background: '#f1f5f9', color: '#94a3b8' };
+  return { background: '#e0e7ff', color: '#3730a3' };
 }
 
 // ════════════════════════════════════════════════════════════════════════════

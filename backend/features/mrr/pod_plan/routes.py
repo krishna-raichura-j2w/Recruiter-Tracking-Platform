@@ -742,3 +742,22 @@ def bh_leaderboard_detail(
         "pod_id": s["pod_id"],
         "customers": customer_rows,
     }
+
+
+@router.get("/bh-leaderboard/{setup_id}/ol-reconciliation")
+def bh_leaderboard_ol_reconciliation(
+    setup_id: int,
+    date: Optional[str] = Query(None),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    cu=LEADERSHIP,
+):
+    """Per-candidate drill-down for one BH: DL-verified submissions (current tool) in
+    the [start, end] window, each annotated with the status the Offer-Letter tool shows
+    for that candidate (matched by email). Used to investigate the MRR↔OL submission gap.
+    """
+    if not db.execute(text("SELECT 1 FROM bh_pod_setups WHERE id = :sid"), {"sid": setup_id}).first():
+        raise HTTPException(status_code=404, detail="Setup not found")
+    bounds = service.period_bounds(date, start, end)
+    return {"setup_id": setup_id, "rows": service.fetch_bh_ol_reconciliation(db, setup_id, bounds)}
