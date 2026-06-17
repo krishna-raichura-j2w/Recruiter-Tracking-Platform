@@ -802,8 +802,8 @@ function GovernanceDetailPage() {
             </div>
             <div className="text-right shrink-0">
               <div className="flex items-baseline gap-1 justify-end">
-                <span className="text-7xl font-black text-slate-900 leading-none">{totalScore}</span>
-                <span className="text-2xl text-slate-400 font-medium">/{totalPossible}</span>
+                <span className="text-7xl font-black text-slate-900 leading-none">{scorePct}</span>
+                <span className="text-2xl text-slate-400 font-medium">%</span>
               </div>
               <Badge className={`mt-1 text-sm px-2 py-0.5 ${gradeBadgeClass(tone)}`}>{grade}</Badge>
             </div>
