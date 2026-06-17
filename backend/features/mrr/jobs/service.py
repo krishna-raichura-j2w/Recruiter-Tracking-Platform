@@ -493,7 +493,7 @@ def repost_job(db: Session, original: Job, reposted_by_id: int, new_deadline=Non
     }
     new_data["job_id"] = None
     new_data["client_job_id"] = None
-    new_data["status"] = JobStatus.pending_review
+    new_data["status"] = JobStatus.open
     new_data["questionnaire_generated_at"] = None
     new_data["sourcing_deadline"] = None
     new_data["calling_deadline"] = None

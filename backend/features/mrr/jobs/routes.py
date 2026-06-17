@@ -306,7 +306,7 @@ def create_job(
             detail=f"Job ID '{data['client_job_id']}' is already in use. Please use a unique Job ID.",
         )
 
-    data["status"] = JobStatus.pending_review
+    data["status"] = JobStatus.open
     data["account_manager_id"] = data.pop("business_head_id", None)
     if data.get("deadline"):
         try:
