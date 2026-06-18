@@ -12,6 +12,9 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import { uploadToS3 } from '../api/upload';
 import type { Candidate, Job, User } from '../types';
+import type { BHOlReconRow } from '../api/podPlan';
+import { OlReconTable } from '../components/OlReconTable';
+import { todayISO, addDaysUTC, weekMonSat, fmtDayMon } from '../utils/period';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Lottie: React.ComponentType<any> = (LottieLib as any).default ?? LottieLib;
@@ -62,6 +65,10 @@ export default function Candidates() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const jobIdFilter = searchParams.get('job_id');
+
+  // Page-level tabs: 'list' = candidate list (default — users add candidates here),
+  // 'status' = Offer-Letter status reconciliation.
+  const [pageTab, setPageTab] = useState<'status' | 'list'>('list');
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -338,6 +345,24 @@ export default function Candidates() {
 
   return (
     <Layout title={pageTitle}>
+      {/* Page tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb' }}>
+        {([
+          { id: 'list', label: 'Candidate List' },
+          { id: 'status', label: 'Candidates Status' },
+        ] as const).map((t) => (
+          <button key={t.id} onClick={() => setPageTab(t.id)}
+            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
+                     color: pageTab === t.id ? '#2563eb' : '#64748b',
+                     borderBottom: pageTab === t.id ? '2px solid #2563eb' : '2px solid transparent', marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === 'status' && <CandidatesOlStatus />}
+
+      {pageTab === 'list' && (<>
       {/* Live-refresh indicator */}
       {canSourceLikeRecruiter && (
         <div className="flex items-center gap-2 mb-4 text-xs text-slate-400">
@@ -1122,6 +1147,71 @@ export default function Candidates() {
           </div>
         </>
       )}
+      </>)}
     </Layout>
+  );
+}
+
+// ── Candidates Status tab: DL-verified candidates + their Offer-Letter status ──
+// Scoped server-side to the logged-in user (same scope as their candidate list).
+function CandidatesOlStatus() {
+  const [selDate, setSelDate] = useState(todayISO());
+  const [periodMode, setPeriodMode] = useState<'today' | 'week'>('today');
+  const period = periodMode === 'week' ? weekMonSat(selDate) : { start: selDate, end: selDate };
+  const weekly = period.start !== period.end;
+  const periodKey = `${period.start}|${period.end}`;
+  const lastWeek = weekMonSat(addDaysUTC(todayISO(), -7));
+  const isLastWeek = weekly && period.start === lastWeek.start && period.end === lastWeek.end;
+
+  const [rows, setRows] = useState<BHOlReconRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api.get('/candidates/ol-status', { params: { date: period.end, start: period.start, end: period.end } })
+      .then((r) => { if (!cancelled) setRows((r.data.rows ?? []) as BHOlReconRow[]); })
+      .catch(() => { if (!cancelled) setRows([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodKey]);
+
+  return (
+    <div>
+      {/* Date / period bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {([
+          { key: 'today', label: 'Today', active: periodMode === 'today',
+            onClick: () => { setPeriodMode('today'); setSelDate(todayISO()); } },
+          { key: 'lastweek', label: 'Last Week', active: isLastWeek,
+            onClick: () => { setSelDate(lastWeek.start); setPeriodMode('week'); } },
+        ] as const).map((b) => (
+          <button key={b.key} onClick={b.onClick}
+            style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                     border: b.active ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                     background: b.active ? 'linear-gradient(90deg,#1e3a5f,#2563eb)' : '#fff',
+                     color: b.active ? '#fff' : '#374151' }}>
+            {b.label}
+          </button>
+        ))}
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', marginLeft: 6 }}>Week of:</span>
+        <input type="date" value={selDate} max={todayISO()}
+          onChange={(e) => { setSelDate(e.target.value); setPeriodMode('week'); }}
+          style={{ padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, fontWeight: 600 }} />
+        {weekly && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '4px 10px' }}>
+            {fmtDayMon(period.start)} – {fmtDayMon(period.end)}
+          </span>
+        )}
+      </div>
+
+      <OlReconTable
+        rows={rows}
+        loading={loading}
+        title="Candidates — Offer Letter Status"
+        subtitle="Your DL-verified candidates · status pulled from the Offer Letter tool by email"
+      />
+    </div>
   );
 }

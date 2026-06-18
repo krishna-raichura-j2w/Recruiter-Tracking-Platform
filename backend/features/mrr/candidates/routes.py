@@ -78,105 +78,8 @@ def list_candidates(
     role = current_user.role.value
     _assigned_to = assigned_to
     _sourced_by = None
-    _job_ids: list[int] | None = None
-    _recruiter_id: int | None = None
-
-    if role == "recruiter":
-        _recruiter_id = current_user.id
-        # Restrict to candidates on JDs the recruiter is CURRENTLY assigned to.
-        # When a recruiter is removed from a JD, they should stop seeing its
-        # candidates — even ones they originally sourced. Attribution is
-        # preserved in the DB (sourced_by_id) for leaderboards / reports.
-        import json as _json
-
-        uid = current_user.id
-        active_job_ids = []
-        for j in db.query(Job).all():
-            s_ids = (
-                _json.loads(j.sourcer_ids or "[]")
-                if isinstance(j.sourcer_ids, str)
-                else []
-            )
-            c_ids = (
-                _json.loads(j.caller_ids or "[]")
-                if isinstance(j.caller_ids, str)
-                else []
-            )
-            if (
-                uid in s_ids
-                or uid in c_ids
-                or j.assigned_sourcer_id == uid
-                or j.assigned_caller_id == uid
-            ):
-                active_job_ids.append(j.id)
-        _job_ids = active_job_ids if active_job_ids else []
-    elif role == "delivery_lead":
-        import json as _json
-
-        uid = current_user.id
-        dl_job_ids = []
-        for j in db.query(Job).all():
-            dl_ids = (
-                _json.loads(j.delivery_lead_ids or "[]")
-                if isinstance(j.delivery_lead_ids, str)
-                else (j.delivery_lead_ids or [])
-            )
-            if j.delivery_lead_id == uid or uid in dl_ids:
-                dl_job_ids.append(j.id)
-        _job_ids = dl_job_ids if dl_job_ids else []
-    elif role == "kam":
-        # KAM sees candidates for jobs they own OR co-manage as a cross-pod
-        # collaborator (collaborator_kam_ids).
-        from features.mrr.jobs.service import _collaborator_kam_ids_for
-
-        kam_job_ids = [
-            j.id
-            for j in db.query(Job).all()
-            if j.created_by_id == current_user.id
-            or current_user.id in _collaborator_kam_ids_for(j)
-        ]
-        _job_ids = kam_job_ids  # empty list = no results if KAM has no jobs
-    elif role == "bh":
-        # BH sees every candidate sourced by any user in their pod.
-        # Filter by pod members (recruiters + DLs who could have sourced).
-        if not current_user.pod_id:
-            _job_ids = []  # BH with no pod → nothing
-        else:
-            pod_user_ids = [
-                u.id for u in db.query(User).filter(User.pod_id == current_user.pod_id).all()
-            ]
-            _sourced_by = None  # we use a different shape below
-            # Scope by sourcer being a pod member. service.list_candidates
-            # supports filtering by a specific sourced_by; we pass the pod's
-            # full set as an "any of these" list via the _job_ids escape
-            # hatch indirectly — instead, narrow to jobs created by pod KAMs
-            # or those whose delivery_lead_id is a pod DL.
-            pod_user_id_set = set(pod_user_ids)
-            pod_job_ids: list[int] = []
-            import json as _json
-            for j in db.query(Job).all():
-                if j.created_by_id in pod_user_id_set:
-                    pod_job_ids.append(j.id)
-                    continue
-                if j.delivery_lead_id in pod_user_id_set:
-                    pod_job_ids.append(j.id)
-                    continue
-                dl_ids = (
-                    _json.loads(j.delivery_lead_ids or "[]")
-                    if isinstance(j.delivery_lead_ids, str)
-                    else (j.delivery_lead_ids or [])
-                )
-                if any(d in pod_user_id_set for d in dl_ids):
-                    pod_job_ids.append(j.id)
-                    continue
-                s_ids = (
-                    _json.loads(j.sourcer_ids or "[]")
-                    if isinstance(j.sourcer_ids, str)
-                    else []
-                )
-                if any(s in pod_user_id_set for s in s_ids):
-                    pod_job_ids.append(j.id)
-            _job_ids = pod_job_ids
+    # Per-role candidate visibility scope (shared with the /ol-status endpoint).
+    _job_ids, _recruiter_id = service.resolve_candidate_scope(db, current_user)
 
     items, total = service.list_candidates(
         db,
@@ -197,6 +100,26 @@ def list_candidates(
         "skip": skip,
         "limit": limit,
     }
+
+
+@router.get("/ol-status")
+def candidates_ol_status(
+    date: str | None = Query(None),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """DL-verified candidates (scoped to the logged-in user) in the [start, end]
+    window, each annotated with the status the Offer Letter tool shows. Same
+    population as the leaderboard's "DL Subs — Offer Letter Status" table, scoped
+    via the user's existing per-role candidate visibility.
+    """
+    from features.mrr.pod_plan.service import period_bounds
+
+    scope = service.resolve_ol_status_scope(db, current_user)
+    bounds = period_bounds(date, start, end)
+    return {"rows": service.fetch_scoped_ol_reconciliation(db, bounds, **scope)}
 
 
 @router.get("/{candidate_id}")

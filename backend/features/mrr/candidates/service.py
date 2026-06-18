@@ -1,11 +1,202 @@
+import json as _json
+
 from infra.models import (
     Candidate,
     CandidateStatus,
+    Job,
     User,
     Validation,
 )
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session, joinedload
+
+
+def resolve_candidate_scope(db: Session, current_user) -> tuple[list[int] | None, int | None]:
+    """Resolve the candidate visibility scope for the logged-in user by role.
+
+    Returns ``(job_ids, recruiter_id)``:
+      • ``job_ids`` — restrict candidates to these job ids. ``None`` = unrestricted
+        (admin / unhandled roles); ``[]`` = the role resolves to *no* jobs (show nothing).
+      • ``recruiter_id`` — when set (recruiter role), additionally restrict to candidates
+        this user sourced or is assigned to.
+
+    This mirrors exactly the per-role scoping used by ``list_candidates`` so the
+    OL-status view shows the same candidate set the user sees in their list.
+    """
+    role = current_user.role.value
+
+    if role == "recruiter":
+        uid = current_user.id
+        active_job_ids: list[int] = []
+        for j in db.query(Job).all():
+            s_ids = _json.loads(j.sourcer_ids or "[]") if isinstance(j.sourcer_ids, str) else []
+            c_ids = _json.loads(j.caller_ids or "[]") if isinstance(j.caller_ids, str) else []
+            if uid in s_ids or uid in c_ids or j.assigned_sourcer_id == uid or j.assigned_caller_id == uid:
+                active_job_ids.append(j.id)
+        return (active_job_ids if active_job_ids else []), uid
+
+    if role == "delivery_lead":
+        uid = current_user.id
+        dl_job_ids: list[int] = []
+        for j in db.query(Job).all():
+            dl_ids = (
+                _json.loads(j.delivery_lead_ids or "[]")
+                if isinstance(j.delivery_lead_ids, str)
+                else (j.delivery_lead_ids or [])
+            )
+            if j.delivery_lead_id == uid or uid in dl_ids:
+                dl_job_ids.append(j.id)
+        return (dl_job_ids if dl_job_ids else []), None
+
+    if role == "kam":
+        from features.mrr.jobs.service import _collaborator_kam_ids_for
+
+        kam_job_ids = [
+            j.id
+            for j in db.query(Job).all()
+            if j.created_by_id == current_user.id or current_user.id in _collaborator_kam_ids_for(j)
+        ]
+        return kam_job_ids, None
+
+    if role == "bh":
+        if not current_user.pod_id:
+            return [], None
+        pod_user_id_set = {
+            u.id for u in db.query(User).filter(User.pod_id == current_user.pod_id).all()
+        }
+        pod_job_ids: list[int] = []
+        for j in db.query(Job).all():
+            if j.created_by_id in pod_user_id_set or j.delivery_lead_id in pod_user_id_set:
+                pod_job_ids.append(j.id)
+                continue
+            dl_ids = (
+                _json.loads(j.delivery_lead_ids or "[]")
+                if isinstance(j.delivery_lead_ids, str)
+                else (j.delivery_lead_ids or [])
+            )
+            if any(d in pod_user_id_set for d in dl_ids):
+                pod_job_ids.append(j.id)
+                continue
+            s_ids = _json.loads(j.sourcer_ids or "[]") if isinstance(j.sourcer_ids, str) else []
+            if any(s in pod_user_id_set for s in s_ids):
+                pod_job_ids.append(j.id)
+        return pod_job_ids, None
+
+    # admin / other leadership roles → unrestricted
+    return None, None
+
+
+def resolve_ol_status_scope(db: Session, current_user) -> dict:
+    """Scope for the Candidate Status (OL reconciliation) tab — by who SOURCED the
+    candidate, not by job ownership.
+
+    Returns a dict of filters for :func:`fetch_scoped_ol_reconciliation`:
+      • recruiter      → ``{"sourcer_ids": [self]}`` — every candidate they sourced.
+      • delivery_lead  → ``{"sourcer_ids": [...pod recruiter ids]}`` — candidates
+        sourced by any recruiter in the DL's pod (via ``_team``).
+      • kam / bh / admin → fall back to the job-based ``resolve_candidate_scope``.
+    ``sourcer_ids == []`` means the user has no recruiters → show nothing.
+    """
+    role = current_user.role.value
+
+    if role == "recruiter":
+        return {"sourcer_ids": [current_user.id]}
+
+    if role == "delivery_lead":
+        from infra.models import UserRole
+
+        from features.mrr.allocation.service import _team
+
+        rec_ids = [u.id for u in _team(db, current_user.id, role=UserRole.recruiter)]
+        return {"sourcer_ids": rec_ids}
+
+    job_ids, recruiter_id = resolve_candidate_scope(db, current_user)
+    return {"job_ids": job_ids, "recruiter_id": recruiter_id}
+
+
+def fetch_scoped_ol_reconciliation(
+    db: Session,
+    bounds: dict,
+    *,
+    sourcer_ids: list[int] | None = None,
+    job_ids: list[int] | None = None,
+    recruiter_id: int | None = None,
+) -> list[dict]:
+    """DL-verified candidates in the [start, end] window, scoped to one user, each
+    annotated with the status the Offer-Letter tool shows (matched by email).
+
+    Same population/definition as the leaderboard's "DL Subs — Offer Letter Status"
+    table (``validations.status='validated'``, anchored on ``candidates.sourced_at``).
+    Scope is one of:
+      • ``sourcer_ids`` — candidates whose ``sourced_by_id`` is in this set (the
+        Candidate Status tab uses this for recruiters / DLs).
+      • ``job_ids`` (+ optional ``recruiter_id``) — the job-based fallback for
+        kam / bh / admin, from :func:`resolve_candidate_scope`.
+    An empty ``sourcer_ids``/``job_ids`` list means the scope resolves to nothing →
+    returns ``[]``. OL status matching is shared via ``enrich_rows_with_ol_status``.
+    """
+    if sourcer_ids is not None and len(sourcer_ids) == 0:
+        return []
+    if job_ids is not None and len(job_ids) == 0:
+        return []
+
+    where = [
+        "v.status = 'validated'",
+        "c.sourced_at >= :ps",
+        "c.sourced_at < :pe",
+        "c.email IS NOT NULL",
+        "c.email <> ''",
+    ]
+    params: dict = {"ps": bounds["period_start_utc"], "pe": bounds["period_end_utc"]}
+    if sourcer_ids is not None:
+        where.append("c.sourced_by_id = ANY(:sourcer_ids)")
+        params["sourcer_ids"] = sourcer_ids
+    if job_ids is not None:
+        where.append("c.job_id = ANY(:job_ids)")
+        params["job_ids"] = job_ids
+    if recruiter_id:
+        where.append("(c.sourced_by_id = :rid OR c.assigned_to_id = :rid)")
+        params["rid"] = recruiter_id
+
+    rows = db.execute(
+        text(f"""
+            SELECT DISTINCT c.id     AS candidate_id,
+                   c.full_name       AS candidate_name,
+                   c.email           AS candidate_email,
+                   c.status          AS mrr_status,
+                   j.client_name     AS client_name,
+                   j.job_id          AS demand_id,
+                   j.role_title      AS role_title,
+                   r.name            AS recruiter_name
+            FROM validations v
+            JOIN candidates c ON c.id = v.candidate_id
+            JOIN jobs j ON j.id = c.job_id
+            LEFT JOIN users r ON r.id = c.sourced_by_id
+            WHERE {' AND '.join(where)}
+            ORDER BY recruiter_name, candidate_name
+        """),
+        params,
+    ).mappings().all()
+
+    out: list[dict] = [
+        {
+            "candidate_id": r["candidate_id"],
+            "candidate_name": r["candidate_name"],
+            "candidate_email": r["candidate_email"],
+            "mrr_status": r["mrr_status"].value if hasattr(r["mrr_status"], "value") else r["mrr_status"],
+            "client_name": r["client_name"],
+            "demand_id": r["demand_id"],
+            "role_title": r["role_title"],
+            "recruiter_name": r["recruiter_name"],
+            "ol_status": None,
+        }
+        for r in rows
+    ]
+
+    from features.mrr.pod_plan.service import enrich_rows_with_ol_status
+
+    enrich_rows_with_ol_status(out)
+    return out
 
 
 def _recruiter_email(db: Session, user_id) -> str | None:

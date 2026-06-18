@@ -540,24 +540,39 @@ def fetch_bh_ol_reconciliation(db: Session, setup_id: int, bounds: dict) -> list
             "ol_status": None,
         })
 
-    if not out:
-        return out
+    enrich_rows_with_ol_status(out)
+    return out
 
-    # ── 2. OL replica: batch-match candidate emails → current offer-letter status ──
+
+def enrich_rows_with_ol_status(rows: list[dict]) -> None:
+    """Set ``row["ol_status"]`` on each row by matching its candidate to the Offer
+    Letter replica by email (batched, one round-trip). Each row must carry
+    ``candidate_email`` and ``demand_id`` (the OL job_posting_id, used to prefer the
+    matching application). Mutates ``rows`` in place.
+
+    Status comes from the candidate's current ``applied_jobs`` workflow step. Falls
+    back to "OL unavailable" (replica down / not configured), "Not found in OL"
+    (email absent from OL users) or "No application in OL" (user exists, no apps).
+    Shared by the BH leaderboard and the per-user Candidates Status reconciliation.
+    """
+    if not rows:
+        return
+
     from core.config import settings
 
     if not settings.ol_replica_host:
-        for row in out:
+        for row in rows:
             row["ol_status"] = "OL unavailable"
-        return out
+        return
 
     import pymysql
 
-    # email (lowercased) → demand_id, to prefer the exact job application in OL
-    email_to_demand: dict[str, int | None] = {}
-    for row in out:
-        email_to_demand.setdefault((row["candidate_email"] or "").lower(), row["demand_id"])
-    emails = list(email_to_demand.keys())
+    # distinct lowercased emails to look up
+    emails = list({(row["candidate_email"] or "").lower() for row in rows if row.get("candidate_email")})
+    if not emails:
+        for row in rows:
+            row["ol_status"] = "Not found in OL"
+        return
 
     try:
         conn = pymysql.connect(
@@ -575,7 +590,6 @@ def fetch_bh_ol_reconciliation(db: Session, setup_id: int, bounds: dict) -> list
                 )
                 user_rows = cur.fetchall()
                 email_to_uid = {u["email"]: int(u["id"]) for u in user_rows}
-                uid_to_email = {int(u["id"]): u["email"] for u in user_rows}
 
                 apps_by_uid: dict[int, list[dict]] = {}
                 if email_to_uid:
@@ -598,11 +612,11 @@ def fetch_bh_ol_reconciliation(db: Session, setup_id: int, bounds: dict) -> list
         finally:
             conn.close()
     except Exception:
-        for row in out:
+        for row in rows:
             row["ol_status"] = "OL unavailable"
-        return out
+        return
 
-    for row in out:
+    for row in rows:
         email = (row["candidate_email"] or "").lower()
         uid = email_to_uid.get(email)
         if uid is None:
@@ -617,8 +631,6 @@ def fetch_bh_ol_reconciliation(db: Session, setup_id: int, bounds: dict) -> list
         match = next((a for a in apps if demand_id is not None and a["job_posting_id"] == demand_id), None)
         chosen = match or apps[0]
         row["ol_status"] = _ol_status_label(chosen.get("step_name"), chosen.get("step_stage"))
-
-    return out
 
 
 def get_ol_daily_actuals(db: Session, setup_id: int, entry_date: str) -> dict[str, dict[int, int]]:
