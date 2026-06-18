@@ -107,8 +107,10 @@ def resolve_ol_status_scope(db: Session, current_user) -> dict:
 
         from features.mrr.allocation.service import _team
 
+        # Pod recruiters PLUS the DL themselves — a DL can also source/submit, and
+        # _team excludes the anchor and returns only recruiter-role members.
         rec_ids = [u.id for u in _team(db, current_user.id, role=UserRole.recruiter)]
-        return {"sourcer_ids": rec_ids}
+        return {"sourcer_ids": list({*rec_ids, current_user.id})}
 
     job_ids, recruiter_id = resolve_candidate_scope(db, current_user)
     return {"job_ids": job_ids, "recruiter_id": recruiter_id}
