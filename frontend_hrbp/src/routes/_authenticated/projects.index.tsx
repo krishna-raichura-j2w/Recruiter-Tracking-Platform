@@ -19,11 +19,16 @@ import {
   Loader2,
   ArrowRight,
   Users,
+  Check,
+  X,
+  ChevronRight,
 } from "lucide-react";
 import {
   listProjects,
   createProject,
+  setProjectKpis,
   type ProjectSummary,
+  type ProjectKpiDefinition,
 } from "@/apiService/projectApi";
 import { toast } from "react-toastify";
 
@@ -104,6 +109,18 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
   );
 }
 
+const DEFAULT_KPIS_LIST: Array<Omit<ProjectKpiDefinition, "id" | "sort_order">> = [
+  { category_key: "timing",          label: "Timing Adherence",   max_score: 12, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "attendance",       label: "Attendance",          max_score: 12, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "leave_management", label: "Leave Management",    max_score: 8,  escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "wfo_wfh",          label: "WFO/WFH Adherence",  max_score: 10, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "performance",      label: "Performance",         max_score: 18, escalation_base: 3, description: "", is_custom: false, options: null },
+  { category_key: "upskilling",       label: "Upskilling",          max_score: 10, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "conduct",          label: "Conduct",             max_score: 12, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "reporting",        label: "Reporting",           max_score: 8,  escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "skill_alignment",  label: "Skill Alignment",     max_score: 10, escalation_base: 2, description: "", is_custom: false, options: null },
+];
+
 function ProjectsPage() {
   const nav = useNavigate();
   const [projects, setProjects]     = useState<ProjectSummary[]>([]);
@@ -113,6 +130,14 @@ function ProjectsPage() {
   const [creating, setCreating]     = useState(false);
   const [newName, setNewName]       = useState("");
   const [newDesc, setNewDesc]       = useState("");
+  // Step 2 – KPI selection
+  const [createStep, setCreateStep]         = useState<1 | 2>(1);
+  const [kpiSelected, setKpiSelected]       = useState<Set<string>>(
+    new Set(DEFAULT_KPIS_LIST.map((k) => k.category_key)),
+  );
+  const [kpiCustoms, setKpiCustoms]         = useState<Array<{ key: string; label: string; max_score: number }>>([]);
+  const [kpiCustomLabel, setKpiCustomLabel] = useState("");
+  const [kpiCustomMax,   setKpiCustomMax]   = useState(10);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -127,20 +152,52 @@ function ProjectsPage() {
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
+  const resetCreateDialog = () => {
+    setNewName(""); setNewDesc(""); setCreateStep(1);
+    setKpiSelected(new Set(DEFAULT_KPIS_LIST.map((k) => k.category_key)));
+    setKpiCustoms([]); setKpiCustomLabel(""); setKpiCustomMax(10);
+  };
+
   const handleCreate = async () => {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      await createProject({ name: newName.trim(), description: newDesc.trim() });
+      const proj = await createProject({ name: newName.trim(), description: newDesc.trim() });
+      // Save KPI definitions if any selections were made
+      const stdKpis = DEFAULT_KPIS_LIST.filter((k) => kpiSelected.has(k.category_key));
+      const custKpis = kpiCustoms.map((c) => ({
+        category_key: c.key, label: c.label, max_score: c.max_score,
+        escalation_base: 2, description: "", is_custom: true as const, options: null,
+      }));
+      const kpis = [...stdKpis, ...custKpis];
+      if (kpis.length > 0) await setProjectKpis(proj.id, kpis);
       toast.success("Project created");
       setCreateOpen(false);
-      setNewName(""); setNewDesc("");
+      resetCreateDialog();
       await loadProjects();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to create project");
     } finally {
       setCreating(false);
     }
+  };
+
+  const toggleKpiDefault = (key: string) => {
+    setKpiSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const addKpiCustom = () => {
+    const label = kpiCustomLabel.trim();
+    if (!label) return;
+    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30);
+    const key = `custom_${slug}`;
+    if (kpiCustoms.some((c) => c.key === key)) return;
+    setKpiCustoms((prev) => [...prev, { key, label, max_score: kpiCustomMax }]);
+    setKpiCustomLabel(""); setKpiCustomMax(10);
   };
 
   const filtered = projects.filter((p) =>
@@ -242,53 +299,134 @@ function ProjectsPage() {
       </div>
 
       {/* Create Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md">
+      <Dialog open={createOpen} onOpenChange={(v) => { if (!v) resetCreateDialog(); setCreateOpen(v); }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderKanban className="h-4 w-4 text-blue-500" />
               New Project
+              <span className="ml-auto text-xs font-normal text-slate-400">Step {createStep} of 2</span>
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-1">
-            <div className="space-y-1.5">
-              <Label className="text-sm">Project Name <span className="text-rose-500">*</span></Label>
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. Q3 Delivery Team"
-                className="h-9 text-sm"
-                onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) handleCreate(); }}
-              />
+
+          {createStep === 1 ? (
+            <div className="space-y-4 pt-1">
+              <div className="space-y-1.5">
+                <Label className="text-sm">Project Name <span className="text-rose-500">*</span></Label>
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Q3 Delivery Team"
+                  className="h-9 text-sm"
+                  onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) setCreateStep(2); }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">Description <span className="text-slate-400">(optional)</span></Label>
+                <Textarea
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="Brief description of this project…"
+                  rows={3}
+                  className="text-sm resize-none"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => { setCreateOpen(false); resetCreateDialog(); }}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => setCreateStep(2)}
+                  disabled={!newName.trim()}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Next: Configure KPIs
+                  <ChevronRight className="h-4 w-4 ml-1.5" />
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Description <span className="text-slate-400">(optional)</span></Label>
-              <Textarea
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-                placeholder="Brief description of this project…"
-                rows={3}
-                className="text-sm resize-none"
-              />
+          ) : (
+            <div className="space-y-4 pt-1">
+              <p className="text-xs text-slate-500">
+                Select which governance KPIs apply to <span className="font-semibold text-slate-700">{newName}</span>.
+                These will be synced to every consultant added to this project.
+              </p>
+
+              {/* Standard KPIs */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Standard Categories</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {DEFAULT_KPIS_LIST.map((kpi) => {
+                    const on = kpiSelected.has(kpi.category_key);
+                    return (
+                      <button
+                        key={kpi.category_key}
+                        type="button"
+                        onClick={() => toggleKpiDefault(kpi.category_key)}
+                        className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
+                          on ? "border-blue-300 bg-blue-50 text-blue-800" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className={`h-3.5 w-3.5 rounded border-2 flex items-center justify-center shrink-0 ${on ? "border-blue-500 bg-blue-500" : "border-slate-300"}`}>
+                          {on && <Check className="h-2 w-2 text-white" />}
+                        </div>
+                        <span className="truncate">{kpi.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom KPIs */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Custom KPIs</p>
+                {kpiCustoms.map((c) => (
+                  <div key={c.key} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 text-xs">
+                    <span className="flex-1 font-medium text-purple-800 truncate">{c.label}</span>
+                    <span className="text-purple-400">{c.max_score} pts</span>
+                    <button type="button" onClick={() => setKpiCustoms((prev) => prev.filter((x) => x.key !== c.key))} className="text-slate-400 hover:text-rose-500">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={kpiCustomLabel}
+                    onChange={(e) => setKpiCustomLabel(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addKpiCustom()}
+                    placeholder="Custom KPI name"
+                    className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  />
+                  <input
+                    type="number"
+                    value={kpiCustomMax}
+                    min={1}
+                    max={50}
+                    onChange={(e) => setKpiCustomMax(Number(e.target.value))}
+                    className="w-14 text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-center focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  />
+                  <Button size="sm" variant="outline" onClick={addKpiCustom} className="h-7 text-xs px-2">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setCreateStep(1)}>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleCreate}
+                  disabled={creating}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {creating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Plus className="h-4 w-4 mr-1.5" />}
+                  Create Project
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2 pt-1">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => { setCreateOpen(false); setNewName(""); setNewDesc(""); }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreate}
-                disabled={creating || !newName.trim()}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Plus className="h-4 w-4 mr-1.5" />}
-                Create
-              </Button>
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

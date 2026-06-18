@@ -558,6 +558,29 @@ class HRBPProjectMember(Base):
     __table_args__ = (UniqueConstraint("project_id", "consultant_id", name="uq_project_member"),)
 
 
+class HRBPProjectKpiDefinition(Base):
+    """Governance KPI definitions scoped to a project.
+    Standard categories reference CATEGORY_MAP; custom ones carry their own options JSONB.
+    When a consultant is added to a project that has KPI definitions their active
+    governance categories are synced to match the project's KPI set.
+    """
+    __tablename__ = "hrbp_project_kpi_definitions"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    project_id      = Column(Integer, ForeignKey("hrbp_projects.id", ondelete="CASCADE"), nullable=False)
+    category_key    = Column(Text, nullable=False)   # standard key or "custom_{slug}"
+    label           = Column(Text, nullable=False)
+    max_score       = Column(Integer, default=10)
+    escalation_base = Column(Integer, default=2)
+    description     = Column(Text, default="")
+    is_custom       = Column(Boolean, default=False)
+    options         = Column(JSONB)                  # None for standard; list[dict] for custom
+    sort_order      = Column(Integer, default=0)
+    created_at      = Column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (UniqueConstraint("project_id", "category_key", name="uq_project_kpi"),)
+
+
 class HRBPProjectCommentHistory(Base):
     """Immutable log of team-level AI-analysed comments. Targeted at specific members or all."""
     __tablename__ = "hrbp_project_comment_history"

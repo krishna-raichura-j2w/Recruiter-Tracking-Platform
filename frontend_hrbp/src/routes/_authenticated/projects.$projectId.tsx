@@ -48,6 +48,11 @@ import {
   Settings2,
   Pencil,
   AlertTriangle,
+  Sliders,
+  Check,
+  GripVertical,
+  X,
+  Plus,
 } from "lucide-react";
 import { getConsultantsApi } from "@/apiService/api";
 import {
@@ -60,13 +65,17 @@ import {
   getProjectCommentHistory,
   updateProject,
   deleteProject,
+  getProjectKpis,
+  setProjectKpis,
   type ProjectSummary,
   type ProjectMember,
   type TeamCommentResult,
   type ProjectCommentHistory,
+  type ProjectKpiDefinition,
   type Cohort,
   type PerfTier,
 } from "@/apiService/projectApi";
+import { getFullScores, type ScoreEntry } from "@/apiService/governanceApi";
 import type { ConsultantItem } from "@/apiService/types";
 import { toast } from "react-toastify";
 
@@ -338,11 +347,14 @@ function MemberRow({
   onRemoved: () => void;
   onNavigate: () => void;
 }) {
-  const [editing, setEditing]   = useState(false);
-  const [cohort, setCohort]     = useState<Cohort>(member.cohort);
-  const [tier, setTier]         = useState<PerfTier>(member.perf_tier);
-  const [saving, setSaving]     = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [editing, setEditing]           = useState(false);
+  const [cohort, setCohort]             = useState<Cohort>(member.cohort);
+  const [tier, setTier]                 = useState<PerfTier>(member.perf_tier);
+  const [saving, setSaving]             = useState(false);
+  const [removing, setRemoving]         = useState(false);
+  const [kpiExpanded, setKpiExpanded]   = useState(false);
+  const [kpiScores, setKpiScores]       = useState<ScoreEntry[] | null>(null);
+  const [kpiLoading, setKpiLoading]     = useState(false);
 
   const govPct = member.gov_possible > 0
     ? Math.round((member.gov_score / member.gov_possible) * 100)
@@ -375,7 +387,23 @@ function MemberRow({
     }
   };
 
+  const handleToggleKpis = async () => {
+    if (kpiExpanded) { setKpiExpanded(false); return; }
+    setKpiExpanded(true);
+    if (kpiScores !== null) return;
+    setKpiLoading(true);
+    try {
+      const full = await getFullScores(member.consultant_id);
+      setKpiScores(full.scores);
+    } catch {
+      toast.error("Failed to load KPIs");
+    } finally {
+      setKpiLoading(false);
+    }
+  };
+
   return (
+    <>
     <tr className="group hover:bg-slate-50 transition-colors">
       <td className="px-4 py-3">
         <div>
@@ -451,6 +479,15 @@ function MemberRow({
               <Button size="sm" variant="outline" onClick={handleRemove} disabled={removing} className="h-7 text-xs px-2 text-rose-500 hover:text-rose-600 hover:border-rose-300">
                 {removing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleToggleKpis}
+                title="Show live KPIs"
+                className={`h-7 text-xs px-2 ${kpiExpanded ? "bg-blue-50 border-blue-200 text-blue-600" : ""}`}
+              >
+                <Sliders className="h-3 w-3" />
+              </Button>
               <Button size="sm" variant="outline" onClick={onNavigate} className="h-7 text-xs px-2">
                 <ArrowRight className="h-3 w-3" />
               </Button>
@@ -459,6 +496,42 @@ function MemberRow({
         </div>
       </td>
     </tr>
+    {kpiExpanded && (
+      <tr>
+        <td colSpan={6} className="px-4 py-3 bg-slate-50 border-t border-slate-100">
+          {kpiLoading ? (
+            <div className="flex items-center gap-2 py-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+              <span className="text-xs text-slate-400">Loading KPIs…</span>
+            </div>
+          ) : kpiScores && kpiScores.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+              {kpiScores.map((s) => {
+                const pct = s.max_score > 0 ? Math.round((s.net_score / s.max_score) * 100) : 0;
+                const barColor = pct >= 75 ? "bg-emerald-400" : pct >= 50 ? "bg-amber-400" : "bg-rose-400";
+                return (
+                  <div key={s.category_key} className="bg-white rounded-lg border border-slate-100 px-3 py-2 space-y-1">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate">{s.category_label}</p>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-black text-slate-800">{s.net_score}</span>
+                      <span className="text-xs text-slate-400">/{s.max_score}</span>
+                      <span className="text-[10px] text-slate-400 ml-auto">{pct}%</span>
+                    </div>
+                    <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-slate-400 truncate">{s.option_label}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 py-1">No active KPIs found.</p>
+          )}
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
@@ -937,6 +1010,204 @@ function DeleteProjectDialog({
   );
 }
 
+// ── KPI defaults matching backend CATEGORY_MAP ────────────────────────────────
+
+const DEFAULT_KPIS: Array<Omit<ProjectKpiDefinition, "id" | "sort_order">> = [
+  { category_key: "timing",          label: "Timing Adherence",   max_score: 12, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "attendance",       label: "Attendance",          max_score: 12, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "leave_management", label: "Leave Management",    max_score: 8,  escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "wfo_wfh",          label: "WFO/WFH Adherence",  max_score: 10, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "performance",      label: "Performance",         max_score: 18, escalation_base: 3, description: "", is_custom: false, options: null },
+  { category_key: "upskilling",       label: "Upskilling",          max_score: 10, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "conduct",          label: "Conduct",             max_score: 12, escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "reporting",        label: "Reporting",           max_score: 8,  escalation_base: 2, description: "", is_custom: false, options: null },
+  { category_key: "skill_alignment",  label: "Skill Alignment",     max_score: 10, escalation_base: 2, description: "", is_custom: false, options: null },
+];
+
+// ── Project KPIs Tab ──────────────────────────────────────────────────────────
+
+function ProjectKpisTab({
+  projectId,
+  kpiDefs,
+  loading,
+  onSaved,
+}: {
+  projectId: number;
+  kpiDefs: ProjectKpiDefinition[];
+  loading: boolean;
+  onSaved: (updated: ProjectKpiDefinition[]) => void;
+}) {
+  // selected standard keys
+  const existing = kpiDefs.map((k) => k.category_key);
+  const [selected, setSelected] = useState<Set<string>>(
+    new Set(existing.filter((k) => !k.startsWith("custom_"))),
+  );
+  const [customs, setCustoms] = useState<Array<{ key: string; label: string; max_score: number }>>(
+    kpiDefs
+      .filter((k) => k.is_custom)
+      .map((k) => ({ key: k.category_key, label: k.label, max_score: k.max_score })),
+  );
+  const [newCustomLabel, setNewCustomLabel] = useState("");
+  const [newCustomMax,   setNewCustomMax]   = useState(10);
+  const [saving, setSaving] = useState(false);
+
+  // keep local state in sync when kpiDefs change (after save)
+  useEffect(() => {
+    setSelected(new Set(kpiDefs.filter((k) => !k.is_custom).map((k) => k.category_key)));
+    setCustoms(kpiDefs.filter((k) => k.is_custom).map((k) => ({ key: k.category_key, label: k.label, max_score: k.max_score })));
+  }, [kpiDefs]);
+
+  const toggleDefault = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const addCustom = () => {
+    const label = newCustomLabel.trim();
+    if (!label) return;
+    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30);
+    const key = `custom_${slug}`;
+    if (customs.some((c) => c.key === key)) return;
+    setCustoms((prev) => [...prev, { key, label, max_score: newCustomMax }]);
+    setNewCustomLabel("");
+    setNewCustomMax(10);
+  };
+
+  const removeCustom = (key: string) => setCustoms((prev) => prev.filter((c) => c.key !== key));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const standardKpis = DEFAULT_KPIS.filter((d) => selected.has(d.category_key));
+      const customKpis = customs.map((c) => ({
+        category_key: c.key,
+        label:         c.label,
+        max_score:     c.max_score,
+        escalation_base: 2,
+        description:   "",
+        is_custom:     true,
+        options:       null,
+      }));
+      const updated = await setProjectKpis(projectId, [...standardKpis, ...customKpis]);
+      onSaved(updated);
+      toast.success("Project KPIs saved");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save KPIs");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-slate-800 text-sm">Project KPIs</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Select the governance categories that apply to this project. These will be synced to any
+            consultant added to the project.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={saving}
+          className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
+          Save KPIs
+        </Button>
+      </div>
+
+      {/* Standard categories */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Standard Categories</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {DEFAULT_KPIS.map((kpi) => {
+            const on = selected.has(kpi.category_key);
+            return (
+              <button
+                key={kpi.category_key}
+                type="button"
+                onClick={() => toggleDefault(kpi.category_key)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                  on
+                    ? "border-blue-300 bg-blue-50 text-blue-800"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                <div className={`h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 ${on ? "border-blue-500 bg-blue-500" : "border-slate-300"}`}>
+                  {on && <Check className="h-2.5 w-2.5 text-white" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">{kpi.label}</p>
+                  <p className="text-[10px] text-slate-400">max {kpi.max_score} pts</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Custom categories */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Custom Categories</p>
+        {customs.length > 0 && (
+          <div className="space-y-1.5">
+            {customs.map((c) => (
+              <div key={c.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-purple-200 bg-purple-50">
+                <GripVertical className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+                <span className="text-xs font-medium text-purple-800 flex-1 truncate">{c.label}</span>
+                <span className="text-[10px] text-purple-400">max {c.max_score} pts</span>
+                <button
+                  type="button"
+                  onClick={() => removeCustom(c.key)}
+                  className="h-5 w-5 flex items-center justify-center rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors ml-1"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newCustomLabel}
+            onChange={(e) => setNewCustomLabel(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addCustom()}
+            placeholder="Custom category name"
+            className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+          />
+          <input
+            type="number"
+            value={newCustomMax}
+            min={1}
+            max={50}
+            onChange={(e) => setNewCustomMax(Number(e.target.value))}
+            className="w-16 text-xs border border-slate-200 rounded-lg px-2 py-2 text-center focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+          />
+          <Button size="sm" variant="outline" onClick={addCustom} className="h-8 text-xs px-3">
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <p className="text-[10px] text-slate-400">Name + max score (pts) then press Enter or +</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 function ProjectDetailPage() {
@@ -948,10 +1219,12 @@ function ProjectDetailPage() {
   const [history,   setHistory]   = useState<ProjectCommentHistory[]>([]);
   const [loading,   setLoading]   = useState(true);
 
-  const [activeTab,   setActiveTab]   = useState<"team" | "comments" | "score_graph">("team");
+  const [activeTab,   setActiveTab]   = useState<"team" | "comments" | "score_graph" | "kpis">("team");
   const [addOpen,     setAddOpen]     = useState(false);
   const [editOpen,    setEditOpen]    = useState(false);
   const [deleteOpen,  setDeleteOpen]  = useState(false);
+  const [kpiDefs,     setKpiDefs]     = useState<ProjectKpiDefinition[]>([]);
+  const [kpiLoading,  setKpiLoading]  = useState(false);
 
   const [comment,    setComment]    = useState("");
   const [analyzing,  setAnalyzing]  = useState(false);
@@ -975,7 +1248,20 @@ function ProjectDetailPage() {
     }
   }, [projectId]);
 
+  const loadKpis = useCallback(async () => {
+    setKpiLoading(true);
+    try {
+      const data = await getProjectKpis(Number(projectId));
+      setKpiDefs(data);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to load KPIs");
+    } finally {
+      setKpiLoading(false);
+    }
+  }, [projectId]);
+
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (activeTab === "kpis") loadKpis(); }, [activeTab, loadKpis]);
 
   const refreshMembers = useCallback(async () => {
     try {
@@ -1109,12 +1395,13 @@ function ProjectDetailPage() {
           {/* Left: tabs */}
           <div className="xl:col-span-2 space-y-4">
             <div className="flex items-center gap-1 border-b border-slate-200">
-              {(["team", "comments", "score_graph"] as const).map((tab) => {
-                const icons  = { team: BarChart3, comments: History, score_graph: TrendingUp };
+              {(["team", "comments", "score_graph", "kpis"] as const).map((tab) => {
+                const icons  = { team: BarChart3, comments: History, score_graph: TrendingUp, kpis: Sliders };
                 const labels = {
                   team:        `Team (${members.length})`,
                   comments:    `Comments (${history.length})`,
                   score_graph: "Score Graph",
+                  kpis:        "KPIs",
                 };
                 const Icon = icons[tab];
                 return (
@@ -1213,6 +1500,16 @@ function ProjectDetailPage() {
             {/* Score Graph tab */}
             {activeTab === "score_graph" && (
               <ScoreGraphTab history={history} currentPct={scorePct} tone={tone} />
+            )}
+
+            {/* KPIs tab */}
+            {activeTab === "kpis" && (
+              <ProjectKpisTab
+                projectId={Number(projectId)}
+                kpiDefs={kpiDefs}
+                loading={kpiLoading}
+                onSaved={(updated) => setKpiDefs(updated)}
+              />
             )}
           </div>
 

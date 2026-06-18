@@ -29,3 +29,17 @@ class MemberUpdate(BaseModel):
 
 class TeamCommentRequest(BaseModel):
     comment: str
+
+
+class ProjectKpiItem(BaseModel):
+    category_key: str
+    label: str
+    max_score: int = 10
+    escalation_base: int = 2
+    description: str = ""
+    is_custom: bool = False
+    options: Optional[list] = None
+
+
+class ProjectKpisSet(BaseModel):
+    kpis: list[ProjectKpiItem]

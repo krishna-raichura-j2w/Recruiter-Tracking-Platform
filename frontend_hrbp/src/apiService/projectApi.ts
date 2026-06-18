@@ -210,3 +210,36 @@ export async function getProjectCommentHistory(
   const json = await handleResponse<{ data: ProjectCommentHistory[] }>(res);
   return json.data;
 }
+
+// ── Project KPIs ───────────────────────────────────────────────────────────────
+
+export interface ProjectKpiDefinition {
+  id: number;
+  category_key: string;
+  label: string;
+  max_score: number;
+  escalation_base: number;
+  description: string;
+  is_custom: boolean;
+  options: null | Array<{ index: number; label: string; score: number }>;
+  sort_order: number;
+}
+
+export async function getProjectKpis(projectId: number): Promise<ProjectKpiDefinition[]> {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/projects/${projectId}/kpis`);
+  const json = await handleResponse<{ data: ProjectKpiDefinition[] }>(res);
+  return json.data;
+}
+
+export async function setProjectKpis(
+  projectId: number,
+  kpis: Omit<ProjectKpiDefinition, "id" | "sort_order">[],
+): Promise<ProjectKpiDefinition[]> {
+  const res = await fetchWithAuth(`${getBaseUrl()}api/hrbp/projects/${projectId}/kpis`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kpis }),
+  });
+  const json = await handleResponse<{ data: ProjectKpiDefinition[] }>(res);
+  return json.data;
+}

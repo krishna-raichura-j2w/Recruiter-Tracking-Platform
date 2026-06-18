@@ -43,6 +43,7 @@ import {
   User,
   X,
   FolderKanban,
+  AlertTriangle,
 } from "lucide-react";
 import { getConsultantDetailsApi } from "@/apiService/api";
 import {
@@ -53,6 +54,7 @@ import {
   restoreCategory,
   addCustomCategory,
   deleteCustomCategory,
+  resetConsultantScores,
   type ScoreEntry,
   type InactiveDefault,
   type CommentHistoryEntry,
@@ -658,6 +660,53 @@ function ScoreGraph({
   );
 }
 
+// ── Reset Scores Dialog ────────────────────────────────────────────────────────
+
+function ResetScoresDialog({
+  open,
+  onOpenChange,
+  consultantName,
+  onConfirmed,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  consultantName: string;
+  onConfirmed: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <AlertTriangle className="h-4 w-4" />
+            Reset Governance Scores
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            This will reset all active governance scores for{" "}
+            <span className="font-semibold text-slate-900">{consultantName}</span> back to the
+            best-case baseline (option 0, no escalations). Score history is preserved.
+            This action cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => { onOpenChange(false); onConfirmed(); }}
+              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              <RotateCcw className="h-4 w-4 mr-1.5" />
+              Reset Scores
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 function GovernanceDetailPage() {
@@ -678,6 +727,7 @@ function GovernanceDetailPage() {
 
   const [activeTab, setActiveTab] = useState<"scores" | "history" | "graph">("scores");
   const [manageOpen, setManageOpen] = useState(false);
+  const [resetOpen, setResetOpen]   = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -741,6 +791,16 @@ function GovernanceDetailPage() {
     }
   };
 
+  const handleReset = async () => {
+    try {
+      await resetConsultantScores(Number(consultantId));
+      await refreshScores();
+      toast.success("Scores reset to baseline");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Reset failed");
+    }
+  };
+
   const handleDeleteCategory = async (entry: ScoreEntry) => {
     try {
       if (entry.is_custom) {
@@ -801,6 +861,16 @@ function GovernanceDetailPage() {
               </div>
             </div>
             <div className="text-right shrink-0">
+              <div className="flex items-center justify-end gap-2 mb-1">
+                <button
+                  type="button"
+                  onClick={() => setResetOpen(true)}
+                  title="Reset all scores to baseline"
+                  className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              </div>
               <div className="flex items-baseline gap-1 justify-end">
                 <span className="text-7xl font-black text-slate-900 leading-none">{scorePct}</span>
                 <span className="text-2xl text-slate-400 font-medium">%</span>
@@ -954,6 +1024,13 @@ function GovernanceDetailPage() {
         activeScores={scores}
         inactiveDefaults={inactiveDefaults}
         onRefresh={async () => { await refreshScores(); }}
+      />
+
+      <ResetScoresDialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        consultantName={consultant?.name ?? "this consultant"}
+        onConfirmed={handleReset}
       />
     </div>
   );

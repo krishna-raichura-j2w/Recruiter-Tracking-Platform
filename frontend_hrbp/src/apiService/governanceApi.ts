@@ -209,3 +209,14 @@ export async function getCommentHistory(consultantId: number): Promise<CommentHi
   const json = await handleResponse<{ data: CommentHistoryEntry[] }>(res);
   return json.data;
 }
+
+export async function resetConsultantScores(
+  consultantId: number,
+): Promise<{ reset_count: number; new_score: number; new_possible: number }> {
+  const res = await fetchWithAuth(
+    `${getBaseUrl()}api/hrbp/governance/consultants/${consultantId}/reset-scores`,
+    { method: "POST" },
+  );
+  const json = await handleResponse<{ data: { reset_count: number; new_score: number; new_possible: number } }>(res);
+  return json.data;
+}
