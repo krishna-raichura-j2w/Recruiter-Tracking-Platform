@@ -259,7 +259,7 @@ def get_project_kpis(db: Session, project_id: int) -> list[dict]:
 
 
 def set_project_kpis(db: Session, project_id: int, kpis: list[dict]) -> list[dict]:
-    """Replace all KPI definitions for a project."""
+    """Replace all KPI definitions for a project and sync every existing member."""
     db.query(HRBPProjectKpiDefinition).filter_by(project_id=project_id).delete()
     for i, kpi in enumerate(kpis):
         key = kpi["category_key"]
@@ -278,6 +278,18 @@ def set_project_kpis(db: Session, project_id: int, kpis: list[dict]) -> list[dic
         )
         db.add(row)
     db.flush()
+
+    # Sync every consultant already in the project to the new KPI set.
+    # This activates score rows for newly added KPIs and deactivates rows
+    # for removed KPIs — the same logic that runs when a member is first added.
+    existing_members = (
+        db.query(HRBPProjectMember)
+        .filter_by(project_id=project_id)
+        .all()
+    )
+    for member in existing_members:
+        sync_consultant_kpis_to_project(db, member.consultant_id, project_id)
+
     return get_project_kpis(db, project_id)
 
 

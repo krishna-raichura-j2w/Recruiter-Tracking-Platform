@@ -226,7 +226,7 @@ function ProjectsPage() {
           <Button
             onClick={() => setCreateOpen(true)}
             size="sm"
-            className="bg-blue-600 hover:bg-blue-700 text-white h-9"
+            className="bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm h-9"
           >
             <Plus className="h-4 w-4 mr-1.5" />
             New Project
@@ -245,7 +245,7 @@ function ProjectsPage() {
             <Button
               onClick={() => setCreateOpen(true)}
               size="sm"
-              className="mt-2 bg-blue-600 hover:bg-blue-700 text-white"
+              className="mt-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm"
             >
               <Plus className="h-4 w-4 mr-1.5" />
               New Project
@@ -338,7 +338,7 @@ function ProjectsPage() {
                 <Button
                   onClick={() => setCreateStep(2)}
                   disabled={!newName.trim()}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  className="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm"
                 >
                   Next: Configure KPIs
                   <ChevronRight className="h-4 w-4 ml-1.5" />
@@ -419,7 +419,7 @@ function ProjectsPage() {
                 <Button
                   onClick={handleCreate}
                   disabled={creating}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  className="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm"
                 >
                   {creating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Plus className="h-4 w-4 mr-1.5" />}
                   Create Project

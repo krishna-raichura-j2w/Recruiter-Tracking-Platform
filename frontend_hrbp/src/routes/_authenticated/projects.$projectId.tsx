@@ -322,7 +322,7 @@ function AddMemberDialog({
         <Button
           onClick={handleAdd}
           disabled={!selectedId || saving}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          className="w-full bg-sky-600 hover:bg-sky-500 text-white"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <UserPlus className="h-4 w-4 mr-1.5" />}
           Add to Project
@@ -355,6 +355,18 @@ function MemberRow({
   const [kpiExpanded, setKpiExpanded]   = useState(false);
   const [kpiScores, setKpiScores]       = useState<ScoreEntry[] | null>(null);
   const [kpiLoading, setKpiLoading]     = useState(false);
+
+  // When the parent refreshes member data after a comment submission,
+  // gov_score changes. If the panel is open, refetch live. If closed,
+  // clear the cache so the next open always gets fresh data.
+  useEffect(() => {
+    if (!kpiExpanded) { setKpiScores(null); return; }
+    setKpiLoading(true);
+    getFullScores(member.consultant_id)
+      .then((full) => setKpiScores(full.scores))
+      .catch(() => {})
+      .finally(() => setKpiLoading(false));
+  }, [member.gov_score, member.consultant_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const govPct = member.gov_possible > 0
     ? Math.round((member.gov_score / member.gov_possible) * 100)
@@ -464,7 +476,7 @@ function MemberRow({
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {editing ? (
             <>
-              <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white px-2">
+              <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs bg-sky-600 hover:bg-sky-500 text-white px-2">
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
               </Button>
               <Button size="sm" variant="outline" onClick={() => { setEditing(false); setCohort(member.cohort); setTier(member.perf_tier); }} className="h-7 text-xs px-2">
@@ -518,7 +530,7 @@ function MemberRow({
                       <span className="text-[10px] text-slate-400 ml-auto">{pct}%</span>
                     </div>
                     <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full transition-all duration-500 ease-in-out ${barColor}`} style={{ width: `${pct}%` }} />
                     </div>
                     <p className="text-[10px] text-slate-400 truncate">{s.option_label}</p>
                   </div>
@@ -936,7 +948,7 @@ function EditProjectDialog({
             <Button
               onClick={handleSave}
               disabled={!name.trim() || saving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              className="flex-1 bg-sky-600 hover:bg-sky-500 text-white"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
               Save Changes
@@ -1123,7 +1135,7 @@ function ProjectKpisTab({
           size="sm"
           onClick={handleSave}
           disabled={saving}
-          className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+          className="h-8 text-xs bg-sky-600 hover:bg-sky-500 text-white"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
           Save KPIs
@@ -1430,7 +1442,7 @@ function ProjectDetailPage() {
                   <Button
                     size="sm"
                     onClick={() => setAddOpen(true)}
-                    className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                    className="h-8 text-xs bg-sky-600 hover:bg-sky-500 text-white"
                   >
                     <UserPlus className="h-3.5 w-3.5 mr-1.5" />
                     Add Member
@@ -1441,7 +1453,7 @@ function ProjectDetailPage() {
                   <div className="flex flex-col items-center justify-center py-16 text-slate-400 space-y-2">
                     <Users className="h-10 w-10 text-slate-200" />
                     <p className="text-sm">No members yet</p>
-                    <Button size="sm" onClick={() => setAddOpen(true)} className="mt-1 bg-blue-600 hover:bg-blue-700 text-white">
+                    <Button size="sm" onClick={() => setAddOpen(true)} className="mt-1 bg-sky-600 hover:bg-sky-500 text-white">
                       <UserPlus className="h-3.5 w-3.5 mr-1.5" />
                       Add First Member
                     </Button>
@@ -1508,7 +1520,7 @@ function ProjectDetailPage() {
                 projectId={Number(projectId)}
                 kpiDefs={kpiDefs}
                 loading={kpiLoading}
-                onSaved={(updated) => setKpiDefs(updated)}
+                onSaved={(updated) => { setKpiDefs(updated); loadData(); }}
               />
             )}
           </div>
@@ -1539,7 +1551,7 @@ function ProjectDetailPage() {
                   onClick={handleAnalyze}
                   disabled={!comment.trim() || analyzing || members.length === 0}
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-sky-600 hover:bg-sky-500 text-white"
                 >
                   {analyzing
                     ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Analysing…</>
