@@ -117,9 +117,9 @@ def candidates_ol_status(
     """
     from features.mrr.pod_plan.service import period_bounds
 
-    job_ids, recruiter_id = service.resolve_candidate_scope(db, current_user)
+    scope = service.resolve_ol_status_scope(db, current_user)
     bounds = period_bounds(date, start, end)
-    return {"rows": service.fetch_scoped_ol_reconciliation(db, job_ids, recruiter_id, bounds)}
+    return {"rows": service.fetch_scoped_ol_reconciliation(db, bounds, **scope)}
 
 
 @router.get("/{candidate_id}")

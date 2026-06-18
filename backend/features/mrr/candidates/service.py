@@ -86,18 +86,57 @@ def resolve_candidate_scope(db: Session, current_user) -> tuple[list[int] | None
     return None, None
 
 
+def resolve_ol_status_scope(db: Session, current_user) -> dict:
+    """Scope for the Candidate Status (OL reconciliation) tab — by who SOURCED the
+    candidate, not by job ownership.
+
+    Returns a dict of filters for :func:`fetch_scoped_ol_reconciliation`:
+      • recruiter      → ``{"sourcer_ids": [self]}`` — every candidate they sourced.
+      • delivery_lead  → ``{"sourcer_ids": [...pod recruiter ids]}`` — candidates
+        sourced by any recruiter in the DL's pod (via ``_team``).
+      • kam / bh / admin → fall back to the job-based ``resolve_candidate_scope``.
+    ``sourcer_ids == []`` means the user has no recruiters → show nothing.
+    """
+    role = current_user.role.value
+
+    if role == "recruiter":
+        return {"sourcer_ids": [current_user.id]}
+
+    if role == "delivery_lead":
+        from infra.models import UserRole
+
+        from features.mrr.allocation.service import _team
+
+        rec_ids = [u.id for u in _team(db, current_user.id, role=UserRole.recruiter)]
+        return {"sourcer_ids": rec_ids}
+
+    job_ids, recruiter_id = resolve_candidate_scope(db, current_user)
+    return {"job_ids": job_ids, "recruiter_id": recruiter_id}
+
+
 def fetch_scoped_ol_reconciliation(
-    db: Session, job_ids: list[int] | None, recruiter_id: int | None, bounds: dict
+    db: Session,
+    bounds: dict,
+    *,
+    sourcer_ids: list[int] | None = None,
+    job_ids: list[int] | None = None,
+    recruiter_id: int | None = None,
 ) -> list[dict]:
     """DL-verified candidates in the [start, end] window, scoped to one user, each
     annotated with the status the Offer-Letter tool shows (matched by email).
 
     Same population/definition as the leaderboard's "DL Subs — Offer Letter Status"
-    table (``validations.status='validated'``, anchored on ``candidates.sourced_at``),
-    but scoped by ``(job_ids, recruiter_id)`` from :func:`resolve_candidate_scope`
-    instead of by BH pod setup. OL status matching is shared with the leaderboard via
-    ``enrich_rows_with_ol_status``.
+    table (``validations.status='validated'``, anchored on ``candidates.sourced_at``).
+    Scope is one of:
+      • ``sourcer_ids`` — candidates whose ``sourced_by_id`` is in this set (the
+        Candidate Status tab uses this for recruiters / DLs).
+      • ``job_ids`` (+ optional ``recruiter_id``) — the job-based fallback for
+        kam / bh / admin, from :func:`resolve_candidate_scope`.
+    An empty ``sourcer_ids``/``job_ids`` list means the scope resolves to nothing →
+    returns ``[]``. OL status matching is shared via ``enrich_rows_with_ol_status``.
     """
+    if sourcer_ids is not None and len(sourcer_ids) == 0:
+        return []
     if job_ids is not None and len(job_ids) == 0:
         return []
 
@@ -109,6 +148,9 @@ def fetch_scoped_ol_reconciliation(
         "c.email <> ''",
     ]
     params: dict = {"ps": bounds["period_start_utc"], "pe": bounds["period_end_utc"]}
+    if sourcer_ids is not None:
+        where.append("c.sourced_by_id = ANY(:sourcer_ids)")
+        params["sourcer_ids"] = sourcer_ids
     if job_ids is not None:
         where.append("c.job_id = ANY(:job_ids)")
         params["job_ids"] = job_ids
