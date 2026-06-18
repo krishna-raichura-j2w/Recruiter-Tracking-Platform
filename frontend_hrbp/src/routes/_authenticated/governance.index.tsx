@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, BarChart3, ChevronRight, Loader2 } from "lucide-react";
+import { Search, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
 import { TableLoader } from "@/components/Loader";
 import { getConsultantsApi } from "@/apiService/api";
 import { getScoreSummary, type ScoreSummary } from "@/apiService/governanceApi";
@@ -29,6 +29,8 @@ import { toast } from "react-toastify";
 export const Route = createFileRoute("/_authenticated/governance/")({
   component: GovernancePage,
 });
+
+const PAGE_SIZE = 20;
 
 // ── Grade helpers ─────────────────────────────────────────────────────────────
 
@@ -67,7 +69,7 @@ function ScoreCell({ consultantId }: { consultantId: number }) {
     return () => { cancelled = true; };
   }, [consultantId]);
 
-  if (loading) return <span className="text-slate-400 text-xs">Loading…</span>;
+  if (loading) return <span className="text-slate-400 text-xs">–</span>;
   if (!summary) return <span className="text-slate-400 text-xs">–</span>;
 
   const pct = Math.round((summary.total_score / summary.total_possible) * 100);
@@ -92,37 +94,53 @@ function ScoreCell({ consultantId }: { consultantId: number }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 function GovernancePage() {
-  const [consultants, setConsultants] = useState<ConsultantItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [consultants, setConsultants]   = useState<ConsultantItem[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [search, setSearch]             = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [page, setPage]                 = useState(1);
+  const [totalPages, setTotalPages]     = useState(1);
+  const [total, setTotal]               = useState(0);
 
-  const fetchConsultants = useCallback(async () => {
+  // Debounce search — fire API only 300 ms after the user stops typing
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Fetch whenever page, status filter, or debounced search changes
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    try {
-      const res = await getConsultantsApi({
-        per_page: -1,
-        is_active: statusFilter === "all" ? undefined : statusFilter === "active",
+    getConsultantsApi({
+      page_no: page,
+      per_page: PAGE_SIZE,
+      search: debouncedSearch || undefined,
+      is_active: statusFilter === "all" ? undefined : statusFilter === "active",
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setConsultants(res.data ?? []);
+        setTotalPages(res.meta?.total_pages ?? 1);
+        setTotal(res.meta?.total ?? 0);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Failed to load consultants");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-      setConsultants(res.data ?? []);
-    } catch {
-      toast.error("Failed to load consultants");
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter]);
+    return () => { cancelled = true; };
+  }, [page, statusFilter, debouncedSearch]);
 
-  useEffect(() => { fetchConsultants(); }, [fetchConsultants]);
-
-  const filtered = consultants.filter((c) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      c.name?.toLowerCase().includes(q) ||
-      c.emp_id?.toLowerCase().includes(q) ||
-      c.skill?.toLowerCase().includes(q)
-    );
-  });
+  const handleStatusChange = (v: string) => {
+    setStatusFilter(v as typeof statusFilter);
+    setPage(1);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -153,7 +171,7 @@ function GovernancePage() {
               className="pl-9 h-9 text-sm"
             />
           </div>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+          <Select value={statusFilter} onValueChange={handleStatusChange}>
             <SelectTrigger className="w-36 h-9 text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -163,7 +181,9 @@ function GovernancePage() {
               <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
-          <span className="text-sm text-slate-500 ml-auto">{filtered.length} consultant{filtered.length !== 1 ? "s" : ""}</span>
+          <span className="text-sm text-slate-500 ml-auto">
+            {total} consultant{total !== 1 ? "s" : ""}
+          </span>
         </div>
 
         {/* Table */}
@@ -176,23 +196,26 @@ function GovernancePage() {
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Skill</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Governance Score</TableHead>
-                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableLoader colSpan={6} />
-              ) : filtered.length === 0 ? (
+                <TableLoader colSpan={5} />
+              ) : consultants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-slate-500 font-medium">
+                  <TableCell colSpan={5} className="h-24 text-center text-slate-500 font-medium">
                     No consultants found
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((c) => (
+                consultants.map((c) => (
                   <TableRow key={c.id} className="hover:bg-slate-50 transition-colors">
                     <TableCell className="text-sm text-slate-600">{c.emp_id || "–"}</TableCell>
-                    <TableCell className="font-medium text-slate-900">{c.name || "–"}</TableCell>
+                    <TableCell className="font-medium text-sky-700 hover:underline cursor-pointer">
+                      <Link to="/governance/$consultantId" params={{ consultantId: String(c.id) }}>
+                        {c.name || "–"}
+                      </Link>
+                    </TableCell>
                     <TableCell className="text-sm text-slate-500">{c.skill || "–"}</TableCell>
                     <TableCell>
                       {c.is_active ? (
@@ -204,19 +227,63 @@ function GovernancePage() {
                     <TableCell>
                       <ScoreCell consultantId={c.id} />
                     </TableCell>
-                    <TableCell>
-                      <Link to="/governance/$consultantId" params={{ consultantId: String(c.id) }}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50">
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-slate-500">
+              Page {page} of {totalPages}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("…");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "…" ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-slate-400 text-sm">…</span>
+                  ) : (
+                    <Button
+                      key={p}
+                      variant={p === page ? "default" : "outline"}
+                      size="sm"
+                      className={`h-8 w-8 p-0 text-xs ${p === page ? "bg-sky-600 hover:bg-sky-500 text-white border-sky-600" : ""}`}
+                      onClick={() => setPage(p as number)}
+                    >
+                      {p}
+                    </Button>
+                  )
+                )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

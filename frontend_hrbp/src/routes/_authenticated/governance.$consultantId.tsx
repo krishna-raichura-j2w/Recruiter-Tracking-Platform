@@ -420,7 +420,7 @@ function ManageCategoriesDialog({
             onClick={handleAddCustom}
             disabled={saving || !addLabel.trim() || !Number(addMaxScore)}
             size="sm"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Plus className="h-4 w-4 mr-1.5" />}
             Add Category
@@ -1001,7 +1001,7 @@ function GovernanceDetailPage() {
                   onClick={handleAnalyze}
                   disabled={!comment.trim() || analyzing}
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-sky-600 hover:bg-sky-500 text-white font-semibold shadow-sm"
                 >
                   {analyzing ? (
                     <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Analysing…</>
