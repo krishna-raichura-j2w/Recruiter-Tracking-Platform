@@ -1059,3 +1059,84 @@ def _refresh_job_assigned_emails(_mapper, connection, target: "Job") -> None:
 
 _sa_event.listen(Job, "before_insert", _refresh_job_assigned_emails)
 _sa_event.listen(Job, "before_update", _refresh_job_assigned_emails)
+
+
+# ── AI resume-vs-JD scoring (KAM Interviews Suggestion) ──────────────────────
+# Fully additive: these tables back the AI scoring feature only. They reference
+# candidates/jobs/users by plain integer id (NO ForeignKey constraints) so they
+# stay decoupled from the production schema and never affect existing flows.
+
+class AiJdRubric(Base):
+    """One AI scoring rubric per demand (job). The effective JD may come from the
+    job's own JD text or a KAM-provided override stored here (never written back
+    to the jobs table)."""
+    __tablename__ = "ai_jd_rubrics"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, nullable=False, unique=True, index=True)
+    jd_text_effective = Column(Text)          # the JD text the rubric was built from
+    jd_is_override = Column(Boolean, nullable=False, default=False)
+    jd_override_by = Column(Integer, nullable=True)   # users.id who added/edited the JD
+    jd_hash = Column(String(64))              # sha256 of jd_text_effective
+    rubric_json = Column(Text)                # {title, summary, criteria:[{name,weight,description}]}
+    skills_json = Column(Text)                # {skills:[{name,tier,description}]}
+    status = Column(String(20), nullable=False, default="pending")  # pending|scoring|ready|error|no_jd
+    error = Column(Text)
+    model = Column(String(60))
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class AiCandidateScore(Base):
+    """One AI score per (candidate, demand)."""
+    __tablename__ = "ai_candidate_scores"
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, nullable=False, index=True)
+    job_id = Column(Integer, nullable=False, index=True)
+    rubric_id = Column(Integer, nullable=True)
+    bucket = Column(String(8))                # d0_3 | d4_5 | d6_7
+    wait_weight = Column(Integer)             # 1 | 2 | 3
+    overall_score = Column(Float)            # 0-100 AI match score
+    rank_score = Column(Float)               # blended AI + wait
+    criteria_scores_json = Column(Text)      # [{name,score,rationale}]
+    skill_assessments_json = Column(Text)    # [{skill,statement,score}]
+    extracted_json = Column(Text)            # {candidate_name,email,experience_range,...}
+    resume_key = Column(String(500))
+    resume_hash = Column(String(64))
+    rubric_hash = Column(String(64))
+    decision = Column(String(10), nullable=False, default="pending")  # pending|select|reject
+    status = Column(String(12), nullable=False, default="scored")     # scored|no_jd|no_resume|error
+    error = Column(Text)
+    model = Column(String(60))
+    scored_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "job_id", name="uq_ai_candidate_scores_cand_job"),
+    )
+
+
+class AiCandidateReject(Base):
+    """Durable reject ledger — honoured across re-scores so a rejected candidate
+    is never re-suggested to the client."""
+    __tablename__ = "ai_candidate_rejects"
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, nullable=False, index=True)
+    job_id = Column(Integer, nullable=False, index=True)
+    rejected_by = Column(Integer, nullable=True)
+    reason = Column(Text)
+    created_at = Column(DateTime, default=now_utc)
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "job_id", name="uq_ai_candidate_rejects_cand_job"),
+    )
+
+
+class AiScoringRun(Base):
+    """Tracks one KAM's 'Generate AI scores' run for progress streaming + guarding
+    against concurrent runs."""
+    __tablename__ = "ai_scoring_runs"
+    id = Column(Integer, primary_key=True, index=True)
+    kam_user_id = Column(Integer, nullable=False, index=True)
+    status = Column(String(10), nullable=False, default="running")  # running|done|error
+    total = Column(Integer, nullable=False, default=0)
+    completed = Column(Integer, nullable=False, default=0)
+    started_at = Column(DateTime, default=now_utc)
+    finished_at = Column(DateTime, nullable=True)
+    error = Column(Text)

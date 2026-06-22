@@ -3,8 +3,10 @@ import {
   AlertTriangle, CheckCircle2, RefreshCw,
   Search, X, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Filter,
   Mail, Send, ShieldCheck, ChevronRight, CalendarOff,
-  ExternalLink, User, Building2, Briefcase, Phone, Clock,
+  ExternalLink, User, Building2, Briefcase, Phone, Clock, Download,
+  CheckSquare, Square, ClipboardCopy, FileText, Sparkles, FileSpreadsheet, Plus,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import LottieLib from 'lottie-react';
 import leaderboardAnim from '../assets/lottie-leaderboard.json';
 import Layout from '../components/Layout';
@@ -3651,26 +3653,854 @@ function BHHourlyTrackerSection() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Section — KAM Interviews (candidates stuck at "Client Submit" / OL step 7)
+// ════════════════════════════════════════════════════════════════════════════
+
+interface KamInterviewRow {
+  demand_id:   number;
+  role_title:  string | null;
+  client_name: string | null;
+  jd_raw_text: string | null;
+  kam_name:    string | null;
+  bh_name:     string | null;
+  total:       number;
+  d0_3:        number;
+  d4_5:        number;
+  d6_7:        number;
+  dgt7:        number;
+}
+
+interface KamInterviewsApiResponse {
+  rows:         KamInterviewRow[];
+  totals:       { total: number; d0_3: number; d4_5: number; d6_7: number; dgt7: number };
+  ol_available: boolean;
+  generated_at: string;
+}
+
+function KAMInterviewsSection() {
+  const [data, setData]       = useState<KamInterviewsApiResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [search, setSearch]   = useState('');
+  const [fBh, setFBh]         = useState<Set<string>>(new Set());
+  const [fKam, setFKam]       = useState<Set<string>>(new Set());
+  const [fClient, setFClient] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState('dgt7');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const fetchData = () => {
+    setLoading(true);
+    setError('');
+    api.get<KamInterviewsApiResponse>('/coo/kam-interviews')
+      .then(r => setData(r.data))
+      .catch(e => {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(msg || 'Failed to load KAM interviews.');
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+
+  const bhOptions     = useMemo(() => uniq((data?.rows ?? []).map(r => r.bh_name     || 'Unmapped')), [data]);
+  const kamOptions    = useMemo(() => uniq((data?.rows ?? []).map(r => r.kam_name    || 'Unmapped')), [data]);
+  const clientOptions = useMemo(() => uniq((data?.rows ?? []).map(r => r.client_name || 'Unknown')),  [data]);
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+
+  const filteredRows = useMemo(() => {
+    if (!data) return [];
+    let rows = data.rows;
+    if (fBh.size)     rows = rows.filter(r => fBh.has(r.bh_name || 'Unmapped'));
+    if (fKam.size)    rows = rows.filter(r => fKam.has(r.kam_name || 'Unmapped'));
+    if (fClient.size) rows = rows.filter(r => fClient.has(r.client_name || 'Unknown'));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      rows = rows.filter(r =>
+        (r.role_title || '').toLowerCase().includes(q) ||
+        (r.client_name || '').toLowerCase().includes(q) ||
+        String(r.demand_id).includes(q));
+    }
+    return [...rows].sort((a, b) => {
+      let cmp: number;
+      if (sortKey === 'bh')          cmp = (a.bh_name || '').localeCompare(b.bh_name || '');
+      else if (sortKey === 'kam')    cmp = (a.kam_name || '').localeCompare(b.kam_name || '');
+      else if (sortKey === 'client') cmp = (a.client_name || '').localeCompare(b.client_name || '');
+      else if (sortKey === 'title')  cmp = (a.role_title || '').localeCompare(b.role_title || '');
+      else if (sortKey === 'demand') cmp = a.demand_id - b.demand_id;
+      else cmp = ((a as unknown as Record<string, number>)[sortKey] ?? 0) - ((b as unknown as Record<string, number>)[sortKey] ?? 0);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  }, [data, fBh, fKam, fClient, search, sortKey, sortDir]);
+
+  const totals = useMemo(() => {
+    const t = { total: 0, d0_3: 0, d4_5: 0, d6_7: 0, dgt7: 0 };
+    for (const r of filteredRows) { t.total += r.total; t.d0_3 += r.d0_3; t.d4_5 += r.d4_5; t.d6_7 += r.d6_7; t.dgt7 += r.dgt7; }
+    return t;
+  }, [filteredRows]);
+
+  const toggleExpand = (id: number) => setExpanded(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  const exportXlsx = () => {
+    const rows = filteredRows.map(r => ({
+      BH:               r.bh_name || 'Unmapped',
+      KAM:              r.kam_name || 'Unmapped',
+      Client:           r.client_name || '',
+      'Demand ID':      r.demand_id,
+      'Job Title':      r.role_title || '',
+      JD:               r.jd_raw_text || '',
+      '#Client Submit': r.total,
+      '#0-3 days':      r.d0_3,
+      '#4-5 days':      r.d4_5,
+      '#6-7 days':      r.d6_7,
+      '#>7 days':       r.dgt7,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'KAM Interviews');
+    XLSX.writeFile(wb, `kam_interviews_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const NUM_COLS: { key: string; label: string; danger?: boolean }[] = [
+    { key: 'total', label: '# Client Submit' },
+    { key: 'd0_3',  label: '0-3 days' },
+    { key: 'd4_5',  label: '4-5 days' },
+    { key: 'd6_7',  label: '6-7 days' },
+    { key: 'dgt7',  label: '> 7 days', danger: true },
+  ];
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-base font-bold text-slate-800">
+          KAM Interviews&nbsp;
+          <span className="text-slate-400 font-normal text-sm">— candidates stuck at Client Submit</span>
+        </h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={exportXlsx}
+            disabled={loading || filteredRows.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Download size={12} /> Export
+          </button>
+          <button
+            onClick={() => fetchData()}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {data && !data.ol_available && (
+        <div className="mb-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium flex items-center gap-2">
+          <AlertTriangle size={15} /> Offer-Letter system is unavailable — Client Submit counts cannot be loaded right now.
+        </div>
+      )}
+
+      {/* ── Filter bar ── */}
+      <div className="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100">
+        <Filter size={13} className="text-slate-400" />
+        <MultiSelectFilter label="BH"      options={bhOptions}     selected={fBh}     onChange={setFBh} />
+        <MultiSelectFilter label="KAM"     options={kamOptions}    selected={fKam}    onChange={setFKam} />
+        <MultiSelectFilter label="Client"  options={clientOptions} selected={fClient} onChange={setFClient} />
+        <div className="relative">
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search title / client / demand…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-56 bg-white"
+          />
+        </div>
+        {(fBh.size > 0 || fKam.size > 0 || fClient.size > 0 || search) && (
+          <button
+            onClick={() => { setFBh(new Set()); setFKam(new Set()); setFClient(new Set()); setSearch(''); }}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"
+          >
+            <X size={11} /> Clear
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">{error}</div>
+      )}
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm" style={{ minWidth: 1000 }}>
+            <thead>
+              <tr>
+                {[
+                  { key: 'bh',     label: 'BH',        bg: '#3730A3', align: 'left'  },
+                  { key: 'kam',    label: 'KAM',       bg: '#1D4ED8', align: 'left'  },
+                  { key: 'client', label: 'Client',    bg: '#15803D', align: 'left'  },
+                  { key: 'demand', label: 'Demand ID', bg: '#0F766E', align: 'left'  },
+                  { key: 'title',  label: 'Job Title', bg: '#B45309', align: 'left'  },
+                ].map(c => (
+                  <th key={c.key}
+                    className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-white/20"
+                    style={{ background: c.bg }}
+                    onClick={() => handleSort(c.key)}>
+                    <span className="flex items-center gap-1">{c.label} <SortIcon active={sortKey === c.key} dir={sortDir} /></span>
+                  </th>
+                ))}
+                <th className="text-left py-3 px-3 text-xs font-bold text-white whitespace-nowrap border-r border-white/20" style={{ background: '#475569', minWidth: 220 }}>JD</th>
+                {NUM_COLS.map(c => (
+                  <th key={c.key}
+                    className="text-center py-3 px-2 text-[11px] font-bold text-white whitespace-nowrap cursor-pointer select-none border-r border-white/20"
+                    style={{ background: c.danger ? '#B91C1C' : '#334155' }}
+                    onClick={() => handleSort(c.key)}>
+                    <span className="flex items-center justify-center gap-1">{c.label} <SortIcon active={sortKey === c.key} dir={sortDir} /></span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={11} className="py-16 text-center text-slate-400">
+                  <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-slate-300" />Loading…
+                </td></tr>
+              ) : filteredRows.length === 0 ? (
+                <tr><td colSpan={11} className="py-16 text-center text-slate-400">No candidates currently stuck at Client Submit.</td></tr>
+              ) : (
+                <>
+                  <tr className="bg-slate-100 font-bold text-slate-700 border-b border-slate-200">
+                    <td className="py-2 px-3 text-xs" colSpan={5}>Total — {filteredRows.length} demand(s)</td>
+                    <td className="py-2 px-3"></td>
+                    {NUM_COLS.map(c => (
+                      <td key={c.key} className={`py-2 px-2 text-center text-xs ${c.danger ? 'text-red-700' : ''}`}>
+                        {(totals as unknown as Record<string, number>)[c.key]}
+                      </td>
+                    ))}
+                  </tr>
+                  {filteredRows.map(r => {
+                    const isOpen = expanded.has(r.demand_id);
+                    const jd = r.jd_raw_text || '';
+                    return (
+                      <tr key={r.demand_id} className="border-b border-slate-100 hover:bg-slate-50 align-top">
+                        <td className="py-2.5 px-3 text-xs text-slate-700">{r.bh_name || <span className="text-slate-400">Unmapped</span>}</td>
+                        <td className="py-2.5 px-3 text-xs font-medium text-slate-800">{r.kam_name || <span className="text-slate-400">Unmapped</span>}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-700">{r.client_name}</td>
+                        <td className="py-2.5 px-3 text-xs font-mono text-slate-500">#{r.demand_id}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-700" style={{ maxWidth: 220 }}>{r.role_title}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500" style={{ maxWidth: 320 }}>
+                          {jd ? (
+                            <div>
+                              <span>{isOpen ? jd : (jd.length > 120 ? jd.slice(0, 120) + '…' : jd)}</span>
+                              {jd.length > 120 && (
+                                <button onClick={() => toggleExpand(r.demand_id)} className="ml-1 text-blue-600 font-medium hover:underline">
+                                  {isOpen ? 'less' : 'more'}
+                                </button>
+                              )}
+                            </div>
+                          ) : <span className="text-slate-300">—</span>}
+                        </td>
+                        {NUM_COLS.map(c => {
+                          const v = (r as unknown as Record<string, number>)[c.key];
+                          return (
+                            <td key={c.key} className={`py-2.5 px-2 text-center text-xs ${c.danger && v > 0 ? 'text-red-700 font-bold' : v > 0 ? 'text-slate-700' : 'text-slate-300'}`}>
+                              {v}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Section — KAM Interviews Suggestion (AI resume-vs-JD scoring)
+// ════════════════════════════════════════════════════════════════════════════
+
+interface KsCriterionScore { name: string; score: number | null; rationale?: string }
+interface KsSkillAssessment { skill: string; statement: string; score: number | null }
+interface KsExtracted {
+  candidate_name?: string | null; email?: string | null; phone?: string | null;
+  location?: string | null; experience_range?: string | null; current_company?: string | null;
+  summary?: string | null;
+}
+interface KsRow {
+  candidate_id: number; job_id: number; full_name: string | null; email: string | null;
+  role_title: string | null; client_name: string | null; kam_name: string | null; bh_name: string | null;
+  bucket: string | null; wait_weight: number | null;
+  overall_score: number | null; rank_score: number | null;
+  criteria_scores: KsCriterionScore[]; skill_assessments: KsSkillAssessment[]; extracted: KsExtracted;
+  decision: 'pending' | 'select' | 'reject'; status: string; resume_url: string | null;
+}
+interface KsDemand {
+  job_id: number; role_title: string | null; client_name: string | null;
+  has_jd: boolean; jd_is_override: boolean; jd_effective: string; rubric_status: string | null;
+  criteria: { name: string; weight: number }[];
+  skills: { name: string; tier: string }[];
+}
+interface KsResults { rows: KsRow[]; demands: Record<string, KsDemand>; generated_at: string }
+interface KsStatus { status: 'idle' | 'running' | 'done' | 'error'; total: number; completed: number; error?: string | null }
+
+const BUCKET_LABEL: Record<string, string> = { d0_3: '0-3 days', d4_5: '4-5 days', d6_7: '6-7 days' };
+
+function ksToast(msg: string, ok = true) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 4px 20px rgba(0,0,0,0.18);background:${ok ? '#10b981' : '#ef4444'}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+function scoreColor(s: number | null): string {
+  if (s == null) return '#94a3b8';
+  if (s >= 80) return '#16a34a';
+  if (s >= 60) return '#d97706';
+  return '#dc2626';
+}
+
+function csvEscape(v: unknown): string {
+  return `"${String(v ?? '').replace(/"/g, '""')}"`;
+}
+
+function KAMSuggestionsSection() {
+  const { user } = useAuth();
+  const [subTab, setSubTab] = useState<'suggestions' | 'rejected'>('suggestions');
+  const [data, setData]       = useState<KsResults | null>(null);
+  const [status, setStatus]   = useState<KsStatus>({ status: 'idle', total: 0, completed: 0 });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState('');
+  const [fBh, setFBh]         = useState<Set<string>>(new Set());
+  const [fKam, setFKam]       = useState<Set<string>>(new Set());
+  const [fClient, setFClient] = useState<Set<string>>(new Set());
+  const [fRole, setFRole]     = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [jdEdit, setJdEdit]   = useState<{ job_id: number; text: string } | null>(null);
+  const [jdExpanded, setJdExpanded] = useState<Set<number>>(new Set());
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const pollRef = useRef<number | null>(null);
+
+  const fetchResults = () => api.get<KsResults>('/kam-scoring/results').then(r => setData(r.data)).catch(() => {});
+  const fetchStatus  = () => api.get<KsStatus>('/kam-scoring/status').then(r => setStatus(r.data)).catch(() => {});
+
+  useEffect(() => {
+    Promise.all([fetchResults(), fetchStatus()]).finally(() => setLoading(false));
+    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+  }, []);
+
+  // While a run is active, poll the lightweight status every 4s (Postgres-only).
+  useEffect(() => {
+    if (status.status === 'running' && !pollRef.current) {
+      pollRef.current = window.setInterval(() => { fetchStatus(); }, 4000);
+    }
+    if (status.status !== 'running' && pollRef.current) {
+      window.clearInterval(pollRef.current); pollRef.current = null;
+    }
+  }, [status.status]);
+
+  // Re-fetch the (heavier) results only when progress advances or the run ends.
+  useEffect(() => { fetchResults(); }, [status.completed, status.status]);
+
+  const runAnalysis = async () => {
+    const visible = (data?.rows ?? []).filter(passFilters).filter(r => r.decision !== 'reject');
+    const ids = selected.size ? Array.from(selected) : visible.map(r => r.candidate_id);
+    if (!ids.length) { ksToast('No candidates to analyze', false); return; }
+    try {
+      await api.post('/kam-scoring/run', { candidate_ids: ids });
+      setStatus(s => ({ ...s, status: 'running', completed: 0, total: ids.length }));
+      fetchStatus();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      ksToast(msg || 'Could not start analysis', false);
+    }
+  };
+
+  const stopRun = async () => {
+    try {
+      await api.post('/kam-scoring/stop');
+      ksToast('Stopping… (in-flight candidate will finish)');
+      fetchStatus();
+    } catch { ksToast('Could not stop', false); }
+  };
+
+  const openJd = (job_id: number) => setJdEdit({ job_id, text: data?.demands?.[String(job_id)]?.jd_effective || '' });
+  const toggleJd = (job_id: number) => setJdExpanded(prev => { const n = new Set(prev); if (n.has(job_id)) n.delete(job_id); else n.add(job_id); return n; });
+
+  const jdCell = (jobId: number) => {
+    const jd = (data?.demands?.[String(jobId)]?.jd_effective || '').trim();
+    if (!jd) return <button onClick={() => openJd(jobId)} className="text-blue-600 hover:underline text-[11px] font-semibold">+ Add JD</button>;
+    const open = jdExpanded.has(jobId);
+    return (
+      <span title={jd}>
+        {open ? jd : jd.slice(0, 70) + (jd.length > 70 ? '…' : '')}
+        {jd.length > 70 && <button onClick={() => toggleJd(jobId)} className="ml-1 text-blue-600 hover:underline">{open ? 'less' : 'more'}</button>}
+        {' · '}<button onClick={() => openJd(jobId)} className="text-blue-600 hover:underline">Edit</button>
+      </span>
+    );
+  };
+
+  const decide = async (row: KsRow, decision: 'select' | 'reject' | 'pending') => {
+    try {
+      await api.post('/kam-scoring/decision', { candidate_id: row.candidate_id, job_id: row.job_id, decision });
+      setData(d => d ? { ...d, rows: d.rows.map(r => r.candidate_id === row.candidate_id && r.job_id === row.job_id ? { ...r, decision } : r) } : d);
+      if (decision === 'reject') setSelected(prev => { const n = new Set(prev); n.delete(row.candidate_id); return n; });
+    } catch { ksToast('Action failed', false); }
+  };
+
+  const saveJd = async () => {
+    if (!jdEdit || !jdEdit.text.trim()) return;
+    try {
+      await api.post('/kam-scoring/jd', { job_id: jdEdit.job_id, jd_text: jdEdit.text.trim() });
+      setJdEdit(null);
+      ksToast('JD saved — run AI Analysis to (re)score this demand');
+      fetchResults();
+    } catch { ksToast('Could not save JD', false); }
+  };
+
+  const bhOptions     = useMemo(() => uniq((data?.rows ?? []).map(r => r.bh_name || 'Unmapped')), [data]);
+  const kamOptions    = useMemo(() => uniq((data?.rows ?? []).map(r => r.kam_name || 'Unmapped')), [data]);
+  const clientOptions = useMemo(() => uniq((data?.rows ?? []).map(r => r.client_name || 'Unknown')), [data]);
+  const roleOptions   = useMemo(() => uniq((data?.rows ?? []).map(r => r.role_title || 'Unknown')), [data]);
+
+  const passFilters = (r: KsRow) =>
+    (!fBh.size || fBh.has(r.bh_name || 'Unmapped')) &&
+    (!fKam.size || fKam.has(r.kam_name || 'Unmapped')) &&
+    (!fClient.size || fClient.has(r.client_name || 'Unknown')) &&
+    (!fRole.size || fRole.has(r.role_title || 'Unknown')) &&
+    (!search.trim() || [r.full_name, r.role_title, r.client_name].some(v => (v || '').toLowerCase().includes(search.toLowerCase())));
+
+  const allRows = (data?.rows ?? []).filter(passFilters);
+  const rejectedRows = allRows.filter(r => r.decision === 'reject');
+  const liveRows = allRows.filter(r => r.decision !== 'reject');
+  const scoredRows = liveRows.filter(r => r.status === 'scored').sort((a, b) => (b.rank_score ?? -1) - (a.rank_score ?? -1));
+  const unscoredRows = liveRows.filter(r => r.status === 'unscored');           // has JD, not yet analyzed
+  const needsJdRows = liveRows.filter(r => r.status === 'no_jd');                // no real JD
+  const otherRows = liveRows.filter(r => r.status === 'no_resume' || r.status === 'error');
+
+  const toggleSel = (id: number) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selectedRows = scoredRows.filter(r => selected.has(r.candidate_id));    // scored only → CSV/PDF/email
+
+  // ── Skills Matrix CSV (mirrors the ai-scoring-tool layout) ──
+  const exportSkillsMatrix = () => {
+    const rowsForCsv = selectedRows.length ? selectedRows : scoredRows;
+    if (!rowsForCsv.length) { ksToast('No scored candidates to export', false); return; }
+    // union of skill columns across the involved demands, primary first
+    const colMap = new Map<string, { name: string; primary: boolean }>();
+    for (const r of rowsForCsv) {
+      const dem = data?.demands?.[String(r.job_id)];
+      for (const s of dem?.skills ?? []) {
+        const key = s.name.toLowerCase();
+        if (!colMap.has(key)) colMap.set(key, { name: s.name, primary: String(s.tier).toLowerCase() === 'primary' });
+      }
+    }
+    const cols = [...colMap.values()].sort((a, b) => Number(b.primary) - Number(a.primary)).map(c => c.name);
+    const header = ['Candidate Name', 'Job Title', 'Client', 'Demand ID', ...cols, 'Final Score'];
+    const lines = [header.map(csvEscape).join(',')];
+    for (const r of rowsForCsv) {
+      const byName = new Map((r.skill_assessments ?? []).map(a => [a.skill.toLowerCase(), a]));
+      const cells = cols.map(c => {
+        const a = byName.get(c.toLowerCase());
+        return !a ? '' : a.score == null ? a.statement : `${a.statement} (${a.score}/100)`;
+      });
+      lines.push([r.full_name ?? '', r.role_title ?? '', r.client_name ?? '', r.job_id, ...cells, r.overall_score ?? ''].map(csvEscape).join(','));
+    }
+    const csv = lines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `skills_matrix_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    ksToast(`Skills matrix exported (${rowsForCsv.length} candidate(s))`);
+  };
+
+  const downloadPdf = async () => {
+    const ids = (selectedRows.length ? selectedRows : scoredRows).map(r => r.candidate_id);
+    if (!ids.length) { ksToast('No scored candidates to export', false); return; }
+    try {
+      const resp = await api.get('/kam-scoring/report.pdf', { params: { candidate_ids: ids.join(',') }, responseType: 'blob' });
+      const url = URL.createObjectURL(resp.data as Blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'candidate-reports.pdf'; a.click(); URL.revokeObjectURL(url);
+    } catch { ksToast('Could not generate PDF', false); }
+  };
+
+  const openEmail = () => {
+    const rows = selectedRows.length ? selectedRows : scoredRows.slice(0, 10);
+    if (!rows.length) { ksToast('Select candidates first', false); return; }
+    const role = rows[0].role_title || 'the role';
+    const client = rows[0].client_name || '';
+    setEmailSubject(`Suggested candidates for ${role}${client ? ` — ${client}` : ''}`);
+
+    // Markdown pipe table — exact same columns/order/cells as the Skills-Matrix
+    // CSV (exportSkillsMatrix): Candidate, Job Title, Client, Demand ID, <skills
+    // primary-first>, Final Score; cell = "<statement> (<score>/100)".
+    const colMap = new Map<string, { name: string; primary: boolean }>();
+    for (const r of rows) {
+      for (const s of data?.demands?.[String(r.job_id)]?.skills ?? []) {
+        const key = s.name.toLowerCase();
+        if (!colMap.has(key)) colMap.set(key, { name: s.name, primary: String(s.tier).toLowerCase() === 'primary' });
+      }
+    }
+    const cols = [...colMap.values()].sort((a, b) => Number(b.primary) - Number(a.primary)).map(c => c.name);
+    const clean = (s: unknown) => String(s ?? '').replace(/\|/g, '/').replace(/\s*\n\s*/g, ' ').trim();
+    const toRow = (arr: string[]) => `| ${arr.join(' | ')} |`;
+    const header = toRow(['Candidate Name', 'Job Title', 'Client', 'Demand ID', ...cols, 'Final Score']);
+    const sep = toRow(['---', '---', '---', '---', ...cols.map(() => '---'), '---']);
+    const bodyRows = rows.map(r => {
+      const byName = new Map((r.skill_assessments ?? []).map(a => [a.skill.toLowerCase(), a]));
+      const cells = cols.map(c => {
+        const a = byName.get(c.toLowerCase());
+        return !a ? '' : a.score == null ? clean(a.statement) : `${clean(a.statement)} (${a.score}/100)`;
+      });
+      return toRow([clean(r.full_name || r.extracted?.candidate_name || 'Candidate'), clean(r.role_title), clean(r.client_name), String(r.job_id), ...cells, String(r.overall_score ?? '')]);
+    });
+    const table = cols.length ? [header, sep, ...bodyRows].join('\n') : '(No skill assessments available — run AI Analysis first.)';
+
+    setEmailBody(
+      `Hi Team,\n\nPlease find below ${rows.length} suggested candidate(s) for the role ${role}${client ? ` at ${client}` : ''}, with a skill-wise assessment:\n\n` +
+      table +
+      `\n\nResumes are available on request. Happy to set up interview slots at your convenience.\n\nBest regards,\n${user?.name || ''}`
+    );
+    setEmailOpen(true);
+  };
+
+  // Convert the (Markdown) email body to HTML so pasting into a rich mail editor
+  // renders the pipe table as a real <table> instead of raw pipes.
+  const bodyToHtml = (md: string): string => {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = md.split('\n');
+    const out: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      if (lines[i].trim().startsWith('|')) {
+        const block: string[] = [];
+        while (i < lines.length && lines[i].trim().startsWith('|')) { block.push(lines[i]); i++; }
+        const rows = block.map(r => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()));
+        const dataRows = rows.filter(r => !r.every(c => /^-+$/.test(c)));  // drop --- separator
+        if (!dataRows.length) continue;
+        const [head, ...rest] = dataRows;
+        const th = head.map(c => `<th style="border:1px solid #cbd5e1;padding:6px 8px;background:#f1f5f9;text-align:left">${esc(c)}</th>`).join('');
+        const trs = rest.map(r => '<tr>' + r.map(c => `<td style="border:1px solid #cbd5e1;padding:6px 8px;vertical-align:top">${esc(c)}</td>`).join('') + '</tr>').join('');
+        out.push(`<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`);
+      } else {
+        out.push(lines[i].trim() === '' ? '<br>' : `<div>${esc(lines[i])}</div>`);
+        i++;
+      }
+    }
+    return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a">${out.join('')}</div>`;
+  };
+
+  const copyBody = async () => {
+    try {
+      const Item = (window as unknown as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+      if (navigator.clipboard && 'write' in navigator.clipboard && Item) {
+        await navigator.clipboard.write([new Item({
+          'text/html': new Blob([bodyToHtml(emailBody)], { type: 'text/html' }),
+          'text/plain': new Blob([emailBody], { type: 'text/plain' }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(emailBody);
+      }
+      ksToast('Email body copied — paste into your mail client');
+    } catch { ksToast('Copy failed', false); }
+  };
+
+  const inProgress = status.status === 'running';
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-base font-bold text-slate-800">
+          KAM Interviews Suggestion&nbsp;
+          <span className="text-slate-400 font-normal text-sm">— AI resume-vs-JD scoring for Client-Submit candidates</span>
+        </h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          {inProgress ? (
+            <button onClick={stopRun}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-red-600 hover:bg-red-700">
+              <X size={13} /> Stop ({status.completed}/{status.total})
+            </button>
+          ) : (
+            <button onClick={runAnalysis}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white"
+              style={{ background: '#7c3aed' }}>
+              <Sparkles size={13} />
+              Run AI Analysis ({selected.size || liveRows.length})
+            </button>
+          )}
+          <button onClick={() => { fetchResults(); fetchStatus(); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
+      </div>
+
+      {inProgress && (
+        <div className="mb-3 px-4 py-2.5 rounded-xl bg-violet-50 border border-violet-200 text-sm text-violet-800 font-medium flex items-center gap-2">
+          <Sparkles size={14} className="animate-pulse" />
+          Analyzing — {status.completed} of {status.total} candidates. Rows update live below.
+        </div>
+      )}
+      {status.status === 'error' && (
+        <div className="mb-3 px-4 py-2.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">Scoring run failed: {status.error}</div>
+      )}
+
+      {/* Quick stats — respect current filters */}
+      <div className="mb-3 flex items-center gap-4 text-xs text-slate-500 flex-wrap">
+        <span><b className="text-slate-800">{liveRows.filter(r => r.status !== 'no_jd').length}</b> with JD (AI-analyzable)</span>
+        <span><b className="text-green-700">{scoredRows.length}</b> analyzed</span>
+        <span><b className="text-amber-700">{needsJdRows.length}</b> without JD (add a JD to score)</span>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="mb-4 flex gap-0.5 border-b border-slate-200">
+        {([['suggestions', `Suggestions (${scoredRows.length + unscoredRows.length + needsJdRows.length + otherRows.length})`], ['rejected', `Rejected (${rejectedRows.length})`]] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setSubTab(k)}
+            className="px-3.5 py-2 text-[13px]"
+            style={{ color: subTab === k ? '#0f172a' : '#94a3b8', fontWeight: subTab === k ? 700 : 500, borderBottom: subTab === k ? '2px solid #0f172a' : '2px solid transparent', marginBottom: -1 }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100">
+        <Filter size={13} className="text-slate-400" />
+        <MultiSelectFilter label="BH" options={bhOptions} selected={fBh} onChange={setFBh} />
+        <MultiSelectFilter label="KAM" options={kamOptions} selected={fKam} onChange={setFKam} />
+        <MultiSelectFilter label="Client" options={clientOptions} selected={fClient} onChange={setFClient} />
+        <MultiSelectFilter label="Role" options={roleOptions} selected={fRole} onChange={setFRole} />
+        <div className="relative">
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input type="text" placeholder="Search name / role / client…" value={search} onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-blue-400 w-56 bg-white" />
+        </div>
+        {(fBh.size || fKam.size || fClient.size || fRole.size || search) ? (
+          <button onClick={() => { setFBh(new Set()); setFKam(new Set()); setFClient(new Set()); setFRole(new Set()); setSearch(''); }}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold hover:bg-red-100"><X size={11} /> Clear</button>
+        ) : null}
+      </div>
+
+      {subTab === 'suggestions' && (
+        <>
+          {/* Action bar */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-xs text-slate-500">{selected.size} selected{selected.size ? '' : ' (actions use all scored if none selected)'}</span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button onClick={exportSkillsMatrix} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"><FileSpreadsheet size={13} /> Skills Matrix (CSV)</button>
+              <button onClick={downloadPdf} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"><FileText size={13} /> Reports (PDF)</button>
+              <button onClick={openEmail} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700"><Mail size={13} /> Client Email</button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="py-16 text-center text-slate-400"><RefreshCw size={24} className="animate-spin mx-auto mb-2 text-slate-300" />Loading…</div>
+          ) : (scoredRows.length + unscoredRows.length + needsJdRows.length + otherRows.length) === 0 ? (
+            <div className="py-16 text-center text-slate-400">No Client-Submit candidates in your scope.</div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm" style={{ minWidth: 960 }}>
+                  <thead><tr className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+                    <th className="py-2.5 px-3 text-left w-8"></th>
+                    <th className="py-2.5 px-2 text-left">#</th>
+                    <th className="py-2.5 px-3 text-left">Candidate</th>
+                    <th className="py-2.5 px-3 text-left">Client / Role</th>
+                    <th className="py-2.5 px-3 text-left">JD</th>
+                    <th className="py-2.5 px-2 text-center">AI Match</th>
+                    <th className="py-2.5 px-2 text-center">Wait</th>
+                    <th className="py-2.5 px-2 text-center">Rank Score</th>
+                    <th className="py-2.5 px-3 text-left">Top criteria</th>
+                    <th className="py-2.5 px-2 text-center">Resume</th>
+                    <th className="py-2.5 px-3 text-center">Decision</th>
+                  </tr></thead>
+                  <tbody>
+                    {scoredRows.map((r, i) => (
+                      <tr key={`${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 hover:bg-slate-50 align-top"
+                        style={{ background: r.decision === 'select' ? '#f0fdf4' : undefined }}>
+                        <td className="py-2.5 px-3"><button onClick={() => toggleSel(r.candidate_id)}>{selected.has(r.candidate_id) ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} className="text-slate-300" />}</button></td>
+                        <td className="py-2.5 px-2 text-xs text-slate-400 font-mono">{i + 1}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="text-xs font-semibold text-slate-800">{r.full_name || r.extracted?.candidate_name || '—'}</div>
+                          <div className="text-[11px] text-slate-400">{r.extracted?.experience_range || ''}{r.extracted?.current_company ? ` · ${r.extracted.current_company}` : ''}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-xs text-slate-600">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td className="py-2.5 px-2 text-center"><span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold text-white" style={{ background: scoreColor(r.overall_score) }}>{r.overall_score ?? '—'}</span></td>
+                        <td className="py-2.5 px-2 text-center text-[11px] text-slate-600">{r.bucket ? BUCKET_LABEL[r.bucket] : '—'}</td>
+                        <td className="py-2.5 px-2 text-center text-xs font-bold text-slate-800">{r.rank_score ?? '—'}</td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500" style={{ maxWidth: 220 }}>
+                          {(r.criteria_scores || []).slice(0, 3).map(c => `${c.name} ${c.score ?? '-'}`).join(' · ')}
+                        </td>
+                        <td className="py-2.5 px-2 text-center">{r.resume_url ? <a href={r.resume_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline inline-flex"><ExternalLink size={13} /></a> : <span className="text-slate-300">—</span>}</td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <button onClick={() => decide(r, r.decision === 'select' ? 'pending' : 'select')} className={`px-2 py-1 rounded-md text-[11px] font-semibold mr-1 ${r.decision === 'select' ? 'bg-green-600 text-white' : 'border border-green-200 text-green-700 hover:bg-green-50'}`}>Select</button>
+                          <button onClick={() => decide(r, 'reject')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-red-200 text-red-600 hover:bg-red-50">Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {unscoredRows.length > 0 && (
+                      <tr><td colSpan={11} className="py-2 px-3 bg-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-500">Not analyzed yet — select rows and Run AI Analysis</td></tr>
+                    )}
+                    {unscoredRows.map(r => (
+                      <tr key={`u-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 hover:bg-slate-50 align-top">
+                        <td className="py-2.5 px-3"><button onClick={() => toggleSel(r.candidate_id)}>{selected.has(r.candidate_id) ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} className="text-slate-300" />}</button></td>
+                        <td></td>
+                        <td className="py-2.5 px-3 text-xs font-semibold text-slate-700">{r.full_name || '—'}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td colSpan={5} className="py-2.5 px-3 text-[11px] text-slate-400">Not analyzed yet{r.bucket ? ` · ${BUCKET_LABEL[r.bucket]}` : ''}</td>
+                        <td className="py-2.5 px-3 text-center"><button onClick={() => decide(r, 'reject')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-red-200 text-red-600 hover:bg-red-50">Reject</button></td>
+                      </tr>
+                    ))}
+
+                    {otherRows.map(r => (
+                      <tr key={`o-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 bg-slate-50/40 align-top">
+                        <td className="py-2.5 px-3"></td><td></td>
+                        <td className="py-2.5 px-3 text-xs font-medium text-slate-600">{r.full_name || '—'}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td colSpan={5} className="py-2.5 px-3 text-[11px] text-amber-600">{r.status === 'no_resume' ? 'No resume on file — cannot score' : `Scoring error`}</td>
+                        <td className="py-2.5 px-3 text-center"><button onClick={() => decide(r, 'reject')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-red-200 text-red-600 hover:bg-red-50">Reject</button></td>
+                      </tr>
+                    ))}
+
+                    {needsJdRows.length > 0 && (
+                      <tr><td colSpan={11} className="py-2 px-3 bg-amber-50 text-[11px] font-bold uppercase tracking-wide text-amber-700">Needs JD — add a job description to score these</td></tr>
+                    )}
+                    {needsJdRows.map(r => (
+                      <tr key={`j-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 align-top">
+                        <td className="py-2.5 px-3"></td><td></td>
+                        <td className="py-2.5 px-3 text-xs font-medium text-slate-700">{r.full_name || '—'}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td colSpan={5} className="py-2.5 px-3 text-[11px] text-slate-400">No real JD (jd_raw_text) for this demand</td>
+                        <td className="py-2.5 px-3 text-center"><button onClick={() => openJd(r.job_id)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-blue-200 text-blue-600 hover:bg-blue-50 inline-flex items-center gap-1"><Plus size={11} /> Add JD</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {subTab === 'rejected' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          {rejectedRows.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">No rejected candidates.</div>
+          ) : (
+            <table className="w-full border-collapse text-sm">
+              <thead><tr className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+                <th className="py-2.5 px-3 text-left">Candidate</th><th className="py-2.5 px-3 text-left">Client / Role</th>
+                <th className="py-2.5 px-2 text-center">AI Match</th><th className="py-2.5 px-3 text-center">Action</th>
+              </tr></thead>
+              <tbody>
+                {rejectedRows.map(r => (
+                  <tr key={`r-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100">
+                    <td className="py-2.5 px-3 text-xs font-medium text-slate-700">{r.full_name || '—'}</td>
+                    <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
+                    <td className="py-2.5 px-2 text-center"><span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold text-white" style={{ background: scoreColor(r.overall_score) }}>{r.overall_score ?? '—'}</span></td>
+                    <td className="py-2.5 px-3 text-center"><button onClick={() => decide(r, 'pending')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50">Un-reject</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Add-JD modal */}
+      {jdEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setJdEdit(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3"><h3 className="text-sm font-bold text-slate-800">Add / Update JD for demand #{jdEdit.job_id}</h3><button onClick={() => setJdEdit(null)}><X size={16} className="text-slate-400" /></button></div>
+            <p className="text-[11px] text-slate-400 mb-2">Saved to the scoring workspace only — your main job record is not modified.</p>
+            <textarea value={jdEdit.text} onChange={e => setJdEdit({ ...jdEdit, text: e.target.value })} placeholder="Paste the job description…"
+              className="w-full h-64 text-sm border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-blue-400" />
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setJdEdit(null)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600">Cancel</button>
+              <button onClick={saveJd} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">Save JD</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email modal */}
+      {emailOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEmailOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800">Client TA Email</h3><button onClick={() => setEmailOpen(false)}><X size={16} className="text-slate-400" /></button>
+            </div>
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+              <input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} className="flex-1 text-sm font-semibold text-slate-800 outline-none" />
+              <button onClick={() => { navigator.clipboard.writeText(emailSubject); ksToast('Subject copied'); }} className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:text-blue-600"><ClipboardCopy size={11} /> Subject</button>
+            </div>
+            <div className="p-4 flex-1 overflow-auto">
+              <textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} className="w-full text-sm text-slate-800 border border-slate-200 rounded-xl px-4 py-3 outline-none" style={{ minHeight: 320, lineHeight: 1.7 }} />
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
+              <button onClick={copyBody} className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700"><ClipboardCopy size={12} /> Copy Body</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  Page — internal tabs, BH/Client tab loads only when first opened
 // ════════════════════════════════════════════════════════════════════════════
 
-type LbTab = 'recruiter' | 'pipeline' | 'bh-hourly' | 'bh-targets' | 'bh-companies';
+type LbTab = 'recruiter' | 'pipeline' | 'bh-hourly' | 'bh-targets' | 'bh-companies' | 'kam-interviews' | 'kam-suggestions';
 
 const BH_TARGETS_ROLES = new Set(['coo', 'admin', 'kam']);
+const KAM_INTERVIEWS_ROLES = new Set(['admin', 'coo', 'ceo', 'ops_head', 'bh', 'kam', 'delivery_lead']);
 
 const TABS: { key: LbTab; label: string }[] = [
-  { key: 'recruiter',    label: 'Recruiter Dashboard' },
-  { key: 'pipeline',     label: 'Client Pipeline' },
-  { key: 'bh-hourly',    label: 'BH Hourly Tracker' },
-  { key: 'bh-targets',   label: 'BH Target Tracking' },
-  { key: 'bh-companies', label: 'BH × Companies' },
+  { key: 'recruiter',      label: 'Recruiter Dashboard' },
+  { key: 'pipeline',       label: 'Client Pipeline' },
+  { key: 'bh-hourly',      label: 'BH Hourly Tracker' },
+  { key: 'bh-targets',     label: 'BH Target Tracking' },
+  { key: 'bh-companies',   label: 'BH × Companies' },
+  { key: 'kam-interviews', label: 'KAM Interviews' },
+  { key: 'kam-suggestions', label: 'KAM Interviews Suggestion' },
 ];
 
 export default function Leaderboard() {
   const { user } = useAuth();
-  const canSeeBhTargets = BH_TARGETS_ROLES.has(user?.role ?? '');
+  const canSeeBhTargets    = BH_TARGETS_ROLES.has(user?.role ?? '');
+  const canSeeKamInterviews = KAM_INTERVIEWS_ROLES.has(user?.role ?? '');
 
-  const visibleTabs = canSeeBhTargets ? TABS : TABS.filter(t => t.key !== 'bh-targets');
+  const visibleTabs = TABS.filter(t =>
+    (t.key !== 'bh-targets' || canSeeBhTargets) &&
+    (t.key !== 'kam-interviews' || canSeeKamInterviews) &&
+    (t.key !== 'kam-suggestions' || canSeeKamInterviews)
+  );
 
   const [tab, setTab] = useState<LbTab>('recruiter');
   // Track which tabs the user has opened, so each fetches only once and
@@ -3737,6 +4567,20 @@ export default function Leaderboard() {
       <div style={{ display: tab === 'bh-companies' ? 'block' : 'none' }}>
         {visited.has('bh-companies') && <BHCompaniesSection />}
       </div>
+
+      {/* KAM Interviews — candidates stuck at Client Submit (OL step 7) */}
+      {canSeeKamInterviews && (
+        <div style={{ display: tab === 'kam-interviews' ? 'block' : 'none' }}>
+          {visited.has('kam-interviews') && <KAMInterviewsSection />}
+        </div>
+      )}
+
+      {/* KAM Interviews Suggestion — AI resume-vs-JD scoring */}
+      {canSeeKamInterviews && (
+        <div style={{ display: tab === 'kam-suggestions' ? 'block' : 'none' }}>
+          {visited.has('kam-suggestions') && <KAMSuggestionsSection />}
+        </div>
+      )}
     </Layout>
   );
 }
