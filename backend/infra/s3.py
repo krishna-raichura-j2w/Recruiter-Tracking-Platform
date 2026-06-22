@@ -150,6 +150,26 @@ def get_presigned_url(key: str) -> str:
     )
 
 
+def resolve_resume_key(value: str | None, candidate_id: int | None = None) -> str | None:
+    """Resolve a stored resume DB value to its S3 object key.
+    Mirrors to_viewable_url's key logic but returns the key (for server-side
+    download) instead of a presigned URL. Returns None for data-URLs / http URLs.
+    """
+    if not value or value == "None":
+        return None
+    if value.startswith("data:") or "://" in value:
+        return None
+    if "/" not in value and candidate_id is not None:
+        return build_resume_key(candidate_id, value)
+    return value
+
+
+def get_object_bytes(key: str) -> bytes:
+    """Download an S3 object's raw bytes (server-side; no presigned URL)."""
+    resp = _s3().get_object(Bucket=_bucket(), Key=key)
+    return resp["Body"].read()
+
+
 def to_viewable_url(value: str | None, candidate_id: int | None = None) -> str | None:
     """
     Convert a stored DB value to a URL suitable for the browser.

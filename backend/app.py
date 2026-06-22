@@ -25,6 +25,7 @@ from features.mrr.candidates.routes import router as candidates_router  # noqa: 
 from features.mrr.clients.routes import router as clients_router  # noqa: E402
 from features.mrr.bh_target_email.routes import router as bh_target_email_router  # noqa: E402
 from features.mrr.coo.routes import router as coo_router  # noqa: E402
+from features.mrr.kam_scoring.routes import router as kam_scoring_router  # noqa: E402
 from features.mrr.dashboard.routes import router as dashboard_router  # noqa: E402
 from features.mrr.demand_status.routes import (  # noqa: E402
     router as demand_status_router,
@@ -222,6 +223,13 @@ def ensure_schema():
                 db.rollback()
 
         for sql in load_sql_list("055-backfill_drive_lineup.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        for sql in load_sql_list("057-kam_scoring.sql"):
             try:
                 db.execute(text(sql))
                 db.commit()
@@ -427,6 +435,7 @@ app.include_router(form_config_router,        prefix="/api")
 app.include_router(probing_router,            prefix="/api")
 app.include_router(boolean_builder_router,    prefix="/api")
 app.include_router(coo_router,                prefix="/api")
+app.include_router(kam_scoring_router,        prefix="/api")
 app.include_router(bh_target_email_router,    prefix="/api")
 app.include_router(pods_router,               prefix="/api")
 app.include_router(leaves_router,             prefix="/api")

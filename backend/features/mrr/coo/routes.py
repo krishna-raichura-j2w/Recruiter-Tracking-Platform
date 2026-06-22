@@ -1539,3 +1539,168 @@ def recruiter_leaderboard(
         "is_today":     is_today and period == "day",
         "slots":        TIME_SLOTS,
     }
+
+
+# ── KAM Interviews: candidates stuck at "Client Submit" (OL step 7) ───────────
+#
+# Per-demand aging report for interview planning. The status of record is the
+# Offer-Letter (OL) replica: a candidate is "stuck at Client Submit" when their
+# OL applied_jobs.current_step is EXACTLY 7 (submitted but not yet moved to an
+# interview round). We bucket each such candidate by how long they've sat there,
+# measured from applied_jobs.updated_at (the OL step-transition timestamp).
+#
+# Read-only: Postgres (our candidates/jobs + KAM/BH ownership) + OL replica.
+
+def _ki_bucket(age_days: int) -> str:
+    """Map an age in days to the aging bucket key."""
+    if age_days <= 3:
+        return "d0_3"
+    if age_days <= 5:
+        return "d4_5"
+    if age_days <= 7:
+        return "d6_7"
+    return "dgt7"
+
+
+@router.get("/kam-interviews")
+def kam_interviews(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    from sqlalchemy.orm import aliased
+
+    from infra.models import Candidate, Job, User
+
+    # ── Postgres: every candidate that could map to an OL record, with its
+    # demand (job) and ownership. In this data the KAM that owns a demand is the
+    # creator (jobs.created_by_id, role=kam) and the BH is jobs.account_manager_id
+    # (role=bh) — jobs.kam_id is unused. Only rows usable for an OL match (have an
+    # email AND an OL job id) are selected.
+    Kam = aliased(User)
+    Bh = aliased(User)
+    q = (
+        db.query(
+            Candidate.email.label("email"),
+            Job.id.label("demand_id"),
+            Job.job_id.label("ol_jp_id"),
+            Job.role_title.label("role_title"),
+            Job.client_name.label("client_name"),
+            Job.jd_raw_text.label("jd_raw_text"),
+            Kam.name.label("kam_name"),
+            Bh.name.label("bh_name"),
+        )
+        .join(Job, Job.id == Candidate.job_id)
+        .outerjoin(Kam, Kam.id == Job.created_by_id)
+        .outerjoin(Bh, Bh.id == Job.account_manager_id)
+        .filter(Candidate.email.isnot(None), Job.job_id.isnot(None))
+    )
+
+    # Pod scoping: admin / COO / CEO / ops_head see all demands; BH / KAM / DL
+    # see only demands whose KAM (creator) belongs to their own pod.
+    _caller_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if _caller_role in ("bh", "kam", "delivery_lead") and current_user.pod_id is not None:
+        q = q.filter(Kam.pod_id == current_user.pod_id)
+
+    cand_rows = q.all()
+
+    # Per-demand metadata + ordered list of (email, demand_id, ol_jp_id).
+    demand_meta: dict[int, dict] = {}
+    for r in cand_rows:
+        if r.demand_id not in demand_meta:
+            demand_meta[r.demand_id] = {
+                "demand_id":   r.demand_id,
+                "role_title":  r.role_title,
+                "client_name": r.client_name,
+                "jd_raw_text": r.jd_raw_text,
+                "kam_name":    r.kam_name,
+                "bh_name":     r.bh_name,
+            }
+
+    # ── OL replica: which (user, job_posting) pairs sit at current_step = 7,
+    # and when they got there (updated_at). One round-trip.
+    email_to_uid: dict[str, int] = {}
+    aj_by_uid_jp: dict[tuple[int, int], datetime] = {}
+    ol_available = True
+
+    emails = list({(r.email or "").strip().lower() for r in cand_rows if r.email and r.email.strip()})
+    jp_ids = list({r.ol_jp_id for r in cand_rows if r.ol_jp_id is not None})
+
+    if emails and jp_ids:
+        try:
+            from features.mrr.ol_lookup.routes import _get_ol_conn
+            ol = _get_ol_conn()
+            try:
+                with ol.cursor() as cur:
+                    fmt_e = ",".join(["%s"] * len(emails))
+                    cur.execute(
+                        f"SELECT id, LOWER(email) AS em FROM users WHERE LOWER(email) IN ({fmt_e})",
+                        emails,
+                    )
+                    for r in cur.fetchall():
+                        if r.get("em"):
+                            email_to_uid[r["em"]] = r["id"]
+
+                    uids = list({v for v in email_to_uid.values()})
+                    if uids:
+                        fmt_u  = ",".join(["%s"] * len(uids))
+                        fmt_jp = ",".join(["%s"] * len(jp_ids))
+                        cur.execute(
+                            f"""
+                            SELECT user_id, job_posting_id, updated_at
+                            FROM applied_jobs
+                            WHERE user_id IN ({fmt_u})
+                              AND job_posting_id IN ({fmt_jp})
+                              AND current_step = 7
+                            ORDER BY updated_at DESC
+                            """,
+                            (*uids, *jp_ids),
+                        )
+                        # Keep the latest applied_jobs row per (user, posting).
+                        for r in cur.fetchall():
+                            key = (r["user_id"], r["job_posting_id"])
+                            if key not in aj_by_uid_jp:
+                                aj_by_uid_jp[key] = r["updated_at"]
+            finally:
+                ol.close()
+        except Exception:
+            # OL replica unreachable — degrade gracefully, no counts.
+            email_to_uid = {}
+            aj_by_uid_jp = {}
+            ol_available = False
+
+    # ── Aggregate per demand: total + aging buckets.
+    # Naive UTC "now" so it subtracts cleanly against OL's naive updated_at.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    agg: dict[int, dict] = {}
+
+    def _blank(demand_id: int) -> dict:
+        return {**demand_meta[demand_id], "total": 0, "d0_3": 0, "d4_5": 0, "d6_7": 0, "dgt7": 0}
+
+    for r in cand_rows:
+        uid = email_to_uid.get((r.email or "").strip().lower())
+        if uid is None:
+            continue
+        updated_at = aj_by_uid_jp.get((uid, r.ol_jp_id))
+        if updated_at is None:
+            continue  # not at step 7 for this demand
+        age_days = (now - updated_at).days
+        if age_days < 0:
+            age_days = 0
+        bucket = _ki_bucket(age_days)
+        row = agg.setdefault(r.demand_id, _blank(r.demand_id))
+        row["total"] += 1
+        row[bucket] += 1
+
+    rows = sorted(agg.values(), key=lambda x: (x["dgt7"], x["total"]), reverse=True)
+
+    totals = {"total": 0, "d0_3": 0, "d4_5": 0, "d6_7": 0, "dgt7": 0}
+    for row in rows:
+        for k in totals:
+            totals[k] += row[k]
+
+    return {
+        "rows":         rows,
+        "totals":       totals,
+        "ol_available": ol_available,
+        "generated_at": now.replace(tzinfo=timezone.utc).isoformat(),
+    }
