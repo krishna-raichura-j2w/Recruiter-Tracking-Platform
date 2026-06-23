@@ -2,16 +2,15 @@ from pydantic import BaseModel
 
 
 class RunIn(BaseModel):
-    candidate_ids: list[int] | None = None
+    keys: list[str] | None = None      # unified row keys (mrr:.. / ol:..)
 
 
 class JdOverrideIn(BaseModel):
-    job_id: int
+    demand_key: str                    # "mrr:{job_id}" or "ol:{ol_job_posting_id}"
     jd_text: str
 
 
 class DecisionIn(BaseModel):
-    candidate_id: int
-    job_id: int
-    decision: str  # select | reject | pending
+    key: str                           # unified row key
+    decision: str                      # select | reject | pending
     reason: str | None = None
