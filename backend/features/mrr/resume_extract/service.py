@@ -167,6 +167,27 @@ def _pdf_to_text(pdf_bytes: bytes) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages).strip()
 
 
+def _pdf_to_images(pdf_bytes: bytes, max_pages: int = 5, dpi: int = 200) -> list[bytes]:
+    """Rasterize PDF pages to PNG bytes. Used as an OCR fallback for scanned /
+    image-only PDFs that have no embedded text layer (pypdf returns nothing)."""
+    import fitz  # PyMuPDF
+
+    images: list[bytes] = []
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        for page in doc.pages(0, min(max_pages, doc.page_count)):
+            pix = page.get_pixmap(dpi=dpi)
+            images.append(pix.tobytes("png"))
+    return images
+
+
+def _image_block(img_bytes: bytes, mime: str) -> dict:
+    return (
+        _image_block_claude(img_bytes, mime)
+        if _provider() == "CLAUDE"
+        else _image_block_openai(img_bytes, mime)
+    )
+
+
 def _docx_to_text(docx_bytes: bytes) -> str:
     doc = Document(io.BytesIO(docx_bytes))
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
@@ -178,9 +199,14 @@ def extract_from_text(text: str) -> tuple[ConsultantProfile, dict]:
 
 def extract_from_pdf(pdf_bytes: bytes) -> tuple[ConsultantProfile, dict]:
     text = _pdf_to_text(pdf_bytes)
-    if not text:
+    if text:
+        return _call_llm([{"type": "text", "text": text}])
+    # No embedded text → scanned / image-only PDF. Rasterize the pages and let
+    # the vision model read them instead of failing the request.
+    images = _pdf_to_images(pdf_bytes)
+    if not images:
         raise ValueError("Could not extract text from PDF")
-    return _call_llm([{"type": "text", "text": text}])
+    return _call_llm([_image_block(img, "image/png") for img in images])
 
 
 def extract_from_docx(docx_bytes: bytes) -> tuple[ConsultantProfile, dict]:
@@ -191,5 +217,4 @@ def extract_from_docx(docx_bytes: bytes) -> tuple[ConsultantProfile, dict]:
 
 
 def extract_from_image(img_bytes: bytes, mime: str) -> tuple[ConsultantProfile, dict]:
-    block = _image_block_claude(img_bytes, mime) if _provider() == "CLAUDE" else _image_block_openai(img_bytes, mime)
-    return _call_llm([block])
+    return _call_llm([_image_block(img_bytes, mime)])
