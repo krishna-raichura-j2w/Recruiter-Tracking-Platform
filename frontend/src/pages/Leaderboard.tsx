@@ -3663,6 +3663,7 @@ interface KamInterviewRow {
   jd_raw_text: string | null;
   kam_name:    string | null;
   bh_name:     string | null;
+  is_ol_only?: boolean;
   total:       number;
   d0_3:        number;
   d4_5:        number;
@@ -3892,11 +3893,11 @@ function KAMInterviewsSection() {
                     const isOpen = expanded.has(r.demand_id);
                     const jd = r.jd_raw_text || '';
                     return (
-                      <tr key={r.demand_id} className="border-b border-slate-100 hover:bg-slate-50 align-top">
+                      <tr key={`${r.is_ol_only ? 'ol' : 'mrr'}-${r.demand_id}`} className="border-b border-slate-100 hover:bg-slate-50 align-top">
                         <td className="py-2.5 px-3 text-xs text-slate-700">{r.bh_name || <span className="text-slate-400">Unmapped</span>}</td>
                         <td className="py-2.5 px-3 text-xs font-medium text-slate-800">{r.kam_name || <span className="text-slate-400">Unmapped</span>}</td>
                         <td className="py-2.5 px-3 text-xs text-slate-700">{r.client_name}</td>
-                        <td className="py-2.5 px-3 text-xs font-mono text-slate-500">#{r.demand_id}</td>
+                        <td className="py-2.5 px-3 text-xs font-mono text-slate-500">#{r.demand_id}{r.is_ol_only ? <span className="ml-1 px-1 rounded bg-violet-100 text-violet-700 font-bold text-[9px]" style={{ fontFamily: 'sans-serif' }}>OL</span> : null}</td>
                         <td className="py-2.5 px-3 text-xs text-slate-700" style={{ maxWidth: 220 }}>{r.role_title}</td>
                         <td className="py-2.5 px-3 text-xs text-slate-500" style={{ maxWidth: 320 }}>
                           {jd ? (
@@ -3943,7 +3944,10 @@ interface KsExtracted {
   summary?: string | null;
 }
 interface KsRow {
-  candidate_id: number; job_id: number; full_name: string | null; email: string | null;
+  key: string; source: 'mrr' | 'ol'; is_ol_only: boolean; demand_key: string;
+  candidate_id: number | null; job_id: number | null;
+  ol_user_id: number | null; ol_job_posting_id: number | null;
+  full_name: string | null; email: string | null;
   role_title: string | null; client_name: string | null; kam_name: string | null; bh_name: string | null;
   bucket: string | null; wait_weight: number | null;
   overall_score: number | null; rank_score: number | null;
@@ -3951,11 +3955,13 @@ interface KsRow {
   decision: 'pending' | 'select' | 'reject'; status: string; resume_url: string | null;
 }
 interface KsDemand {
-  job_id: number; role_title: string | null; client_name: string | null;
+  demand_key: string; source: 'mrr' | 'ol'; job_id: number | null; ol_job_posting_id: number | null;
+  role_title: string | null; client_name: string | null;
   has_jd: boolean; jd_is_override: boolean; jd_effective: string; rubric_status: string | null;
   criteria: { name: string; weight: number }[];
   skills: { name: string; tier: string }[];
 }
+const demandIdOf = (r: KsRow) => r.job_id ?? r.ol_job_posting_id;
 interface KsResults { rows: KsRow[]; demands: Record<string, KsDemand>; generated_at: string }
 interface KsStatus { status: 'idle' | 'running' | 'done' | 'error'; total: number; completed: number; error?: string | null }
 
@@ -3991,9 +3997,9 @@ function KAMSuggestionsSection() {
   const [fKam, setFKam]       = useState<Set<string>>(new Set());
   const [fClient, setFClient] = useState<Set<string>>(new Set());
   const [fRole, setFRole]     = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [jdEdit, setJdEdit]   = useState<{ job_id: number; text: string } | null>(null);
-  const [jdExpanded, setJdExpanded] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());   // row keys
+  const [jdEdit, setJdEdit]   = useState<{ demand_key: string; label: string; text: string } | null>(null);
+  const [jdExpanded, setJdExpanded] = useState<Set<string>>(new Set());  // demand keys
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
@@ -4022,10 +4028,10 @@ function KAMSuggestionsSection() {
 
   const runAnalysis = async () => {
     const visible = (data?.rows ?? []).filter(passFilters).filter(r => r.decision !== 'reject');
-    const ids = selected.size ? Array.from(selected) : visible.map(r => r.candidate_id);
+    const ids = selected.size ? Array.from(selected) : visible.map(r => r.key);
     if (!ids.length) { ksToast('No candidates to analyze', false); return; }
     try {
-      await api.post('/kam-scoring/run', { candidate_ids: ids });
+      await api.post('/kam-scoring/run', { keys: ids });
       setStatus(s => ({ ...s, status: 'running', completed: 0, total: ids.length }));
       fetchStatus();
     } catch (e) {
@@ -4042,34 +4048,34 @@ function KAMSuggestionsSection() {
     } catch { ksToast('Could not stop', false); }
   };
 
-  const openJd = (job_id: number) => setJdEdit({ job_id, text: data?.demands?.[String(job_id)]?.jd_effective || '' });
-  const toggleJd = (job_id: number) => setJdExpanded(prev => { const n = new Set(prev); if (n.has(job_id)) n.delete(job_id); else n.add(job_id); return n; });
+  const openJd = (r: KsRow) => setJdEdit({ demand_key: r.demand_key, label: String(demandIdOf(r)), text: data?.demands?.[r.demand_key]?.jd_effective || '' });
+  const toggleJd = (dk: string) => setJdExpanded(prev => { const n = new Set(prev); if (n.has(dk)) n.delete(dk); else n.add(dk); return n; });
 
-  const jdCell = (jobId: number) => {
-    const jd = (data?.demands?.[String(jobId)]?.jd_effective || '').trim();
-    if (!jd) return <button onClick={() => openJd(jobId)} className="text-blue-600 hover:underline text-[11px] font-semibold">+ Add JD</button>;
-    const open = jdExpanded.has(jobId);
+  const jdCell = (r: KsRow) => {
+    const jd = (data?.demands?.[r.demand_key]?.jd_effective || '').trim();
+    if (!jd) return <button onClick={() => openJd(r)} className="text-blue-600 hover:underline text-[11px] font-semibold">+ Add JD</button>;
+    const open = jdExpanded.has(r.demand_key);
     return (
       <span title={jd}>
         {open ? jd : jd.slice(0, 70) + (jd.length > 70 ? '…' : '')}
-        {jd.length > 70 && <button onClick={() => toggleJd(jobId)} className="ml-1 text-blue-600 hover:underline">{open ? 'less' : 'more'}</button>}
-        {' · '}<button onClick={() => openJd(jobId)} className="text-blue-600 hover:underline">Edit</button>
+        {jd.length > 70 && <button onClick={() => toggleJd(r.demand_key)} className="ml-1 text-blue-600 hover:underline">{open ? 'less' : 'more'}</button>}
+        {' · '}<button onClick={() => openJd(r)} className="text-blue-600 hover:underline">Edit</button>
       </span>
     );
   };
 
   const decide = async (row: KsRow, decision: 'select' | 'reject' | 'pending') => {
     try {
-      await api.post('/kam-scoring/decision', { candidate_id: row.candidate_id, job_id: row.job_id, decision });
-      setData(d => d ? { ...d, rows: d.rows.map(r => r.candidate_id === row.candidate_id && r.job_id === row.job_id ? { ...r, decision } : r) } : d);
-      if (decision === 'reject') setSelected(prev => { const n = new Set(prev); n.delete(row.candidate_id); return n; });
+      await api.post('/kam-scoring/decision', { key: row.key, decision });
+      setData(d => d ? { ...d, rows: d.rows.map(r => r.key === row.key ? { ...r, decision } : r) } : d);
+      if (decision === 'reject') setSelected(prev => { const n = new Set(prev); n.delete(row.key); return n; });
     } catch { ksToast('Action failed', false); }
   };
 
   const saveJd = async () => {
     if (!jdEdit || !jdEdit.text.trim()) return;
     try {
-      await api.post('/kam-scoring/jd', { job_id: jdEdit.job_id, jd_text: jdEdit.text.trim() });
+      await api.post('/kam-scoring/jd', { demand_key: jdEdit.demand_key, jd_text: jdEdit.text.trim() });
       setJdEdit(null);
       ksToast('JD saved — run AI Analysis to (re)score this demand');
       fetchResults();
@@ -4096,8 +4102,8 @@ function KAMSuggestionsSection() {
   const needsJdRows = liveRows.filter(r => r.status === 'no_jd');                // no real JD
   const otherRows = liveRows.filter(r => r.status === 'no_resume' || r.status === 'error');
 
-  const toggleSel = (id: number) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const selectedRows = scoredRows.filter(r => selected.has(r.candidate_id));    // scored only → CSV/PDF/email
+  const toggleSel = (key: string) => setSelected(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const selectedRows = scoredRows.filter(r => selected.has(r.key));    // scored only → CSV/PDF/email
 
   // ── Skills Matrix CSV (mirrors the ai-scoring-tool layout) ──
   const exportSkillsMatrix = () => {
@@ -4106,7 +4112,7 @@ function KAMSuggestionsSection() {
     // union of skill columns across the involved demands, primary first
     const colMap = new Map<string, { name: string; primary: boolean }>();
     for (const r of rowsForCsv) {
-      const dem = data?.demands?.[String(r.job_id)];
+      const dem = data?.demands?.[r.demand_key];
       for (const s of dem?.skills ?? []) {
         const key = s.name.toLowerCase();
         if (!colMap.has(key)) colMap.set(key, { name: s.name, primary: String(s.tier).toLowerCase() === 'primary' });
@@ -4121,7 +4127,7 @@ function KAMSuggestionsSection() {
         const a = byName.get(c.toLowerCase());
         return !a ? '' : a.score == null ? a.statement : `${a.statement} (${a.score}/100)`;
       });
-      lines.push([r.full_name ?? '', r.role_title ?? '', r.client_name ?? '', r.job_id, ...cells, r.overall_score ?? ''].map(csvEscape).join(','));
+      lines.push([r.full_name ?? '', r.role_title ?? '', r.client_name ?? '', demandIdOf(r), ...cells, r.overall_score ?? ''].map(csvEscape).join(','));
     }
     const csv = lines.join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -4133,10 +4139,10 @@ function KAMSuggestionsSection() {
   };
 
   const downloadPdf = async () => {
-    const ids = (selectedRows.length ? selectedRows : scoredRows).map(r => r.candidate_id);
+    const ids = (selectedRows.length ? selectedRows : scoredRows).map(r => r.key);
     if (!ids.length) { ksToast('No scored candidates to export', false); return; }
     try {
-      const resp = await api.get('/kam-scoring/report.pdf', { params: { candidate_ids: ids.join(',') }, responseType: 'blob' });
+      const resp = await api.get('/kam-scoring/report.pdf', { params: { keys: ids.join(',') }, responseType: 'blob' });
       const url = URL.createObjectURL(resp.data as Blob);
       const a = document.createElement('a');
       a.href = url; a.download = 'candidate-reports.pdf'; a.click(); URL.revokeObjectURL(url);
@@ -4155,7 +4161,7 @@ function KAMSuggestionsSection() {
     // primary-first>, Final Score; cell = "<statement> (<score>/100)".
     const colMap = new Map<string, { name: string; primary: boolean }>();
     for (const r of rows) {
-      for (const s of data?.demands?.[String(r.job_id)]?.skills ?? []) {
+      for (const s of data?.demands?.[r.demand_key]?.skills ?? []) {
         const key = s.name.toLowerCase();
         if (!colMap.has(key)) colMap.set(key, { name: s.name, primary: String(s.tier).toLowerCase() === 'primary' });
       }
@@ -4171,7 +4177,7 @@ function KAMSuggestionsSection() {
         const a = byName.get(c.toLowerCase());
         return !a ? '' : a.score == null ? clean(a.statement) : `${clean(a.statement)} (${a.score}/100)`;
       });
-      return toRow([clean(r.full_name || r.extracted?.candidate_name || 'Candidate'), clean(r.role_title), clean(r.client_name), String(r.job_id), ...cells, String(r.overall_score ?? '')]);
+      return toRow([clean(r.full_name || r.extracted?.candidate_name || 'Candidate'), clean(r.role_title), clean(r.client_name), String(demandIdOf(r)), ...cells, String(r.overall_score ?? '')]);
     });
     const table = cols.length ? [header, sep, ...bodyRows].join('\n') : '(No skill assessments available — run AI Analysis first.)';
 
@@ -4336,16 +4342,16 @@ function KAMSuggestionsSection() {
                   </tr></thead>
                   <tbody>
                     {scoredRows.map((r, i) => (
-                      <tr key={`${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 hover:bg-slate-50 align-top"
+                      <tr key={r.key} className="border-b border-slate-100 hover:bg-slate-50 align-top"
                         style={{ background: r.decision === 'select' ? '#f0fdf4' : undefined }}>
-                        <td className="py-2.5 px-3"><button onClick={() => toggleSel(r.candidate_id)}>{selected.has(r.candidate_id) ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} className="text-slate-300" />}</button></td>
+                        <td className="py-2.5 px-3"><button onClick={() => toggleSel(r.key)}>{selected.has(r.key) ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} className="text-slate-300" />}</button></td>
                         <td className="py-2.5 px-2 text-xs text-slate-400 font-mono">{i + 1}</td>
                         <td className="py-2.5 px-3">
                           <div className="text-xs font-semibold text-slate-800">{r.full_name || r.extracted?.candidate_name || '—'}</div>
                           <div className="text-[11px] text-slate-400">{r.extracted?.experience_range || ''}{r.extracted?.current_company ? ` · ${r.extracted.current_company}` : ''}</div>
                         </td>
-                        <td className="py-2.5 px-3 text-xs text-slate-600">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
-                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-600">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{demandIdOf(r)}{r.is_ol_only ? <span className="ml-1 px-1 rounded bg-violet-100 text-violet-700 font-bold text-[9px]">OL</span> : null}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r)}</td>
                         <td className="py-2.5 px-2 text-center"><span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold text-white" style={{ background: scoreColor(r.overall_score) }}>{r.overall_score ?? '—'}</span></td>
                         <td className="py-2.5 px-2 text-center text-[11px] text-slate-600">{r.bucket ? BUCKET_LABEL[r.bucket] : '—'}</td>
                         <td className="py-2.5 px-2 text-center text-xs font-bold text-slate-800">{r.rank_score ?? '—'}</td>
@@ -4364,23 +4370,23 @@ function KAMSuggestionsSection() {
                       <tr><td colSpan={11} className="py-2 px-3 bg-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-500">Not analyzed yet — select rows and Run AI Analysis</td></tr>
                     )}
                     {unscoredRows.map(r => (
-                      <tr key={`u-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 hover:bg-slate-50 align-top">
-                        <td className="py-2.5 px-3"><button onClick={() => toggleSel(r.candidate_id)}>{selected.has(r.candidate_id) ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} className="text-slate-300" />}</button></td>
+                      <tr key={r.key} className="border-b border-slate-100 hover:bg-slate-50 align-top">
+                        <td className="py-2.5 px-3"><button onClick={() => toggleSel(r.key)}>{selected.has(r.key) ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} className="text-slate-300" />}</button></td>
                         <td></td>
                         <td className="py-2.5 px-3 text-xs font-semibold text-slate-700">{r.full_name || '—'}</td>
-                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
-                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{demandIdOf(r)}{r.is_ol_only ? <span className="ml-1 px-1 rounded bg-violet-100 text-violet-700 font-bold text-[9px]">OL</span> : null}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r)}</td>
                         <td colSpan={5} className="py-2.5 px-3 text-[11px] text-slate-400">Not analyzed yet{r.bucket ? ` · ${BUCKET_LABEL[r.bucket]}` : ''}</td>
                         <td className="py-2.5 px-3 text-center"><button onClick={() => decide(r, 'reject')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-red-200 text-red-600 hover:bg-red-50">Reject</button></td>
                       </tr>
                     ))}
 
                     {otherRows.map(r => (
-                      <tr key={`o-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 bg-slate-50/40 align-top">
+                      <tr key={r.key} className="border-b border-slate-100 bg-slate-50/40 align-top">
                         <td className="py-2.5 px-3"></td><td></td>
                         <td className="py-2.5 px-3 text-xs font-medium text-slate-600">{r.full_name || '—'}</td>
-                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
-                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{demandIdOf(r)}{r.is_ol_only ? <span className="ml-1 px-1 rounded bg-violet-100 text-violet-700 font-bold text-[9px]">OL</span> : null}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r)}</td>
                         <td colSpan={5} className="py-2.5 px-3 text-[11px] text-amber-600">{r.status === 'no_resume' ? 'No resume on file — cannot score' : `Scoring error`}</td>
                         <td className="py-2.5 px-3 text-center"><button onClick={() => decide(r, 'reject')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-red-200 text-red-600 hover:bg-red-50">Reject</button></td>
                       </tr>
@@ -4390,13 +4396,13 @@ function KAMSuggestionsSection() {
                       <tr><td colSpan={11} className="py-2 px-3 bg-amber-50 text-[11px] font-bold uppercase tracking-wide text-amber-700">Needs JD — add a job description to score these</td></tr>
                     )}
                     {needsJdRows.map(r => (
-                      <tr key={`j-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100 align-top">
+                      <tr key={r.key} className="border-b border-slate-100 align-top">
                         <td className="py-2.5 px-3"></td><td></td>
                         <td className="py-2.5 px-3 text-xs font-medium text-slate-700">{r.full_name || '—'}</td>
-                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
-                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r.job_id)}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{demandIdOf(r)}{r.is_ol_only ? <span className="ml-1 px-1 rounded bg-violet-100 text-violet-700 font-bold text-[9px]">OL</span> : null}</div></td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-500 align-top" style={{ maxWidth: 240 }}>{jdCell(r)}</td>
                         <td colSpan={5} className="py-2.5 px-3 text-[11px] text-slate-400">No real JD (jd_raw_text) for this demand</td>
-                        <td className="py-2.5 px-3 text-center"><button onClick={() => openJd(r.job_id)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-blue-200 text-blue-600 hover:bg-blue-50 inline-flex items-center gap-1"><Plus size={11} /> Add JD</button></td>
+                        <td className="py-2.5 px-3 text-center"><button onClick={() => openJd(r)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-blue-200 text-blue-600 hover:bg-blue-50 inline-flex items-center gap-1"><Plus size={11} /> Add JD</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -4419,9 +4425,9 @@ function KAMSuggestionsSection() {
               </tr></thead>
               <tbody>
                 {rejectedRows.map(r => (
-                  <tr key={`r-${r.candidate_id}-${r.job_id}`} className="border-b border-slate-100">
+                  <tr key={r.key} className="border-b border-slate-100">
                     <td className="py-2.5 px-3 text-xs font-medium text-slate-700">{r.full_name || '—'}</td>
-                    <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{r.job_id}</div></td>
+                    <td className="py-2.5 px-3 text-xs text-slate-500">{r.client_name}<div className="text-[11px] text-slate-400">{r.role_title} · #{demandIdOf(r)}{r.is_ol_only ? <span className="ml-1 px-1 rounded bg-violet-100 text-violet-700 font-bold text-[9px]">OL</span> : null}</div></td>
                     <td className="py-2.5 px-2 text-center"><span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold text-white" style={{ background: scoreColor(r.overall_score) }}>{r.overall_score ?? '—'}</span></td>
                     <td className="py-2.5 px-3 text-center"><button onClick={() => decide(r, 'pending')} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50">Un-reject</button></td>
                   </tr>
@@ -4436,7 +4442,7 @@ function KAMSuggestionsSection() {
       {jdEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setJdEdit(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3"><h3 className="text-sm font-bold text-slate-800">Add / Update JD for demand #{jdEdit.job_id}</h3><button onClick={() => setJdEdit(null)}><X size={16} className="text-slate-400" /></button></div>
+            <div className="flex items-center justify-between mb-3"><h3 className="text-sm font-bold text-slate-800">Add / Update JD for demand #{jdEdit.label}</h3><button onClick={() => setJdEdit(null)}><X size={16} className="text-slate-400" /></button></div>
             <p className="text-[11px] text-slate-400 mb-2">Saved to the scoring workspace only — your main job record is not modified.</p>
             <textarea value={jdEdit.text} onChange={e => setJdEdit({ ...jdEdit, text: e.target.value })} placeholder="Paste the job description…"
               className="w-full h-64 text-sm border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-blue-400" />

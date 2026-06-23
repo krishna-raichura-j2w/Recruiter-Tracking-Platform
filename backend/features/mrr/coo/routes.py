@@ -1691,7 +1691,33 @@ def kam_interviews(
         row["total"] += 1
         row[bucket] += 1
 
-    rows = sorted(agg.values(), key=lambda x: (x["dgt7"], x["total"]), reverse=True)
+    for row in agg.values():
+        row["is_ol_only"] = False
+
+    # ── Append OL-only demands (candidates that exist only in the Offer-Letter
+    # tool), grouped by OL job_posting. BH/client derived from MRR; KAM unknown.
+    try:
+        from features.mrr.kam_scoring import service as _kam_svc
+        ol_rows = _kam_svc.ol_only_step7_rows(db, current_user, lookback_days=_kam_svc.OL_INTERVIEWS_DAYS, include_gt7=True)
+        ol_agg: dict[int, dict] = {}
+        for r in ol_rows:
+            d = ol_agg.setdefault(r.ol_job_posting_id, {
+                "demand_id":   r.ol_job_posting_id,
+                "role_title":  r.role_title,
+                "client_name": r.client_name,
+                "jd_raw_text": r.jd_text,
+                "kam_name":    None,
+                "bh_name":     r.bh_name,
+                "is_ol_only":  True,
+                "total": 0, "d0_3": 0, "d4_5": 0, "d6_7": 0, "dgt7": 0,
+            })
+            d["total"] += 1
+            d[r.bucket] += 1
+        agg_ol_rows = list(ol_agg.values())
+    except Exception:
+        agg_ol_rows = []  # OL unreachable → MRR-only, don't fail the endpoint
+
+    rows = sorted(list(agg.values()) + agg_ol_rows, key=lambda x: (x["dgt7"], x["total"]), reverse=True)
 
     totals = {"total": 0, "d0_3": 0, "d4_5": 0, "d6_7": 0, "dgt7": 0}
     for row in rows:

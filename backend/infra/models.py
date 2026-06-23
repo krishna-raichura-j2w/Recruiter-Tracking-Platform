@@ -1072,7 +1072,9 @@ class AiJdRubric(Base):
     to the jobs table)."""
     __tablename__ = "ai_jd_rubrics"
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, nullable=False, unique=True, index=True)
+    source = Column(String(3), nullable=False, default="mrr")  # mrr | ol
+    job_id = Column(Integer, nullable=True, unique=True, index=True)        # MRR demand
+    ol_job_posting_id = Column(Integer, nullable=True, index=True)          # OL demand
     jd_text_effective = Column(Text)          # the JD text the rubric was built from
     jd_is_override = Column(Boolean, nullable=False, default=False)
     jd_override_by = Column(Integer, nullable=True)   # users.id who added/edited the JD
@@ -1087,11 +1089,15 @@ class AiJdRubric(Base):
 
 
 class AiCandidateScore(Base):
-    """One AI score per (candidate, demand)."""
+    """One AI score per (candidate, demand). source='mrr' uses candidate_id/job_id;
+    source='ol' uses ol_user_id/ol_job_posting_id (OL-only subjects)."""
     __tablename__ = "ai_candidate_scores"
     id = Column(Integer, primary_key=True, index=True)
-    candidate_id = Column(Integer, nullable=False, index=True)
-    job_id = Column(Integer, nullable=False, index=True)
+    source = Column(String(3), nullable=False, default="mrr")  # mrr | ol
+    candidate_id = Column(Integer, nullable=True, index=True)
+    job_id = Column(Integer, nullable=True, index=True)
+    ol_user_id = Column(Integer, nullable=True, index=True)
+    ol_job_posting_id = Column(Integer, nullable=True)
     rubric_id = Column(Integer, nullable=True)
     bucket = Column(String(8))                # d0_3 | d4_5 | d6_7
     wait_weight = Column(Integer)             # 1 | 2 | 3
@@ -1118,8 +1124,11 @@ class AiCandidateReject(Base):
     is never re-suggested to the client."""
     __tablename__ = "ai_candidate_rejects"
     id = Column(Integer, primary_key=True, index=True)
-    candidate_id = Column(Integer, nullable=False, index=True)
-    job_id = Column(Integer, nullable=False, index=True)
+    source = Column(String(3), nullable=False, default="mrr")  # mrr | ol
+    candidate_id = Column(Integer, nullable=True, index=True)
+    job_id = Column(Integer, nullable=True, index=True)
+    ol_user_id = Column(Integer, nullable=True, index=True)
+    ol_job_posting_id = Column(Integer, nullable=True)
     rejected_by = Column(Integer, nullable=True)
     reason = Column(Text)
     created_at = Column(DateTime, default=now_utc)

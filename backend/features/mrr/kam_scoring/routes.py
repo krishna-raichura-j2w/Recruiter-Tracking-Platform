@@ -1,6 +1,7 @@
 """KAM Interviews Suggestion — AI resume-vs-JD scoring endpoints.
 
-Read existing candidate/job/OL data; write only to the ai_* tables.
+Read existing candidate/job/OL data; write only to the ai_* tables. Subjects are
+identified by a unified string key:  mrr:{candidate_id}:{job_id}  |  ol:{ol_user_id}:{ol_job_posting_id}
 """
 from __future__ import annotations
 
@@ -47,15 +48,29 @@ def _loads(s, default):
         return default
 
 
+def _score_key(s) -> str:
+    return f"ol:{s.ol_user_id}:{s.ol_job_posting_id}" if s.source == "ol" else f"mrr:{s.candidate_id}:{s.job_id}"
+
+
+def _parse_key(key: str):
+    """('mrr', candidate_id, job_id) or ('ol', ol_user_id, ol_job_posting_id)."""
+    p = key.split(":")
+    return (p[0], int(p[1]), int(p[2]))
+
+
+def _demand_key_str(m) -> str:
+    return f"ol:{m.ol_job_posting_id}" if m.source == "ol" else f"mrr:{m.job_id}"
+
+
 # ── Run + live status ────────────────────────────────────────────────────────
 
 @router.post("/run")
 def run_scoring(payload: RunIn | None = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     _require(current_user)
     snapshot = {"id": current_user.id, "role": _role(current_user), "pod_id": current_user.pod_id}
-    cand_ids = payload.candidate_ids if payload else None
+    keys = payload.keys if payload else None
     try:
-        return service.start_run(current_user.id, snapshot, cand_ids)
+        return service.start_run(current_user.id, snapshot, keys)
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -102,44 +117,65 @@ def run_status(db: Session = Depends(get_db), current_user=Depends(get_current_u
 @router.get("/results")
 def results(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Full in-bucket (0-3/4-5/6-7, OL step 7) candidate universe for the caller's
-    scope — the same population as KAM Interviews — LEFT-merged with any AI scores.
-    Unscored candidates appear with blank scores so KAMs see everything here."""
+    scope — MRR candidates + OL-only candidates — LEFT-merged with any AI scores."""
     _require(current_user)
     meta_rows = service.scoped_candidate_rows(db, current_user)
     if not meta_rows:
         return {"rows": [], "demands": {}, "generated_at": datetime.now(timezone.utc).isoformat()}
 
-    # the universe = those currently at OL step 7 within an in-suggestion bucket
     buckets = service._ol_step7_buckets(meta_rows)
-    universe = [m for m in meta_rows if m.candidate_id in buckets]
+    universe = [m for m in meta_rows if m.key in buckets]
     if not universe:
         return {"rows": [], "demands": {}, "generated_at": datetime.now(timezone.utc).isoformat()}
 
-    job_ids = list({m.job_id for m in universe})
-    cand_ids = [m.candidate_id for m in universe]
+    mrr_cands = [m.candidate_id for m in universe if m.source == "mrr"]
+    ol_uids = [m.ol_user_id for m in universe if m.source == "ol"]
+    mrr_job_ids = {m.job_id for m in universe if m.source == "mrr"}
+    ol_jp_ids = {m.ol_job_posting_id for m in universe if m.source == "ol"}
 
-    scores = {s.candidate_id: s for s in db.query(AiCandidateScore).filter(AiCandidateScore.candidate_id.in_(cand_ids)).all()}
-    rejects = {(r.candidate_id, r.job_id) for r in db.query(AiCandidateReject.candidate_id, AiCandidateReject.job_id).filter(AiCandidateReject.candidate_id.in_(cand_ids)).all()}
-    rubrics = {rb.job_id: rb for rb in db.query(AiJdRubric).filter(AiJdRubric.job_id.in_(job_ids)).all()}
-    jd_raw = {jid: raw for jid, raw in db.query(Job.id, Job.jd_raw_text).filter(Job.id.in_(job_ids)).all()}
+    # scores + rejects indexed by row key
+    score_by_key, reject_keys = {}, set()
+    if mrr_cands:
+        for s in db.query(AiCandidateScore).filter(AiCandidateScore.source == "mrr", AiCandidateScore.candidate_id.in_(mrr_cands)).all():
+            score_by_key[_score_key(s)] = s
+        for r in db.query(AiCandidateReject).filter(AiCandidateReject.source == "mrr", AiCandidateReject.candidate_id.in_(mrr_cands)).all():
+            reject_keys.add(f"mrr:{r.candidate_id}:{r.job_id}")
+    if ol_uids:
+        for s in db.query(AiCandidateScore).filter(AiCandidateScore.source == "ol", AiCandidateScore.ol_user_id.in_(ol_uids)).all():
+            score_by_key[_score_key(s)] = s
+        for r in db.query(AiCandidateReject).filter(AiCandidateReject.source == "ol", AiCandidateReject.ol_user_id.in_(ol_uids)).all():
+            reject_keys.add(f"ol:{r.ol_user_id}:{r.ol_job_posting_id}")
 
-    # demands map: per-demand JD presence + effective text (override → raw) + rubric
-    demands = {}
-    meta_by_job = {}
+    # rubrics indexed by demand key string
+    rubric_by_demand = {}
+    if mrr_job_ids:
+        for rb in db.query(AiJdRubric).filter(AiJdRubric.source == "mrr", AiJdRubric.job_id.in_(list(mrr_job_ids))).all():
+            rubric_by_demand[f"mrr:{rb.job_id}"] = rb
+    if ol_jp_ids:
+        for rb in db.query(AiJdRubric).filter(AiJdRubric.source == "ol", AiJdRubric.ol_job_posting_id.in_(list(ol_jp_ids))).all():
+            rubric_by_demand[f"ol:{rb.ol_job_posting_id}"] = rb
+    jd_raw = {jid: raw for jid, raw in db.query(Job.id, Job.jd_raw_text).filter(Job.id.in_(list(mrr_job_ids))).all()} if mrr_job_ids else {}
+
+    # demands map keyed by demand key string
+    demands, meta_by_demand = {}, {}
     for m in universe:
-        meta_by_job.setdefault(m.job_id, m)
-    for jid in job_ids:
-        rb = rubrics.get(jid)
-        m = meta_by_job.get(jid)
+        meta_by_demand.setdefault(_demand_key_str(m), m)
+    for dk, m in meta_by_demand.items():
+        rb = rubric_by_demand.get(dk)
         if rb and rb.jd_is_override and (rb.jd_text_effective or "").strip():
             jd_eff = rb.jd_text_effective
+        elif m.source == "ol":
+            jd_eff = m.jd_text or ""
         else:
-            jd_eff = jd_raw.get(jid) or ""
+            jd_eff = jd_raw.get(m.job_id) or ""
         rubric = _loads(rb.rubric_json, {}) if rb else {}
-        demands[str(jid)] = {
-            "job_id": jid,
-            "role_title": m.role_title if m else None,
-            "client_name": m.client_name if m else None,
+        demands[dk] = {
+            "demand_key": dk,
+            "source": m.source,
+            "job_id": m.job_id,
+            "ol_job_posting_id": m.ol_job_posting_id,
+            "role_title": m.role_title,
+            "client_name": m.client_name,
             "has_jd": bool((jd_eff or "").strip()),
             "jd_is_override": bool(rb.jd_is_override) if rb else False,
             "jd_effective": jd_eff or "",
@@ -150,18 +186,26 @@ def results(db: Session = Depends(get_db), current_user=Depends(get_current_user
 
     rows = []
     for m in universe:
-        s = scores.get(m.candidate_id)
-        bucket, weight = buckets[m.candidate_id]
-        has_jd = demands[str(m.job_id)]["has_jd"]
+        dk = _demand_key_str(m)
+        s = score_by_key.get(m.key)
+        bucket, weight = buckets[m.key]
+        has_jd = demands[dk]["has_jd"]
         if s:
-            status = s.status
-            decision = s.decision
+            status, decision = s.status, s.decision
         else:
             status = "unscored" if has_jd else "no_jd"
-            decision = "reject" if (m.candidate_id, m.job_id) in rejects else "pending"
+            decision = "reject" if m.key in reject_keys else "pending"
+        resume_url = (service.ol_resume_url(m.ol_cp_id, m.ol_resume_filename) if m.source == "ol"
+                      else to_viewable_url(m.resume_data or m.resume, candidate_id=m.candidate_id))
         rows.append({
+            "key": m.key,
+            "source": m.source,
+            "is_ol_only": m.source == "ol",
+            "demand_key": dk,
             "candidate_id": m.candidate_id,
             "job_id": m.job_id,
+            "ol_user_id": m.ol_user_id,
+            "ol_job_posting_id": m.ol_job_posting_id,
             "full_name": m.full_name,
             "email": m.email,
             "role_title": m.role_title,
@@ -177,11 +221,10 @@ def results(db: Session = Depends(get_db), current_user=Depends(get_current_user
             "extracted": _loads(s.extracted_json, {}) if s else {},
             "decision": decision,
             "status": status,
-            "resume_url": to_viewable_url(m.resume_data or m.resume, candidate_id=m.candidate_id),
+            "resume_url": resume_url,
             "scored_at": s.scored_at.replace(tzinfo=timezone.utc).isoformat() if (s and s.scored_at) else None,
         })
 
-    # scored first (rank_score desc), then unscored, then no_jd
     order = {"scored": 3, "unscored": 2, "no_resume": 1, "error": 1, "no_jd": 0}
     rows.sort(key=lambda x: (order.get(x["status"], 0), x["rank_score"] or 0), reverse=True)
     return {"rows": rows, "demands": demands, "generated_at": datetime.now(timezone.utc).isoformat()}
@@ -192,16 +235,23 @@ def results(db: Session = Depends(get_db), current_user=Depends(get_current_user
 @router.post("/jd")
 def set_jd(payload: JdOverrideIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     _require(current_user)
-    job = db.get(Job, payload.job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Demand not found.")
     text_ = (payload.jd_text or "").strip()
     if not text_:
         raise HTTPException(status_code=400, detail="JD text is required.")
-    row = db.query(AiJdRubric).filter(AiJdRubric.job_id == payload.job_id).first()
-    if not row:
-        row = AiJdRubric(job_id=payload.job_id)
-        db.add(row)
+    parts = payload.demand_key.split(":")
+    src, demand_id = parts[0], int(parts[1])
+    if src == "ol":
+        row = db.query(AiJdRubric).filter(AiJdRubric.source == "ol", AiJdRubric.ol_job_posting_id == demand_id).first()
+        if not row:
+            row = AiJdRubric(source="ol", ol_job_posting_id=demand_id)
+            db.add(row)
+    else:
+        if not db.get(Job, demand_id):
+            raise HTTPException(status_code=404, detail="Demand not found.")
+        row = db.query(AiJdRubric).filter(AiJdRubric.source == "mrr", AiJdRubric.job_id == demand_id).first()
+        if not row:
+            row = AiJdRubric(source="mrr", job_id=demand_id)
+            db.add(row)
     row.jd_text_effective = text_
     row.jd_is_override = True
     row.jd_override_by = current_user.id
@@ -211,7 +261,7 @@ def set_jd(payload: JdOverrideIn, db: Session = Depends(get_db), current_user=De
     row.status = "pending"
     row.error = None
     db.commit()
-    return {"ok": True, "job_id": payload.job_id, "status": "pending"}
+    return {"ok": True, "demand_key": payload.demand_key, "status": "pending"}
 
 
 # ── Select / Reject ──────────────────────────────────────────────────────────
@@ -221,36 +271,23 @@ def set_decision(payload: DecisionIn, db: Session = Depends(get_db), current_use
     _require(current_user)
     if payload.decision not in ("select", "reject", "pending"):
         raise HTTPException(status_code=400, detail="decision must be select|reject|pending")
-    score = (
-        db.query(AiCandidateScore)
-        .filter(
-            AiCandidateScore.candidate_id == payload.candidate_id,
-            AiCandidateScore.job_id == payload.job_id,
-        )
-        .first()
-    )
+    src, a, b = _parse_key(payload.key)
+    if src == "ol":
+        score = db.query(AiCandidateScore).filter(AiCandidateScore.source == "ol", AiCandidateScore.ol_user_id == a, AiCandidateScore.ol_job_posting_id == b).first()
+        rej = db.query(AiCandidateReject).filter(AiCandidateReject.source == "ol", AiCandidateReject.ol_user_id == a, AiCandidateReject.ol_job_posting_id == b).first()
+        new_rej = lambda: AiCandidateReject(source="ol", ol_user_id=a, ol_job_posting_id=b, rejected_by=current_user.id, reason=payload.reason)
+    else:
+        score = db.query(AiCandidateScore).filter(AiCandidateScore.source == "mrr", AiCandidateScore.candidate_id == a, AiCandidateScore.job_id == b).first()
+        rej = db.query(AiCandidateReject).filter(AiCandidateReject.source == "mrr", AiCandidateReject.candidate_id == a, AiCandidateReject.job_id == b).first()
+        new_rej = lambda: AiCandidateReject(source="mrr", candidate_id=a, job_id=b, rejected_by=current_user.id, reason=payload.reason)
+
     if score:
         score.decision = payload.decision
-
-    rej = (
-        db.query(AiCandidateReject)
-        .filter(
-            AiCandidateReject.candidate_id == payload.candidate_id,
-            AiCandidateReject.job_id == payload.job_id,
-        )
-        .first()
-    )
     if payload.decision == "reject":
         if not rej:
-            db.add(AiCandidateReject(
-                candidate_id=payload.candidate_id,
-                job_id=payload.job_id,
-                rejected_by=current_user.id,
-                reason=payload.reason,
-            ))
-    else:
-        if rej:
-            db.delete(rej)
+            db.add(new_rej())
+    elif rej:
+        db.delete(rej)
     db.commit()
     return {"ok": True, "decision": payload.decision}
 
@@ -264,39 +301,40 @@ def _latin(s) -> str:
 
 @router.get("/report.pdf")
 def report_pdf(
-    candidate_ids: str = Query(..., description="comma-separated candidate ids"),
+    keys: str = Query(..., description="comma-separated row keys"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     _require(current_user)
-    try:
-        ids = [int(x) for x in candidate_ids.split(",") if x.strip()]
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid candidate_ids")
-    if not ids:
-        raise HTTPException(status_code=400, detail="candidate_ids required")
+    key_list = [k.strip() for k in keys.split(",") if k.strip()]
+    if not key_list:
+        raise HTTPException(status_code=400, detail="keys required")
 
-    # scope: only candidates the caller can see
-    meta = {r.candidate_id: r for r in service.scoped_candidate_rows(db, current_user)}
-    scores = (
-        db.query(AiCandidateScore)
-        .filter(AiCandidateScore.candidate_id.in_(ids))
-        .all()
-    )
+    meta = {m.key: m for m in service.scoped_candidate_rows(db, current_user)}  # scope guard
+    mrr_cands = [int(k.split(":")[1]) for k in key_list if k.startswith("mrr:")]
+    ol_uids = [int(k.split(":")[1]) for k in key_list if k.startswith("ol:")]
+    score_by_key = {}
+    if mrr_cands:
+        for s in db.query(AiCandidateScore).filter(AiCandidateScore.source == "mrr", AiCandidateScore.candidate_id.in_(mrr_cands)).all():
+            score_by_key[_score_key(s)] = s
+    if ol_uids:
+        for s in db.query(AiCandidateScore).filter(AiCandidateScore.source == "ol", AiCandidateScore.ol_user_id.in_(ol_uids)).all():
+            score_by_key[_score_key(s)] = s
 
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
-    pdf = FPDF(format="A4")  # default unit = mm
+    pdf = FPDF(format="A4")
     pdf.set_margins(15, 15, 15)
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    def mc(h, txt):  # multi_cell that resets X to the left margin each line
+    def mc(h, txt):
         pdf.multi_cell(0, h, _latin(txt), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     any_card = False
-    for s in scores:
-        m = meta.get(s.candidate_id)
-        if not m or s.decision == "reject":
+    for k in key_list:
+        m = meta.get(k)
+        s = score_by_key.get(k)
+        if not m or not s or s.decision == "reject":
             continue
         any_card = True
         extracted = _loads(s.extracted_json, {})

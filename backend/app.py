@@ -236,6 +236,13 @@ def ensure_schema():
             except Exception:
                 db.rollback()
 
+        for sql in load_sql_list("058-ai_ol_support.sql"):
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         for sql in load_sql_list("054-governance-schema-fix.sql"):
             try:
                 db.execute(text(sql))
